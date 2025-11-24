@@ -1,5 +1,5 @@
 {
-  "name": "my-v0-project",
+  "name": "decibrrr",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "latest",
-    "@paper-design/shaders-react": "latest",
-    "@radix-ui/react-aspect-ratio": "latest",
+    "@aptos-labs/ts-sdk": "^1.39.0",
     "@radix-ui/react-avatar": "latest",
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-dialog": "latest",
@@ -28,13 +26,11 @@
     "@radix-ui/react-toast": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@vercel/analytics": "latest",
-    "ai": "latest",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "4.1.0",
     "geist": "^1.3.1",
-    "heic-to": "latest",
     "lucide-react": "^0.454.0",
     "next": "^16.0.0",
     "next-themes": "latest",

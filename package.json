@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^1.39.0",
+    "@paper-design/shaders-react": "^0.0.66",
     "@radix-ui/react-avatar": "latest",
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-dialog": "latest",

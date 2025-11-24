@@ -3,7 +3,6 @@ import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/react"
-import { ErrorBoundary } from "@/components/error-boundary"
 import "./globals.css"
 
 const inter = Inter({
@@ -105,9 +104,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="font-mono antialiased" style={{ backgroundColor: "#000000" }}>
-        <ErrorBoundary>
-          <Suspense fallback={null}>{children}</Suspense>
-        </ErrorBoundary>
+        <Suspense fallback={null}>{children}</Suspense>
         <Analytics />
       </body>
     </html>

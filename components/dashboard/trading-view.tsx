@@ -34,7 +34,7 @@ export function TradingView() {
                 <div className="w-6 h-6 bg-[#F7931A] flex items-center justify-center text-[10px] font-bold text-white">
                   ₿
                 </div>
-                <span className="font-bold text-white font-mono">BTC:PERP-USDT</span>
+                <span className="font-bold text-white font-mono">BTC/USD</span>
                 <ChevronDown className="w-4 h-4 text-zinc-500" />
               </div>
               <Badge
@@ -63,7 +63,7 @@ export function TradingView() {
                 <div className="w-6 h-6 bg-[#627EEA] flex items-center justify-center text-[10px] font-bold text-white">
                   ♦
                 </div>
-                <span className="font-bold text-white font-mono">ETH:PERP-USDT</span>
+                <span className="font-bold text-white font-mono">ETH/USD</span>
                 <ChevronDown className="w-4 h-4 text-zinc-500" />
               </div>
               <Badge

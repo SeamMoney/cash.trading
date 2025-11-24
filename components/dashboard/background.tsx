@@ -1,29 +1,24 @@
 "use client"
-import { memo } from "react"
-import { Dithering } from "@paper-design/shaders-react"
-
-const MemoizedDithering = memo(Dithering)
 
 export function DashboardBackground() {
   return (
-    <div className="fixed inset-0 z-0 select-none shader-background bg-black pointer-events-none">
-      <div className="absolute inset-0 translate-y-[25%] scale-125">
-        <MemoizedDithering
-          colorBack="#00000000"
-          colorFront="#ffff00"
-          speed={0.43}
-          shape="wave"
-          type="4x4"
-          pxSize={3}
-          scale={1.5}
-          style={{
-            backgroundColor: "#000000",
-            height: "100vh",
-            width: "100vw",
-          }}
-        />
-      </div>
-      <div className="absolute inset-0 bg-black/60" />
+    <div className="fixed inset-0 z-0 select-none bg-black pointer-events-none">
+      {/* Animated gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black opacity-90" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,246,0,0.05),transparent_50%)]" />
+
+      {/* Subtle grid pattern */}
+      <div
+        className="absolute inset-0 opacity-[0.02]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(255,246,0,0.5) 1px, transparent 1px),
+                           linear-gradient(90deg, rgba(255,246,0,0.5) 1px, transparent 1px)`,
+          backgroundSize: '50px 50px'
+        }}
+      />
+
+      {/* Dark overlay */}
+      <div className="absolute inset-0 bg-black/40" />
     </div>
   )
 }

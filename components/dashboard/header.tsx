@@ -43,7 +43,7 @@ export function DashboardHeader() {
               <span className="font-medium">Wallet</span>
               <span className="font-mono text-zinc-500 ml-auto sm:ml-0">
                 {connected && account
-                  ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                  ? `${account.address.toString().slice(0, 6)}...${account.address.toString().slice(-4)}`
                   : "Not Connected"}
               </span>
             </div>

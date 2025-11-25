@@ -17,8 +17,9 @@ export function WalletButton() {
     navigator.clipboard.writeText(addr)
   }
 
-  const formatAddress = (addr: string) => {
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const formatAddress = (addr: string | { toString(): string }) => {
+    const addrStr = typeof addr === 'string' ? addr : addr.toString()
+    return `${addrStr.slice(0, 6)}...${addrStr.slice(-4)}`
   }
 
   if (connected && account) {
@@ -53,15 +54,15 @@ export function WalletButton() {
               <div className="space-y-2">
                 <label className="text-xs font-medium text-zinc-500">WALLET ADDRESS</label>
                 <div className="flex items-center gap-2 p-3 bg-black/40 border border-white/10 rounded-lg">
-                  <span className="text-sm font-mono text-white flex-1">{account.address}</span>
+                  <span className="text-sm font-mono text-white flex-1">{account.address.toString()}</span>
                   <button
-                    onClick={() => copyAddress(account.address)}
+                    onClick={() => copyAddress(account.address.toString())}
                     className="p-1.5 hover:bg-white/5 rounded transition-colors"
                   >
                     <Copy className="w-4 h-4 text-zinc-400" />
                   </button>
                   <a
-                    href={`https://explorer.aptoslabs.com/account/${account.address}?network=testnet`}
+                    href={`https://explorer.aptoslabs.com/account/${account.address.toString()}?network=testnet`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1.5 hover:bg-white/5 rounded transition-colors"

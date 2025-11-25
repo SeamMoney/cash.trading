@@ -40,7 +40,7 @@ export function useWalletBalance(): WalletBalanceState {
         body: JSON.stringify({
           function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
           type_arguments: [],
-          arguments: [account.address],
+          arguments: [account.address.toString()],
         }),
       })
 

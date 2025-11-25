@@ -45,7 +45,9 @@ export function useWalletBalance(): WalletBalanceState {
       })
 
       if (!subaccountResponse.ok) {
-        throw new Error("Failed to fetch subaccount")
+        const errorText = await subaccountResponse.text()
+        console.error("Subaccount fetch error:", errorText)
+        throw new Error(`Failed to fetch subaccount: ${subaccountResponse.status}`)
       }
 
       const subaccountData = await subaccountResponse.json()
@@ -64,7 +66,10 @@ export function useWalletBalance(): WalletBalanceState {
       })
 
       if (!marginResponse.ok) {
-        throw new Error("Failed to fetch margin")
+        const errorText = await marginResponse.text()
+        console.error("Margin fetch error:", errorText)
+        console.error("Subaccount used:", subaccountAddr)
+        throw new Error(`Failed to fetch margin: ${marginResponse.status}`)
       }
 
       const marginData = await marginResponse.json()

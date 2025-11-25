@@ -3,8 +3,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Info, Disc, Fingerprint, Atom } from "lucide-react"
+import { WalletButton } from "@/components/wallet/wallet-button"
+import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 export function DashboardHeader() {
+  const { connected, account } = useWallet()
+  const { balance, loading } = useWalletBalance()
+
   return (
     <header className="relative z-10 w-full border-b border-white/10 bg-black/40 backdrop-blur-md p-4 lg:px-8">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 lg:gap-4">
@@ -35,13 +41,23 @@ export function DashboardHeader() {
             <div className="flex items-center gap-3 text-zinc-400">
               <Fingerprint className="w-4 h-4 text-zinc-500" />
               <span className="font-medium">Wallet</span>
-              <span className="font-mono text-zinc-500 ml-auto sm:ml-0">Not Connected</span>
+              <span className="font-mono text-zinc-500 ml-auto sm:ml-0">
+                {connected && account
+                  ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                  : "Not Connected"}
+              </span>
             </div>
             <div className="flex items-center gap-3 text-zinc-400">
               <Atom className="w-4 h-4 text-zinc-500" />
               <span className="font-medium">Available Margin</span>
               <span className="text-white ml-auto sm:ml-0">
-                -- <span className="text-zinc-600 ml-1">USDC</span>
+                {loading ? (
+                  <span className="text-zinc-500">Loading...</span>
+                ) : balance !== null ? (
+                  <>${balance.toFixed(2)} <span className="text-zinc-600 ml-1">USDC</span></>
+                ) : (
+                  <>-- <span className="text-zinc-600 ml-1">USDC</span></>
+                )}
               </span>
             </div>
           </div>
@@ -63,6 +79,11 @@ export function DashboardHeader() {
                 Auto Balance
               </Label>
             </div>
+          </div>
+
+          {/* Wallet Connection */}
+          <div className="flex items-center border-t sm:border-t-0 sm:border-l border-white/10 pt-4 sm:pt-0 sm:pl-6">
+            <WalletButton />
           </div>
         </div>
       </div>

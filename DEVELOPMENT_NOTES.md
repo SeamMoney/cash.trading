@@ -1,8 +1,64 @@
 # Decibel Market Maker Bot - Development Notes
 
-*Last Updated: November 24, 2025 - Session 2*
+*Last Updated: November 24, 2025 - Session 3*
 
-## 🚨 CRITICAL UPDATES - Session 2
+## 🚨 CRITICAL UPDATES - Session 3
+
+### ✅ What We Just Accomplished
+
+1. **Solved the USDC Acquisition Blocker** 🎉
+   - Analyzed Decibel's faucet system in depth
+   - Identified 4 potential solutions (Manual, Programmatic, Multi-Wallet, Hybrid)
+   - **Decision:** Implement hybrid approach (manual for MVP, test programmatic later)
+   - Designed complete onboarding flow with USDC balance checks
+
+2. **Documented Complete Faucet Architecture**
+   - How it works: Navbar button → `restricted_mint` → 1000 USDC to subaccount
+   - Multi-wallet strategy: 3000 USDC/day possible (ETH + SOL + Aptos)
+   - On-chain constraints: Global limit 100k/day, per-user tracking via BPlusTreeMap
+   - No REST API endpoint exists (UI only)
+
+3. **Unblocked Project Development**
+   - **Critical blocker removed:** We can ship MVP with manual funding
+   - Clear implementation plan for Week 1 (manual flow)
+   - Future upgrade path (test programmatic faucet in Week 2-3)
+   - Project can now move forward to wallet integration phase
+
+4. **Created Comprehensive Documentation**
+   - Added 300+ line analysis section to DEVELOPMENT_NOTES.md
+   - Detailed all 4 solution approaches with pros/cons
+   - Implementation code examples for onboarding flow
+   - Decision rationale and path forward
+
+### 🔑 Key Decisions Made
+
+**Decision:** Use Hybrid Approach (Solution D)
+- **Phase 1 (This Week):** Manual pre-funding via Decibel UI
+- **Phase 2 (Post-MVP):** Test programmatic `restricted_mint` calls
+- **Phase 3 (If Needed):** Multi-wallet support for high-volume users
+
+**Rationale:**
+- De-risks the project (doesn't depend on unproven API calls)
+- Ships immediately (no blockers)
+- Preserves upgrade path (can add auto-refill later)
+- Matches user expectations (testnet farmers understand manual faucets)
+
+### 🎯 Immediate Next Steps
+
+**Now Unblocked:**
+1. **Build wallet connection UI** - Petra/Martian integration
+2. **Build USDC onboarding flow** - Balance check + alert to mint
+3. **Build bot launch API** - `/api/bot/start` endpoint
+4. **Wire up native TWAP** - Use Decibel's `place_twap_order_to_subaccount`
+
+**No Longer Blocked By:**
+- ❌ "How will bots get USDC?" → ✅ Manual funding for MVP
+- ❌ "Can we automate faucet?" → ✅ Test later, not required for launch
+- ❌ "What if users need more USDC?" → ✅ Multi-wallet strategy documented
+
+---
+
+## 🚨 PREVIOUS UPDATES - Session 2
 
 ### ✅ What We Just Accomplished
 
@@ -375,6 +431,310 @@ async function getAvailableMargin(subaccountAddress) {
 ---
 
 ## 🔴 Critical Unknowns & Blockers
+
+### 🚨 CRITICAL BLOCKER: USDC Acquisition for Algorithmic Trading
+
+#### The Core Problem
+
+**User's Question:** "But what I dont understand is how are we even going to get the api to work for algo trading when we can't get that USDC?"
+
+This is the **most critical architectural question** for the entire project. If our bot needs to trade algorithmically but testnet USDC can only be obtained through manual UI interaction, we have a fundamental blocker.
+
+#### How Decibel's Faucet Works
+
+**Location:** Navbar "Mint" button on app.decibel.trade
+
+**Process:**
+1. User connects wallet (Ethereum, Solana, or Aptos)
+2. User clicks "Mint USDC" button in navbar
+3. System calls `restricted_mint` entry function
+4. 1000 USDC minted directly to user's subaccount
+5. Daily limit: 1000 USDC per wallet type per day
+
+**Multi-Wallet Strategy:**
+- Each wallet type (ETH/SOL/Aptos) can claim separately
+- Maximum 3000 USDC/day if user connects all three wallet types
+- User's derivation doesn't matter - Decibel abstracts this
+
+**On-Chain Constraints:**
+```typescript
+// From RestrictedMint resource
+{
+  "daily_restricted_mint": {
+    "mints_per_day": "100000",        // Global limit
+    "remaining_mints": "99940",
+    "trigger_reset_mint_ts": "1764051202"
+  },
+  "total_restricted_mint_limit": "1000000000",
+  "total_restricted_mint_per_owner": {
+    // BPlusTreeMap tracking per-user mints
+  }
+}
+```
+
+**Key Observations:**
+- Global limit: 100,000 mints per day (unlikely to be hit)
+- Per-user limit: Users successfully minted 2000 USDC (not strictly enforced at 1000)
+- Daily reset mechanism exists
+- No programmatic API endpoint discovered (UI button only)
+
+#### Analysis: Is There a Programmatic Faucet API?
+
+**Investigation Results:**
+
+1. **REST API Exploration:** ❌
+   - No `/api/faucet` or `/api/mint` endpoints found
+   - Decibel API only has: `/markets`, `/account_overviews`, `/orderbook`, `/funding_rates`
+   - No USDC minting endpoints exposed
+
+2. **On-Chain Entry Function:** ⚠️
+   ```move
+   // Function: 0x1f51...::usdc::restricted_mint
+   // Signature: restricted_mint(amount: u64)
+   ```
+   - Entry function exists and is callable on-chain
+   - But likely has access control (only callable by authorized addresses)
+   - Frontend probably signs with a privileged account
+
+3. **Transaction Analysis:**
+   - User clicks "Mint" → Frontend creates transaction
+   - Transaction calls `restricted_mint` with hardcoded 1000 USDC
+   - Signed by user's wallet (not a backend service)
+   - This suggests users CAN call it directly if they have the right permissions
+
+4. **Hypothesis:**
+   - The `restricted_mint` function might check:
+     - Caller is in allowlist, OR
+     - Caller hasn't exceeded daily limit
+   - If allowlist exists, we're blocked from programmatic calls
+   - If it's just rate-limited, we could call it via our bot
+
+#### Proposed Solutions
+
+**Solution A: Manual Pre-Funding (Simplest, Least Automated)**
+
+**How It Works:**
+1. User manually mints 1000-3000 USDC via Decibel UI (5 minutes)
+2. User connects wallet to our bot
+3. Bot verifies sufficient balance before starting
+4. Bot trades with pre-funded USDC
+5. When balance runs low, bot pauses and alerts user to mint more
+
+**Pros:**
+- ✅ Works immediately without any faucet API
+- ✅ No reverse-engineering required
+- ✅ User controls their own funds
+- ✅ Simple implementation
+
+**Cons:**
+- ❌ Manual step required before each bot run
+- ❌ Friction in user experience
+- ❌ Bot must pause when USDC runs out
+- ❌ Users with high-volume strategies limited to 1000-3000 USDC/day
+
+**Implementation:**
+```typescript
+// Onboarding flow
+if (availableMargin < 100) {
+  showAlert({
+    title: "⚠️ Insufficient USDC",
+    message: "You need testnet USDC to run bots. Get it from Decibel:",
+    steps: [
+      "1. Go to app.decibel.trade",
+      "2. Connect your wallet",
+      "3. Click 'Mint USDC' in navbar",
+      "4. Return here and refresh balance"
+    ],
+    actions: [
+      { label: "Go to Decibel", url: "https://app.decibel.trade" },
+      { label: "Refresh Balance", onClick: recheckBalance }
+    ]
+  });
+}
+```
+
+---
+
+**Solution B: Programmatic Faucet Calls (Best UX, Requires Research)**
+
+**How It Works:**
+1. Bot attempts to call `restricted_mint` entry function directly
+2. If successful, bot automatically tops up user's USDC when low
+3. User never needs to visit Decibel UI manually
+
+**Pros:**
+- ✅ Fully automated experience
+- ✅ Bot self-manages USDC balance
+- ✅ No manual intervention required
+
+**Cons:**
+- ❌ May be blocked by access control on `restricted_mint`
+- ❌ Requires testing with real transactions
+- ❌ Could violate Decibel's intended faucet usage
+- ❌ Risk of draining global daily limit
+
+**Action Required:**
+```typescript
+// Test if we can call restricted_mint directly
+async function testDirectFaucetCall(wallet) {
+  const transaction = {
+    function: `${DECIBEL_PACKAGE}::usdc::restricted_mint`,
+    typeArguments: [],
+    functionArguments: [1000_000_000], // 1000 USDC
+  };
+
+  try {
+    const result = await aptos.signAndSubmitTransaction({
+      sender: wallet,
+      data: transaction,
+    });
+    console.log("✅ Direct faucet call successful!", result.hash);
+    return true;
+  } catch (error) {
+    console.error("❌ Faucet call blocked:", error.message);
+    // Check if error is "UNAUTHORIZED" vs "RATE_LIMITED"
+    return false;
+  }
+}
+```
+
+**Next Step:**
+- Test calling `restricted_mint` from our bot wallet
+- If successful → implement auto-refill
+- If blocked → fall back to Solution A or C
+
+---
+
+**Solution C: Multi-Wallet Pooling (Advanced, High Capacity)**
+
+**How It Works:**
+1. Bot supports connecting multiple wallets (ETH + SOL + Aptos)
+2. Each wallet mints 1000 USDC/day separately
+3. Bot aggregates balances: 3000 USDC/day capacity
+4. Bot rotates between subaccounts to maximize volume
+
+**Pros:**
+- ✅ 3x daily USDC capacity (3000 vs 1000)
+- ✅ Still uses official faucet (no hacks)
+- ✅ Supports high-volume traders
+
+**Cons:**
+- ❌ Complex wallet management
+- ❌ Users must connect 3 wallets
+- ❌ Still requires manual minting (3x the friction)
+- ❌ Subaccount coordination complexity
+
+**Use Case:**
+- Only worth it for users wanting to generate >$285k volume/day
+- Most testnet farmers will be fine with 1000 USDC/day
+
+---
+
+**Solution D: Hybrid (Recommended for MVP)**
+
+**How It Works:**
+1. **Phase 1 (MVP):** Manual pre-funding (Solution A)
+   - User mints USDC via Decibel UI once
+   - Bot trades with pre-funded balance
+   - Simple, reliable, ships immediately
+
+2. **Phase 2 (Post-Launch):** Test programmatic faucet
+   - After MVP launch, test `restricted_mint` directly
+   - If it works → add auto-refill feature
+   - If blocked → document it and keep manual flow
+
+3. **Phase 3 (Future):** Multi-wallet support (if demand exists)
+   - Only add if users request >1000 USDC/day capacity
+   - Likely not needed for testnet
+
+**Why This Works:**
+- ✅ Shipping blocker removed (use Solution A immediately)
+- ✅ Opportunity to upgrade UX later (Solution B)
+- ✅ Scales with user demand (Solution C if needed)
+- ✅ De-risks project (don't bet on unproven API calls)
+
+#### Recommended Implementation Plan
+
+**Week 1: Manual Funding Flow (MVP)**
+```typescript
+// components/onboarding/usdc-check.tsx
+export function USDCBalanceCheck({ walletAddress }) {
+  const [balance, setBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function checkBalance() {
+      const margin = await decibelClient.getAvailableMargin(walletAddress);
+      setBalance(margin);
+    }
+    checkBalance();
+  }, [walletAddress]);
+
+  if (balance === null) return <Spinner />;
+
+  if (balance < 100) {
+    return (
+      <Alert variant="warning">
+        <AlertTitle>⚠️ Insufficient USDC</AlertTitle>
+        <AlertDescription>
+          You need testnet USDC to run bots. Current balance: ${balance.toFixed(2)}
+
+          <Steps>
+            <Step>1. Visit <Link href="https://app.decibel.trade">app.decibel.trade</Link></Step>
+            <Step>2. Connect your {walletType} wallet</Step>
+            <Step>3. Click "Mint USDC" in navbar (1000 USDC/day)</Step>
+            <Step>4. Return here and refresh</Step>
+          </Steps>
+
+          <Button onClick={() => window.open('https://app.decibel.trade')}>
+            Get USDC →
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert variant="success">
+      <AlertTitle>✅ Ready to Trade</AlertTitle>
+      <AlertDescription>
+        Available: ${balance.toFixed(2)} USDC
+      </AlertDescription>
+    </Alert>
+  );
+}
+```
+
+**Week 2-3: Research Programmatic Faucet**
+- Test `restricted_mint` calls from bot wallet
+- Analyze access control mechanisms
+- Document findings in DEVELOPMENT_NOTES.md
+- If successful, implement auto-refill feature
+
+**Future: Multi-Wallet (Only If Needed)**
+- Monitor user feedback
+- If users request >1000 USDC/day capacity, build multi-wallet support
+- Otherwise, keep it simple
+
+#### Decision: Path Forward
+
+**Immediate Action:** Implement Solution D (Hybrid)
+- Build manual funding flow for MVP (ships this week)
+- User onboarding includes "Get USDC from Decibel" step
+- Bot verifies balance before starting
+- Bot pauses and alerts if balance runs too low
+
+**Next Step:** Test programmatic faucet after MVP launch
+- Create test script to call `restricted_mint` directly
+- If successful → add auto-refill in v2
+- If blocked → document and keep manual flow
+
+**Documentation:**
+- Add "Getting Testnet USDC" section to user docs
+- Include screenshots of Decibel mint flow
+- Set expectation: 1000 USDC/day limit
+- Recommend budget planning: $100 budget = $285k volume = 3-4 bot runs/day
+
+---
 
 ### 1. Multi-Chain Wallet Support
 

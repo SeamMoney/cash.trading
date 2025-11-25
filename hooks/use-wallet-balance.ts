@@ -74,7 +74,7 @@ export function useWalletBalance(): WalletBalanceState {
 
       const marginData = await marginResponse.json()
       const marginRaw = marginData[0] as string
-      const marginUSDC = parseInt(marginRaw) / 1_000_000 // Convert from 6 decimals
+      const marginUSDC = Number(marginRaw) / 1_000_000 // Convert from 6 decimals (using Number for precision)
       setBalance(marginUSDC)
     } catch (err) {
       console.error("Failed to fetch wallet balance:", err)

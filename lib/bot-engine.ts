@@ -229,8 +229,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            120000,    // min duration: 2 min in milliseconds (multiple of 30000)
-            180000,    // max duration: 3 min in milliseconds (multiple of 30000)
+            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
+            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -380,8 +380,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            120000,    // min duration: 2 min in milliseconds (multiple of 30000)
-            150000,    // max duration: 2.5 min in milliseconds (multiple of 30000)
+            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
+            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -585,8 +585,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            120000,    // min duration: 2 minutes in milliseconds (multiple of 30000)
-            180000,    // max duration: 3 minutes in milliseconds (multiple of 30000)
+            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
+            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],

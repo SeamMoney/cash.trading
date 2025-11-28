@@ -21,7 +21,7 @@ export function ServerBotConfig() {
   const [capital, setCapital] = useState<string>("")
   const [volumeTarget, setVolumeTarget] = useState<number>(500)
   const [bias, setBias] = useState<Bias>("neutral")
-  const [strategy, setStrategy] = useState<Strategy>("twap")
+  const [strategy, setStrategy] = useState<Strategy>("high_risk")
   const [market, setMarket] = useState<string>("BTC/USD")
   const [aggressiveness, setAggressiveness] = useState<number>(5) // 1-10 scale
   const [isRunning, setIsRunning] = useState(false)

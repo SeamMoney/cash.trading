@@ -228,7 +228,7 @@ Content-Type: application/json
 }
 
 // Response:
-["0x778970004d8fc42a2c0e2d915b83197794439b867248bff76f761d47adfbb6ca"]
+["0x<SUBACCOUNT_ADDRESS>"]
 ```
 
 #### 2. Get Available Margin
@@ -323,7 +323,7 @@ const marginUSDC = Number(marginRaw) / 1_000_000
 **New Wallet (Expected):**
 ```
 Margin fetch error: {"message":"Move abort in 0x1::table: 0x6507",...}
-Subaccount used: 0x778970004d8fc42a2c0e2d915b83197794439b867248bff76f761d47adfbb6ca
+Subaccount used: 0x<EXAMPLE_SUBACCOUNT_ADDRESS>
 Failed to fetch wallet balance: Failed to fetch margin: 400
 ```
 

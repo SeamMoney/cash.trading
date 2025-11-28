@@ -4,9 +4,9 @@ const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1";
 // Decibel package address
 const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75";
 
-// Your accounts
-const mainWallet = "0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd";
-const subaccount = "0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465";
+// Example addresses - replace with your own wallet and subaccount
+const mainWallet = "0x<YOUR_WALLET_ADDRESS_HERE>";
+const subaccount = "0x<YOUR_SUBACCOUNT_ADDRESS_HERE>";
 
 // USDC metadata object address (from transaction)
 const USDC_METADATA = "0x8bc4c7c2180b05fcc5ed7802c62cbcabdf2a2dfd7cb19f5fce8beb7cdfab01c2";

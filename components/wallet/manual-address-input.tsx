@@ -108,7 +108,7 @@ export function ManualAddressInput() {
         </label>
         <Input
           id="manual-address"
-          placeholder="0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465"
+          placeholder="0x1234567890abcdef..."
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           className="bg-black/40 border-white/10 text-white font-mono text-sm"

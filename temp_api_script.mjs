@@ -1,11 +1,11 @@
 // Decibel API script
 const API_BASE = "https://api.netna.aptoslabs.com/decibel";
 
-// Your main wallet address
-const mainWallet = "0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd";
+// Example addresses - replace with your own wallet and subaccount
+const mainWallet = "0x<YOUR_WALLET_ADDRESS_HERE>";
 
-// Your subaccount address
-const subaccount = "0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465";
+// Example subaccount address
+const subaccount = "0x<YOUR_SUBACCOUNT_ADDRESS_HERE>";
 
 async function getAccountOverview(user) {
   const url = `${API_BASE}/api/v1/account_overviews?user=${user}&include_performance=true&performance_lookback_days=90`;

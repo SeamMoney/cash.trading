@@ -10,9 +10,9 @@ const USDC_DECIMALS = 6;
 const BTC_MARKET = '0x6a39745aaa7af8258060566f6501d84581de815128694f8ee013cae28e3357e7';
 const ETH_MARKET = '0xd9093834d0ee89ca16bb3aac64e321241fe091354fc526f0e03686e206e936f8';
 
-// Example wallet (from previous research)
-const WALLET_ADDRESS = '0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd';
-const SUBACCOUNT_ADDRESS = '0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465';
+// Example wallet addresses - replace with your own for testing
+const WALLET_ADDRESS = '0x<YOUR_WALLET_ADDRESS_HERE>';
+const SUBACCOUNT_ADDRESS = '0x<YOUR_SUBACCOUNT_ADDRESS_HERE>';
 
 const aptosConfig = new AptosConfig({ network: Network.TESTNET });
 const aptos = new Aptos(aptosConfig);

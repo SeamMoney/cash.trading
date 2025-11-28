@@ -262,11 +262,11 @@ Building a Tread.fi-style market maker bot for Decibel (Aptos-native perpetuals 
 ```
 User Wallet (e.g., Ethereum address)
   ↓ (Derives to Aptos address)
-Main Wallet: 0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd
+Main Wallet: 0x<EXAMPLE_WALLET_ADDRESS>
   ↓ (Creates primary subaccount)
-Primary Subaccount: 0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465
+Primary Subaccount: 0x<EXAMPLE_SUBACCOUNT_ADDRESS>
   ↓ (USDC stored in DEX collateral system)
-Collateral Store: 0x86aef2ef85b617efc54d6ecb16382e3c477801aef86efeb15b2ad7b3e949cc9b
+Collateral Store: 0x<EXAMPLE_COLLATERAL_STORE_ADDRESS>
 ```
 
 **Key Findings:**
@@ -749,11 +749,11 @@ Decibel allows users to connect:
 - If the derivation is deterministic or server-side mapping
 - Whether we can replicate their derivation scheme
 
-**Example we observed:**
+**Example address derivation pattern:**
 ```
-Ethereum Wallet: 0xa1419Cebc7f6C678D6be39054cc69522Dec9E8C3
-Aptos Main Wallet: 0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd
-Subaccount: 0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465
+Ethereum Wallet: 0x<EXAMPLE_ETH_ADDRESS>
+Aptos Main Wallet: 0x<EXAMPLE_APTOS_ADDRESS>
+Subaccount: 0x<EXAMPLE_SUBACCOUNT_ADDRESS>
 ```
 
 **Question:** How did ETH address → Aptos address conversion happen?
@@ -1560,10 +1560,10 @@ BUILDER_FEE = 0.02%
 
 ### Example Wallet Data
 ```
-ETH Wallet: 0xa1419Cebc7f6C678D6be39054cc69522Dec9E8C3
+ETH Wallet: 0x<EXAMPLE_ETH_WALLET>
 ↓
-Aptos Main: 0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd
-Subaccount: 0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465
+Aptos Main: 0x<EXAMPLE_APTOS_WALLET>
+Subaccount: 0x<EXAMPLE_SUBACCOUNT>
 Balance: $1,000.33 USDC (fluctuates with PnL)
 Position: WLFI/USD 3x LONG, size=19272280
 ```

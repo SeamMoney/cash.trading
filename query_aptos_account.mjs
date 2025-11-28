@@ -1,8 +1,9 @@
 // Query Aptos blockchain directly for account resources
 const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1";
 
-const mainWallet = "0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd";
-const subaccount = "0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465";
+// Example addresses - replace with your own wallet and subaccount
+const mainWallet = "0x<YOUR_WALLET_ADDRESS_HERE>";
+const subaccount = "0x<YOUR_SUBACCOUNT_ADDRESS_HERE>";
 
 async function getAccountResources(address) {
   const url = `${APTOS_NODE}/accounts/${address}/resources`;

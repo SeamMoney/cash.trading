@@ -109,7 +109,7 @@ Start trading
   <p>Enter your Aptos subaccount address manually:</p>
 
   <input
-    placeholder="0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465"
+    placeholder="0x1234567890abcdef..."
     onChange={validateAptosAddress}
   />
 

@@ -1,7 +1,8 @@
 // Query the Decibel module ABI to find actual view functions
 const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1";
 const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75";
-const subaccount = "0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465";
+// Example subaccount - not used in this query script
+const subaccount = "0x<EXAMPLE_SUBACCOUNT_ADDRESS>";
 
 async function getAccountModule(address, moduleName) {
   const url = `${APTOS_NODE}/accounts/${address}/module/${moduleName}`;

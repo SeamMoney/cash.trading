@@ -1,9 +1,59 @@
-.vercel
+# Dependencies
 node_modules/
-*.tsbuildinfo
+.pnpm-debug.log
+
+# Build outputs
 .next/
-.env
-.env.local
-*.log
 dist/
 build/
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Environment variables - NEVER commit these!
+.env
+.env.local
+.env*.local
+.env.development
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Private keys and wallets - CRITICAL SECURITY
+*.key
+*.pem
+*private*key*
+.aptos/
+wallets/
+
+# Test scripts with potential secrets
+test_*.mjs
+*_test.mjs
+quick_fund.mjs
+fund_wallet.mjs
+delegate_trading.mjs
+check_apt_balance.mjs
+query_*.mjs
+get_*.mjs
+temp_*.mjs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

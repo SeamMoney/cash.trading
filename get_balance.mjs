@@ -2,8 +2,9 @@
 const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1";
 const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75";
 
-const mainWallet = "0xb08272acfe3148974e92d3fee0402309abc4efa95f641d33be6d49ceb76d19cd";
-const subaccount = "0xb9327b35f0acc8542559ac931f0c150a4be6a900cb914f1075758b1676665465";
+// Example addresses - replace with your own wallet and subaccount
+const mainWallet = "0x<YOUR_WALLET_ADDRESS_HERE>";
+const subaccount = "0x<YOUR_SUBACCOUNT_ADDRESS_HERE>";
 
 // Table handle for balances
 const PRIMARY_BALANCE_TABLE = "0xc8a1388ac9979097370bda9b5931b901d3b1d5e0de8f33e50b5d02392f32506";

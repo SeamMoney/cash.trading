@@ -10,6 +10,10 @@ export const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea5
 export const USDC_DECIMALS = 6;
 export const PRICE_DECIMALS = 6;
 
+// Bot operator address - users delegate trading permissions to this wallet
+// This wallet is controlled by the backend and executes trades on behalf of users
+export const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da';
+
 // Fee structure
 export const MAKER_REBATE = 0.00015; // -0.015%
 export const TAKER_FEE = 0.00045; // 0.045%

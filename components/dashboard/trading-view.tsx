@@ -6,10 +6,65 @@ import { Slider } from "@/components/ui/slider"
 import { ChevronDown, Calculator, Settings2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
+import { DelegationButton } from "@/components/trading/delegation-button"
+import { useWallet } from "@aptos-labs/wallet-adapter-react"
 
 export function TradingView() {
   const [tradingMode, setTradingMode] = useState<"aggressive" | "normal" | "passive">("normal")
   const [directionalBias, setDirectionalBias] = useState(50)
+  const [notionalSize, setNotionalSize] = useState("0")
+  const [isStarting, setIsStarting] = useState(false)
+  const { balance, loading: balanceLoading } = useWalletBalance()
+  const { account, connected } = useWallet()
+
+  const handleStartBot = async () => {
+    if (!connected || !account) {
+      alert("Please connect your wallet first")
+      return
+    }
+
+    const notional = parseFloat(notionalSize)
+    if (isNaN(notional) || notional < 10) {
+      alert("Minimum notional size is $10")
+      return
+    }
+
+    if (balance !== null && notional > balance) {
+      alert(`Insufficient balance. You have $${balance.toFixed(2)} USDC`)
+      return
+    }
+
+    setIsStarting(true)
+
+    try {
+      const response = await fetch('/api/bot/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: account.address.toString(),
+          market: 'BTC/USD', // TODO: Make this selectable
+          notionalSize: notional,
+          tradingMode,
+          directionalBias,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to start bot')
+      }
+
+      console.log('Bot started:', data)
+      alert(`Bot started successfully!\n\nBot ID: ${data.botId}\n\nOrders placed: ${data.orders.length}`)
+    } catch (error) {
+      console.error('Failed to start bot:', error)
+      alert(error instanceof Error ? error.message : 'Failed to start bot')
+    } finally {
+      setIsStarting(false)
+    }
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
@@ -91,7 +146,8 @@ export function TradingView() {
             <span>$</span>
             <input
               type="text"
-              defaultValue="0"
+              value={notionalSize}
+              onChange={(e) => setNotionalSize(e.target.value)}
               className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/50 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
               placeholder="0.00"
             />
@@ -166,11 +222,18 @@ export function TradingView() {
             </div>
           </div>
 
-          <Button className="w-full h-16 text-xl bg-primary/90 hover:bg-primary text-black font-bold font-mono tracking-[0.2em] rounded-none border border-primary relative overflow-hidden group shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)] transition-all duration-300">
-            <span className="relative z-10">INITIALIZE TRADING</span>
-            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
-          </Button>
+          <div className="space-y-3">
+            <DelegationButton className="w-full h-12 text-lg tracking-[0.15em]" />
+            <Button
+              onClick={handleStartBot}
+              disabled={isStarting || !connected}
+              className="w-full h-16 text-xl bg-primary/90 hover:bg-primary text-black font-bold font-mono tracking-[0.2em] rounded-none border border-primary relative overflow-hidden group shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="relative z-10">{isStarting ? "STARTING BOT..." : "INITIALIZE TRADING"}</span>
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
+            </Button>
+          </div>
         </div>
 
         {/* Right Panel - Analytics & Config */}
@@ -190,7 +253,13 @@ export function TradingView() {
                 <div className="text-[10px] font-bold text-green-500 uppercase tracking-wider">[ Long Leg ]</div>
                 <div className="flex justify-between text-xs text-zinc-400 border-b border-dashed border-white/10 pb-1">
                   <span>Available Margin</span>
-                  <span className="text-zinc-500">-</span>
+                  {balanceLoading ? (
+                    <span className="text-zinc-500">Loading...</span>
+                  ) : balance !== null ? (
+                    <span className="text-primary font-bold">${balance.toFixed(2)}</span>
+                  ) : (
+                    <span className="text-zinc-500">-</span>
+                  )}
                 </div>
                 <div className="flex justify-between text-xs text-zinc-400 border-b border-dashed border-white/10 pb-1">
                   <span>Target Amount</span>

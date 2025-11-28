@@ -27,24 +27,35 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-3 px-4 py-2 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
+          className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors min-w-0"
         >
-          <div className="flex flex-col items-start gap-0.5">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-primary" />
-              <span className="text-xs font-mono text-zinc-400">Wallet {formatAddress(account.address)}</span>
+          {/* Mobile: Stack vertically, Desktop: Side by side */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0 flex-1">
+            {/* Wallet info */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary flex-shrink-0" />
+                <span className="text-[10px] sm:text-xs font-mono text-zinc-400 truncate">
+                  {formatAddress(account.address)}
+                </span>
+              </div>
+              {subaccount && (
+                <span className="text-xs sm:text-sm font-mono text-white ml-5 sm:ml-6 truncate">
+                  Primary {formatAddress(subaccount)}
+                </span>
+              )}
             </div>
-            {subaccount && (
-              <span className="text-sm font-mono text-white ml-6">Primary {formatAddress(subaccount)}</span>
+
+            {/* Balance - mobile: inline, desktop: separate */}
+            {!loading && balance !== null && (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded self-start sm:self-auto ml-5 sm:ml-0">
+                <span className="text-xs font-bold text-primary whitespace-nowrap">${balance.toFixed(2)}</span>
+                <span className="text-[10px] sm:text-xs text-primary/60">USDC</span>
+              </div>
             )}
           </div>
-          {!loading && balance !== null && (
-            <div className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded">
-              <span className="text-xs font-bold text-primary">${balance.toFixed(2)}</span>
-              <span className="text-xs text-primary/60">USDC</span>
-            </div>
-          )}
-          <ChevronDown className="w-3 h-3 text-zinc-500" />
+
+          <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
         </button>
 
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>

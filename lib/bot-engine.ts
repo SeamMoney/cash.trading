@@ -229,8 +229,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60000,     // min duration: 1 min in milliseconds
-            120000,    // max duration: 2 min in milliseconds
+            120000,    // min duration: 2 min in milliseconds (multiple of 30000)
+            180000,    // max duration: 3 min in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -380,8 +380,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60000,     // min duration: 60 seconds in milliseconds
-            90000,     // max duration: 90 seconds in milliseconds
+            120000,    // min duration: 2 min in milliseconds (multiple of 30000)
+            150000,    // max duration: 2.5 min in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -573,7 +573,7 @@ export class VolumeBotEngine {
       // Use larger contract size for more PNL volatility
       const contractSize = 10000 * leverage // Multiply base size by leverage factor
 
-      // Use TWAP - durations must be in MILLISECONDS and multiples of 60000 (1 minute)
+      // Use TWAP - durations must be in MILLISECONDS and multiples of frequency (likely 30000ms)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -585,8 +585,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60000,     // min duration: 1 minute in milliseconds
-            120000,    // max duration: 2 minutes in milliseconds
+            120000,    // min duration: 2 minutes in milliseconds (multiple of 30000)
+            180000,    // max duration: 3 minutes in milliseconds (multiple of 30000)
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],

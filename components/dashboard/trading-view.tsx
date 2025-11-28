@@ -256,7 +256,11 @@ export function TradingView() {
                   {balanceLoading ? (
                     <span className="text-zinc-500">Loading...</span>
                   ) : balance !== null ? (
-                    <span className="text-primary font-bold">${balance.toFixed(2)}</span>
+                    balance === 0 ? (
+                      <span className="text-red-500 font-bold">$0.00 - Mint USDC</span>
+                    ) : (
+                      <span className="text-primary font-bold">${balance.toFixed(2)}</span>
+                    )
                   ) : (
                     <span className="text-zinc-500">-</span>
                   )}

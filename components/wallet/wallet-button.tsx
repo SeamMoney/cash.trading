@@ -29,9 +29,14 @@ export function WalletButton() {
           onClick={() => setShowAccountModal(true)}
           className="flex items-center gap-3 px-4 py-2 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
         >
-          <div className="flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-primary" />
-            <span className="text-sm font-mono text-white">{formatAddress(account.address)}</span>
+          <div className="flex flex-col items-start gap-0.5">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-primary" />
+              <span className="text-xs font-mono text-zinc-400">Wallet {formatAddress(account.address)}</span>
+            </div>
+            {subaccount && (
+              <span className="text-sm font-mono text-white ml-6">Primary {formatAddress(subaccount)}</span>
+            )}
           </div>
           {!loading && balance !== null && (
             <div className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded">

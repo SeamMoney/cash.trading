@@ -74,6 +74,14 @@ export function useWalletBalance(): WalletBalanceState {
         const errorText = await marginResponse.text()
         console.error("Margin fetch error:", errorText)
         console.error("Subaccount used:", subaccountAddr)
+
+        // Check if it's the "never traded" error
+        if (errorText.includes("0x6507") || errorText.includes("table")) {
+          console.warn("⚠️ This wallet hasn't traded on Decibel yet")
+          setBalance(0) // Set balance to $0 instead of error
+          return
+        }
+
         throw new Error(`Failed to fetch margin: ${marginResponse.status}`)
       }
 

@@ -229,8 +229,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60,        // min duration: 1 min (FAST!)
-            120,       // max duration: 2 min (FAST!)
+            60000,     // min duration: 1 min in milliseconds
+            120000,    // max duration: 2 min in milliseconds
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -380,8 +380,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60,        // min duration: 60 seconds (minimum allowed)
-            90,        // max duration: 90 seconds (faster than normal TWAP)
+            60000,     // min duration: 60 seconds in milliseconds
+            90000,     // max duration: 90 seconds in milliseconds
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -573,7 +573,7 @@ export class VolumeBotEngine {
       // Use larger contract size for more PNL volatility
       const contractSize = 10000 * leverage // Multiply base size by leverage factor
 
-      // Use TWAP - must be multiple of 60 seconds
+      // Use TWAP - durations must be in MILLISECONDS and multiples of 60000 (1 minute)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -585,8 +585,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            60,        // min duration: 1 minute
-            120,       // max duration: 2 minutes
+            60000,     // min duration: 1 minute in milliseconds
+            120000,    // max duration: 2 minutes in milliseconds
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],

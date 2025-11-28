@@ -33,6 +33,10 @@ export function useWalletBalance(): WalletBalanceState {
     try {
       const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
 
+      // Debug: Log wallet address
+      const walletAddress = account.address.toString()
+      console.log("🔍 Fetching balance for wallet:", walletAddress)
+
       // Get primary subaccount using direct fetch (browser-compatible)
       const subaccountResponse = await fetch(`${APTOS_NODE}/view`, {
         method: "POST",
@@ -40,7 +44,7 @@ export function useWalletBalance(): WalletBalanceState {
         body: JSON.stringify({
           function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
           type_arguments: [],
-          arguments: [account.address.toString()],
+          arguments: [walletAddress],
         }),
       })
 
@@ -52,6 +56,7 @@ export function useWalletBalance(): WalletBalanceState {
 
       const subaccountData = await subaccountResponse.json()
       const subaccountAddr = subaccountData[0] as string
+      console.log("📦 Subaccount:", subaccountAddr)
       setSubaccount(subaccountAddr)
 
       // Get available margin using direct fetch (browser-compatible)
@@ -75,6 +80,7 @@ export function useWalletBalance(): WalletBalanceState {
       const marginData = await marginResponse.json()
       const marginRaw = marginData[0] as string
       const marginUSDC = Number(marginRaw) / 1_000_000 // Convert from 6 decimals (using Number for precision)
+      console.log("💰 Available margin:", `$${marginUSDC.toFixed(2)} USDC`)
       setBalance(marginUSDC)
     } catch (err) {
       console.error("Failed to fetch wallet balance:", err)

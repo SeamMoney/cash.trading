@@ -19,7 +19,7 @@ export function WalletButton() {
 
   const formatAddress = (addr: string | { toString(): string }) => {
     const addrStr = typeof addr === 'string' ? addr : addr.toString()
-    return `${addrStr.slice(0, 6)}...${addrStr.slice(-4)}`
+    return `${addrStr.slice(0, 6)}...${addrStr.slice(-5)}`
   }
 
   if (connected && account) {

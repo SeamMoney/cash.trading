@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model BotInstance {
+  id                String   @id @default(cuid())
+  userWalletAddress String   @unique
+  userSubaccount    String
+  capitalUSDC       Float
+  volumeTargetUSDC  Float
+  bias              String   // 'long' | 'short' | 'neutral'
+  strategy          String   @default("twap") // 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk'
+  market            String
+  marketName        String
+
+  // Status
+  isRunning         Boolean  @default(true)
+  cumulativeVolume  Float    @default(0)
+  ordersPlaced      Int      @default(0)
+  currentCapitalUsed Float   @default(0)
+  lastOrderTime     DateTime?
+  error             String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orders            OrderHistory[]
+}
+
+model OrderHistory {
+  id               String      @id @default(cuid())
+  botId            String
+  bot              BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  timestamp        DateTime    @default(now())
+  txHash           String
+  direction        String      // 'long' | 'short'
+  strategy         String      @default("twap") // 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk'
+  size             Int
+  volumeGenerated  Float
+  success          Boolean
+
+  // PNL tracking
+  entryPrice       Float?
+  exitPrice        Float?
+  pnl              Float       @default(0)      // Profit/Loss in USDC
+  positionHeldMs   Int         @default(0)      // How long position was held in milliseconds
+
+  @@index([botId])
+}

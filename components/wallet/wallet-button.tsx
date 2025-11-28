@@ -9,7 +9,7 @@ import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 export function WalletButton() {
   const { connected, account, disconnect, wallets, connect } = useWallet()
-  const { balance, subaccount, loading } = useWalletBalance()
+  const { balance, aptBalance, subaccount, loading } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
 
@@ -27,17 +27,21 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
+          className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
         >
-          <Wallet className="w-4 h-4 text-primary" />
-          <span className="text-sm font-mono text-white">{formatAddress(account.address)}</span>
-          {!loading && balance !== null && (
-            <div className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded">
-              <span className="text-xs font-bold text-primary">${balance.toFixed(2)}</span>
-              <span className="text-xs text-primary/60">USDC</span>
-            </div>
-          )}
-          <ChevronDown className="w-3 h-3 text-zinc-500" />
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
+            <span className="text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {!loading && balance !== null && (
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-primary">${balance.toFixed(2)}</span>
+                <span className="text-sm text-primary/60 font-medium">USDC</span>
+              </div>
+            )}
+            <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0 ml-1" />
+          </div>
         </button>
 
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
@@ -91,7 +95,7 @@ export function WalletButton() {
                 </div>
               )}
 
-              {/* Balance */}
+              {/* USDC Balance */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Available Margin</label>
                 <div className="p-4 sm:p-5 bg-gradient-to-br from-black/60 to-black/40 border border-primary/30 rounded-lg shadow-lg shadow-primary/5">
@@ -104,6 +108,23 @@ export function WalletButton() {
                     </div>
                   ) : (
                     <div className="text-sm text-zinc-500">No balance found</div>
+                  )}
+                </div>
+              </div>
+
+              {/* APT Balance */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Testnet APT</label>
+                <div className="p-4 sm:p-5 bg-gradient-to-br from-black/60 to-black/40 border border-white/10 rounded-lg">
+                  {loading ? (
+                    <div className="text-sm text-zinc-500">Loading...</div>
+                  ) : aptBalance !== null ? (
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-2xl sm:text-3xl font-bold text-white">{aptBalance.toFixed(4)}</span>
+                      <span className="text-xs sm:text-sm text-zinc-400 font-medium">APT</span>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-zinc-500">No APT found</div>
                   )}
                 </div>
               </div>

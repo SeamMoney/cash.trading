@@ -60,3 +60,5 @@ Thumbs.db
 
 # Development documentation (kept locally only)
 docs/archive/
+
+/lib/generated/prisma

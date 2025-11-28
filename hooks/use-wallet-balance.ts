@@ -6,6 +6,7 @@ import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
 export interface WalletBalanceState {
   balance: number | null
+  aptBalance: number | null
   subaccount: string | null
   loading: boolean
   error: string | null
@@ -15,6 +16,7 @@ export interface WalletBalanceState {
 export function useWalletBalance(): WalletBalanceState {
   const { account, connected } = useWallet()
   const [balance, setBalance] = useState<number | null>(null)
+  const [aptBalance, setAptBalance] = useState<number | null>(null)
   const [subaccount, setSubaccount] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,6 +24,7 @@ export function useWalletBalance(): WalletBalanceState {
   const fetchBalance = async () => {
     if (!connected || !account) {
       setBalance(null)
+      setAptBalance(null)
       setSubaccount(null)
       setError(null)
       return
@@ -36,6 +39,32 @@ export function useWalletBalance(): WalletBalanceState {
       // Debug: Log wallet address
       const walletAddress = account.address.toString()
       console.log("🔍 Fetching balance for wallet:", walletAddress)
+
+      // Fetch APT balance using primary fungible store (works with both old and new standards)
+      const aptBalanceResponse = await fetch(`${APTOS_NODE}/view`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          function: "0x1::coin::balance",
+          type_arguments: ["0x1::aptos_coin::AptosCoin"],
+          arguments: [walletAddress],
+        }),
+      })
+
+      if (aptBalanceResponse.ok) {
+        const aptBalanceData = await aptBalanceResponse.json()
+        const aptRaw = aptBalanceData[0]
+        if (aptRaw !== undefined) {
+          const apt = Number(aptRaw) / 100_000_000 // 8 decimals
+          console.log("⛽ APT balance:", `${apt.toFixed(4)} APT`)
+          setAptBalance(apt)
+        } else {
+          setAptBalance(0)
+        }
+      } else {
+        console.warn("Could not fetch APT balance")
+        setAptBalance(null)
+      }
 
       // Get primary subaccount using direct fetch (browser-compatible)
       const subaccountResponse = await fetch(`${APTOS_NODE}/view`, {
@@ -106,6 +135,7 @@ export function useWalletBalance(): WalletBalanceState {
 
   return {
     balance,
+    aptBalance,
     subaccount,
     loading,
     error,

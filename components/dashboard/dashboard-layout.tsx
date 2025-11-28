@@ -1,6 +1,7 @@
 import type React from "react"
 import { DashboardBackground } from "./background"
 import { DashboardHeader } from "./header"
+import { BottomNav } from "@/components/navigation/bottom-nav"
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,7 +9,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <DashboardBackground />
       <div className="relative z-10 flex flex-col min-h-screen">
         <DashboardHeader />
-        <main className="flex-1 container max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8 space-y-6">{children}</main>
+        <main className="flex-1 container max-w-[1920px] mx-auto p-4 md:p-6 lg:p-8 space-y-6 pb-20 lg:pb-8">{children}</main>
+        <BottomNav />
       </div>
     </div>
   )

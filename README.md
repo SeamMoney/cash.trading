@@ -1,14 +1,33 @@
-# Decibel TWAP Trading Bot
+# Decibrrr - Decibel TWAP Trading Bot
 
 An automated TWAP (Time-Weighted Average Price) trading bot for Decibel DEX on Aptos blockchain.
 
 ## 🚀 Features
 
-- 🎯 Automated TWAP order execution
-- 💰 Real-time balance and portfolio tracking
-- 📊 Historical trade analysis
-- 🔐 Secure wallet integration (Petra, Martian, Pontem)
-- 📱 Responsive web interface
+- 🎯 **Automated TWAP Execution** - Time-weighted order splitting across 5-40 minutes
+- 💰 **Real-time Balance Tracking** - Live USDC and APT balance display
+- 📊 **Bot Status Monitoring** - Track order progress and fills in real-time
+- 🔐 **Secure Delegation Model** - Bot can trade but never withdraw your funds
+- 🤖 **Smart Order Routing** - Directional bias and execution mode controls
+- 📱 **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
+
+## 📐 Architecture
+
+See detailed architecture diagrams in [docs/ARCHITECTURE_DIAGRAMS.md](./docs/ARCHITECTURE_DIAGRAMS.md)
+
+**Quick Overview**:
+```
+User Wallet → Delegates Trading → Bot Operator → Places TWAP Orders → Decibel DEX
+                                       ↓
+                            (Uses Decibel REST API)
+                                       ↓
+                          Monitors Progress & Fills
+```
+
+**Security Model**:
+- ✅ Bot **CAN**: Place orders, cancel orders, execute TWAP strategies
+- ❌ Bot **CANNOT**: Withdraw funds, transfer USDC, close subaccount
+- 🔒 Your funds **ALWAYS** stay in your Decibel subaccount
 
 ## ⚠️ Security Notice
 
@@ -47,9 +66,13 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 📚 Documentation
 
+- **[ARCHITECTURE_DIAGRAMS.md](./docs/ARCHITECTURE_DIAGRAMS.md)** - 14 visual diagrams explaining the system
+- **[COMPREHENSIVE_AUDIT.md](./COMPREHENSIVE_AUDIT.md)** - Complete feature inventory & roadmap
+- **[CURRENT_STATUS.md](./CURRENT_STATUS.md)** - Project status & next steps
+- **[DECIBEL_DOCS_SUMMARY.md](./docs/DECIBEL_DOCS_SUMMARY.md)** - Decibel API quick reference
 - [SECURITY.md](./SECURITY.md) - Security best practices
-- [DEVELOPMENT_NOTES.md](./DEVELOPMENT_NOTES.md) - Technical architecture
-- [WALLET_INTEGRATION.md](./WALLET_INTEGRATION.md) - Wallet setup guide
+- [DEVELOPMENT_NOTES.md](./DEVELOPMENT_NOTES.md) - Technical deep dive
+- [docs/decibel-complete/](./docs/decibel-complete/) - Full Decibel API docs (51 pages)
 
 ## 🧪 Testing
 

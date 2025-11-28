@@ -158,70 +158,6 @@ export function TradingView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Controls */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Trading Mode */}
-          <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1 backdrop-blur-sm">
-            <button
-              onClick={() => setTradingMode("aggressive")}
-              className={cn(
-                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
-                tradingMode === "aggressive"
-                  ? "bg-red-500/10 text-red-500 border border-red-500/50"
-                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
-              )}
-            >
-              {tradingMode === "aggressive" && <div className="absolute inset-0 bg-red-500/5 animate-pulse" />}
-              <span className="font-bold text-sm font-mono tracking-wider relative z-10">AGGRESSIVE</span>
-              <span className="text-[10px] opacity-80 font-mono relative z-10">~5 MIN</span>
-            </button>
-            <button
-              onClick={() => setTradingMode("normal")}
-              className={cn(
-                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
-                tradingMode === "normal"
-                  ? "bg-white/5 text-white border border-white/30"
-                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
-              )}
-            >
-              <span className="font-bold text-sm font-mono tracking-wider relative z-10">NORMAL</span>
-              <span className="text-[10px] opacity-80 font-mono relative z-10">~15 MIN</span>
-            </button>
-            <button
-              onClick={() => setTradingMode("passive")}
-              className={cn(
-                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
-                tradingMode === "passive"
-                  ? "bg-green-500/10 text-green-500 border border-green-500/50"
-                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
-              )}
-            >
-              {tradingMode === "passive" && <div className="absolute inset-0 bg-green-500/5 animate-pulse" />}
-              <span className="font-bold text-sm font-mono tracking-wider relative z-10">PASSIVE</span>
-              <span className="text-[10px] opacity-80 font-mono relative z-10">~30 MIN</span>
-            </button>
-          </div>
-
-          {/* Directional Bias Slider */}
-          <div className="space-y-4 pt-2 px-1">
-            <div className="flex items-center justify-between text-xs font-mono uppercase tracking-widest">
-              <span className="text-muted-foreground border-b border-dashed border-zinc-700 pb-1">
-                Directional Bias
-              </span>
-              <span className="text-primary">{directionalBias}%</span>
-            </div>
-            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
-              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-red-500/30 via-zinc-800 to-green-500/30" />
-              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20" />
-              <Slider
-                defaultValue={[50]}
-                max={100}
-                step={1}
-                value={[directionalBias]}
-                onValueChange={(v) => setDirectionalBias(v[0])}
-                className="cursor-pointer relative z-10"
-              />
-            </div>
-          </div>
-
           <div className="space-y-3">
             <DelegationButton className="w-full h-12 text-lg tracking-[0.15em]" />
             <Button
@@ -425,6 +361,78 @@ export function TradingView() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced Settings - Moved to bottom */}
+      <div className="space-y-6">
+        <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest pl-1">Advanced Settings</h3>
+
+        {/* Trading Mode */}
+        <div className="space-y-2">
+          <label className="text-xs text-zinc-500 font-mono uppercase tracking-wide pl-1">TWAP Execution Mode</label>
+          <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1 backdrop-blur-sm">
+            <button
+              onClick={() => setTradingMode("aggressive")}
+              className={cn(
+                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
+                tradingMode === "aggressive"
+                  ? "bg-red-500/10 text-red-500 border border-red-500/50"
+                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
+              )}
+            >
+              {tradingMode === "aggressive" && <div className="absolute inset-0 bg-red-500/5 animate-pulse" />}
+              <span className="font-bold text-sm font-mono tracking-wider relative z-10">AGGRESSIVE</span>
+              <span className="text-[10px] opacity-80 font-mono relative z-10">~5 MIN</span>
+            </button>
+            <button
+              onClick={() => setTradingMode("normal")}
+              className={cn(
+                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
+                tradingMode === "normal"
+                  ? "bg-white/5 text-white border border-white/30"
+                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
+              )}
+            >
+              <span className="font-bold text-sm font-mono tracking-wider relative z-10">NORMAL</span>
+              <span className="text-[10px] opacity-80 font-mono relative z-10">~15 MIN</span>
+            </button>
+            <button
+              onClick={() => setTradingMode("passive")}
+              className={cn(
+                "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
+                tradingMode === "passive"
+                  ? "bg-green-500/10 text-green-500 border border-green-500/50"
+                  : "text-zinc-500 hover:bg-white/5 border border-transparent",
+              )}
+            >
+              {tradingMode === "passive" && <div className="absolute inset-0 bg-green-500/5 animate-pulse" />}
+              <span className="font-bold text-sm font-mono tracking-wider relative z-10">PASSIVE</span>
+              <span className="text-[10px] opacity-80 font-mono relative z-10">~30 MIN</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Directional Bias Slider */}
+        <div className="space-y-4 pt-2 px-1">
+          <div className="flex items-center justify-between text-xs font-mono uppercase tracking-widest">
+            <span className="text-muted-foreground border-b border-dashed border-zinc-700 pb-1">
+              Auto-Balance Direction
+            </span>
+            <span className="text-primary">{directionalBias}%</span>
+          </div>
+          <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+            <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-red-500/30 via-zinc-800 to-green-500/30" />
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20" />
+            <Slider
+              defaultValue={[50]}
+              max={100}
+              step={1}
+              value={[directionalBias]}
+              onValueChange={(v) => setDirectionalBias(v[0])}
+              className="cursor-pointer relative z-10"
+            />
           </div>
         </div>
       </div>

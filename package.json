@@ -27,6 +27,7 @@
     "@openblockhq/aptos-wallet-adapter": "^0.1.5",
     "@paper-design/shaders-react": "^0.0.66",
     "@pontem/wallet-adapter-plugin": "^0.2.1",
+    "@prisma/client": "^5.22.0",
     "@radix-ui/react-avatar": "latest",
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-dialog": "latest",
@@ -72,6 +73,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "postcss": "^8.5",
+    "prisma": "^5.22.0",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"

@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PortfolioView } from "@/components/dashboard/portfolio-view"
 import { TradingView } from "@/components/dashboard/trading-view"
 import { HistoryTable } from "@/components/dashboard/history-table"
+import { ServerBotConfig } from "@/components/bot/server-bot-config"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
@@ -43,9 +44,7 @@ export default function Home() {
         </TabsContent>
 
         <TabsContent value="volume" className="space-y-8 outline-none">
-          <div className="h-[400px] flex items-center justify-center border border-dashed border-white/10 rounded-xl bg-zinc-900/20 text-zinc-500">
-            Volume Analysis View (Placeholder)
-          </div>
+          <ServerBotConfig />
         </TabsContent>
 
         <TabsContent value="trading" className="space-y-8 outline-none">

@@ -903,6 +903,20 @@ export class VolumeBotEngine {
   }
 
   /**
+   * Execute a single trade cycle (for cron-based execution)
+   * This method can be called by Vercel Cron jobs to place one trade
+   */
+  async executeSingleTrade(): Promise<boolean> {
+    try {
+      await this.runLoop()
+      return true
+    } catch (error) {
+      console.error('Error in single trade execution:', error)
+      return false
+    }
+  }
+
+  /**
    * Get current bot status
    */
   getStatus(): BotStatus {

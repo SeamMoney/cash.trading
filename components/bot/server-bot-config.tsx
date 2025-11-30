@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 
@@ -28,11 +28,85 @@ export function ServerBotConfig() {
   const [loading, setLoading] = useState(false)
   const [delegating, setDelegating] = useState(false)
   const [hasDelegation, setHasDelegation] = useState(false)
+  const [marketDropdownOpen, setMarketDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const MARKETS = {
-    "BTC/USD": "0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e",
-    "ETH/USD": "0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2",
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setMarketDropdownOpen(false)
+      }
+    }
+
+    if (marketDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [marketDropdownOpen])
+
+  // All Decibel markets with their addresses and metadata
+  const MARKETS: Record<string, { address: string; icon: string; color: string; leverage: number }> = {
+    "BTC/USD": {
+      address: "0x6a39745aaa7af8258060566f6501d84581de815128694f8ee013cae28e3357e7",
+      icon: "₿",
+      color: "#F7931A",
+      leverage: 40,
+    },
+    "ETH/USD": {
+      address: "0xd9093834d0ee89ca16bb3aac64e321241fe091354fc526f0e03686e206e936f8",
+      icon: "♦",
+      color: "#627EEA",
+      leverage: 40,
+    },
+    "SOL/USD": {
+      address: "0x1fa58fb1d8d1fff57bea37fa1bb38c79acf8bbf489d99a74eed45e44b9fb19d0",
+      icon: "◎",
+      color: "#9945FF",
+      leverage: 20,
+    },
+    "APT/USD": {
+      address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
+      icon: "A",
+      color: "#2DD8A3",
+      leverage: 10,
+    },
+    "XRP/USD": {
+      address: "0x14e529cc523562d84c169d3b7b238c0764d8574af4af71e9bbde58828ca20026",
+      icon: "✕",
+      color: "#23292F",
+      leverage: 20,
+    },
+    "LINK/USD": {
+      address: "0xafa14b84214814cddfdab01170cd721ea687f402aecf595930160ea74f8d62c8",
+      icon: "⬡",
+      color: "#375BD2",
+      leverage: 10,
+    },
+    "AAVE/USD": {
+      address: "0x66b8e6c288ab02c14e082811cf37f6d0f019301fabee0cc916ed5dcb912edf92",
+      icon: "Ⓐ",
+      color: "#B6509E",
+      leverage: 10,
+    },
+    "ENA/USD": {
+      address: "0x4dc4aac045ab751f597acc46decb7ebec05ad45d2bb64130fabd120f40b80547",
+      icon: "E",
+      color: "#7C3AED",
+      leverage: 10,
+    },
+    "HYPE/USD": {
+      address: "0xb23912e94e6c804602387b965496165896a3d1b616ece0ee610f5b68afc6b0b5",
+      icon: "H",
+      color: "#00D4AA",
+      leverage: 10,
+    },
   }
+
+  const selectedMarket = MARKETS[market]
 
   useEffect(() => {
     const checkActiveTWAPs = async () => {
@@ -131,7 +205,7 @@ export function ServerBotConfig() {
           volumeTargetUSDC: volumeTarget,
           bias,
           strategy,
-          market: MARKETS[market as keyof typeof MARKETS],
+          market: MARKETS[market].address,
           marketName: market,
           aggressiveness,
         }),
@@ -285,35 +359,74 @@ export function ServerBotConfig() {
             </div>
           </div>
 
-          {/* Market Selector */}
-          <div className="space-y-3">
+          {/* Market Selector Dropdown */}
+          <div className="space-y-3 relative" ref={dropdownRef}>
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Pair</h3>
-            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1">
-              {Object.keys(MARKETS).map((marketName) => (
-                <button
-                  key={marketName}
-                  onClick={() => setMarket(marketName)}
-                  disabled={isRunning || loading}
-                  className={cn(
-                    "flex items-center justify-center gap-2 py-3 transition-all relative overflow-hidden font-mono disabled:opacity-50",
-                    market === marketName
-                      ? "bg-primary/10 text-primary border border-primary/50"
-                      : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                  )}
+            <button
+              onClick={() => !isRunning && !loading && setMarketDropdownOpen(!marketDropdownOpen)}
+              disabled={isRunning || loading}
+              className={cn(
+                "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
+                marketDropdownOpen && "border-primary/50"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white"
+                  style={{ backgroundColor: selectedMarket?.color }}
                 >
-                  <div className={cn(
-                    "w-5 h-5 flex items-center justify-center text-[10px] font-bold text-white",
-                    marketName === "BTC/USD" ? "bg-[#F7931A]" : "bg-[#627EEA]"
-                  )}>
-                    {marketName === "BTC/USD" ? "₿" : "♦"}
-                  </div>
-                  <span className="font-bold tracking-wider">{marketName.split("/")[0]}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
-              Selected: <span className="text-white">{market}</span>
-            </p>
+                  {selectedMarket?.icon}
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="text-white font-bold tracking-wider">{market}</span>
+                  <span className="text-[10px] text-zinc-500">Max {selectedMarket?.leverage}x leverage</span>
+                </div>
+              </div>
+              <ChevronDown className={cn(
+                "w-4 h-4 text-zinc-400 transition-transform",
+                marketDropdownOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {marketDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-black/95 border border-white/10 backdrop-blur-sm max-h-[300px] overflow-y-auto scrollbar-thin">
+                {Object.entries(MARKETS).map(([marketName, marketData]) => (
+                  <button
+                    key={marketName}
+                    onClick={() => {
+                      setMarket(marketName)
+                      setMarketDropdownOpen(false)
+                    }}
+                    className={cn(
+                      "w-full p-3 flex items-center gap-3 transition-all hover:bg-white/5 border-b border-white/5 last:border-b-0",
+                      market === marketName && "bg-primary/10"
+                    )}
+                  >
+                    <div
+                      className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: marketData.color }}
+                    >
+                      {marketData.icon}
+                    </div>
+                    <div className="flex flex-col items-start flex-1">
+                      <span className={cn(
+                        "font-bold tracking-wider",
+                        market === marketName ? "text-primary" : "text-white"
+                      )}>
+                        {marketName}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Max {marketData.leverage}x leverage
+                      </span>
+                    </div>
+                    {market === marketName && (
+                      <div className="w-2 h-2 bg-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Aggressiveness */}

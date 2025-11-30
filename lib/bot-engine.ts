@@ -748,10 +748,11 @@ export class VolumeBotEngine {
         })
 
         if (botInstance) {
-          // Create order history record
+          // Create order history record with session ID
           await prisma.orderHistory.create({
             data: {
               botId: botInstance.id,
+              sessionId: botInstance.sessionId,  // Track which session this order belongs to
               txHash: result.txHash,
               direction: result.direction,
               strategy: this.config.strategy || 'twap',
@@ -765,18 +766,32 @@ export class VolumeBotEngine {
             }
           })
 
-          // Update bot instance status
-          await prisma.botInstance.update({
+          // Update bot instance status - INCREMENT the database values
+          const newCumulativeVolume = botInstance.cumulativeVolume + result.volumeGenerated
+          const newOrdersPlaced = botInstance.ordersPlaced + 1
+
+          const updatedBot = await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
-              cumulativeVolume: this.status.cumulativeVolume,
-              ordersPlaced: this.status.ordersPlaced,
-              lastOrderTime: new Date(this.status.lastOrderTime),
+              cumulativeVolume: newCumulativeVolume,
+              ordersPlaced: newOrdersPlaced,
+              lastOrderTime: new Date(),
               error: null,
+              // Auto-stop if target reached
+              isRunning: newCumulativeVolume < botInstance.volumeTargetUSDC,
             }
           })
 
+          // Update local status to match DB
+          this.status.cumulativeVolume = newCumulativeVolume
+          this.status.ordersPlaced = newOrdersPlaced
+
           console.log('💾 Order persisted to database')
+
+          // Log if bot was auto-stopped
+          if (!updatedBot.isRunning) {
+            console.log('🎯 Volume target reached! Bot auto-stopped.')
+          }
         }
       } catch (dbError) {
         console.error('⚠️  Failed to persist to database:', dbError)

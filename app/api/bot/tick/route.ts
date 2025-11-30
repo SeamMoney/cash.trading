@@ -83,12 +83,22 @@ export async function POST(request: NextRequest) {
       where: { id: bot.id },
     })
 
+    // Check if bot was auto-stopped due to reaching target
+    const wasAutoStopped = updatedBot && !updatedBot.isRunning
+    const progress = updatedBot
+      ? (updatedBot.cumulativeVolume / updatedBot.volumeTargetUSDC) * 100
+      : 0
+
     return NextResponse.json({
       success,
-      status: success ? 'executed' : 'failed',
+      status: wasAutoStopped ? 'completed' : (success ? 'executed' : 'failed'),
+      isRunning: updatedBot?.isRunning ?? false,
       cumulativeVolume: updatedBot?.cumulativeVolume || bot.cumulativeVolume,
+      volumeTargetUSDC: updatedBot?.volumeTargetUSDC || bot.volumeTargetUSDC,
+      progress: progress.toFixed(1),
       ordersPlaced: updatedBot?.ordersPlaced || bot.ordersPlaced,
       lastOrderTime: updatedBot?.lastOrderTime?.toISOString(),
+      message: wasAutoStopped ? '🎯 Volume target reached! Bot stopped.' : undefined,
     })
   } catch (error) {
     console.error('Manual tick error:', error)

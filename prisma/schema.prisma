@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,48 +8,44 @@ datasource db {
 }
 
 model BotInstance {
-  id                String   @id @default(cuid())
-  userWalletAddress String   @unique
-  userSubaccount    String
-  capitalUSDC       Float
-  volumeTargetUSDC  Float
-  bias              String   // 'long' | 'short' | 'neutral'
-  strategy          String   @default("twap") // 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk'
-  market            String
-  marketName        String
-
-  // Status
-  isRunning         Boolean  @default(true)
-  cumulativeVolume  Float    @default(0)
-  ordersPlaced      Int      @default(0)
-  currentCapitalUsed Float   @default(0)
-  lastOrderTime     DateTime?
-  error             String?
-
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  orders            OrderHistory[]
+  id                 String         @id @default(cuid())
+  userWalletAddress  String         @unique
+  userSubaccount     String
+  capitalUSDC        Float
+  volumeTargetUSDC   Float
+  bias               String
+  strategy           String         @default("twap")
+  market             String
+  marketName         String
+  isRunning          Boolean        @default(true)
+  cumulativeVolume   Float          @default(0)
+  ordersPlaced       Int            @default(0)
+  currentCapitalUsed Float          @default(0)
+  lastOrderTime      DateTime?
+  error              String?
+  sessionId          String?        // Track which run/session orders belong to
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  orders             OrderHistory[]
 }
 
 model OrderHistory {
-  id               String      @id @default(cuid())
-  botId            String
-  bot              BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
-
-  timestamp        DateTime    @default(now())
-  txHash           String
-  direction        String      // 'long' | 'short'
-  strategy         String      @default("twap") // 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk'
-  size             Int
-  volumeGenerated  Float
-  success          Boolean
-
-  // PNL tracking
-  entryPrice       Float?
-  exitPrice        Float?
-  pnl              Float       @default(0)      // Profit/Loss in USDC
-  positionHeldMs   Int         @default(0)      // How long position was held in milliseconds
+  id              String      @id @default(cuid())
+  botId           String
+  sessionId       String?     // Which bot session this order belongs to
+  timestamp       DateTime    @default(now())
+  txHash          String
+  direction       String
+  strategy        String      @default("twap")
+  size            Int
+  volumeGenerated Float
+  success         Boolean
+  entryPrice      Float?
+  exitPrice       Float?
+  pnl             Float       @default(0)
+  positionHeldMs  Int         @default(0)
+  bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@index([botId])
+  @@index([sessionId])
 }

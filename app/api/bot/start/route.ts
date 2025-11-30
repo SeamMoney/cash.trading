@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Generate a new session ID for this bot run
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
     // Create or update bot in database
     const botInstance = await prisma.botInstance.upsert({
       where: { userWalletAddress },
@@ -75,6 +78,7 @@ export async function POST(request: NextRequest) {
         market,
         marketName,
         isRunning: true,
+        sessionId,
       },
       update: {
         userSubaccount,
@@ -89,6 +93,7 @@ export async function POST(request: NextRequest) {
         ordersPlaced: 0,
         currentCapitalUsed: 0,
         error: null,
+        sessionId,  // New session for each start
       },
     })
 

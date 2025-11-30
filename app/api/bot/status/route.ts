@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -16,41 +15,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Initialize bot manager if needed
-    await botManager.initialize()
-
-    // Try to get bot from memory first
-    const bot = botManager.getBot(userWalletAddress)
-
-    if (bot) {
-      // Fetch recent orders from database for the running bot
-      const botInstance = await prisma.botInstance.findUnique({
-        where: { userWalletAddress },
-        include: {
-          orders: {
-            orderBy: { timestamp: 'desc' },
-            take: 10,
-          },
-        },
-      })
-
-      return NextResponse.json({
-        isRunning: true,
-        status: {
-          ...bot.getStatus(),
-          orderHistory: botInstance?.orders || [],
-        },
-        config: bot.getConfig(),
-      })
-    }
-
-    // If not in memory, check database
+    // Get bot from database
     const botInstance = await prisma.botInstance.findUnique({
       where: { userWalletAddress },
       include: {
         orders: {
           orderBy: { timestamp: 'desc' },
-          take: 10,
+          take: 50,  // Get more orders to show history
         },
       },
     })
@@ -63,11 +34,17 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Return database state
+    // Calculate progress
+    const progress = (botInstance.cumulativeVolume / botInstance.volumeTargetUSDC) * 100
+
+    // Return database state with session info
     return NextResponse.json({
       isRunning: botInstance.isRunning,
+      sessionId: botInstance.sessionId,
       status: {
         cumulativeVolume: botInstance.cumulativeVolume,
+        volumeTargetUSDC: botInstance.volumeTargetUSDC,
+        progress: progress.toFixed(1),
         ordersPlaced: botInstance.ordersPlaced,
         currentCapitalUsed: botInstance.currentCapitalUsed,
         lastOrderTime: botInstance.lastOrderTime,

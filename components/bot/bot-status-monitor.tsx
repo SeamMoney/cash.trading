@@ -17,6 +17,7 @@ interface BotStatusMonitorProps {
 export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange }: BotStatusMonitorProps) {
   const [status, setStatus] = useState<any>(null)
   const [config, setConfig] = useState<any>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isExecuting, setIsExecuting] = useState(false)
   const [nextTickIn, setNextTickIn] = useState(60)
@@ -37,23 +38,34 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       const data = await response.json()
       console.log('Bot tick result:', data)
 
-      if (data.success) {
-        lastTickTimeRef.current = Date.now()
-        // Immediately fetch updated status
-        const statusResponse = await fetch(
-          `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}`
-        )
-        const statusData = await statusResponse.json()
-        if (statusData.status) {
-          setStatus(statusData.status)
+      // Check if bot was auto-stopped (target reached)
+      if (data.status === 'completed' || data.isRunning === false) {
+        console.log('🎯 Bot completed! Target reached.')
+        // Notify parent that bot stopped
+        if (onStatusChange) {
+          onStatusChange(false)
         }
       }
+
+      // Immediately fetch updated status
+      const statusResponse = await fetch(
+        `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}`
+      )
+      const statusData = await statusResponse.json()
+      if (statusData.status) {
+        setStatus(statusData.status)
+      }
+      if (statusData.config) {
+        setConfig(statusData.config)
+      }
+
+      lastTickTimeRef.current = Date.now()
     } catch (error) {
       console.error('Error triggering bot tick:', error)
     } finally {
       setIsExecuting(false)
     }
-  }, [userWalletAddress, isRunning, isExecuting])
+  }, [userWalletAddress, isRunning, isExecuting, onStatusChange])
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -69,21 +81,15 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
         const data = await response.json()
 
-        if (data.isRunning) {
-          setStatus(data.status)
-          setConfig(data.config)
-          // Notify parent if status changed
-          if (!isRunning && onStatusChange) {
-            onStatusChange(true)
-          }
-        } else {
-          // Bot not running
-          setStatus(data.status) // Keep status for history display
-          setConfig(data.config) // Keep config for history display
-          // Notify parent if status changed
-          if (isRunning && onStatusChange) {
-            onStatusChange(false)
-          }
+        setStatus(data.status)
+        setConfig(data.config)
+        setSessionId(data.sessionId || null)
+
+        // Notify parent if status changed
+        if (data.isRunning && !isRunning && onStatusChange) {
+          onStatusChange(true)
+        } else if (!data.isRunning && isRunning && onStatusChange) {
+          onStatusChange(false)
         }
 
         setLoading(false)
@@ -141,7 +147,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
       {/* Order History Table - Always show if there are orders */}
       {status.orderHistory && status.orderHistory.length > 0 && (
-        <OrderHistoryTable orders={status.orderHistory} />
+        <OrderHistoryTable orders={status.orderHistory} currentSessionId={sessionId || undefined} />
       )}
 
       {/* Only show status card if bot is running */}

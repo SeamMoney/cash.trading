@@ -362,11 +362,13 @@ export function ServerBotConfig() {
               )}
             >
               <div className="flex items-center gap-3">
-                <img
-                  src={selectedMarket?.logo}
-                  alt={market}
-                  className="w-6 h-6 rounded-full"
-                />
+                <div className="w-6 h-6 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0">
+                  <img
+                    src={selectedMarket?.logo}
+                    alt={market}
+                    className="w-5 h-5 object-contain"
+                  />
+                </div>
                 <div className="flex flex-col items-start">
                   <span className="text-white font-bold tracking-wider">{market}</span>
                   <span className="text-[10px] text-zinc-500">Max {selectedMarket?.leverage}x leverage</span>
@@ -393,11 +395,13 @@ export function ServerBotConfig() {
                       market === marketName && "bg-primary/10"
                     )}
                   >
-                    <img
-                      src={marketData.logo}
-                      alt={marketName}
-                      className="w-6 h-6 rounded-full"
-                    />
+                    <div className="w-6 h-6 rounded-full overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0">
+                      <img
+                        src={marketData.logo}
+                        alt={marketName}
+                        className="w-5 h-5 object-contain"
+                      />
+                    </div>
                     <div className="flex flex-col items-start flex-1">
                       <span className={cn(
                         "font-bold tracking-wider",

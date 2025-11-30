@@ -40,20 +40,33 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       // Handle different responses
       if (response.status === 429) {
         const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '30'
-        toast.warning(`⏳ Rate limited · wait ${waitTime}s`)
+        toast.warning(`⏳ Rate limited · wait ${waitTime}s`, {
+          description: 'Trades are limited to once per 30 seconds',
+        })
       } else if (data.status === 'completed' || data.isRunning === false) {
-        toast.success(`🎯 Target reached! ${data.ordersPlaced} trades · $${data.cumulativeVolume?.toFixed(0)}`, { duration: 4000 })
+        toast.success('🎯 Volume Target Reached!', {
+          description: `Completed ${data.ordersPlaced} trades · Total volume: $${data.cumulativeVolume?.toFixed(0)} USDC`,
+          duration: 5000,
+        })
         if (onStatusChange) {
           onStatusChange(false)
         }
       } else if (data.success) {
-        const dir = data.direction === 'long' ? '📈 Long' : '📉 Short'
+        const dir = data.direction === 'long' ? '📈 LONG' : '📉 SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
+        const cumVol = data.cumulativeVolume?.toFixed(0) || '0'
         const progress = data.progress || '0'
-        const market = data.market?.split('/')[0] || 'BTC'
-        toast.success(`${dir} ${market} · +$${vol} · ${progress}%`)
+        const market = data.market || 'BTC/USD'
+        const txShort = data.txHash ? `${data.txHash.slice(0, 8)}...` : ''
+        toast.success(`${dir} · ${market}`, {
+          description: `+$${vol} volume (${progress}% of target) · Total: $${cumVol}${txShort ? ` · tx: ${txShort}` : ''}`,
+          duration: 3000,
+        })
       } else if (data.error) {
-        toast.error(`❌ ${data.error.slice(0, 40)}`)
+        toast.error('❌ Trade Failed', {
+          description: data.error,
+          duration: 4000,
+        })
       }
 
       // Immediately fetch updated status

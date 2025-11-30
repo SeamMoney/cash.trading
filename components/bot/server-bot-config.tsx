@@ -5,11 +5,9 @@ import { toast } from "sonner"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TrendingUp, TrendingDown, Minus, Play, Square } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 
 type Bias = "long" | "short" | "neutral"
@@ -24,45 +22,37 @@ export function ServerBotConfig() {
   const [bias, setBias] = useState<Bias>("neutral")
   const [strategy, setStrategy] = useState<Strategy>("high_risk")
   const [market, setMarket] = useState<string>("BTC/USD")
-  const [aggressiveness, setAggressiveness] = useState<number>(5) // 1-10 scale
+  const [aggressiveness, setAggressiveness] = useState<number>(5)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [delegating, setDelegating] = useState(false)
   const [hasDelegation, setHasDelegation] = useState(false)
 
-  // Market addresses on Decibel (only BTC and ETH available on testnet)
   const MARKETS = {
     "BTC/USD": "0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e",
     "ETH/USD": "0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2",
   }
 
-  // Check for active TWAPs on mount
   useEffect(() => {
     const checkActiveTWAPs = async () => {
       if (!account) return
-
       try {
         const response = await fetch(`/api/bot/status?userWalletAddress=${account.address.toString()}`)
         const data = await response.json()
-
         if (data.isRunning) {
           setIsRunning(true)
-          setError(null) // Clear any stale errors when bot is running
+          setError(null)
         } else {
           setIsRunning(false)
-          setError(null) // Clear any stale errors
+          setError(null)
         }
       } catch (err) {
         console.error('Failed to check bot status:', err)
       }
     }
-
     checkActiveTWAPs()
   }, [account])
-
-  const BOT_OPERATOR = "0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da"
-  const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75"
 
   const handleSetMax = () => {
     if (balance !== null) {
@@ -80,7 +70,6 @@ export function ServerBotConfig() {
     setError(null)
 
     try {
-      // Get the delegation payload from our API
       const response = await fetch("/api/bot/delegate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -93,9 +82,6 @@ export function ServerBotConfig() {
         throw new Error(data.error || "Failed to get delegation payload")
       }
 
-      console.log("🔐 Delegating to bot operator:", data.botOperator)
-
-      // Sign the transaction with the user's wallet
       if (!signAndSubmitTransaction) {
         throw new Error("Wallet does not support signing transactions")
       }
@@ -147,7 +133,7 @@ export function ServerBotConfig() {
           strategy,
           market: MARKETS[market as keyof typeof MARKETS],
           marketName: market,
-          aggressiveness, // Pass aggressiveness to backend
+          aggressiveness,
         }),
       })
 
@@ -158,16 +144,14 @@ export function ServerBotConfig() {
       }
 
       setIsRunning(true)
-      toast.success('Bot started!', {
+      toast.success('Bot Started', {
         description: `Trading ${market} with $${capitalNum.toFixed(0)} toward $${volumeTarget} volume`,
       })
-      console.log("✅ Bot started successfully:", data)
     } catch (err: any) {
       setError(err.message || "Failed to start bot")
       toast.error('Failed to start bot', {
         description: err.message,
       })
-      console.error("❌ Bot start error:", err)
     } finally {
       setLoading(false)
     }
@@ -177,7 +161,7 @@ export function ServerBotConfig() {
     if (!account) return
 
     setLoading(true)
-    setError(null) // Clear any previous errors
+    setError(null)
     try {
       const response = await fetch("/api/bot/stop", {
         method: "POST",
@@ -194,16 +178,14 @@ export function ServerBotConfig() {
       }
 
       setIsRunning(false)
-      toast.info('Bot stopped', {
+      toast.info('Bot Stopped', {
         description: 'Trading has been paused',
       })
-      console.log("✅ Bot stopped successfully")
     } catch (err: any) {
       setError(err.message || "Failed to stop bot")
       toast.error('Failed to stop bot', {
         description: err.message,
       })
-      console.error("❌ Bot stop error:", err)
     } finally {
       setLoading(false)
     }
@@ -211,17 +193,17 @@ export function ServerBotConfig() {
 
   if (!connected) {
     return (
-      <Card className="bg-black/40 border-white/10">
-        <CardHeader>
-          <CardTitle className="text-white">Volume Market Maker Bot</CardTitle>
-          <CardDescription>Connect your wallet to get started</CardDescription>
-        </CardHeader>
-      </Card>
+      <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white/20" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
+        <h3 className="text-white font-mono font-bold tracking-wide">Volume Market Maker Bot</h3>
+        <p className="text-zinc-500 font-mono text-sm mt-1">Connect your wallet to get started</p>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in zoom-in duration-500">
       {/* Bot Status Monitor */}
       {account && (
         <BotStatusMonitor
@@ -231,168 +213,187 @@ export function ServerBotConfig() {
         />
       )}
 
-      {/* Configuration Card */}
-      <Card className="bg-black/40 border-white/10">
-        <CardHeader>
-          <CardTitle className="text-white">Volume Market Maker Bot (Server-Side)</CardTitle>
-          <CardDescription>
-            Autonomous bot running on the server with your delegated permissions
-          </CardDescription>
-        </CardHeader>
+      {/* Main Configuration Panel */}
+      <div className="bg-black/40 backdrop-blur-sm border border-white/10 relative">
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/50" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/50" />
 
-        <CardContent className="space-y-6">
+        {/* Header */}
+        <div className="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-primary" />
+            <h3 className="text-primary font-mono text-sm uppercase tracking-widest font-bold">Volume Bot Config</h3>
+          </div>
+          <div className="flex gap-1">
+            <div className={cn("w-2 h-2", isRunning ? "bg-green-500 animate-pulse" : "bg-zinc-600")} />
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6 font-mono">
           {/* Capital Input */}
           <div className="space-y-2">
-            <Label htmlFor="capital" className="text-zinc-300">
-              Capital Amount (USDC)
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id="capital"
-                type="number"
-                placeholder="100"
-                value={capital}
-                onChange={(e) => setCapital(e.target.value)}
-                disabled={isRunning || loading}
-                className="bg-black/40 border-white/10 text-white"
-              />
-              <Button
-                onClick={handleSetMax}
-                disabled={isRunning || loading}
-                variant="outline"
-                className="border-primary/30 text-primary hover:bg-primary/10"
-              >
-                MAX
-              </Button>
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
+            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-4 relative group hover:border-primary/60 transition-colors">
+              <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
+              <div className="flex items-center gap-4">
+                <input
+                  type="number"
+                  value={capital}
+                  onChange={(e) => setCapital(e.target.value)}
+                  disabled={isRunning || loading}
+                  className="flex-1 bg-transparent border-none text-3xl md:text-4xl font-mono text-white placeholder-zinc-600 focus:outline-none disabled:opacity-50"
+                  placeholder="0.00"
+                />
+                <Button
+                  onClick={handleSetMax}
+                  disabled={isRunning || loading}
+                  variant="outline"
+                  className="border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest"
+                >
+                  MAX
+                </Button>
+              </div>
+              {balance !== null && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  Available: <span className="text-primary">${balance.toFixed(2)} USDC</span>
+                </p>
+              )}
             </div>
-            {balance !== null && (
-              <p className="text-xs text-zinc-500">
-                Available: ${balance.toFixed(2)} USDC
-              </p>
-            )}
           </div>
 
-          {/* Volume Target Slider */}
-          <div className="space-y-2">
+          {/* Volume Target */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-zinc-300">Volume Target</Label>
-              <span className="text-lg font-bold text-primary">
-                ${volumeTarget.toFixed(0)}
-              </span>
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Volume Target</h3>
+              <span className="text-2xl font-bold text-primary font-mono">${volumeTarget.toFixed(0)}</span>
             </div>
-            <Slider
-              value={[volumeTarget]}
-              onValueChange={([value]) => setVolumeTarget(value)}
-              min={100}
-              max={10000}
-              step={100}
-              disabled={isRunning || loading}
-              className="py-4"
-            />
-            <div className="flex justify-between text-xs text-zinc-500">
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-zinc-800 via-primary/30 to-primary" />
+              <Slider
+                value={[volumeTarget]}
+                onValueChange={([value]) => setVolumeTarget(value)}
+                min={100}
+                max={10000}
+                step={100}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
               <span>$100</span>
               <span>$10,000</span>
             </div>
           </div>
 
           {/* Market Selector */}
-          <div className="space-y-2">
-            <Label className="text-zinc-300">Trading Pair</Label>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-3">
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Pair</h3>
+            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1">
               {Object.keys(MARKETS).map((marketName) => (
-                <Button
+                <button
                   key={marketName}
                   onClick={() => setMarket(marketName)}
                   disabled={isRunning || loading}
-                  variant={market === marketName ? "default" : "outline"}
-                  className={
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-3 transition-all relative overflow-hidden font-mono disabled:opacity-50",
                     market === marketName
-                      ? "bg-primary hover:bg-primary/90 text-black font-bold"
-                      : "border-white/10 text-zinc-400 hover:bg-white/5"
-                  }
+                      ? "bg-primary/10 text-primary border border-primary/50"
+                      : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                  )}
                 >
-                  {marketName.split("/")[0]}
-                </Button>
+                  <div className={cn(
+                    "w-5 h-5 flex items-center justify-center text-[10px] font-bold text-white",
+                    marketName === "BTC/USD" ? "bg-[#F7931A]" : "bg-[#627EEA]"
+                  )}>
+                    {marketName === "BTC/USD" ? "₿" : "♦"}
+                  </div>
+                  <span className="font-bold tracking-wider">{marketName.split("/")[0]}</span>
+                </button>
               ))}
             </div>
-            <p className="text-xs text-zinc-500">
-              Selected: {market}
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
+              Selected: <span className="text-white">{market}</span>
             </p>
           </div>
 
-          {/* Aggressiveness Slider */}
-          <div className="space-y-2">
+          {/* Aggressiveness */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-zinc-300">Bot Aggressiveness</Label>
-              <span className="text-lg font-bold text-primary">
-                {aggressiveness}/10
-              </span>
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Bot Speed</h3>
+              <span className="text-lg font-bold text-primary font-mono">{aggressiveness}/10</span>
             </div>
-            <Slider
-              value={[aggressiveness]}
-              onValueChange={([value]) => setAggressiveness(value)}
-              min={1}
-              max={10}
-              step={1}
-              disabled={isRunning || loading}
-              className="py-4"
-            />
-            <div className="flex justify-between text-xs text-zinc-500">
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-green-500/30 via-yellow-500/30 to-red-500/30" />
+              <Slider
+                value={[aggressiveness]}
+                onValueChange={([value]) => setAggressiveness(value)}
+                min={1}
+                max={10}
+                step={1}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
               <span>Slow (2 min)</span>
               <span>Ultra Fast (10 sec)</span>
             </div>
-            <p className="text-xs text-zinc-400">
-              {aggressiveness <= 3 && "📊 Conservative - Orders every 1-2 minutes"}
-              {aggressiveness > 3 && aggressiveness <= 7 && "⚡ Moderate - Orders every 30-60 seconds"}
-              {aggressiveness > 7 && "🔥 Aggressive HFT - Orders every 10-20 seconds!"}
-            </p>
+            <div className="p-2 bg-black/40 border border-white/10">
+              <p className="text-xs text-zinc-400">
+                {aggressiveness <= 3 && "📊 Conservative - Orders every 1-2 minutes"}
+                {aggressiveness > 3 && aggressiveness <= 7 && "⚡ Moderate - Orders every 30-60 seconds"}
+                {aggressiveness > 7 && "🔥 Aggressive HFT - Orders every 10-20 seconds!"}
+              </p>
+            </div>
           </div>
 
           {/* Bias Selector */}
-          <div className="space-y-2">
-            <Label className="text-zinc-300">Directional Bias</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
+          <div className="space-y-3">
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Directional Bias</h3>
+            <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1">
+              <button
                 onClick={() => setBias("long")}
                 disabled={isRunning || loading}
-                variant={bias === "long" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "long"
-                    ? "bg-green-500 hover:bg-green-600 text-white"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5"
-                }
+                    ? "bg-green-500/10 text-green-500 border border-green-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Long
-              </Button>
-              <Button
+                {bias === "long" && <div className="absolute inset-0 bg-green-500/5 animate-pulse" />}
+                <TrendingUp className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Long</span>
+              </button>
+              <button
                 onClick={() => setBias("neutral")}
                 disabled={isRunning || loading}
-                variant={bias === "neutral" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "neutral"
-                    ? "bg-primary hover:bg-primary/90 text-black"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5"
-                }
+                    ? "bg-primary/10 text-primary border border-primary/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <Minus className="w-4 h-4 mr-2" />
-                Neutral
-              </Button>
-              <Button
+                <Minus className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Neutral</span>
+              </button>
+              <button
                 onClick={() => setBias("short")}
                 disabled={isRunning || loading}
-                variant={bias === "short" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "short"
-                    ? "bg-red-500 hover:bg-red-600 text-white"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5"
-                }
+                    ? "bg-red-500/10 text-red-500 border border-red-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <TrendingDown className="w-4 h-4 mr-2" />
-                Short
-              </Button>
+                {bias === "short" && <div className="absolute inset-0 bg-red-500/5 animate-pulse" />}
+                <TrendingDown className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Short</span>
+              </button>
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-[10px] text-zinc-500">
               {bias === "long" && "Bot will only place long orders"}
               {bias === "short" && "Bot will only place short orders"}
               {bias === "neutral" && "Bot will alternate between long and short"}
@@ -400,71 +401,64 @@ export function ServerBotConfig() {
           </div>
 
           {/* Strategy Selector */}
-          <div className="space-y-2">
-            <Label className="text-zinc-300">Trading Strategy</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
+          <div className="space-y-3">
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Strategy</h3>
+            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1">
+              <button
                 onClick={() => setStrategy("twap")}
                 disabled={isRunning || loading}
-                variant={strategy === "twap" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
                   strategy === "twap"
-                    ? "bg-blue-500 hover:bg-blue-600 text-white h-auto py-3"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5 h-auto py-3"
-                }
+                    ? "bg-blue-500/10 text-blue-400 border border-blue-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <div className="flex flex-col items-start w-full">
-                  <span className="font-medium">TWAP</span>
-                  <span className="text-[10px] opacity-70">Passive volume</span>
-                </div>
-              </Button>
-              <Button
+                <span className="font-bold text-sm tracking-wider">TWAP</span>
+                <span className="text-[10px] opacity-70">Passive volume</span>
+              </button>
+              <button
                 onClick={() => setStrategy("market_maker")}
                 disabled={isRunning || loading}
-                variant={strategy === "market_maker" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
                   strategy === "market_maker"
-                    ? "bg-purple-500 hover:bg-purple-600 text-white h-auto py-3"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5 h-auto py-3"
-                }
+                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <div className="flex flex-col items-start w-full">
-                  <span className="font-medium">Market Maker</span>
-                  <span className="text-[10px] opacity-70">Active PNL</span>
-                </div>
-              </Button>
-              <Button
+                <span className="font-bold text-sm tracking-wider">Market Maker</span>
+                <span className="text-[10px] opacity-70">Active PNL</span>
+              </button>
+              <button
                 onClick={() => setStrategy("delta_neutral")}
                 disabled={isRunning || loading}
-                variant={strategy === "delta_neutral" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
                   strategy === "delta_neutral"
-                    ? "bg-cyan-500 hover:bg-cyan-600 text-white h-auto py-3"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5 h-auto py-3"
-                }
+                    ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <div className="flex flex-col items-start w-full">
-                  <span className="font-medium">Delta Neutral</span>
-                  <span className="text-[10px] opacity-70">Hedged positions</span>
-                </div>
-              </Button>
-              <Button
+                <span className="font-bold text-sm tracking-wider">Delta Neutral</span>
+                <span className="text-[10px] opacity-70">Hedged positions</span>
+              </button>
+              <button
                 onClick={() => setStrategy("high_risk")}
                 disabled={isRunning || loading}
-                variant={strategy === "high_risk" ? "default" : "outline"}
-                className={
+                className={cn(
+                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
                   strategy === "high_risk"
-                    ? "bg-orange-500 hover:bg-orange-600 text-white h-auto py-3"
-                    : "border-white/10 text-zinc-400 hover:bg-white/5 h-auto py-3"
-                }
+                    ? "bg-orange-500/10 text-orange-400 border border-orange-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
               >
-                <div className="flex flex-col items-start w-full">
-                  <span className="font-medium">High Risk</span>
-                  <span className="text-[10px] opacity-70">Max PNL swings</span>
-                </div>
-              </Button>
+                {strategy === "high_risk" && <div className="absolute inset-0 bg-orange-500/5 animate-pulse" />}
+                <span className="font-bold text-sm tracking-wider relative z-10">High Risk</span>
+                <span className="text-[10px] opacity-70 relative z-10">Max PNL swings</span>
+              </button>
             </div>
-            <div className="p-2 bg-black/40 border border-white/10 rounded">
+            <div className="p-2 bg-black/40 border border-white/10">
               <p className="text-xs text-zinc-400">
                 {strategy === "twap" && "📊 Passive limit orders for volume generation. Low PNL impact."}
                 {strategy === "market_maker" && "⚡ Market orders with tight spreads. Active PNL movement!"}
@@ -476,19 +470,21 @@ export function ServerBotConfig() {
 
           {/* Error Display */}
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="p-3 bg-red-500/10 border border-red-500/30 relative">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500" />
+              <p className="text-sm text-red-400 font-mono">{error}</p>
             </div>
           )}
 
-          {/* Delegation section */}
+          {/* Delegation Section */}
           {!isRunning && !hasDelegation && (
             <div className="space-y-3">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <p className="text-xs text-blue-400 mb-2">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
+                <p className="text-xs text-blue-400 mb-2 font-mono">
                   ℹ️ First-time users must delegate trading permissions to the bot operator.
                 </p>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-500">
                   This is a one-time transaction that allows the bot to place orders on your behalf.
                   Your funds stay in YOUR wallet - the bot can only trade, not withdraw.
                 </p>
@@ -497,7 +493,7 @@ export function ServerBotConfig() {
                 onClick={handleDelegate}
                 disabled={delegating}
                 variant="outline"
-                className="w-full border-primary/30 text-primary hover:bg-primary/10"
+                className="w-full border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono uppercase tracking-widest"
               >
                 {delegating ? "Delegating..." : "Delegate Permissions"}
               </Button>
@@ -505,8 +501,9 @@ export function ServerBotConfig() {
           )}
 
           {!isRunning && hasDelegation && (
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-              <p className="text-xs text-green-400">
+            <div className="p-3 bg-green-500/10 border border-green-500/30 relative">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
+              <p className="text-xs text-green-400 font-mono">
                 ✅ Permissions delegated! You can now start the bot.
               </p>
             </div>
@@ -516,33 +513,38 @@ export function ServerBotConfig() {
           <Button
             onClick={isRunning ? handleStop : handleStart}
             disabled={loading}
-            className={
+            className={cn(
+              "w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50",
               isRunning
-                ? "w-full bg-red-500 hover:bg-red-600 text-white"
-                : "w-full bg-primary hover:bg-primary/90 text-black font-bold"
-            }
-            size="lg"
-          >
-            {loading ? (
-              "Loading..."
-            ) : isRunning ? (
-              <>
-                <Square className="w-4 h-4 mr-2" />
-                Stop Bot
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                Start Bot
-              </>
+                ? "bg-red-500/90 hover:bg-red-500 text-white border-red-500 shadow-[0_0_30px_-5px_rgba(239,68,68,0.6)] hover:shadow-[0_0_50px_-10px_rgba(239,68,68,0.8)]"
+                : "bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)]"
             )}
+          >
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              {loading ? (
+                "PROCESSING..."
+              ) : isRunning ? (
+                <>
+                  <Square className="w-5 h-5" />
+                  STOP BOT
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5" />
+                  START BOT
+                </>
+              )}
+            </span>
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
           </Button>
 
           {/* Bot Info */}
           {!isRunning && (
-            <div className="p-4 bg-black/40 border border-white/10 rounded-lg space-y-2">
-              <h4 className="font-medium text-white text-sm">How it works:</h4>
-              <ul className="text-xs text-zinc-400 space-y-1">
+            <div className="p-4 bg-black/40 border border-white/10 relative">
+              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
+              <h4 className="font-mono text-xs uppercase tracking-widest text-primary mb-3">How it works:</h4>
+              <ul className="text-xs text-zinc-500 space-y-1 font-mono">
                 <li>• Bot runs on the server (keeps running even if you close the tab)</li>
                 <li>• Places TWAP orders every 10 minutes</li>
                 <li>• Uses delegated permissions (you approved this once)</li>
@@ -551,8 +553,8 @@ export function ServerBotConfig() {
               </ul>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

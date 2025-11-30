@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -10,7 +9,6 @@ export async function POST(request: NextRequest) {
     const { userWalletAddress } = body
 
     console.log('🛑 Stop request for wallet:', userWalletAddress)
-    console.log('📋 Active bots:', Array.from(botManager['activeBots'].keys()))
 
     if (!userWalletAddress) {
       return NextResponse.json(
@@ -19,28 +17,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const bot = botManager.getBot(userWalletAddress)
+    // Find the bot in the database
+    const bot = await prisma.botInstance.findFirst({
+      where: { userWalletAddress },
+    })
 
     if (!bot) {
-      console.log('❌ Bot not found in memory for:', userWalletAddress)
+      console.log('❌ Bot not found in database for:', userWalletAddress)
       return NextResponse.json(
-        { error: 'No active bot found for this wallet' },
+        { error: 'No bot found for this wallet' },
         { status: 404 }
       )
     }
 
-    // Stop the bot (this now updates the database internally)
-    await bot.stop()
+    // Update the bot to stopped in the database
+    const updatedBot = await prisma.botInstance.update({
+      where: { id: bot.id },
+      data: { isRunning: false },
+    })
 
-    // Remove from active bots in memory
-    botManager.deleteBot(userWalletAddress)
-
-    console.log('✅ Bot stopped and removed from memory for:', userWalletAddress)
+    console.log('✅ Bot stopped in database for:', userWalletAddress)
 
     return NextResponse.json({
       success: true,
       message: 'Volume bot stopped successfully',
-      status: bot.getStatus(),
+      status: {
+        isRunning: false,
+        cumulativeVolume: updatedBot.cumulativeVolume,
+        ordersPlaced: updatedBot.ordersPlaced,
+        lastOrderTime: updatedBot.lastOrderTime,
+      },
     })
   } catch (error) {
     console.error('Error stopping bot:', error)

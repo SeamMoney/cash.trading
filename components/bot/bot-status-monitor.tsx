@@ -6,8 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Activity, TrendingUp, Target, Clock, Zap } from "lucide-react"
-import { OrderHistoryTable } from "./order-history-table"
-import { PnLChart } from "./pnl-chart"
 
 interface BotStatusMonitorProps {
   userWalletAddress: string
@@ -159,28 +157,8 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   const capitalUsedPercent = (status.currentCapitalUsed / config.capitalUSDC) * 100
 
   return (
-    <div className="space-y-6">
-      {/* PNL Chart - Show first if there's PNL data */}
-      {status.orderHistory && status.orderHistory.length > 0 && (
-        <PnLChart orders={status.orderHistory} />
-      )}
-
-      {/* Order History Table - Always show if there are orders */}
-      {status.orderHistory && status.orderHistory.length > 0 && (
-        <OrderHistoryTable orders={status.orderHistory} currentSessionId={sessionId || undefined} />
-      )}
-
-      {/* Only show status card if bot is running */}
-      {!isRunning && (
-        <Card className="bg-black/40 border-white/10">
-          <CardHeader>
-            <CardTitle className="text-white">Trade History</CardTitle>
-            <CardDescription>Your past bot trades are shown above</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
-      {/* Status Card - Only show when running */}
+    <div className="space-y-4">
+      {/* Status Card - ALWAYS SHOW FIRST when running */}
       {isRunning && (
       <Card className="bg-black/40 border-primary/30">
       <CardHeader>
@@ -252,40 +230,6 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           </div>
         </div>
 
-        {/* Configuration Summary */}
-        <div className="p-4 bg-black/40 border border-white/10 rounded-lg space-y-2">
-          <h4 className="font-medium text-white text-sm">Configuration</h4>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-zinc-500">Market:</span>
-              <span className="text-white ml-2 font-medium">{config.marketName}</span>
-            </div>
-            <div>
-              <span className="text-zinc-500">Bias:</span>
-              <Badge
-                variant="outline"
-                className={
-                  config.bias === 'long'
-                    ? 'ml-2 bg-green-500/10 text-green-400 border-green-500/30'
-                    : config.bias === 'short'
-                    ? 'ml-2 bg-red-500/10 text-red-400 border-red-500/30'
-                    : 'ml-2 bg-primary/10 text-primary border-primary/30'
-                }
-              >
-                {config.bias.toUpperCase()}
-              </Badge>
-            </div>
-            <div>
-              <span className="text-zinc-500">Capital:</span>
-              <span className="text-white ml-2 font-medium">${config.capitalUSDC.toFixed(2)}</span>
-            </div>
-            <div>
-              <span className="text-zinc-500">Next Order:</span>
-              <span className="text-white ml-2 font-medium">~10 min</span>
-            </div>
-          </div>
-        </div>
-
         {/* Error Display */}
         {status.error && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -295,20 +239,62 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           </div>
         )}
 
-        {/* Info */}
-        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg space-y-2">
-          <p className="text-xs text-blue-400 font-medium">
-            ℹ️ How it works:
-          </p>
-          <ul className="text-xs text-blue-300 space-y-1 ml-4">
-            <li>• Bot executes TWAP orders every 60 seconds while this page is open</li>
-            <li>• Orders are placed on Aptos testnet and tracked in our database</li>
-            <li>• You can close this tab - trades will continue via our cron job</li>
-            <li>• Each order generates ~$876 in volume toward your target</li>
-          </ul>
-        </div>
       </CardContent>
     </Card>
+      )}
+
+      {/* Compact Recent Trades - show last 5 only */}
+      {status.orderHistory && status.orderHistory.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-sm font-medium text-zinc-400">Recent Trades</h3>
+            <span className="text-xs text-zinc-500">{status.orderHistory.length} total</span>
+          </div>
+          <div className="space-y-1.5">
+            {status.orderHistory.slice(0, 5).map((order: any, index: number) => (
+              <div
+                key={index}
+                className="flex items-center justify-between p-2 rounded bg-black/30 border border-white/5"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-medium ${order.direction === 'long' ? 'text-green-400' : 'text-red-400'}`}>
+                    {order.direction === 'long' ? '↑' : '↓'}
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-white">${order.volumeGenerated?.toFixed(0) || '0'}</span>
+                  {order.txHash && (
+                    <a
+                      href={`https://explorer.aptoslabs.com/txn/${order.txHash}?network=testnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      tx↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* When stopped, show summary */}
+      {!isRunning && status.orderHistory && status.orderHistory.length > 0 && (
+        <Card className="bg-black/40 border-white/10">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-zinc-400">Session Complete</span>
+              <span className="text-sm text-white">
+                {status.orderHistory.length} trades · ${status.cumulativeVolume?.toFixed(0) || '0'} volume
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

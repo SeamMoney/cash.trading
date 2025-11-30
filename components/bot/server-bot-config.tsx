@@ -6,7 +6,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 
@@ -21,7 +21,7 @@ export function ServerBotConfig() {
   const [volumeTarget, setVolumeTarget] = useState<number>(500)
   const [bias, setBias] = useState<Bias>("neutral")
   const [strategy, setStrategy] = useState<Strategy>("high_risk")
-  const [market, setMarket] = useState<string>("BTC/USD")
+  const [market, setMarket] = useState<string>("APT/USD")
   const [aggressiveness, setAggressiveness] = useState<number>(5)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,8 +48,13 @@ export function ServerBotConfig() {
     }
   }, [marketDropdownOpen])
 
-  // All Decibel markets with their addresses and metadata
+  // All Decibel markets with their addresses and metadata - APT first
   const MARKETS: Record<string, { address: string; logo: string; leverage: number }> = {
+    "APT/USD": {
+      address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
+      logo: "/tokens/apt.png",
+      leverage: 10,
+    },
     "BTC/USD": {
       address: "0x6a39745aaa7af8258060566f6501d84581de815128694f8ee013cae28e3357e7",
       logo: "/tokens/btc.svg",
@@ -64,11 +69,6 @@ export function ServerBotConfig() {
       address: "0x1fa58fb1d8d1fff57bea37fa1bb38c79acf8bbf489d99a74eed45e44b9fb19d0",
       logo: "/tokens/sol.png",
       leverage: 20,
-    },
-    "APT/USD": {
-      address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
-      logo: "/tokens/apt.png",
-      leverage: 10,
     },
     "XRP/USD": {
       address: "0x14e529cc523562d84c169d3b7b238c0764d8574af4af71e9bbde58828ca20026",
@@ -298,24 +298,25 @@ export function ServerBotConfig() {
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
-            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)]">
+            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-3 md:p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary opacity-70" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary opacity-70" />
               <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-4">
                 <input
                   type="number"
                   value={capital}
                   onChange={(e) => setCapital(e.target.value)}
                   disabled={isRunning || loading}
-                  className="flex-1 bg-transparent border-none text-3xl md:text-4xl font-mono text-white placeholder-zinc-600 focus:outline-none disabled:opacity-50"
+                  className="flex-1 min-w-0 bg-transparent border-none text-2xl md:text-4xl font-mono text-white placeholder-zinc-600 focus:outline-none disabled:opacity-50"
                   placeholder="0.00"
                 />
                 <Button
                   onClick={handleSetMax}
                   disabled={isRunning || loading}
                   variant="outline"
-                  className="border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest"
+                  size="sm"
+                  className="border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest flex-shrink-0 px-2 md:px-3"
                 >
                   MAX
                 </Button>
@@ -443,20 +444,23 @@ export function ServerBotConfig() {
               <span>Ultra Fast (10 sec)</span>
             </div>
             <div className={cn(
-              "p-2 border relative",
+              "p-2 border relative flex items-center gap-2",
               aggressiveness <= 3 && "bg-green-500/5 border-green-500/30",
               aggressiveness > 3 && aggressiveness <= 7 && "bg-yellow-500/5 border-yellow-500/30",
               aggressiveness > 7 && "bg-red-500/5 border-red-500/30"
             )}>
+              {aggressiveness <= 3 && <Gauge className="w-4 h-4 text-green-400 flex-shrink-0" />}
+              {aggressiveness > 3 && aggressiveness <= 7 && <Bolt className="w-4 h-4 text-yellow-400 flex-shrink-0" />}
+              {aggressiveness > 7 && <Flame className="w-4 h-4 text-red-400 flex-shrink-0" />}
               <p className={cn(
                 "text-xs",
                 aggressiveness <= 3 && "text-green-400",
                 aggressiveness > 3 && aggressiveness <= 7 && "text-yellow-400",
                 aggressiveness > 7 && "text-red-400"
               )}>
-                {aggressiveness <= 3 && "📊 Conservative - Orders every 1-2 minutes"}
-                {aggressiveness > 3 && aggressiveness <= 7 && "⚡ Moderate - Orders every 30-60 seconds"}
-                {aggressiveness > 7 && "🔥 Aggressive HFT - Orders every 10-20 seconds!"}
+                {aggressiveness <= 3 && "Conservative - Orders every 1-2 minutes"}
+                {aggressiveness > 3 && aggressiveness <= 7 && "Moderate - Orders every 30-60 seconds"}
+                {aggressiveness > 7 && "Aggressive HFT - Orders every 10-20 seconds"}
               </p>
             </div>
           </div>
@@ -573,12 +577,16 @@ export function ServerBotConfig() {
               </button>
             </div>
             <div className={cn(
-              "p-2 border relative",
+              "p-2 border relative flex items-center gap-2",
               strategy === "twap" && "bg-blue-500/5 border-blue-500/30",
               strategy === "market_maker" && "bg-purple-500/5 border-purple-500/30",
               strategy === "delta_neutral" && "bg-cyan-500/5 border-cyan-500/30",
               strategy === "high_risk" && "bg-orange-500/5 border-orange-500/30"
             )}>
+              {strategy === "twap" && <BarChart3 className="w-4 h-4 text-blue-400 flex-shrink-0" />}
+              {strategy === "market_maker" && <Bolt className="w-4 h-4 text-purple-400 flex-shrink-0" />}
+              {strategy === "delta_neutral" && <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
+              {strategy === "high_risk" && <Flame className="w-4 h-4 text-orange-400 flex-shrink-0" />}
               <p className={cn(
                 "text-xs",
                 strategy === "twap" && "text-blue-400",
@@ -586,10 +594,10 @@ export function ServerBotConfig() {
                 strategy === "delta_neutral" && "text-cyan-400",
                 strategy === "high_risk" && "text-orange-400"
               )}>
-                {strategy === "twap" && "📊 Passive limit orders for volume generation. Low PNL impact."}
-                {strategy === "market_maker" && "⚡ Market orders with tight spreads. Active PNL movement!"}
-                {strategy === "delta_neutral" && "🔒 Opens positions and immediately hedges them. Minimal risk."}
-                {strategy === "high_risk" && "🔥 Large positions with leverage. Maximum PNL volatility!"}
+                {strategy === "twap" && "Passive limit orders for volume generation. Low PNL impact."}
+                {strategy === "market_maker" && "Market orders with tight spreads. Active PNL movement."}
+                {strategy === "delta_neutral" && "Opens positions and immediately hedges them. Minimal risk."}
+                {strategy === "high_risk" && "Large positions with leverage. Maximum PNL volatility."}
               </p>
             </div>
           </div>
@@ -607,13 +615,18 @@ export function ServerBotConfig() {
             <div className="space-y-3">
               <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
-                <p className="text-xs text-blue-400 mb-2 font-mono">
-                  ℹ️ First-time users must delegate trading permissions to the bot operator.
-                </p>
-                <p className="text-xs text-zinc-500">
-                  This is a one-time transaction that allows the bot to place orders on your behalf.
-                  Your funds stay in YOUR wallet - the bot can only trade, not withdraw.
-                </p>
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-blue-400 mb-2 font-mono">
+                      First-time users must delegate trading permissions to the bot operator.
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      This is a one-time transaction that allows the bot to place orders on your behalf.
+                      Your funds stay in YOUR wallet - the bot can only trade, not withdraw.
+                    </p>
+                  </div>
+                </div>
               </div>
               <Button
                 onClick={handleDelegate}
@@ -627,10 +640,11 @@ export function ServerBotConfig() {
           )}
 
           {!isRunning && hasDelegation && (
-            <div className="p-3 bg-green-500/10 border border-green-500/30 relative">
+            <div className="p-3 bg-green-500/10 border border-green-500/30 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
+              <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
               <p className="text-xs text-green-400 font-mono">
-                ✅ Permissions delegated! You can now start the bot.
+                Permissions delegated. You can now start the bot.
               </p>
             </div>
           )}

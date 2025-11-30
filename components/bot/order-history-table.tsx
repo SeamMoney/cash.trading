@@ -1,7 +1,7 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, TrendingUp, TrendingDown, Clock } from "lucide-react"
+import { ExternalLink, TrendingUp, TrendingDown, Clock, Check, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface OrderHistoryProps {
@@ -87,11 +87,11 @@ export function OrderHistoryTable({ orders, currentSessionId }: OrderHistoryProp
 
                 {order.success ? (
                   <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
-                    ✓
+                    <Check className="w-3 h-3" />
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">
-                    ✗
+                    <X className="w-3 h-3" />
                   </Badge>
                 )}
               </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
-import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink } from "lucide-react"
+import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface BotStatusMonitorProps {
@@ -38,11 +38,11 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       // Handle different responses
       if (response.status === 429) {
         const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '30'
-        toast.warning(`⏳ Rate limited · wait ${waitTime}s`, {
+        toast.warning(`Rate limited · wait ${waitTime}s`, {
           description: 'Trades are limited to once per 30 seconds',
         })
       } else if (data.status === 'completed' || data.isRunning === false) {
-        toast.success('🎯 Volume Target Reached!', {
+        toast.success('Volume Target Reached!', {
           description: `Completed ${data.ordersPlaced} trades · Total volume: $${data.cumulativeVolume?.toFixed(0)} USDC`,
           duration: 5000,
         })
@@ -50,7 +50,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           onStatusChange(false)
         }
       } else if (data.success) {
-        const dir = data.direction === 'long' ? '📈 LONG' : '📉 SHORT'
+        const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
         const cumVol = data.cumulativeVolume?.toFixed(0) || '0'
         const progress = data.progress || '0'
@@ -61,7 +61,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           duration: 3000,
         })
       } else if (data.error) {
-        toast.error('❌ Trade Failed', {
+        toast.error('Trade Failed', {
           description: data.error,
           duration: 4000,
         })
@@ -228,8 +228,8 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     {isExecuting ? 'Executing...' : 'Next trade'}
                   </span>
                 </div>
-                <span className="text-lg font-bold text-primary">
-                  {isExecuting ? '⏳' : `${nextTickIn}s`}
+                <span className="text-lg font-bold text-primary flex items-center gap-1">
+                  {isExecuting ? <Timer className="w-4 h-4 animate-spin" /> : `${nextTickIn}s`}
                 </span>
               </div>
             </div>

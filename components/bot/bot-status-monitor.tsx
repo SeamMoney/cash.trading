@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Activity, TrendingUp, Target, Clock, Zap, ExternalLink } from "lucide-react"
+import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink } from "lucide-react"
 
 interface BotStatusMonitorProps {
   userWalletAddress: string
@@ -39,30 +39,17 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
       // Handle different responses
       if (response.status === 429) {
-        // Rate limited
-        toast.warning('Rate limited', {
-          description: data.message || 'Please wait before next trade',
-        })
+        toast.warning('⏳ Rate limited')
       } else if (data.status === 'completed' || data.isRunning === false) {
-        // Volume target reached!
-        toast.success('🎯 Volume target reached!', {
-          description: 'Bot has been automatically stopped.',
-          duration: 5000,
-        })
-        // Notify parent that bot stopped
+        toast.success('🎯 Target reached!', { duration: 3000 })
         if (onStatusChange) {
           onStatusChange(false)
         }
       } else if (data.success) {
-        // Trade executed successfully
-        toast.success('Trade executed', {
-          description: `+$${data.cumulativeVolume?.toFixed(0) || '0'} volume (${data.progress || '0'}%)`,
-        })
+        const dir = data.direction === 'long' ? '📈' : '📉'
+        toast.success(`${dir} +$${data.volumeGenerated?.toFixed(0) || data.cumulativeVolume?.toFixed(0) || '0'}`)
       } else if (data.error) {
-        // Trade failed
-        toast.error('Trade failed', {
-          description: data.error,
-        })
+        toast.error(`❌ ${data.error.slice(0, 30)}`)
       }
 
       // Immediately fetch updated status
@@ -267,9 +254,11 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                         ? 'bg-green-500/20 text-green-400'
                         : 'bg-red-500/20 text-red-400'
                     }`}>
-                      <span className="text-xs font-bold">
-                        {order.direction === 'long' ? 'L' : 'S'}
-                      </span>
+                      {order.direction === 'long' ? (
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <TrendingDown className="w-3.5 h-3.5" />
+                      )}
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs text-white font-medium">

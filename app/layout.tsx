@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/react"
-import { Toaster } from "sonner"
+import { Toaster } from "@/components/ui/sonner"
 import { ClientProviders } from "@/components/client-providers"
 import "./globals.css"
 
@@ -110,13 +110,16 @@ export default function RootLayout({
           <Suspense fallback={null}>{children}</Suspense>
         </ClientProviders>
         <Toaster
-          position="top-center"
+          position="bottom-center"
+          duration={2000}
           toastOptions={{
             style: {
-              background: '#18181b',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: '#000',
+              border: '1px solid #fff600',
               color: '#fff',
+              fontWeight: 500,
             },
+            className: 'font-mono',
           }}
         />
         <Analytics />

@@ -18,12 +18,6 @@ export async function GET(request: NextRequest) {
     // Get bot from database
     const botInstance = await prisma.botInstance.findUnique({
       where: { userWalletAddress },
-      include: {
-        orders: {
-          orderBy: { timestamp: 'desc' },
-          take: 50,  // Get more orders to show history
-        },
-      },
     })
 
     if (!botInstance) {
@@ -33,6 +27,16 @@ export async function GET(request: NextRequest) {
         config: null,
       })
     }
+
+    // Get orders filtered by current session
+    const sessionOrders = await prisma.orderHistory.findMany({
+      where: {
+        botId: botInstance.id,
+        sessionId: botInstance.sessionId,  // Only orders from current session
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 50,
+    })
 
     // Calculate progress
     const progress = (botInstance.cumulativeVolume / botInstance.volumeTargetUSDC) * 100
@@ -49,7 +53,7 @@ export async function GET(request: NextRequest) {
         currentCapitalUsed: botInstance.currentCapitalUsed,
         lastOrderTime: botInstance.lastOrderTime,
         error: botInstance.error,
-        orderHistory: botInstance.orders,
+        orderHistory: sessionOrders,  // Only orders from current session
       },
       config: {
         userWalletAddress: botInstance.userWalletAddress,

@@ -78,10 +78,16 @@ export async function POST(request: NextRequest) {
     const botEngine = new VolumeBotEngine(config)
     const success = await botEngine.executeSingleTrade()
 
-    // Get updated status
-    const updatedBot = await prisma.botInstance.findUnique({
-      where: { id: bot.id },
-    })
+    // Get updated status and most recent order
+    const [updatedBot, latestOrder] = await Promise.all([
+      prisma.botInstance.findUnique({
+        where: { id: bot.id },
+      }),
+      prisma.orderHistory.findFirst({
+        where: { botId: bot.id },
+        orderBy: { timestamp: 'desc' },
+      }),
+    ])
 
     // Check if bot was auto-stopped due to reaching target
     const wasAutoStopped = updatedBot && !updatedBot.isRunning
@@ -99,6 +105,11 @@ export async function POST(request: NextRequest) {
       ordersPlaced: updatedBot?.ordersPlaced || bot.ordersPlaced,
       lastOrderTime: updatedBot?.lastOrderTime?.toISOString(),
       message: wasAutoStopped ? '🎯 Volume target reached! Bot stopped.' : undefined,
+      // Trade details for toast
+      direction: latestOrder?.direction,
+      volumeGenerated: latestOrder?.volumeGenerated,
+      txHash: latestOrder?.txHash,
+      market: bot.marketName,
     })
   } catch (error) {
     console.error('Manual tick error:', error)

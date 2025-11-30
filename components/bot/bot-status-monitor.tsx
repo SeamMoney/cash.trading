@@ -39,17 +39,21 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
       // Handle different responses
       if (response.status === 429) {
-        toast.warning('⏳ Rate limited')
+        const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '30'
+        toast.warning(`⏳ Rate limited · wait ${waitTime}s`)
       } else if (data.status === 'completed' || data.isRunning === false) {
-        toast.success('🎯 Target reached!', { duration: 3000 })
+        toast.success(`🎯 Target reached! ${data.ordersPlaced} trades · $${data.cumulativeVolume?.toFixed(0)}`, { duration: 4000 })
         if (onStatusChange) {
           onStatusChange(false)
         }
       } else if (data.success) {
-        const dir = data.direction === 'long' ? '📈' : '📉'
-        toast.success(`${dir} +$${data.volumeGenerated?.toFixed(0) || data.cumulativeVolume?.toFixed(0) || '0'}`)
+        const dir = data.direction === 'long' ? '📈 Long' : '📉 Short'
+        const vol = data.volumeGenerated?.toFixed(0) || '0'
+        const progress = data.progress || '0'
+        const market = data.market?.split('/')[0] || 'BTC'
+        toast.success(`${dir} ${market} · +$${vol} · ${progress}%`)
       } else if (data.error) {
-        toast.error(`❌ ${data.error.slice(0, 30)}`)
+        toast.error(`❌ ${data.error.slice(0, 40)}`)
       }
 
       // Immediately fetch updated status

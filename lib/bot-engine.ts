@@ -149,44 +149,27 @@ export class VolumeBotEngine {
 
   /**
    * Fetch current market price from Decibel API
+   * Note: API requires auth, so we use fallback values
    */
   private async getCurrentMarketPrice(): Promise<number> {
-    try {
-      const response = await fetch('https://api.netna.aptoslabs.com/decibel/api/v1/market_prices')
-      const markets = await response.json()
-
-      // Find our market
-      const marketData = markets.find((m: any) => m.market === this.config.market)
-      if (!marketData) {
-        throw new Error(`Market ${this.config.market} not found`)
-      }
-
-      return parseFloat(marketData.mark_price)
-    } catch (error) {
-      console.error('Failed to fetch market price:', error)
-      // Fallback to hardcoded price for BTC
-      return 100000
+    // Decibel API requires authentication - use fallback price
+    // TODO: Add API key when available or use on-chain oracle
+    const fallbackPrices: Record<string, number> = {
+      'BTC/USD': 100000,
+      'ETH/USD': 3500,
+      'SOL/USD': 200,
     }
+    return fallbackPrices[this.config.marketName] || 100000
   }
 
   /**
    * Fetch user's current USDC balance from their subaccount
+   * Note: API requires auth, so we use config capital as fallback
    */
   private async getUserBalance(): Promise<number> {
-    try {
-      const response = await fetch(
-        `https://api.netna.aptoslabs.com/decibel/api/v1/subaccounts/${this.config.userSubaccount}`
-      )
-      const data = await response.json()
-
-      // Balance is in the collateral field, in USDC (6 decimals)
-      const balance = parseFloat(data.collateral || '0')
-      console.log(`💰 Current balance: $${balance.toFixed(2)} USDC`)
-      return balance
-    } catch (error) {
-      console.error('Failed to fetch user balance:', error)
-      return 0
-    }
+    // Decibel API requires authentication - use config capital as estimate
+    // TODO: Add API key when available or read from on-chain
+    return this.config.capitalUSDC
   }
 
   /**
@@ -229,8 +212,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
-            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
+            300,       // min duration: 5 minutes in SECONDS
+            600,       // max duration: 10 minutes in SECONDS
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -380,8 +363,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
-            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
+            300,       // min duration: 5 minutes in SECONDS
+            600,       // max duration: 10 minutes in SECONDS
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],
@@ -573,7 +556,7 @@ export class VolumeBotEngine {
       // Use larger contract size for more PNL volatility
       const contractSize = 10000 * leverage // Multiply base size by leverage factor
 
-      // Use TWAP - durations must be in MILLISECONDS and multiples of frequency (likely 30000ms)
+      // Use TWAP - durations must be in SECONDS
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -585,8 +568,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only
-            300000,    // min duration: 5 min in milliseconds (multiple of 30000)
-            600000,    // max duration: 10 min in milliseconds (multiple of 30000)
+            300,       // min duration: 5 minutes in SECONDS
+            600,       // max duration: 10 minutes in SECONDS
             undefined, // builder_address (optional)
             undefined, // max_builder_fee (optional)
           ],

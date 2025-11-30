@@ -93,7 +93,12 @@ export class VolumeBotEngine {
       throw new Error('BOT_OPERATOR_PRIVATE_KEY not set in environment')
     }
 
-    const cleanKey = botPrivateKeyHex.replace('ed25519-priv-', '')
+    // Clean the key: remove prefix, trim whitespace/newlines
+    const cleanKey = botPrivateKeyHex
+      .replace('ed25519-priv-', '')
+      .replace(/\\n/g, '')  // Remove escaped newlines
+      .replace(/\n/g, '')   // Remove actual newlines
+      .trim()
     const botPrivateKey = new Ed25519PrivateKey(cleanKey)
     this.botAccount = Account.fromPrivateKey({ privateKey: botPrivateKey })
 

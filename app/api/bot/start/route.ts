@@ -43,14 +43,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if bot already running for this user (in memory or database)
-    if (botManager.hasBot(userWalletAddress)) {
-      return NextResponse.json(
-        { error: 'Bot already running for this wallet. Stop it first.' },
-        { status: 409 }
-      )
-    }
-
+    // Check if bot already running for this user - trust database as source of truth
     const existingBot = await prisma.botInstance.findUnique({
       where: { userWalletAddress },
     })
@@ -60,6 +53,12 @@ export async function POST(request: NextRequest) {
         { error: 'Bot already running for this wallet. Stop it first.' },
         { status: 409 }
       )
+    }
+
+    // Clean up stale in-memory bot if database says it's not running
+    if (botManager.hasBot(userWalletAddress) && !existingBot?.isRunning) {
+      console.log('🧹 Cleaning up stale in-memory bot for', userWalletAddress)
+      botManager.deleteBot(userWalletAddress)
     }
 
     // Generate a new session ID for this bot run

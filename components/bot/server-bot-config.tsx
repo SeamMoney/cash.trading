@@ -49,59 +49,50 @@ export function ServerBotConfig() {
   }, [marketDropdownOpen])
 
   // All Decibel markets with their addresses and metadata
-  const MARKETS: Record<string, { address: string; icon: string; color: string; leverage: number }> = {
+  const MARKETS: Record<string, { address: string; logo: string; leverage: number }> = {
     "BTC/USD": {
       address: "0x6a39745aaa7af8258060566f6501d84581de815128694f8ee013cae28e3357e7",
-      icon: "₿",
-      color: "#F7931A",
+      logo: "/tokens/btc.svg",
       leverage: 40,
     },
     "ETH/USD": {
       address: "0xd9093834d0ee89ca16bb3aac64e321241fe091354fc526f0e03686e206e936f8",
-      icon: "♦",
-      color: "#627EEA",
+      logo: "/tokens/eth.svg",
       leverage: 40,
     },
     "SOL/USD": {
       address: "0x1fa58fb1d8d1fff57bea37fa1bb38c79acf8bbf489d99a74eed45e44b9fb19d0",
-      icon: "◎",
-      color: "#9945FF",
+      logo: "/tokens/sol.svg",
       leverage: 20,
     },
     "APT/USD": {
       address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
-      icon: "A",
-      color: "#2DD8A3",
+      logo: "/tokens/apt.svg",
       leverage: 10,
     },
     "XRP/USD": {
       address: "0x14e529cc523562d84c169d3b7b238c0764d8574af4af71e9bbde58828ca20026",
-      icon: "✕",
-      color: "#23292F",
+      logo: "/tokens/xrp.svg",
       leverage: 20,
     },
     "LINK/USD": {
       address: "0xafa14b84214814cddfdab01170cd721ea687f402aecf595930160ea74f8d62c8",
-      icon: "⬡",
-      color: "#375BD2",
+      logo: "/tokens/link.svg",
       leverage: 10,
     },
     "AAVE/USD": {
       address: "0x66b8e6c288ab02c14e082811cf37f6d0f019301fabee0cc916ed5dcb912edf92",
-      icon: "Ⓐ",
-      color: "#B6509E",
+      logo: "/tokens/aave.svg",
       leverage: 10,
     },
     "ENA/USD": {
       address: "0x4dc4aac045ab751f597acc46decb7ebec05ad45d2bb64130fabd120f40b80547",
-      icon: "E",
-      color: "#7C3AED",
+      logo: "/tokens/ena.svg",
       leverage: 10,
     },
     "HYPE/USD": {
       address: "0xb23912e94e6c804602387b965496165896a3d1b616ece0ee610f5b68afc6b0b5",
-      icon: "H",
-      color: "#00D4AA",
+      logo: "/tokens/hype.png",
       leverage: 10,
     },
   }
@@ -371,12 +362,11 @@ export function ServerBotConfig() {
               )}
             >
               <div className="flex items-center gap-3">
-                <div
-                  className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white"
-                  style={{ backgroundColor: selectedMarket?.color }}
-                >
-                  {selectedMarket?.icon}
-                </div>
+                <img
+                  src={selectedMarket?.logo}
+                  alt={market}
+                  className="w-6 h-6 rounded-full"
+                />
                 <div className="flex flex-col items-start">
                   <span className="text-white font-bold tracking-wider">{market}</span>
                   <span className="text-[10px] text-zinc-500">Max {selectedMarket?.leverage}x leverage</span>
@@ -403,12 +393,11 @@ export function ServerBotConfig() {
                       market === marketName && "bg-primary/10"
                     )}
                   >
-                    <div
-                      className="w-6 h-6 flex items-center justify-center text-xs font-bold text-white"
-                      style={{ backgroundColor: marketData.color }}
-                    >
-                      {marketData.icon}
-                    </div>
+                    <img
+                      src={marketData.logo}
+                      alt={marketName}
+                      className="w-6 h-6 rounded-full"
+                    />
                     <div className="flex flex-col items-start flex-1">
                       <span className={cn(
                         "font-bold tracking-wider",

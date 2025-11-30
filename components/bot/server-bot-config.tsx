@@ -298,7 +298,9 @@ export function ServerBotConfig() {
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
-            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-4 relative group hover:border-primary/60 transition-colors">
+            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)]">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary opacity-70" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary opacity-70" />
               <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
               <div className="flex items-center gap-4">
                 <input
@@ -440,8 +442,18 @@ export function ServerBotConfig() {
               <span>Slow (2 min)</span>
               <span>Ultra Fast (10 sec)</span>
             </div>
-            <div className="p-2 bg-black/40 border border-white/10">
-              <p className="text-xs text-zinc-400">
+            <div className={cn(
+              "p-2 border relative",
+              aggressiveness <= 3 && "bg-green-500/5 border-green-500/30",
+              aggressiveness > 3 && aggressiveness <= 7 && "bg-yellow-500/5 border-yellow-500/30",
+              aggressiveness > 7 && "bg-red-500/5 border-red-500/30"
+            )}>
+              <p className={cn(
+                "text-xs",
+                aggressiveness <= 3 && "text-green-400",
+                aggressiveness > 3 && aggressiveness <= 7 && "text-yellow-400",
+                aggressiveness > 7 && "text-red-400"
+              )}>
                 {aggressiveness <= 3 && "📊 Conservative - Orders every 1-2 minutes"}
                 {aggressiveness > 3 && aggressiveness <= 7 && "⚡ Moderate - Orders every 30-60 seconds"}
                 {aggressiveness > 7 && "🔥 Aggressive HFT - Orders every 10-20 seconds!"}
@@ -452,7 +464,7 @@ export function ServerBotConfig() {
           {/* Bias Selector */}
           <div className="space-y-3">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Directional Bias</h3>
-            <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1">
+            <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)]">
               <button
                 onClick={() => setBias("long")}
                 disabled={isRunning || loading}
@@ -505,7 +517,7 @@ export function ServerBotConfig() {
           {/* Strategy Selector */}
           <div className="space-y-3">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Strategy</h3>
-            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1">
+            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)]">
               <button
                 onClick={() => setStrategy("twap")}
                 disabled={isRunning || loading}
@@ -560,8 +572,20 @@ export function ServerBotConfig() {
                 <span className="text-[10px] opacity-70 relative z-10">Max PNL swings</span>
               </button>
             </div>
-            <div className="p-2 bg-black/40 border border-white/10">
-              <p className="text-xs text-zinc-400">
+            <div className={cn(
+              "p-2 border relative",
+              strategy === "twap" && "bg-blue-500/5 border-blue-500/30",
+              strategy === "market_maker" && "bg-purple-500/5 border-purple-500/30",
+              strategy === "delta_neutral" && "bg-cyan-500/5 border-cyan-500/30",
+              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/30"
+            )}>
+              <p className={cn(
+                "text-xs",
+                strategy === "twap" && "text-blue-400",
+                strategy === "market_maker" && "text-purple-400",
+                strategy === "delta_neutral" && "text-cyan-400",
+                strategy === "high_risk" && "text-orange-400"
+              )}>
                 {strategy === "twap" && "📊 Passive limit orders for volume generation. Low PNL impact."}
                 {strategy === "market_maker" && "⚡ Market orders with tight spreads. Active PNL movement!"}
                 {strategy === "delta_neutral" && "🔒 Opens positions and immediately hedges them. Minimal risk."}

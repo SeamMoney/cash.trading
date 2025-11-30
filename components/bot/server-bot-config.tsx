@@ -62,12 +62,12 @@ export function ServerBotConfig() {
     },
     "SOL/USD": {
       address: "0x1fa58fb1d8d1fff57bea37fa1bb38c79acf8bbf489d99a74eed45e44b9fb19d0",
-      logo: "/tokens/sol.svg",
+      logo: "/tokens/sol.png",
       leverage: 20,
     },
     "APT/USD": {
       address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
-      logo: "/tokens/apt.svg",
+      logo: "/tokens/apt.png",
       leverage: 10,
     },
     "XRP/USD": {

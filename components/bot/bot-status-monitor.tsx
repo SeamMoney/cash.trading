@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Activity, TrendingUp, Target, Clock } from "lucide-react"
+import { Activity, TrendingUp, Target, Clock, Zap } from "lucide-react"
 import { OrderHistoryTable } from "./order-history-table"
 import { PnLChart } from "./pnl-chart"
 
@@ -18,6 +18,42 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   const [status, setStatus] = useState<any>(null)
   const [config, setConfig] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [nextTickIn, setNextTickIn] = useState(60)
+  const lastTickTimeRef = useRef<number>(0)
+
+  // Trigger a trade tick
+  const triggerTick = useCallback(async () => {
+    if (isExecuting || !isRunning) return
+
+    setIsExecuting(true)
+    try {
+      const response = await fetch('/api/bot/tick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userWalletAddress }),
+      })
+
+      const data = await response.json()
+      console.log('Bot tick result:', data)
+
+      if (data.success) {
+        lastTickTimeRef.current = Date.now()
+        // Immediately fetch updated status
+        const statusResponse = await fetch(
+          `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}`
+        )
+        const statusData = await statusResponse.json()
+        if (statusData.status) {
+          setStatus(statusData.status)
+        }
+      }
+    } catch (error) {
+      console.error('Error triggering bot tick:', error)
+    } finally {
+      setIsExecuting(false)
+    }
+  }, [userWalletAddress, isRunning, isExecuting])
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -65,6 +101,28 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
     return () => clearInterval(interval)
   }, [userWalletAddress, isRunning])
+
+  // Auto-trigger trades every 60 seconds when bot is running
+  useEffect(() => {
+    if (!isRunning) {
+      setNextTickIn(60)
+      return
+    }
+
+    // Countdown timer
+    const countdownInterval = setInterval(() => {
+      setNextTickIn(prev => {
+        if (prev <= 1) {
+          // Time to trigger a tick
+          triggerTick()
+          return 60 // Reset countdown
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(countdownInterval)
+  }, [isRunning, triggerTick])
 
   // Show trade history even when bot is stopped
   if (!status || !config) {
@@ -153,6 +211,21 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           </div>
         </div>
 
+        {/* Next Trade Countdown */}
+        <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className={`w-4 h-4 ${isExecuting ? 'text-yellow-400 animate-pulse' : 'text-primary'}`} />
+              <span className="text-sm text-zinc-300">
+                {isExecuting ? 'Executing trade...' : 'Next trade in'}
+              </span>
+            </div>
+            <span className="text-lg font-bold text-primary">
+              {isExecuting ? '⏳' : `${nextTickIn}s`}
+            </span>
+          </div>
+        </div>
+
         {/* Configuration Summary */}
         <div className="p-4 bg-black/40 border border-white/10 rounded-lg space-y-2">
           <h4 className="font-medium text-white text-sm">Configuration</h4>
@@ -199,14 +272,13 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         {/* Info */}
         <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg space-y-2">
           <p className="text-xs text-blue-400 font-medium">
-            ℹ️ About TWAP Orders:
+            ℹ️ How it works:
           </p>
           <ul className="text-xs text-blue-300 space-y-1 ml-4">
-            <li>• TWAP = <strong>Limit orders</strong> that sit in the order book passively</li>
-            <li>• Orders may take time to fill or may not fill at all</li>
-            <li>• Your balance won't change until orders are matched by other traders</li>
-            <li>• This strategy is designed for <strong>low-impact volume generation</strong>, not PNL</li>
-            <li>• Want to see PNL changes? Try a more aggressive strategy!</li>
+            <li>• Bot executes TWAP orders every 60 seconds while this page is open</li>
+            <li>• Orders are placed on Aptos testnet and tracked in our database</li>
+            <li>• You can close this tab - trades will continue via our cron job</li>
+            <li>• Each order generates ~$876 in volume toward your target</li>
           </ul>
         </div>
       </CardContent>

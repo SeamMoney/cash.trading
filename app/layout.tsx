@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/react"
+import { Toaster } from "sonner"
 import { ClientProviders } from "@/components/client-providers"
 import "./globals.css"
 
@@ -108,6 +109,16 @@ export default function RootLayout({
         <ClientProviders>
           <Suspense fallback={null}>{children}</Suspense>
         </ClientProviders>
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: '#18181b',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#fff',
+            },
+          }}
+        />
         <Analytics />
       </body>
     </html>

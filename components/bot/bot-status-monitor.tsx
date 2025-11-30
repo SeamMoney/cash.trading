@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
@@ -38,13 +39,32 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       const data = await response.json()
       console.log('Bot tick result:', data)
 
-      // Check if bot was auto-stopped (target reached)
-      if (data.status === 'completed' || data.isRunning === false) {
-        console.log('🎯 Bot completed! Target reached.')
+      // Handle different responses
+      if (response.status === 429) {
+        // Rate limited
+        toast.warning('Rate limited', {
+          description: data.message || 'Please wait before next trade',
+        })
+      } else if (data.status === 'completed' || data.isRunning === false) {
+        // Volume target reached!
+        toast.success('🎯 Volume target reached!', {
+          description: 'Bot has been automatically stopped.',
+          duration: 5000,
+        })
         // Notify parent that bot stopped
         if (onStatusChange) {
           onStatusChange(false)
         }
+      } else if (data.success) {
+        // Trade executed successfully
+        toast.success('Trade executed', {
+          description: `+$${data.cumulativeVolume?.toFixed(0) || '0'} volume (${data.progress || '0'}%)`,
+        })
+      } else if (data.error) {
+        // Trade failed
+        toast.error('Trade failed', {
+          description: data.error,
+        })
       }
 
       // Immediately fetch updated status

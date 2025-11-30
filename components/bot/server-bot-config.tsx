@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { Button } from "@/components/ui/button"
@@ -157,9 +158,15 @@ export function ServerBotConfig() {
       }
 
       setIsRunning(true)
+      toast.success('Bot started!', {
+        description: `Trading ${market} with $${capitalNum.toFixed(0)} toward $${volumeTarget} volume`,
+      })
       console.log("✅ Bot started successfully:", data)
     } catch (err: any) {
       setError(err.message || "Failed to start bot")
+      toast.error('Failed to start bot', {
+        description: err.message,
+      })
       console.error("❌ Bot start error:", err)
     } finally {
       setLoading(false)
@@ -187,9 +194,15 @@ export function ServerBotConfig() {
       }
 
       setIsRunning(false)
+      toast.info('Bot stopped', {
+        description: 'Trading has been paused',
+      })
       console.log("✅ Bot stopped successfully")
     } catch (err: any) {
       setError(err.message || "Failed to stop bot")
+      toast.error('Failed to stop bot', {
+        description: err.message,
+      })
       console.error("❌ Bot stop error:", err)
     } finally {
       setLoading(false)

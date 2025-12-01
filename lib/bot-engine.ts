@@ -256,7 +256,8 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close the current position with a reduce-only market order
+   * Close the current position with a reduce-only TWAP order
+   * Using TWAP instead of market order to avoid EPRICE_NOT_RESPECTING_TICKER_SIZE errors
    */
   private async closePosition(
     size: number,
@@ -266,13 +267,15 @@ export class VolumeBotEngine {
       // To close a long, place a short reduce-only order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only market order to close position...`)
+      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only TWAP order to close position...`)
       console.log(`Size: ${size}`)
 
+      // Use TWAP with reduce_only=true to close position
+      // Short duration for fast execution
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
@@ -280,12 +283,8 @@ export class VolumeBotEngine {
             size,                        // size (close full position)
             closeDirection,              // is_long (opposite of position)
             true,                        // reduce_only = TRUE to close
-            undefined,                   // client_order_id
-            undefined,                   // stop_price
-            undefined,                   // tp_trigger_price
-            undefined,                   // tp_limit_price
-            undefined,                   // sl_trigger_price
-            undefined,                   // sl_limit_price
+            60,                          // min duration: 1 minute (fast close)
+            120,                         // max duration: 2 minutes
             undefined,                   // builder_address
             undefined,                   // max_builder_fee
           ],
@@ -297,7 +296,7 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Close order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Close TWAP order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
@@ -307,7 +306,7 @@ export class VolumeBotEngine {
         throw new Error('Close position transaction failed')
       }
 
-      console.log(`✅ Position closed!`)
+      console.log(`✅ Position close order placed! (TWAP will execute over 1-2 min)`)
 
       return {
         success: true,
@@ -836,11 +835,11 @@ export class VolumeBotEngine {
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
       console.log(`   Contract size: ${contractSize} (${(contractSize / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place market order for immediate execution
+      // Place TWAP order for fast execution (avoids EPRICE_NOT_RESPECTING_TICKER_SIZE errors)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -848,12 +847,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only = false (opening position)
-            undefined, // client_order_id
-            undefined, // stop_price
-            undefined, // tp_trigger_price
-            undefined, // tp_limit_price
-            undefined, // sl_trigger_price
-            undefined, // sl_limit_price
+            60,        // min duration: 1 minute (fast fill)
+            180,       // max duration: 3 minutes
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -865,7 +860,7 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ TWAP order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
@@ -875,7 +870,7 @@ export class VolumeBotEngine {
         throw new Error('Transaction failed')
       }
 
-      console.log(`✅ Position opened! Now monitoring for profit target...`)
+      console.log(`✅ Position opening! (TWAP will fill over 1-3 min, then monitoring for profit target...)`)
 
       // Calculate volume generated from opening
       const volumeGenerated = capitalToUse * leverageToUse

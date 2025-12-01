@@ -1150,6 +1150,8 @@ export class VolumeBotEngine {
       return
     }
 
+    console.log(`📝 Recording trade: txHash=${result.txHash?.slice(0, 20)}..., volume=${result.volumeGenerated}, success=${result.success}`)
+
     this.status.orderHistory.push(orderRecord)
 
     if (result.success) {
@@ -1162,13 +1164,17 @@ export class VolumeBotEngine {
       // Persist to database
       try {
         const { prisma } = await import('./prisma')
+        console.log(`💾 Looking up bot instance for: ${this.config.userWalletAddress}`)
 
         // Find bot instance
         const botInstance = await prisma.botInstance.findUnique({
           where: { userWalletAddress: this.config.userWalletAddress }
         })
 
+        console.log(`💾 Bot instance found: ${botInstance ? 'yes' : 'no'}, id: ${botInstance?.id}`)
+
         if (botInstance) {
+          console.log(`💾 Creating order history record...`)
           // Create order history record with session ID
           await prisma.orderHistory.create({
             data: {
@@ -1216,6 +1222,7 @@ export class VolumeBotEngine {
         }
       } catch (dbError) {
         console.error('⚠️  Failed to persist to database:', dbError)
+        console.error('⚠️  Error details:', JSON.stringify(dbError, Object.getOwnPropertyNames(dbError)))
         // Don't fail the bot if database write fails
       }
 

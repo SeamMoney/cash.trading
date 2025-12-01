@@ -178,11 +178,16 @@ export class VolumeBotEngine {
       )
 
       if (priceResource && priceResource.data) {
-        const data = priceResource.data as { price?: string; last_price?: string }
-        const priceRaw = data.price || data.last_price
+        const data = priceResource.data as {
+          oracle_px?: string
+          mark_px?: string
+          price?: string
+          last_price?: string
+        }
+        // Decibel prices have 9 decimals (e.g., 86761101251 = $86,761.101251)
+        const priceRaw = data.oracle_px || data.mark_px || data.price || data.last_price
         if (priceRaw) {
-          // Price is stored with 6 decimals
-          return parseInt(priceRaw) / 1_000_000
+          return parseInt(priceRaw) / 1_000_000_000
         }
       }
     } catch (error) {
@@ -253,11 +258,12 @@ export class VolumeBotEngine {
       }
 
       const pos = marketPosition.value.value
+      // Price has 9 decimals in Decibel (e.g., 87380685461 = $87,380.685461)
       return {
         hasPosition: true,
         isLong: pos.is_long,
         size: parseInt(pos.size),
-        entryPrice: parseInt(pos.avg_acquire_entry_px) / 1_000_000,
+        entryPrice: parseInt(pos.avg_acquire_entry_px) / 1_000_000_000,
         leverage: pos.user_leverage
       }
     } catch (error) {

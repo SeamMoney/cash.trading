@@ -902,28 +902,29 @@ export class VolumeBotEngine {
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
       // Place aggressive LIMIT ORDER (IOC - Immediate or Cancel for instant fill)
+      // place_order_to_subaccount params: subaccount, market, size, price, is_long, time_in_force, post_only,
+      //   client_order_id?, trigger_price?, tp_trigger?, tp_limit?, sl_trigger?, sl_limit?, builder?, max_fee?
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
-            this.config.userSubaccount,
-            this.config.market,
-            contractSize.toString(),
-            limitPriceRounded.toString(),
-            isLong,
-            1,         // time_in_force: 1 = IOC (Immediate or Cancel) for instant fill
-            false,     // post_only: false (we want to cross the spread)
-            false,     // reduce_only
-            undefined, // client_order_id
-            undefined, // trigger_price
-            undefined, // tp_trigger_price
-            undefined, // tp_limit_price
-            undefined, // sl_trigger_price
-            undefined, // sl_limit_price
-            undefined, // builder_address
-            undefined, // max_builder_fee
+            this.config.userSubaccount,  // subaccount
+            this.config.market,          // market
+            contractSize.toString(),     // size (u64)
+            limitPriceRounded.toString(), // price (u64)
+            isLong,                      // is_long (bool)
+            1,                           // time_in_force: 1 = IOC (u8)
+            false,                       // post_only (bool)
+            undefined,                   // client_order_id (Option<String>)
+            undefined,                   // trigger_price (Option<u64>)
+            undefined,                   // tp_trigger_price (Option<u64>)
+            undefined,                   // tp_limit_price (Option<u64>)
+            undefined,                   // sl_trigger_price (Option<u64>)
+            undefined,                   // sl_limit_price (Option<u64>)
+            undefined,                   // builder_address (Option<address>)
+            undefined,                   // max_builder_fee (Option<u64>)
           ],
         },
       })
@@ -971,33 +972,35 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with aggressive LIMIT ORDER for instant execution
-   * Uses IOC (Immediate or Cancel) to act like a market order
+   * Close position by placing an opposite limit order
+   * Since place_order doesn't have reduce_only, we just place opposite direction
    */
   private async closePositionWithMarketOrder(
     size: number,
     isLong: boolean
   ): Promise<OrderResult> {
     try {
-      // To close a long, place a short reduce-only order (and vice versa)
+      // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} with limit order...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position...`)
 
       // Get current price and calculate aggressive limit price
       const currentPrice = await this.getCurrentMarketPrice()
-      const slippageBps = 50 // 0.5% slippage tolerance
+      const slippageBps = 100 // 1% slippage tolerance for guaranteed fill
 
-      // For closing LONG (selling): place below current price
-      // For closing SHORT (buying): place above current price
+      // For closing LONG (selling): place below current price to fill instantly
+      // For closing SHORT (buying): place above current price to fill instantly
       const limitPrice = closeDirection
-        ? currentPrice * (1 - slippageBps / 10000)  // selling (close long)
-        : currentPrice * (1 + slippageBps / 10000)  // buying (close short)
+        ? currentPrice * (1 - slippageBps / 10000)  // selling
+        : currentPrice * (1 + slippageBps / 10000)  // buying
 
       const limitPriceRounded = this.roundPriceToTickerSize(limitPrice)
 
+      console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
       console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
 
+      // place_order_to_subaccount params: subaccount, market, size, price, is_long, time_in_force, post_only, ...options
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -1009,9 +1012,8 @@ export class VolumeBotEngine {
             size.toString(),
             limitPriceRounded.toString(),
             closeDirection,
-            1,         // time_in_force: 1 = IOC (Immediate or Cancel)
-            false,     // post_only: false
-            true,      // reduce_only = TRUE to close
+            1,         // time_in_force: 1 = IOC
+            false,     // post_only
             undefined, // client_order_id
             undefined, // trigger_price
             undefined, // tp_trigger_price

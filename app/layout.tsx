@@ -42,21 +42,12 @@ export const metadata: Metadata = {
     description:
       "Automated market making bot for Decibel. Execute TWAP orders and manage trading strategies on Aptos.",
     siteName: "Decibel Market Making Bot",
-    images: [
-      {
-        url: "/og-image.jpg",
-        width: 1200,
-        height: 630,
-        alt: "Decibel Market Making Bot",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Decibel Market Making Bot",
     description:
       "Automated market making bot for Decibel. Execute TWAP orders and manage trading strategies on Aptos.",
-    images: ["/og-image.jpg"],
   },
   robots: {
     index: true,

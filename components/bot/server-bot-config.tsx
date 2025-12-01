@@ -28,8 +28,37 @@ export function ServerBotConfig() {
   const [loading, setLoading] = useState(false)
   const [delegating, setDelegating] = useState(false)
   const [hasDelegation, setHasDelegation] = useState(false)
+  const [checkingDelegation, setCheckingDelegation] = useState(false)
   const [marketDropdownOpen, setMarketDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Check delegation status when subaccount is available
+  useEffect(() => {
+    const checkDelegation = async () => {
+      if (!subaccount) return
+
+      setCheckingDelegation(true)
+      try {
+        const response = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}`)
+        const data = await response.json()
+
+        if (data.hasDelegation) {
+          setHasDelegation(true)
+          console.log('✅ Bot operator already has delegation permissions')
+        } else {
+          setHasDelegation(false)
+          console.log('⚠️ Bot operator needs delegation:', data.reason || 'Not delegated')
+        }
+      } catch (err) {
+        console.error('Failed to check delegation:', err)
+        setHasDelegation(false)
+      } finally {
+        setCheckingDelegation(false)
+      }
+    }
+
+    checkDelegation()
+  }, [subaccount])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -611,7 +640,7 @@ export function ServerBotConfig() {
           )}
 
           {/* Delegation Section */}
-          {!isRunning && !hasDelegation && (
+          {!isRunning && !hasDelegation && !checkingDelegation && (
             <div className="space-y-3">
               <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
@@ -636,6 +665,16 @@ export function ServerBotConfig() {
               >
                 {delegating ? "Delegating..." : "Delegate Permissions"}
               </Button>
+            </div>
+          )}
+
+          {checkingDelegation && (
+            <div className="p-3 bg-zinc-500/10 border border-zinc-500/30 relative flex items-center gap-2">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-500" />
+              <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs text-zinc-400 font-mono">
+                Checking delegation status...
+              </p>
             </div>
           )}
 

@@ -11,27 +11,25 @@ An automated volume generation bot for Decibel DEX on Aptos blockchain. Features
 1. [Features](#features)
 2. [Quick Start](#quick-start)
 3. [Architecture](#architecture)
-4. [SDK Documentation](#sdk-documentation)
-5. [Setup Guide](#setup-guide)
+4. [Decibel SDK](#decibel-sdk)
+5. [Trading Strategies](#trading-strategies)
 6. [API Reference](#api-reference)
-7. [Security](#security)
-8. [Database Setup](#database-setup)
-9. [Testing](#testing)
-10. [Roadmap](#roadmap)
-11. [Contributing](#contributing)
+7. [Database Setup](#database-setup)
+8. [Market Addresses](#market-addresses)
+9. [Roadmap](#roadmap)
 
 ---
 
 ## Features
 
-- ✅ **Automated Volume Generation** - TWAP orders executing over 5-10 minutes
-- ✅ **Multiple Trading Strategies** - TWAP, Market Maker, Delta Neutral, High Risk
-- ✅ **Real-time Monitoring** - Live balance, order progress, and trade history
-- ✅ **Secure Delegation Model** - Bot can trade but never withdraw your funds
-- ✅ **Configurable Parameters** - Capital, volume target, bias, speed
-- ✅ **Session Tracking** - Each bot run tracked separately with unique session ID
-- ✅ **Multi-Wallet Support** - Petra, Martian, Pontem, and 15+ Aptos wallets
-- ✅ **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
+- **Automated Volume Generation** - TWAP orders executing over 5-10 minutes
+- **Multiple Trading Strategies** - TWAP, Market Maker, Delta Neutral, High Risk
+- **Real-time Monitoring** - Live balance, order progress, and trade history
+- **Secure Delegation Model** - Bot can trade but never withdraw your funds
+- **Configurable Parameters** - Capital, volume target, bias, speed
+- **Session Tracking** - Each bot run tracked separately with unique session ID
+- **Multi-Wallet Support** - Petra, Martian, Pontem, and 15+ Aptos wallets
+- **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
 
 ---
 
@@ -110,7 +108,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Data Flow
 
 1. **User** → Connects wallet via Aptos Wallet Adapter
-2. **Frontend** → Fetches balance from Decibel subaccount
+2. **Frontend** → Fetches USDC balance from Decibel subaccount
 3. **User** → Delegates trading permissions to bot operator
 4. **Frontend** → Starts bot via `/api/bot/start`
 5. **Bot Engine** → Places TWAP orders to Decibel smart contracts
@@ -120,7 +118,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## SDK Documentation
+## Decibel SDK
 
 ### Why We Built a Custom SDK
 
@@ -168,53 +166,13 @@ dex_accounts::delegate_trading_to_for_subaccount(
 dex_accounts::revoke_delegation_for_subaccount(...)
 ```
 
-### Official SDK (Coming Soon)
-
-The official `@decibel/sdk` package is fully documented but not yet available on npm. Key advantages:
-
-- ✅ Type-safe API with full TypeScript definitions
-- ✅ WebSocket subscriptions for real-time updates
-- ✅ Gas price optimization and fee payer service
-- ✅ TP/SL (take profit/stop loss) helpers
-- ✅ Vault operations for copy trading
-- ✅ Built-in tick size rounding and price formatting
-
-**Migration Path**: When the official SDK becomes available, we can migrate in 3-5 days. See [SDK_COMPARISON_MATRIX.md](./docs/SDK_COMPARISON_MATRIX.md) for detailed comparison.
-
-### Critical Missing Features
-
-Our custom SDK is missing these essential features (available in official SDK):
-
-1. ❌ **Withdraw USDC** - Users can deposit but can't withdraw
-2. ❌ **Cancel orders** - Users can't cancel orders once placed
-3. ❌ **Revoke delegation** - Users can't remove bot permissions
-4. ❌ **TP/SL orders** - No automated risk management
-
-**Recommendation**: Contact Decibel team for early SDK access or implement these features manually.
-
----
-
-## Setup Guide
-
-### Environment Variables
-
-```bash
-# Required
-BOT_OPERATOR_PRIVATE_KEY=ed25519-priv-0x...  # Bot wallet private key
-DATABASE_URL=postgresql://...                 # Neon PostgreSQL connection
-
-# Optional
-NEXT_PUBLIC_DECIBEL_PACKAGE=0x1f51...        # Decibel contract address
-APTOS_NODE_API_KEY=...                       # For higher rate limits
-```
-
-### Security Model
+### Delegation Model
 
 The bot uses a **delegation model** for security:
 
-- ✅ Bot **CAN**: Place orders, execute strategies, generate volume
-- ❌ Bot **CANNOT**: Withdraw funds, transfer USDC, close subaccount
-- 🔒 Funds **ALWAYS** stay in your Decibel subaccount
+- [+] Bot **CAN**: Place orders, execute strategies, generate volume
+- [-] Bot **CANNOT**: Withdraw funds, transfer USDC, close subaccount
+- [!] Funds **ALWAYS** stay in your Decibel subaccount
 
 **How it works:**
 1. User connects wallet and delegates trading permissions to bot operator
@@ -222,24 +180,50 @@ The bot uses a **delegation model** for security:
 3. User retains full control and can revoke delegation anytime
 4. Withdrawals require user's signature, not bot's
 
-### Trading Strategies
+### Official SDK (Coming Soon)
 
-#### 1. TWAP (Time-Weighted Average Price)
+The official `@decibel/sdk` package is fully documented but not yet available on npm. Key advantages:
+
+- Type-safe API with full TypeScript definitions
+- WebSocket subscriptions for real-time updates
+- Gas price optimization and fee payer service
+- TP/SL (take profit/stop loss) helpers
+- Vault operations for copy trading
+- Built-in tick size rounding and price formatting
+
+**Migration Path**: When the official SDK becomes available, we can migrate in 3-5 days. See [SDK_COMPARISON_MATRIX.md](./docs/SDK_COMPARISON_MATRIX.md) for detailed comparison.
+
+### Critical Missing Features
+
+Our custom SDK is missing these essential features (available in official SDK):
+
+1. **Withdraw USDC** - Users can deposit but can't withdraw
+2. **Cancel orders** - Users can't cancel orders once placed
+3. **Revoke delegation** - Users can't remove bot permissions
+4. **TP/SL orders** - No automated risk management
+
+**Recommendation**: Contact Decibel team for early SDK access or implement these features manually.
+
+---
+
+## Trading Strategies
+
+### 1. TWAP (Time-Weighted Average Price)
 - Places orders that execute over 5-10 minutes
 - Minimizes market impact
 - Best for volume generation
 - **Parameters**: `twapFrequencySeconds` (30s), `twapDurationSeconds` (5-10 min)
 
-#### 2. Market Maker
+### 2. Market Maker
 - Fast TWAP orders (same as TWAP currently)
 - **Planned**: bid/ask spread management
 
-#### 3. Delta Neutral
+### 3. Delta Neutral
 - Places paired long/short limit orders
 - Attempts to hedge positions
 - **Use case**: Low-risk volume generation
 
-#### 4. High Risk
+### 4. High Risk
 - Uses larger position sizes (up to 10x multiplier)
 - Maximum PNL volatility
 - **Use case**: Aggressive volume generation
@@ -248,7 +232,7 @@ The bot uses a **delegation model** for security:
 
 ## API Reference
 
-### REST Endpoints
+### Bot API Endpoints
 
 | Route | Method | Description |
 |-------|--------|-------------|
@@ -273,69 +257,6 @@ The bot uses a **delegation model** for security:
 | `GET /market_prices` | All market prices |
 | `GET /orderbook?market={symbol}` | Order book depth |
 | `GET /candles?market={symbol}&interval={1m\|5m\|15m\|1h\|1d}` | Candlestick data |
-
----
-
-## Security
-
-### 🔐 Critical Security Practices
-
-**NEVER commit to git:**
-- ❌ Private keys in any format
-- ❌ Wallet seed phrases/mnemonics
-- ❌ API keys or authentication tokens
-- ❌ Environment variable files (`.env`, `.env.local`)
-- ❌ Wallet keystore files
-
-**Always:**
-- ✅ Use environment variables for sensitive data
-- ✅ Keep `.env` in `.gitignore`
-- ✅ Use different keys for testnet vs mainnet
-- ✅ Validate all user input (addresses, amounts)
-- ✅ Never log private keys or sensitive data
-
-### Testnet vs Mainnet
-
-This project uses **Aptos Testnet** for development:
-
-- ✅ **Testnet**: Safe to experiment, funds have no real value
-- ⚠️ **Mainnet**: Real funds at risk, requires production security practices
-
-**Before mainnet deployment:**
-1. Security audit of all smart contract interactions
-2. Hardware wallet or secure key management service
-3. Proper access controls and monitoring
-4. Rate limiting and anti-abuse measures
-5. Bug bounty program
-
-### Safe Coding Practices
-
-```typescript
-// ✅ GOOD - Validate input
-function isValidAptosAddress(address: string): boolean {
-  return /^0x[a-fA-F0-9]{64}$/.test(address);
-}
-
-// ✅ GOOD - Never log sensitive data
-console.log('Wallet connected:', address);
-
-// ❌ BAD - Logging private key
-console.log('Private key:', privateKey);
-
-// ✅ GOOD - Use read-only operations when possible
-const balance = await aptos.view({
-  function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
-  functionArguments: [subaccountAddress],
-});
-```
-
-### What to Do If Keys Are Compromised
-
-1. **Immediately stop using that key**
-2. **Transfer all funds** to a new wallet
-3. **Rotate the key** - generate a new one
-4. **Review git history** for the leaked key
-5. **Consider rewriting git history** if mainnet keys were exposed
 
 ---
 
@@ -424,59 +345,9 @@ npx prisma studio
 
 ---
 
-## Testing
+## Market Addresses
 
-### Manual Testing
-
-Test scripts are located in the root directory:
-
-```bash
-# Fund wallet with testnet APT
-node fund_wallet.mjs
-
-# Delegate trading permissions
-node delegate_trading.mjs
-
-# Test TWAP order (requires testnet USDC)
-node test_twap_order.mjs
-
-# Check subaccount balance
-node check_apt_balance.mjs
-
-# Query subaccount object
-node query_subaccount_object.mjs
-```
-
-**Note**: Test scripts are not committed to the repository for security. See `.gitignore` for excluded files.
-
-### Verifying Delegation
-
-Check if bot is delegated for a subaccount:
-
-```bash
-curl -s "https://aptos.testnet.porto.movementlabs.xyz/v1/accounts/{SUBACCOUNT_ADDRESS}/resources" | jq '.[] | select(.type | contains("Subaccount")) | .data.delegated_permissions'
-```
-
-Expected output:
-```json
-{
-  "entries": [
-    {
-      "key": "0x501f5aab...",  // Bot operator address
-      "value": {
-        "perms": {
-          "entries": [
-            { "key": "TradePerpsAllMarkets", "value": "Unlimited" },
-            { "key": "TradeVaultTokens", "value": "Unlimited" }
-          ]
-        }
-      }
-    }
-  ]
-}
-```
-
-### Market Addresses (NETNA Testnet)
+### NETNA Testnet Markets
 
 | Market | Address | Max Leverage |
 |--------|---------|--------------|
@@ -484,8 +355,17 @@ Expected output:
 | ETH/USD | `0x5d4a373896cc46ce5bd27f795587c1d682e7f57a3de6149d19cc3f3cb6c6800d` | 20x |
 | SOL/USD | `0xef5eee5ae8ba5726efcd8af6ee89dffe2ca08d20631fff3bafe98d89137a58c4` | 20x |
 | APT/USD | `0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2` | 10x |
+| XRP/USD | `0x2b0858711c401b2ff1d22156241127c4500b9cc88aaab1e54aca88f29282a144` | 3x |
+| LINK/USD | `0x7eda0461c46e464d7a155f77626be1d268b48f1c7b2e864c5dcf12aa5bf3159a` | 3x |
+| AAVE/USD | `0x7c6d96f972a4986030ec3012217621f117f6be8a9380ffa29a7941cd62ccd34d` | 3x |
+| ENA/USD | `0xbc6857d4255c58eb97643a6a3c9aed718322bf677b2556ce09097ab1bb3b47be` | 3x |
+| HYPE/USD | `0x5f848e543d8a3021e74282fd258ab1919bcfd934d730368fb04398b64cbef9cf` | 3x |
 
-**Updating Market Addresses:**
+### Decibel Contract Package
+
+**Package Address**: `0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75`
+
+### Updating Market Addresses
 
 Market addresses can change when Decibel redeploys contracts. To fetch current addresses:
 
@@ -499,11 +379,29 @@ curl -s "https://aptos.testnet.aptoslabs.com/v1/accounts/{MARKET_ADDRESS}/resour
   | jq '.[] | select(.type | contains("PerpMarketConfig")) | .data.name'
 ```
 
+### Bot Operator Address
+
+The bot operator address is the wallet that will execute trades on behalf of users who delegate permissions:
+
+**Bot Operator**: `0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da`
+
+This is a public address (NOT a private key). Users delegate trading permissions to this address so the bot can place orders on their behalf.
+
+### Verifying Delegation
+
+Check if the bot operator is delegated for your subaccount:
+
+```bash
+curl -s "https://aptos.testnet.porto.movementlabs.xyz/v1/accounts/{YOUR_SUBACCOUNT_ADDRESS}/resources" | jq '.[] | select(.type | contains("Subaccount")) | .data.delegated_permissions'
+```
+
+If delegated, you'll see the bot operator address in the output with "TradePerpsAllMarkets" permissions.
+
 ---
 
 ## Roadmap
 
-### Completed ✅
+### Completed
 - [x] Wallet integration & balance fetching
 - [x] Multi-wallet support (15+ wallets)
 - [x] Delegation system
@@ -515,22 +413,22 @@ curl -s "https://aptos.testnet.aptoslabs.com/v1/accounts/{MARKET_ADDRESS}/resour
 - [x] Database integration (Neon PostgreSQL)
 - [x] Vercel Cron jobs for automation
 
-### In Progress 🚧
+### In Progress
 - [ ] Position closing/management
 - [ ] Order cancellation
 - [ ] PnL tracking & reporting
 - [ ] Portfolio chart visualization
 
-### Planned 📋
+### Planned
 - [ ] TP/SL (take profit/stop loss) automation
 - [ ] Withdraw USDC functionality
 - [ ] Revoke delegation UI
 - [ ] WebSocket real-time updates
 - [ ] Multi-market arbitrage
 - [ ] Copy trading (vaults)
-- [ ] Mainnet deployment (after security audit)
+- [ ] Mainnet deployment
 
-### Blocked ⚠️
+### Blocked
 - [ ] Official Decibel SDK migration (waiting for npm package)
 - [ ] Advanced features (TP/SL, vaults) - requires SDK
 
@@ -551,16 +449,17 @@ curl -s "https://aptos.testnet.aptoslabs.com/v1/accounts/{MARKET_ADDRESS}/resour
 
 ---
 
-## Contributing
+## Environment Variables
 
-Contributions welcome! Please:
+```bash
+# Required
+BOT_OPERATOR_PRIVATE_KEY=ed25519-priv-0x...  # Bot wallet private key
+DATABASE_URL=postgresql://...                 # Neon PostgreSQL connection
 
-1. Read [SECURITY.md](./SECURITY.md) first
-2. Fork the repository
-3. Create a feature branch
-4. Submit a pull request
-
-**Security reminder**: Never include private keys, wallet addresses, or sensitive data in PRs.
+# Optional
+NEXT_PUBLIC_DECIBEL_PACKAGE=0x1f51...        # Decibel contract address
+APTOS_NODE_API_KEY=...                       # For higher rate limits
+```
 
 ---
 
@@ -576,22 +475,4 @@ Comprehensive documentation in `/docs`:
 
 ---
 
-## ⚠️ Disclaimer
-
-This software is provided "as is" for educational and research purposes only. Use at your own risk. The authors are not responsible for any losses incurred through the use of this bot. Always test thoroughly on testnet before considering any mainnet deployment.
-
-**Current Status**: Testnet only - DO NOT use with mainnet private keys.
-
----
-
-## Links
-
-- [Decibel DEX](https://app.decibel.trade)
-- [Decibel Docs](https://docs.decibel.trade)
-- [Aptos Docs](https://aptos.dev)
-- [Aptos Testnet Faucet](https://aptos.dev/en/network/faucet)
-- [Discord Support](https://discord.gg/decibel)
-
----
-
-Built with ❤️ for the Aptos ecosystem
+Built for the Aptos ecosystem

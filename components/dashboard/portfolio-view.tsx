@@ -1,106 +1,233 @@
 "use client"
-import { TrendingDown } from "lucide-react"
-import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip } from "recharts"
 
-const balanceData = [
-  { time: "Apr 23", value: 360000 },
-  { time: "Apr 24", value: 359000 },
-  { time: "Apr 25", value: 361000 },
-  { time: "Apr 26", value: 364000 },
-  { time: "Apr 27", value: 361000 },
-  { time: "Apr 28", value: 358000 },
-  { time: "Apr 29", value: 362000 },
-  { time: "Apr 30", value: 357000 },
-]
+import { useEffect, useState } from "react"
+import { TrendingDown, TrendingUp, RefreshCw, Loader2 } from "lucide-react"
+import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar } from "recharts"
+import { useWallet } from "@aptos-labs/wallet-adapter-react"
 
-const exposureData = [
-  { time: "Apr 23", value: 0 },
-  { time: "Apr 24", value: 100000 },
-  { time: "Apr 25", value: 200000 },
-  { time: "Apr 26", value: 220000 },
-  { time: "Apr 27", value: 210000 },
-  { time: "Apr 28", value: 280000 },
-  { time: "Apr 29", value: 250000 },
-  { time: "Apr 30", value: 450000 },
-]
-
-const pnlData = [
-  { time: "Apr 23", value: 0 },
-  { time: "Apr 24", value: 1000 },
-  { time: "Apr 25", value: -1000 },
-  { time: "Apr 26", value: 2000 },
-  { time: "Apr 27", value: 1500 },
-  { time: "Apr 28", value: 3000 },
-  { time: "Apr 29", value: 1500 },
-  { time: "Apr 30", value: -3000 },
-]
+interface PortfolioData {
+  balance: {
+    usdc: number
+    accountAddress: string
+  }
+  stats: {
+    totalVolume: number
+    totalPnl: number
+    totalTrades: number
+    winRate: number
+    avgTradeSize: number
+    bestTrade: number
+    worstTrade: number
+  }
+  dailyStats: Array<{
+    date: string
+    volume: number
+    pnl: number
+    trades: number
+  }>
+  botStatus: {
+    isRunning: boolean
+    currentSession: string | null
+    market: string
+    strategy: string
+    bias: string
+  } | null
+}
 
 export function PortfolioView() {
+  const { account, connected } = useWallet()
+  const [portfolio, setPortfolio] = useState<PortfolioData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [subaccount, setSubaccount] = useState<string | null>(null)
+
+  // Fetch subaccount from bot status
+  useEffect(() => {
+    async function fetchSubaccount() {
+      if (!account?.address) return
+
+      try {
+        const res = await fetch(`/api/bot/status?userWalletAddress=${account.address}`)
+        const data = await res.json()
+        if (data.config?.userSubaccount) {
+          setSubaccount(data.config.userSubaccount)
+        }
+      } catch (err) {
+        console.error('Error fetching subaccount:', err)
+      }
+    }
+
+    fetchSubaccount()
+  }, [account?.address])
+
+  // Fetch portfolio data
+  const fetchPortfolio = async () => {
+    if (!account?.address) return
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams({
+        userWalletAddress: account.address.toString(),
+      })
+      if (subaccount) {
+        params.set('userSubaccount', subaccount)
+      }
+
+      const res = await fetch(`/api/portfolio?${params}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch portfolio')
+      }
+
+      setPortfolio(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch portfolio')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPortfolio()
+  }, [account?.address, subaccount])
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchPortfolio, 30000)
+    return () => clearInterval(interval)
+  }, [account?.address, subaccount])
+
+  if (!connected) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4 animate-in fade-in">
+        <div className="text-zinc-500 font-mono text-sm uppercase tracking-widest">
+          Connect wallet to view portfolio
+        </div>
+      </div>
+    )
+  }
+
+  const stats = portfolio?.stats
+  const balance = portfolio?.balance?.usdc || 0
+  const dailyStats = portfolio?.dailyStats || []
+  const pnlIsPositive = (stats?.totalPnl || 0) >= 0
+
+  // Prepare chart data - show cumulative PNL over time
+  const chartData = dailyStats.map((day, index) => {
+    const cumulativePnl = dailyStats.slice(0, index + 1).reduce((sum, d) => sum + d.pnl, 0)
+    return {
+      time: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value: balance + cumulativePnl,
+      pnl: day.pnl,
+      volume: day.volume,
+    }
+  })
+
+  // If no daily stats, show current balance as single point
+  const balanceData = chartData.length > 0 ? chartData : [
+    { time: 'Today', value: balance, pnl: 0, volume: 0 }
+  ]
+
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
+          Portfolio Overview
+        </div>
+        <button
+          onClick={fetchPortfolio}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 hover:border-primary/50 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary disabled:opacity-50"
+        >
+          {loading ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 p-4 text-red-400 text-sm font-mono">
+          {error}
+        </div>
+      )}
+
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Total Balance */}
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative group hover:border-primary/50 transition-colors">
           <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/20 group-hover:border-primary transition-colors" />
           <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/20 group-hover:border-primary transition-colors" />
 
           <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-2 flex items-center justify-between">
-            <span>Total Balance</span>
+            <span>USDC Balance</span>
             <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />
           </div>
           <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-4xl font-mono font-bold text-white tracking-tighter">359,170.9</span>
-            <span className="text-zinc-600 text-sm font-mono">USDT</span>
+            <span className="text-4xl font-mono font-bold text-white tracking-tighter">
+              {loading ? '...' : balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className="text-zinc-600 text-sm font-mono">USDC</span>
+          </div>
+          <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+            Testnet Balance
+          </div>
+        </div>
+
+        {/* Total PNL */}
+        <div className={`bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative group hover:border-${pnlIsPositive ? 'green' : 'red'}-500/50 transition-colors`}>
+          <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/20 group-hover:border-${pnlIsPositive ? 'green' : 'red'}-500 transition-colors`} />
+          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/20 group-hover:border-${pnlIsPositive ? 'green' : 'red'}-500 transition-colors`} />
+
+          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-2">Total PnL</div>
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className={`text-4xl font-mono font-bold tracking-tighter ${pnlIsPositive ? 'text-green-500' : 'text-red-500'}`}>
+              {pnlIsPositive ? '+' : ''}{(stats?.totalPnl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className="text-zinc-600 text-sm font-mono">USDC</span>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider">
-            <span className="text-red-500 flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5">
-              <TrendingDown className="w-3 h-3" />
-              -1.04% 1D
-            </span>
-            <span className="text-red-500 flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5">
-              <TrendingDown className="w-3 h-3" />
-              -0.15% 7D
+            <span className={`flex items-center gap-1 ${pnlIsPositive ? 'text-green-500' : 'text-red-500'}`}>
+              {pnlIsPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              Win Rate: {(stats?.winRate || 0).toFixed(1)}%
             </span>
           </div>
         </div>
 
-        <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative group hover:border-red-500/50 transition-colors">
-          <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/20 group-hover:border-red-500 transition-colors" />
-          <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/20 group-hover:border-red-500 transition-colors" />
+        {/* Total Volume */}
+        <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative group hover:border-blue-500/50 transition-colors">
+          <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/10 group-hover:border-blue-500/50 transition-colors" />
 
-          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-2">Unrealized PnL</div>
+          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-2">Total Volume</div>
           <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-4xl font-mono font-bold text-red-500 tracking-tighter">-512.36</span>
-            <span className="text-zinc-600 text-sm font-mono">USDT</span>
-          </div>
-          <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider">
-            <span className="text-red-500 flex items-center gap-1">ROI -0.12%</span>
-          </div>
-        </div>
-
-        <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative group hover:border-green-500/50 transition-colors">
-          <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/10 group-hover:border-green-500/50 transition-colors" />
-
-          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-2">Directional Bias</div>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-4xl font-mono font-bold text-green-500 tracking-tighter">+437,754</span>
-            <span className="text-zinc-600 text-sm font-mono">USDT</span>
+            <span className="text-4xl font-mono font-bold text-blue-500 tracking-tighter">
+              {(stats?.totalVolume || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-zinc-600 text-sm font-mono">USDC</span>
           </div>
           <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider">
-            <span className="text-green-500 font-bold">Long Bias</span>
-            <span className="text-zinc-500">100% Adjusted L/S</span>
+            <span className="text-blue-500 font-bold">{stats?.totalTrades || 0} Trades</span>
+            <span className="text-zinc-500">Avg: ${(stats?.avgTradeSize || 0).toFixed(0)}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Chart */}
+      {/* Main Chart - Balance History */}
       <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)]">
         <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-white/10 to-transparent" />
         <div className="absolute top-6 left-6 z-10">
           <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-1">
-            Total Balance History
+            Balance History
           </div>
-          <div className="text-white text-xl font-mono font-bold tracking-tight">$366.00k</div>
+          <div className="text-white text-xl font-mono font-bold tracking-tight">
+            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
         </div>
         <div className="h-[300px] w-full mt-8">
           <ResponsiveContainer width="100%" height="100%">
@@ -121,11 +248,12 @@ export function PortfolioView() {
                   textTransform: "uppercase",
                 }}
                 itemStyle={{ color: "#ffff00" }}
+                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Balance']}
               />
               <XAxis
                 dataKey="time"
                 stroke="#52525b"
-                tick={{ fill: "#52525b", fontSize: 10, fontFamily: "monospace", textTransform: "uppercase" }}
+                tick={{ fill: "#52525b", fontSize: 10, fontFamily: "monospace" }}
                 axisLine={false}
                 tickLine={false}
               />
@@ -144,56 +272,90 @@ export function PortfolioView() {
 
       {/* Secondary Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Daily Volume */}
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
           <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-6">
-            Notional Exposure
+            Daily Volume
           </div>
           <div className="h-[200px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={exposureData}>
-                <defs>
-                  <linearGradient id="colorExposure" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <BarChart data={dailyStats.slice(-14)}>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#000000cc",
+                    borderColor: "#333",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                  }}
+                  formatter={(value: number) => [`$${value.toFixed(0)}`, 'Volume']}
+                />
                 <XAxis
-                  dataKey="time"
+                  dataKey="date"
                   stroke="#52525b"
                   tick={{ fill: "#52525b", fontSize: 10, fontFamily: "monospace" }}
                   axisLine={false}
                   tickLine={false}
+                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { day: 'numeric' })}
                 />
-                <Area type="stepAfter" dataKey="value" stroke="#10b981" strokeWidth={2} fill="url(#colorExposure)" />
-              </AreaChart>
+                <Bar dataKey="volume" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
+        {/* Daily PNL */}
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
-          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-6">Unrealized PnL</div>
+          <div className="text-muted-foreground text-xs font-mono uppercase tracking-widest mb-6">Daily PnL</div>
           <div className="h-[200px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={pnlData}>
+              <AreaChart data={dailyStats.slice(-14)}>
                 <defs>
                   <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#000000cc",
+                    borderColor: "#333",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                  }}
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, 'PnL']}
+                />
                 <XAxis
-                  dataKey="time"
+                  dataKey="date"
                   stroke="#52525b"
                   tick={{ fill: "#52525b", fontSize: 10, fontFamily: "monospace" }}
                   axisLine={false}
                   tickLine={false}
+                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { day: 'numeric' })}
                 />
-                <Area type="monotone" dataKey="value" stroke="#f43f5e" strokeWidth={2} fill="url(#colorPnl)" />
+                <Area type="monotone" dataKey="pnl" stroke="#10b981" strokeWidth={2} fill="url(#colorPnl)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
+
+      {/* Best/Worst Trade Stats */}
+      {stats && (stats.bestTrade !== 0 || stats.worstTrade !== 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Best Trade</div>
+            <div className="text-2xl font-mono font-bold text-green-500">
+              +${stats.bestTrade.toFixed(2)}
+            </div>
+          </div>
+          <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Worst Trade</div>
+            <div className="text-2xl font-mono font-bold text-red-500">
+              ${stats.worstTrade.toFixed(2)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

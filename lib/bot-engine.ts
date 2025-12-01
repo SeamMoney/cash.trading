@@ -803,6 +803,8 @@ export class VolumeBotEngine {
     try {
       // First, check if we have an existing position
       const currentPosition = await this.getCurrentPosition()
+      console.log(`\n🔍 [High Risk] Position check:`, JSON.stringify(currentPosition))
+      console.log(`   pendingTwapOrderTime: ${this.pendingTwapOrderTime ? new Date(this.pendingTwapOrderTime).toISOString() : 'null'}`)
 
       // Check if we have a pending TWAP order that's still filling (< 10 min old)
       // TWAPs take 5-10 minutes to fill, so don't place another one until it's done

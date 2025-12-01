@@ -806,35 +806,8 @@ export class VolumeBotEngine {
       console.log(`\n🔍 [High Risk] Position check:`, JSON.stringify(currentPosition))
       console.log(`   pendingTwapOrderTime: ${this.pendingTwapOrderTime ? new Date(this.pendingTwapOrderTime).toISOString() : 'null'}`)
 
-      // Check if we have a pending TWAP order that's still filling (< 10 min old)
-      // TWAPs take 5-10 minutes to fill, so don't place another one until it's done
-      const TWAP_FILL_TIME_MS = 10 * 60 * 1000 // 10 minutes
-      if (this.pendingTwapOrderTime && !currentPosition.hasPosition) {
-        const timeSinceTwap = Date.now() - this.pendingTwapOrderTime
-        if (timeSinceTwap < TWAP_FILL_TIME_MS) {
-          const remainingMin = Math.ceil((TWAP_FILL_TIME_MS - timeSinceTwap) / 60000)
-          console.log(`\n⏳ [High Risk] TWAP order still filling (${remainingMin} min remaining)...`)
-          console.log(`   Waiting for TWAP to complete before placing another order`)
-          return {
-            success: true,
-            txHash: 'waiting',
-            volumeGenerated: 0,
-            direction: isLong ? 'long' : 'short',
-            size: 0,
-            pnl: 0,
-          }
-        } else {
-          // TWAP should have filled by now, clear the pending flag
-          console.log(`\n⚠️ [High Risk] TWAP timed out (>10 min), clearing pending state`)
-          this.pendingTwapOrderTime = null
-        }
-      }
-
-      // If position exists, clear the pending TWAP flag (it filled)
-      if (currentPosition.hasPosition && this.pendingTwapOrderTime) {
-        console.log(`✅ [High Risk] TWAP order filled, position now active`)
-        this.pendingTwapOrderTime = null
-      }
+      // TEMPORARY: Skip waiting logic - always proceed to place order or close position
+      // This is to debug why no TWAPs are being placed
 
       // If we have a position, check if we should close it
       if (currentPosition.hasPosition && currentPosition.size > 0) {

@@ -22,18 +22,17 @@ model BotInstance {
   ordersPlaced       Int            @default(0)
   currentCapitalUsed Float          @default(0)
   lastOrderTime      DateTime?
-  lastTwapOrderTime  DateTime?      // Track when we placed a TWAP that's still filling
   error              String?
-  sessionId          String?        // Track which run/session orders belong to
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+  sessionId          String?
+  lastTwapOrderTime  DateTime?
   orders             OrderHistory[]
 }
 
 model OrderHistory {
   id              String      @id @default(cuid())
   botId           String
-  sessionId       String?     // Which bot session this order belongs to
   timestamp       DateTime    @default(now())
   txHash          String
   direction       String
@@ -45,6 +44,7 @@ model OrderHistory {
   exitPrice       Float?
   pnl             Float       @default(0)
   positionHeldMs  Int         @default(0)
+  sessionId       String?
   bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@index([botId])

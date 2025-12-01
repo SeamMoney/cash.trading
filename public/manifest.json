@@ -1,7 +1,7 @@
 {
-  "name": "Nano Banana Pro",
-  "short_name": "NB Pro",
-  "description": "AI-powered image generation and editing tool",
+  "name": "Decibel Market Making Bot",
+  "short_name": "Decibel Bot",
+  "description": "Automated market making bot for Decibel",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

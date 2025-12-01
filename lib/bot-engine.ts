@@ -60,18 +60,22 @@ const DECIBEL_PACKAGE = process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
 
 const MARKETS = {
   'BTC/USD': '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
-  'ETH/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
+  'APT/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
+  'WLFI/USD': '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2',
+  // TODO: Find real ETH/USD market address on Decibel testnet
 }
 
 // Market configuration from on-chain PerpMarketConfig
 // ticker_size: minimum price increment (prices must be multiples of this)
 // lot_size: minimum size increment (sizes must be multiples of this)
 // min_size: minimum order size
-const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number }> = {
-  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9 },
-  'ETH/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9 },
-  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9 },
-  'APT/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9 },
+// pxDecimals: price decimals (BTC=9 for $85,948.528751, APT=6 for $1.859498)
+// szDecimals: size decimals (BTC=8 for satoshis, APT=4 based on sz_precision)
+const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
+  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9, szDecimals: 8 },
+  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },  // sz_precision.decimals=4
+  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },  // sz_precision.decimals=3
+  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9, szDecimals: 6 },
 }
 
 export class VolumeBotEngine {
@@ -1034,13 +1038,19 @@ export class VolumeBotEngine {
 
   /**
    * Get size decimals for current market
+   * Uses the szDecimals from MARKET_CONFIG which is based on on-chain sz_precision.decimals
    */
   private getMarketSizeDecimals(): number {
+    const config = MARKET_CONFIG[this.config.marketName]
+    if (config) {
+      return config.szDecimals
+    }
+    // Fallback for unknown markets
     const decimalsMap: Record<string, number> = {
       'BTC/USD': 8,
       'ETH/USD': 7,
       'SOL/USD': 6,
-      'APT/USD': 6,
+      'APT/USD': 4,  // Corrected based on on-chain data
       'XRP/USD': 4,
       'LINK/USD': 6,
       'AAVE/USD': 6,

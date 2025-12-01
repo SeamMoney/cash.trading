@@ -780,23 +780,18 @@ export class VolumeBotEngine {
   }
 
   /**
-   * HIGH RISK AGGRESSIVE PNL STRATEGY
+   * HIGH RISK YOLO STRATEGY
    *
-   * This strategy aims to generate actual PnL by:
-   * 1. Opening leveraged positions with TWAP orders (5-10 min fill)
-   * 2. Monitoring price for profit target (+0.3%) or stop-loss (-0.2%)
-   * 3. Closing position when target reached with reduce-only TWAP
-   * 4. Generating volume from both open and close trades
-   *
-   * NOTE: Market orders fail on Decibel testnet with EPRICE_NOT_RESPECTING_TICKER_SIZE
-   * when positions have entry prices not aligned to ticker_size (a testnet bug).
-   * Minimum TWAP duration on Decibel is 5 minutes (300 seconds).
+   * INSTANT market orders for maximum speed and real PnL:
+   * 1. Opens position with MARKET ORDER (instant fill)
+   * 2. Monitors for profit target or stop-loss
+   * 3. Closes with MARKET ORDER (instant fill)
    *
    * Risk parameters:
-   * - Uses up to 20x leverage (capped for safety)
-   * - 5% of capital per trade
-   * - Tight profit target (+0.3% = +6% with 20x leverage)
-   * - Tight stop-loss (-0.2% = -4% with 20x leverage)
+   * - Uses MAX leverage for the market
+   * - Uses significant portion of capital (configurable)
+   * - Profit target: +0.5% price move
+   * - Stop loss: -0.3% price move
    */
   private async placeHighRiskOrder(
     size: number,
@@ -805,45 +800,14 @@ export class VolumeBotEngine {
     const orderStartTime = Date.now()
 
     try {
-      // First, check if we have an existing position
+      // Check current position
       const currentPosition = await this.getCurrentPosition()
-      console.log(`\n🔍 [High Risk] Position check:`, JSON.stringify(currentPosition))
-      console.log(`   pendingTwapOrderTime: ${this.pendingTwapOrderTime ? new Date(this.pendingTwapOrderTime).toISOString() : 'null'}`)
-
-      // Check if we have a pending TWAP order that's still filling (< 10 min old)
-      // TWAPs take 5-10 minutes to fill, so don't place another one until it's done
-      const TWAP_FILL_TIME_MS = 10 * 60 * 1000 // 10 minutes
-      if (this.pendingTwapOrderTime && !currentPosition.hasPosition) {
-        const timeSinceTwap = Date.now() - this.pendingTwapOrderTime
-        if (timeSinceTwap < TWAP_FILL_TIME_MS) {
-          const remainingMin = Math.ceil((TWAP_FILL_TIME_MS - timeSinceTwap) / 60000)
-          console.log(`\n⏳ [High Risk] TWAP order still filling (${remainingMin} min remaining)...`)
-          console.log(`   Waiting for TWAP to complete before placing another order`)
-          return {
-            success: true,
-            txHash: 'waiting',
-            volumeGenerated: 0,
-            direction: isLong ? 'long' : 'short',
-            size: 0,
-            pnl: 0,
-          }
-        } else {
-          // TWAP should have filled by now, clear the pending flag
-          console.log(`\n⚠️ [High Risk] TWAP timed out (>10 min), clearing pending state`)
-          this.pendingTwapOrderTime = null
-        }
-      }
-
-      // If position exists, clear the pending TWAP flag (it filled)
-      if (currentPosition.hasPosition && this.pendingTwapOrderTime) {
-        console.log(`✅ [High Risk] TWAP order filled, position now active`)
-        this.pendingTwapOrderTime = null
-      }
+      console.log(`\n🎰 [YOLO] Position check:`, JSON.stringify(currentPosition))
 
       // If we have a position, check if we should close it
       if (currentPosition.hasPosition && currentPosition.size > 0) {
-        console.log(`\n📊 [High Risk] Existing ${currentPosition.isLong ? 'LONG' : 'SHORT'} position detected`)
-        console.log(`   Size: ${currentPosition.size}, Entry: $${currentPosition.entryPrice.toFixed(2)}`)
+        console.log(`\n📊 [YOLO] Existing ${currentPosition.isLong ? 'LONG' : 'SHORT'} position`)
+        console.log(`   Size: ${currentPosition.size}, Entry: $${currentPosition.entryPrice.toFixed(4)}`)
 
         const currentPrice = await this.getCurrentMarketPrice()
         const priceChange = currentPosition.isLong
@@ -851,50 +815,31 @@ export class VolumeBotEngine {
           : (currentPosition.entryPrice - currentPrice) / currentPosition.entryPrice
 
         const priceChangePercent = priceChange * 100
-        console.log(`   Current price: $${currentPrice.toFixed(2)}, PnL: ${priceChangePercent.toFixed(3)}%`)
+        console.log(`   Current: $${currentPrice.toFixed(4)}, PnL: ${priceChangePercent.toFixed(3)}%`)
 
-        // Profit target: +0.3% (with leverage this is significant)
-        // Stop loss: -0.2%
-        const PROFIT_TARGET = 0.003  // 0.3%
-        const STOP_LOSS = -0.002     // -0.2%
+        // Profit target: +0.5% / Stop loss: -0.3%
+        const PROFIT_TARGET = 0.005  // 0.5%
+        const STOP_LOSS = -0.003     // -0.3%
 
-        if (priceChange >= PROFIT_TARGET) {
-          console.log(`🎯 PROFIT TARGET HIT! Closing position for +${priceChangePercent.toFixed(3)}% gain`)
+        if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS) {
+          const isProfit = priceChange >= PROFIT_TARGET
+          console.log(isProfit
+            ? `🎯 PROFIT TARGET! Closing for +${priceChangePercent.toFixed(3)}%`
+            : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
 
-          const closeResult = await this.closePosition(currentPosition.size, currentPosition.isLong)
-
-          if (closeResult.success) {
-            // Calculate realized PnL
-            const leveragedPnlPercent = priceChangePercent * currentPosition.leverage
-            const positionValueUSD = (currentPosition.size / 100_000_000) * currentPosition.entryPrice
-            const realizedPnl = positionValueUSD * (leveragedPnlPercent / 100)
-
-            console.log(`💰 Realized PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${currentPosition.leverage}x leverage)`)
-
-            return {
-              success: true,
-              txHash: closeResult.txHash,
-              volumeGenerated: positionValueUSD * 2, // Open + close volume
-              direction: closeResult.direction,
-              size: currentPosition.size,
-              entryPrice: currentPosition.entryPrice,
-              exitPrice: currentPrice,
-              pnl: realizedPnl,
-              positionHeldMs: Date.now() - orderStartTime,
-            }
-          }
-          return closeResult
-        } else if (priceChange <= STOP_LOSS) {
-          console.log(`🛑 STOP LOSS HIT! Closing position for ${priceChangePercent.toFixed(3)}% loss`)
-
-          const closeResult = await this.closePosition(currentPosition.size, currentPosition.isLong)
+          // Close with MARKET ORDER (instant)
+          const closeResult = await this.closePositionWithMarketOrder(
+            currentPosition.size,
+            currentPosition.isLong
+          )
 
           if (closeResult.success) {
+            const sizeDecimals = this.getMarketSizeDecimals()
+            const positionValueUSD = (currentPosition.size / Math.pow(10, sizeDecimals)) * currentPosition.entryPrice
             const leveragedPnlPercent = priceChangePercent * currentPosition.leverage
-            const positionValueUSD = (currentPosition.size / 100_000_000) * currentPosition.entryPrice
-            const realizedPnl = positionValueUSD * (leveragedPnlPercent / 100)
+            const realizedPnl = positionValueUSD * (priceChange)
 
-            console.log(`💸 Realized Loss: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${currentPosition.leverage}x leverage)`)
+            console.log(`💰 Realized: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${currentPosition.leverage}x)`)
 
             return {
               success: true,
@@ -910,8 +855,9 @@ export class VolumeBotEngine {
           }
           return closeResult
         } else {
-          console.log(`⏳ Position still open, waiting for target (need ${((PROFIT_TARGET - priceChange) * 100).toFixed(3)}% more)`)
-          // Don't open another position, just report waiting
+          // Still waiting for target
+          const needMore = ((PROFIT_TARGET - priceChange) * 100).toFixed(3)
+          console.log(`⏳ Waiting... need ${needMore}% more for profit target`)
           return {
             success: true,
             txHash: 'waiting',
@@ -924,47 +870,42 @@ export class VolumeBotEngine {
         }
       }
 
-      // No existing position - open a new one
-      console.log(`\n📝 [High Risk] Opening new ${isLong ? 'LONG' : 'SHORT'} position...`)
+      // No position - OPEN NEW YOLO POSITION with MARKET ORDER
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} with MARKET ORDER...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
-      console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(2)}`)
-
-      // Calculate position size: 5% of capital with leverage consideration
-      // For BTC: size is in satoshis (8 decimals)
-      // Position value = (size / 10^8) * price
-      // We want position_value = capital * 0.05 * leverage
-      // So size = (capital * 0.05 * leverage * 10^8) / price
-
-      const capitalToUse = this.config.capitalUSDC * 0.05 // 5% of capital
       const maxLeverage = this.getMarketMaxLeverage()
-      const leverageToUse = Math.min(maxLeverage, 20) // Cap at 20x for safety
 
-      // Size in contract units (satoshis for BTC)
-      // Must be rounded to lot_size to avoid ESIZE_NOT_RESPECTING_LOT_SIZE error
+      // Use 80% of capital for YOLO
+      const capitalToUse = this.config.capitalUSDC * 0.8
+
+      // Calculate size
       const sizeDecimals = this.getMarketSizeDecimals()
-      const rawSize = Math.floor((capitalToUse * leverageToUse * Math.pow(10, sizeDecimals)) / entryPrice)
+      const rawSize = Math.floor((capitalToUse * maxLeverage * Math.pow(10, sizeDecimals)) / entryPrice)
       const contractSize = this.roundSizeToLotSize(rawSize)
 
-      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
-      console.log(`   Contract size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
+      console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(4)}`)
+      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
+      console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place TWAP order for position entry
-      // Minimum TWAP duration on Decibel is 5 minutes (300s)
-      // Using TWAP because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
+      // Place MARKET ORDER for instant fill
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            contractSize.toString(),  // bigint to string for transaction
+            contractSize.toString(),
             isLong,
-            false,     // reduce_only = false (opening position)
-            300,       // min duration: 5 minutes (minimum allowed)
-            600,       // max duration: 10 minutes
+            false,     // reduce_only
+            undefined, // client_order_id
+            undefined, // stop_price
+            undefined, // tp_trigger_price
+            undefined, // tp_limit_price
+            undefined, // sl_trigger_price
+            undefined, // sl_limit_price
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -976,24 +917,19 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ TWAP order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error('Transaction failed')
+        throw new Error(`Market order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`✅ Position opening! (TWAP filling over 5-10 min, then monitoring for profit target...)`)
+      console.log(`🎰 YOLO POSITION OPENED! Monitoring for profit/loss...`)
 
-      // Track that we have a pending TWAP order filling
-      this.pendingTwapOrderTime = Date.now()
-      console.log(`⏱️ Tracking TWAP fill time - will wait up to 10 min before placing another order`)
-
-      // Calculate volume generated from opening
-      const volumeGenerated = capitalToUse * leverageToUse
+      const volumeGenerated = capitalToUse * maxLeverage
 
       return {
         success: true,
@@ -1002,16 +938,89 @@ export class VolumeBotEngine {
         direction: isLong ? 'long' : 'short',
         size: Number(contractSize),
         entryPrice,
-        pnl: 0, // No PnL yet, position just opened
+        pnl: 0,
         positionHeldMs: 0,
       }
     } catch (error) {
-      console.error('❌ High-risk order failed:', error)
+      console.error('❌ YOLO order failed:', error)
       return {
         success: false,
         txHash: '',
         volumeGenerated: 0,
         direction: isLong ? 'long' : 'short',
+        size: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  /**
+   * Close position with MARKET ORDER for instant execution
+   */
+  private async closePositionWithMarketOrder(
+    size: number,
+    isLong: boolean
+  ): Promise<OrderResult> {
+    try {
+      // To close a long, place a short reduce-only order (and vice versa)
+      const closeDirection = !isLong
+
+      console.log(`\n📝 [CLOSE] Market order to close ${isLong ? 'LONG' : 'SHORT'}...`)
+
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,
+            this.config.market,
+            size.toString(),
+            closeDirection,
+            true,      // reduce_only = TRUE to close
+            undefined, // client_order_id
+            undefined, // stop_price
+            undefined, // tp_trigger_price
+            undefined, // tp_limit_price
+            undefined, // sl_trigger_price
+            undefined, // sl_limit_price
+            undefined, // builder_address
+            undefined, // max_builder_fee
+          ],
+        },
+      })
+
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      console.log(`✅ Close market order submitted: ${committedTxn.hash}`)
+
+      const executedTxn = await this.aptos.waitForTransaction({
+        transactionHash: committedTxn.hash,
+      })
+
+      if (!executedTxn.success) {
+        throw new Error(`Close market order failed: ${executedTxn.vm_status}`)
+      }
+
+      console.log(`✅ Position CLOSED!`)
+
+      return {
+        success: true,
+        txHash: committedTxn.hash,
+        volumeGenerated: 0,
+        direction: closeDirection ? 'short' : 'long',
+        size: size,
+      }
+    } catch (error) {
+      console.error('❌ Close market order failed:', error)
+      return {
+        success: false,
+        txHash: '',
+        volumeGenerated: 0,
+        direction: 'long',
         size: 0,
         error: error instanceof Error ? error.message : 'Unknown error',
       }

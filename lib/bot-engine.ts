@@ -63,6 +63,17 @@ const MARKETS = {
   'ETH/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
 }
 
+// Market configuration from on-chain PerpMarketConfig
+// ticker_size: minimum price increment (prices must be multiples of this)
+// lot_size: minimum size increment (sizes must be multiples of this)
+// min_size: minimum order size
+const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number }> = {
+  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9 },
+  'ETH/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9 },
+  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9 },
+  'APT/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9 },
+}
+
 export class VolumeBotEngine {
   private config: BotConfig
   private status: BotStatus
@@ -270,8 +281,8 @@ export class VolumeBotEngine {
       console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only TWAP order to close position...`)
       console.log(`Size: ${size}`)
 
-      // Use TWAP with reduce_only=true to close position
-      // Short duration for fast execution
+      // Use ultra-fast TWAP with reduce_only=true to close position
+      // 30-60s duration for near-instant closing (market orders don't work due to ticker_size bug)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -283,8 +294,8 @@ export class VolumeBotEngine {
             size,                        // size (close full position)
             closeDirection,              // is_long (opposite of position)
             true,                        // reduce_only = TRUE to close
-            60,                          // min duration: 1 minute (fast close)
-            120,                         // max duration: 2 minutes
+            30,                          // min duration: 30 seconds (ultra-fast close)
+            60,                          // max duration: 60 seconds
             undefined,                   // builder_address
             undefined,                   // max_builder_fee
           ],
@@ -306,7 +317,7 @@ export class VolumeBotEngine {
         throw new Error('Close position transaction failed')
       }
 
-      console.log(`✅ Position close order placed! (TWAP will execute over 1-2 min)`)
+      console.log(`✅ Position close order placed! (TWAP will execute over 30-60s)`)
 
       return {
         success: true,
@@ -365,6 +376,44 @@ export class VolumeBotEngine {
     // For now, use a fixed small size
     // TODO: Calculate based on market price and leverage
     return 10000 // 0.0001 BTC
+  }
+
+  /**
+   * Get market configuration for price/size rounding
+   */
+  private getMarketConfig() {
+    return MARKET_CONFIG[this.config.marketName] || MARKET_CONFIG['BTC/USD']
+  }
+
+  /**
+   * Round price to nearest ticker_size increment (required for market orders)
+   * Prices must be multiples of ticker_size to avoid EPRICE_NOT_RESPECTING_TICKER_SIZE error
+   */
+  private roundPriceToTickerSize(priceUSD: number): bigint {
+    const config = this.getMarketConfig()
+    // Convert price to chain units (price * 10^pxDecimals)
+    const priceInChainUnits = BigInt(Math.floor(priceUSD * Math.pow(10, config.pxDecimals)))
+    // Round to nearest ticker_size
+    const rounded = (priceInChainUnits / config.tickerSize) * config.tickerSize
+    console.log(`   Price rounding: $${priceUSD} → ${priceInChainUnits} → ${rounded} (ticker_size: ${config.tickerSize})`)
+    return rounded
+  }
+
+  /**
+   * Round size to nearest lot_size increment
+   * Sizes must be multiples of lot_size
+   */
+  private roundSizeToLotSize(size: number): bigint {
+    const config = this.getMarketConfig()
+    const sizeBigInt = BigInt(Math.floor(size))
+    // Round to nearest lot_size
+    const rounded = (sizeBigInt / config.lotSize) * config.lotSize
+    // Ensure minimum size
+    if (rounded < config.minSize) {
+      console.log(`   Size ${rounded} below minimum ${config.minSize}, using minimum`)
+      return config.minSize
+    }
+    return rounded
   }
 
   /**
@@ -708,15 +757,20 @@ export class VolumeBotEngine {
    * HIGH RISK AGGRESSIVE PNL STRATEGY
    *
    * This strategy aims to generate actual PnL by:
-   * 1. Opening leveraged positions with market orders
-   * 2. Monitoring price for profit target (+0.5% to +2% depending on leverage)
-   * 3. Closing position when target reached or stop-loss hit
+   * 1. Opening leveraged positions with ultra-fast TWAP orders (30-60s fill)
+   * 2. Monitoring price for profit target (+0.3%) or stop-loss (-0.2%)
+   * 3. Closing position when target reached with reduce-only fast TWAP
    * 4. Generating volume from both open and close trades
    *
+   * NOTE: Market orders fail on Decibel testnet with EPRICE_NOT_RESPECTING_TICKER_SIZE
+   * when positions have entry prices not aligned to ticker_size (a testnet bug).
+   * Using ultra-fast TWAPs (30-60s) as workaround for near-instant execution.
+   *
    * Risk parameters:
-   * - Uses max leverage available for the market
-   * - Larger position sizes (5-10% of capital per trade)
-   * - Tight stop-losses to limit downside
+   * - Uses up to 20x leverage (capped for safety)
+   * - 5% of capital per trade
+   * - Tight profit target (+0.3% = +6% with 20x leverage)
+   * - Tight stop-loss (-0.2% = -4% with 20x leverage)
    */
   private async placeHighRiskOrder(
     size: number,
@@ -835,7 +889,8 @@ export class VolumeBotEngine {
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
       console.log(`   Contract size: ${contractSize} (${(contractSize / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place TWAP order for fast execution (avoids EPRICE_NOT_RESPECTING_TICKER_SIZE errors)
+      // Place ultra-fast TWAP order (30-60s) for near-instant execution
+      // Using TWAP because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -847,8 +902,8 @@ export class VolumeBotEngine {
             contractSize,
             isLong,
             false,     // reduce_only = false (opening position)
-            60,        // min duration: 1 minute (fast fill)
-            180,       // max duration: 3 minutes
+            30,        // min duration: 30 seconds (ultra-fast fill)
+            60,        // max duration: 60 seconds
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -870,7 +925,7 @@ export class VolumeBotEngine {
         throw new Error('Transaction failed')
       }
 
-      console.log(`✅ Position opening! (TWAP will fill over 1-3 min, then monitoring for profit target...)`)
+      console.log(`✅ Position opening! (TWAP filling over 30-60s, then monitoring for profit target...)`)
 
       // Calculate volume generated from opening
       const volumeGenerated = capitalToUse * leverageToUse

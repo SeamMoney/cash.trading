@@ -32,15 +32,9 @@ yarn-error.log*
 wallets/
 
 # Test scripts with potential secrets
+scripts/
 test_*.mjs
 *_test.mjs
-quick_fund.mjs
-fund_wallet.mjs
-delegate_trading.mjs
-check_apt_balance.mjs
-query_*.mjs
-get_*.mjs
-temp_*.mjs
 
 # OS files
 .DS_Store

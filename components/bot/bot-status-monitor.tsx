@@ -256,8 +256,10 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           </div>
           <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 scrollbar-thin">
             {status.orderHistory.map((order: any, index: number) => {
-              const leverage = order.size ? Math.round(order.size / 10000) : 10
-              const orderType = order.strategy === 'high_risk' ? 'TWAP' : order.strategy?.toUpperCase() || 'TWAP'
+              // Determine if this is an OPEN or CLOSE based on exitPrice
+              const isClose = order.exitPrice && order.exitPrice > 0
+              const hasPnl = order.pnl && order.pnl !== 0
+              const orderType = isClose ? 'CLOSE' : 'OPEN'
 
               return (
                 <div
@@ -288,14 +290,22 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     </div>
                   </div>
 
-                  {/* Middle: Leverage, Type */}
+                  {/* Middle: Action (OPEN/CLOSE), PnL if closed */}
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] px-1 py-0.5 bg-orange-500/20 text-orange-400 font-medium">
-                      {leverage}x
-                    </span>
-                    <span className="text-[9px] px-1 py-0.5 bg-blue-500/20 text-blue-400">
+                    <span className={cn(
+                      "text-[9px] px-1 py-0.5 font-medium",
+                      isClose ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                    )}>
                       {orderType}
                     </span>
+                    {hasPnl && (
+                      <span className={cn(
+                        "text-[9px] px-1 py-0.5 font-bold",
+                        order.pnl > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                      )}>
+                        {order.pnl > 0 ? '+' : ''}${order.pnl.toFixed(2)}
+                      </span>
+                    )}
                   </div>
 
                   {/* Right: Volume, TX Link */}
@@ -303,7 +313,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     <span className="text-xs text-white font-bold">
                       ${order.volumeGenerated?.toFixed(0) || '0'}
                     </span>
-                    {order.txHash && (
+                    {order.txHash && order.txHash !== 'waiting' && (
                       <a
                         href={`https://explorer.aptoslabs.com/txn/${order.txHash}?network=testnet`}
                         target="_blank"

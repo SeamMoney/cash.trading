@@ -13,30 +13,30 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <DashboardLayout>
-      <Tabs defaultValue="volume" className="space-y-6">
-        <div className="flex items-center gap-4">
+      <Tabs defaultValue="volume" className="space-y-3 sm:space-y-4 md:space-y-6 h-full flex flex-col">
+        <div className="flex items-center gap-2 sm:gap-4">
           <TabsList className="bg-zinc-900/50 border border-white/10 p-1">
             <TabsTrigger
               value="portfolio"
-              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium text-xs sm:text-sm"
             >
               Portfolio
             </TabsTrigger>
             <TabsTrigger
               value="volume"
-              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium text-xs sm:text-sm"
             >
               Volume
             </TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="portfolio" className="space-y-8 outline-none">
+        <TabsContent value="portfolio" className="space-y-4 sm:space-y-6 md:space-y-8 outline-none flex-1 overflow-y-auto md:overflow-hidden">
           <PortfolioView />
           <HistoryTable />
         </TabsContent>
 
-        <TabsContent value="volume" className="space-y-8 outline-none">
+        <TabsContent value="volume" className="space-y-4 sm:space-y-6 md:space-y-8 outline-none flex-1 overflow-y-auto md:overflow-hidden">
           <ServerBotConfig />
         </TabsContent>
       </Tabs>

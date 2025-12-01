@@ -880,10 +880,17 @@ export class VolumeBotEngine {
       // Use 80% of capital for YOLO
       const capitalToUse = this.config.capitalUSDC * 0.8
 
-      // Calculate size
+      // Calculate size properly:
+      // 1. Notional value = capital * leverage (in USD)
+      // 2. Size in base asset = notional / price (in BTC, ETH, etc.)
+      // 3. Contract size = size * 10^decimals (in satoshis, etc.)
       const sizeDecimals = this.getMarketSizeDecimals()
-      const rawSize = Math.floor((capitalToUse * maxLeverage * Math.pow(10, sizeDecimals)) / entryPrice)
+      const notionalUSD = capitalToUse * maxLeverage
+      const sizeInBaseAsset = notionalUSD / entryPrice
+      const rawSize = Math.floor(sizeInBaseAsset * Math.pow(10, sizeDecimals))
       const contractSize = this.roundSizeToLotSize(rawSize)
+
+      console.log(`   Notional: $${notionalUSD.toFixed(2)} → ${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]}`)
 
       console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)

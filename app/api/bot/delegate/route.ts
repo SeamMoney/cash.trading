@@ -22,6 +22,9 @@ export async function POST(request: NextRequest) {
 
     // Return the payload for the frontend to sign
     // Using the InputEntryFunctionData format expected by @aptos-labs/wallet-adapter-react
+    // Use far-future timestamp (year 2100) for expiration instead of 0
+    const farFutureExpiration = "4102444800" // Jan 1, 2100 in seconds
+
     return NextResponse.json({
       success: true,
       payload: {
@@ -30,7 +33,7 @@ export async function POST(request: NextRequest) {
         functionArguments: [
           userSubaccount,
           BOT_OPERATOR,
-          "0", // expiration = 0 means unlimited
+          farFutureExpiration,
         ],
       },
       botOperator: BOT_OPERATOR,

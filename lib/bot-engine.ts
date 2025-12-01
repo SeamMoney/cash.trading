@@ -1142,6 +1142,12 @@ export class VolumeBotEngine {
       pnl: result.pnl,
       positionHeldMs: result.positionHeldMs,
     }
+    // Skip recording "waiting" status orders - these are just monitoring checks
+    if (result.txHash === 'waiting') {
+      console.log('⏳ Monitoring position, not recording as trade')
+      return
+    }
+
     this.status.orderHistory.push(orderRecord)
 
     if (result.success) {

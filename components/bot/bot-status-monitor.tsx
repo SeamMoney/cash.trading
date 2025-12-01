@@ -252,18 +252,15 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs text-zinc-400 uppercase tracking-widest">Recent Trades</h3>
-            <span className="text-[10px] text-zinc-500">
-              {status.orderHistory.filter((o: any) => o.txHash && o.txHash !== 'waiting').length} total
-            </span>
+            <span className="text-[10px] text-zinc-500">{status.orderHistory.length} total</span>
           </div>
           <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-            {status.orderHistory
-              .filter((order: any) => order.txHash && order.txHash !== 'waiting')
-              .map((order: any, index: number) => {
-              // Determine if this is an OPEN or CLOSE based on exitPrice
+            {status.orderHistory.map((order: any, index: number) => {
+              // Determine order type: MONITORING (waiting), CLOSE (has exit), or OPEN
+              const isWaiting = order.txHash === 'waiting'
               const isClose = order.exitPrice && order.exitPrice > 0
               const hasPnl = order.pnl && order.pnl !== 0
-              const orderType = isClose ? 'CLOSE' : 'OPEN'
+              const orderType = isWaiting ? 'MONITORING' : (isClose ? 'CLOSE' : 'OPEN')
 
               return (
                 <div
@@ -294,11 +291,13 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     </div>
                   </div>
 
-                  {/* Middle: Action (OPEN/CLOSE), PnL if closed */}
+                  {/* Middle: Action (OPEN/CLOSE/MONITORING), PnL if closed */}
                   <div className="flex items-center gap-1">
                     <span className={cn(
                       "text-[9px] px-1 py-0.5 font-medium",
-                      isClose ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                      isWaiting ? "bg-yellow-500/20 text-yellow-400 animate-pulse" :
+                      isClose ? "bg-purple-500/20 text-purple-400" :
+                      "bg-blue-500/20 text-blue-400"
                     )}>
                       {orderType}
                     </span>
@@ -308,6 +307,11 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                         order.pnl > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                       )}>
                         {order.pnl > 0 ? '+' : ''}${order.pnl.toFixed(2)}
+                      </span>
+                    )}
+                    {isWaiting && order.entryPrice && (
+                      <span className="text-[9px] text-zinc-500">
+                        @${order.entryPrice.toFixed(0)}
                       </span>
                     )}
                   </div>

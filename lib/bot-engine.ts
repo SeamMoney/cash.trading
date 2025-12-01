@@ -1079,12 +1079,6 @@ export class VolumeBotEngine {
         break
     }
 
-    // Skip recording "waiting" status (position monitoring, no actual trade)
-    if (result.txHash === 'waiting') {
-      console.log('⏳ Position being monitored, no trade to record')
-      return
-    }
-
     // Add to order history
     const orderRecord: OrderHistory = {
       timestamp: Date.now(),

@@ -870,8 +870,9 @@ export class VolumeBotEngine {
         }
       }
 
-      // No position - OPEN NEW YOLO POSITION with MARKET ORDER
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} with MARKET ORDER...`)
+      // No position - OPEN NEW YOLO POSITION
+      // Using aggressive LIMIT ORDER because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -884,24 +885,39 @@ export class VolumeBotEngine {
       const rawSize = Math.floor((capitalToUse * maxLeverage * Math.pow(10, sizeDecimals)) / entryPrice)
       const contractSize = this.roundSizeToLotSize(rawSize)
 
-      console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(4)}`)
+      // Calculate aggressive limit price (will fill immediately like market order)
+      // For LONG: place above current price to guarantee fill
+      // For SHORT: place below current price to guarantee fill
+      const slippageBps = 50 // 0.5% slippage tolerance
+      const limitPrice = isLong
+        ? entryPrice * (1 + slippageBps / 10000)
+        : entryPrice * (1 - slippageBps / 10000)
+
+      // Round price to ticker size
+      const limitPriceRounded = this.roundPriceToTickerSize(limitPrice)
+
+      console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
+      console.log(`   Limit price: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)} (${isLong ? 'above' : 'below'} oracle for instant fill)`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place MARKET ORDER for instant fill
+      // Place aggressive LIMIT ORDER (IOC - Immediate or Cancel for instant fill)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
             contractSize.toString(),
+            limitPriceRounded.toString(),
             isLong,
+            1,         // time_in_force: 1 = IOC (Immediate or Cancel) for instant fill
+            false,     // post_only: false (we want to cross the spread)
             false,     // reduce_only
             undefined, // client_order_id
-            undefined, // stop_price
+            undefined, // trigger_price
             undefined, // tp_trigger_price
             undefined, // tp_limit_price
             undefined, // sl_trigger_price
@@ -917,14 +933,14 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Limit order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Market order failed: ${executedTxn.vm_status}`)
+        throw new Error(`Limit order failed: ${executedTxn.vm_status}`)
       }
 
       console.log(`🎰 YOLO POSITION OPENED! Monitoring for profit/loss...`)
@@ -955,7 +971,8 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with MARKET ORDER for instant execution
+   * Close position with aggressive LIMIT ORDER for instant execution
+   * Uses IOC (Immediate or Cancel) to act like a market order
    */
   private async closePositionWithMarketOrder(
     size: number,
@@ -965,21 +982,38 @@ export class VolumeBotEngine {
       // To close a long, place a short reduce-only order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Market order to close ${isLong ? 'LONG' : 'SHORT'}...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} with limit order...`)
+
+      // Get current price and calculate aggressive limit price
+      const currentPrice = await this.getCurrentMarketPrice()
+      const slippageBps = 50 // 0.5% slippage tolerance
+
+      // For closing LONG (selling): place below current price
+      // For closing SHORT (buying): place above current price
+      const limitPrice = closeDirection
+        ? currentPrice * (1 - slippageBps / 10000)  // selling (close long)
+        : currentPrice * (1 + slippageBps / 10000)  // buying (close short)
+
+      const limitPriceRounded = this.roundPriceToTickerSize(limitPrice)
+
+      console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
 
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
             size.toString(),
+            limitPriceRounded.toString(),
             closeDirection,
+            1,         // time_in_force: 1 = IOC (Immediate or Cancel)
+            false,     // post_only: false
             true,      // reduce_only = TRUE to close
             undefined, // client_order_id
-            undefined, // stop_price
+            undefined, // trigger_price
             undefined, // tp_trigger_price
             undefined, // tp_limit_price
             undefined, // sl_trigger_price
@@ -995,14 +1029,14 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Close market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Close order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Close market order failed: ${executedTxn.vm_status}`)
+        throw new Error(`Close order failed: ${executedTxn.vm_status}`)
       }
 
       console.log(`✅ Position CLOSED!`)
@@ -1015,7 +1049,7 @@ export class VolumeBotEngine {
         size: size,
       }
     } catch (error) {
-      console.error('❌ Close market order failed:', error)
+      console.error('❌ Close order failed:', error)
       return {
         success: false,
         txHash: '',

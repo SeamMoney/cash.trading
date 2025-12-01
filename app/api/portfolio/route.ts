@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
+const APTOS_NODE = 'https://api.testnet.aptoslabs.com/v1'
+const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+
 /**
  * Portfolio API - Returns user's USDC balance, trade history, total volume, and PNL
  *
@@ -25,9 +28,31 @@ export async function GET(request: NextRequest) {
       where: { userWalletAddress },
     })
 
-    // Use the capitalUSDC from bot config as the balance
-    // This is the deposited collateral on Decibel testnet
-    const usdcBalance = botInstance?.capitalUSDC || 0
+    // Try to fetch real-time available margin from blockchain
+    // Falls back to capitalUSDC from database if API fails
+    let usdcBalance = botInstance?.capitalUSDC || 0
+
+    if (botInstance?.userSubaccount) {
+      try {
+        const marginResponse = await fetch(`${APTOS_NODE}/view`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
+            type_arguments: [],
+            arguments: [botInstance.userSubaccount],
+          }),
+        })
+
+        if (marginResponse.ok) {
+          const marginData = await marginResponse.json()
+          const marginRaw = marginData[0] as string
+          usdcBalance = Number(marginRaw) / 1_000_000 // 6 decimals
+        }
+      } catch (err) {
+        console.warn('Could not fetch on-chain margin, using database value')
+      }
+    }
 
     // Get ALL trade history for this user (across all sessions)
     let allOrders: any[] = []

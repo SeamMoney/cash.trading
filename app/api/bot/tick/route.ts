@@ -76,7 +76,22 @@ export async function POST(request: NextRequest) {
     }
 
     const botEngine = new VolumeBotEngine(config)
+
+    // Pass the lastTwapOrderTime from database to engine for high_risk strategy
+    if (bot.lastTwapOrderTime) {
+      botEngine.setLastTwapOrderTime(bot.lastTwapOrderTime)
+    }
+
     const success = await botEngine.executeSingleTrade()
+
+    // Get the updated lastTwapOrderTime from the engine and persist to database
+    const newTwapTime = botEngine.getLastTwapOrderTime()
+    if (newTwapTime) {
+      await prisma.botInstance.update({
+        where: { id: bot.id },
+        data: { lastTwapOrderTime: newTwapTime },
+      })
+    }
 
     // Get updated status and most recent order
     const [updatedBot, latestOrder] = await Promise.all([

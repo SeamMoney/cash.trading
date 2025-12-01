@@ -22,6 +22,7 @@ model BotInstance {
   ordersPlaced       Int            @default(0)
   currentCapitalUsed Float          @default(0)
   lastOrderTime      DateTime?
+  lastTwapOrderTime  DateTime?      // Track when we placed a TWAP that's still filling
   error              String?
   sessionId          String?        // Track which run/session orders belong to
   createdAt          DateTime       @default(now())

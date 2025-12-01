@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
         currentCapitalUsed: 0,
         error: null,
         sessionId,  // New session for each start
+        lastTwapOrderTime: null,  // Reset TWAP tracking on new session
       },
     })
 

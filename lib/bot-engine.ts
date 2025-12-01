@@ -81,6 +81,7 @@ export class VolumeBotEngine {
   private botAccount: Account
   private isActive: boolean = false
   private loopInterval: NodeJS.Timeout | null = null
+  private pendingTwapOrderTime: number | null = null // Track when we placed a TWAP that's still filling
 
   constructor(config: BotConfig) {
     this.config = config
@@ -119,6 +120,21 @@ export class VolumeBotEngine {
     console.log('Capital:', `$${config.capitalUSDC} USDC`)
     console.log('Volume Target:', `$${config.volumeTargetUSDC} USDC`)
     console.log('Bias:', config.bias)
+  }
+
+  /**
+   * Set the last TWAP order time (loaded from database for high_risk strategy)
+   */
+  setLastTwapOrderTime(time: Date): void {
+    this.pendingTwapOrderTime = time.getTime()
+    console.log(`⏱️ Loaded lastTwapOrderTime from DB: ${time.toISOString()}`)
+  }
+
+  /**
+   * Get the last TWAP order time (to persist to database)
+   */
+  getLastTwapOrderTime(): Date | null {
+    return this.pendingTwapOrderTime ? new Date(this.pendingTwapOrderTime) : null
   }
 
   /**
@@ -788,6 +804,36 @@ export class VolumeBotEngine {
       // First, check if we have an existing position
       const currentPosition = await this.getCurrentPosition()
 
+      // Check if we have a pending TWAP order that's still filling (< 10 min old)
+      // TWAPs take 5-10 minutes to fill, so don't place another one until it's done
+      const TWAP_FILL_TIME_MS = 10 * 60 * 1000 // 10 minutes
+      if (this.pendingTwapOrderTime && !currentPosition.hasPosition) {
+        const timeSinceTwap = Date.now() - this.pendingTwapOrderTime
+        if (timeSinceTwap < TWAP_FILL_TIME_MS) {
+          const remainingMin = Math.ceil((TWAP_FILL_TIME_MS - timeSinceTwap) / 60000)
+          console.log(`\n⏳ [High Risk] TWAP order still filling (${remainingMin} min remaining)...`)
+          console.log(`   Waiting for TWAP to complete before placing another order`)
+          return {
+            success: true,
+            txHash: 'waiting',
+            volumeGenerated: 0,
+            direction: isLong ? 'long' : 'short',
+            size: 0,
+            pnl: 0,
+          }
+        } else {
+          // TWAP should have filled by now, clear the pending flag
+          console.log(`\n⚠️ [High Risk] TWAP timed out (>10 min), clearing pending state`)
+          this.pendingTwapOrderTime = null
+        }
+      }
+
+      // If position exists, clear the pending TWAP flag (it filled)
+      if (currentPosition.hasPosition && this.pendingTwapOrderTime) {
+        console.log(`✅ [High Risk] TWAP order filled, position now active`)
+        this.pendingTwapOrderTime = null
+      }
+
       // If we have a position, check if we should close it
       if (currentPosition.hasPosition && currentPosition.size > 0) {
         console.log(`\n📊 [High Risk] Existing ${currentPosition.isLong ? 'LONG' : 'SHORT'} position detected`)
@@ -935,6 +981,10 @@ export class VolumeBotEngine {
       }
 
       console.log(`✅ Position opening! (TWAP filling over 5-10 min, then monitoring for profit target...)`)
+
+      // Track that we have a pending TWAP order filling
+      this.pendingTwapOrderTime = Date.now()
+      console.log(`⏱️ Tracking TWAP fill time - will wait up to 10 min before placing another order`)
 
       // Calculate volume generated from opening
       const volumeGenerated = capitalToUse * leverageToUse

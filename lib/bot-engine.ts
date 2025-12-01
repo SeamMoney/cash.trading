@@ -215,14 +215,17 @@ export class VolumeBotEngine {
       console.log('⚠️ Could not fetch on-chain price, using fallback')
     }
 
-    // Fallback prices
+    // Fallback prices - ONLY for order sizing, never for PNL calculation
+    // These are approximate and should be updated periodically
+    console.warn('⚠️ Using fallback price - PNL calculation may be inaccurate')
     const fallbackPrices: Record<string, number> = {
-      'BTC/USD': 97000,
-      'ETH/USD': 3500,
-      'SOL/USD': 240,
+      'BTC/USD': 96000,
+      'ETH/USD': 3600,
+      'SOL/USD': 230,
       'APT/USD': 12,
+      'WLFI/USD': 0.000018,
     }
-    return fallbackPrices[this.config.marketName] || 100000
+    return fallbackPrices[this.config.marketName] || 50000
   }
 
   /**

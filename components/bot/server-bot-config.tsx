@@ -180,6 +180,8 @@ export function ServerBotConfig() {
         throw new Error("Wallet does not support signing transactions")
       }
 
+      console.log("📤 Submitting delegation transaction with payload:", data.payload)
+
       const txResponse = await signAndSubmitTransaction({
         data: data.payload
       })
@@ -187,7 +189,16 @@ export function ServerBotConfig() {
       console.log("✅ Delegation transaction:", txResponse.hash)
       setHasDelegation(true)
     } catch (err: any) {
-      setError(err.message || "Failed to delegate permissions")
+      // Extract more detailed error message
+      const errorMessage = err.message || err.toString() || "Failed to delegate permissions"
+      // Check for common error patterns
+      if (errorMessage.includes("rejected") || errorMessage.includes("User rejected")) {
+        setError("Transaction rejected by user")
+      } else if (errorMessage.includes("EOBJECT_DOES_NOT_EXIST")) {
+        setError("Subaccount not found. Please make a deposit on Decibel first.")
+      } else {
+        setError(errorMessage)
+      }
       console.error("❌ Delegation error:", err)
     } finally {
       setDelegating(false)

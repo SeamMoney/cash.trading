@@ -21,13 +21,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Return the payload for the frontend to sign
+    // Using the InputEntryFunctionData format expected by @aptos-labs/wallet-adapter-react
     return NextResponse.json({
       success: true,
       payload: {
-        type: 'entry_function_payload',
         function: `${DECIBEL_PACKAGE}::dex_accounts::delegate_trading_to_for_subaccount`,
-        type_arguments: [],
-        arguments: [
+        typeArguments: [],
+        functionArguments: [
           userSubaccount,
           BOT_OPERATOR,
           "0", // expiration = 0 means unlimited

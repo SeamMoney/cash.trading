@@ -871,8 +871,8 @@ export class VolumeBotEngine {
       }
 
       // No position - OPEN NEW YOLO POSITION
-      // Using aggressive LIMIT ORDER because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position...`)
+      // Using MARKET ORDER for instant execution at best available price
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with MARKET ORDER...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -885,27 +885,14 @@ export class VolumeBotEngine {
       const rawSize = Math.floor((capitalToUse * maxLeverage * Math.pow(10, sizeDecimals)) / entryPrice)
       const contractSize = this.roundSizeToLotSize(rawSize)
 
-      // Calculate aggressive limit price (will fill immediately like market order)
-      // For LONG: place above current price to guarantee fill
-      // For SHORT: place below current price to guarantee fill
-      const slippageBps = 50 // 0.5% slippage tolerance
-      const limitPrice = isLong
-        ? entryPrice * (1 + slippageBps / 10000)
-        : entryPrice * (1 - slippageBps / 10000)
-
-      // Round price to ticker size
-      const limitPriceRounded = this.roundPriceToTickerSize(limitPrice)
-
       console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
-      console.log(`   Limit price: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)} (${isLong ? 'above' : 'below'} oracle for instant fill)`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Use MARKET ORDER with stop_price set to work around ticker_size issue
-      // place_market_order_to_subaccount params: subaccount, market, size, is_long, reduce_only,
+      // Use PURE MARKET ORDER - no stop_price (that was creating stop orders!)
+      // place_market_order_to_subaccount: subaccount, market, size, is_long, reduce_only,
       //   client_order_id?, stop_price?, tp_trigger?, tp_limit?, sl_trigger?, sl_limit?, builder?, max_fee?
-      const stopPrice = this.roundPriceToTickerSize(entryPrice)  // Use oracle price rounded as stop
-      console.log(`   Stop price: ${stopPrice}`)
+      console.log(`   Order type: MARKET (instant execution at best price)`)
 
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
@@ -918,14 +905,14 @@ export class VolumeBotEngine {
             contractSize.toString(),     // size (u64)
             isLong,                      // is_long (bool)
             false,                       // reduce_only (bool)
-            undefined,                   // client_order_id (Option<String>)
-            stopPrice.toString(),        // stop_price (Option<u64>) - aligned to ticker
-            undefined,                   // tp_trigger_price (Option<u64>)
-            undefined,                   // tp_limit_price (Option<u64>)
-            undefined,                   // sl_trigger_price (Option<u64>)
-            undefined,                   // sl_limit_price (Option<u64>)
-            undefined,                   // builder_address (Option<address>)
-            undefined,                   // max_builder_fee (Option<u64>)
+            undefined,                   // client_order_id - NONE
+            undefined,                   // stop_price - NONE (this makes it a regular market order!)
+            undefined,                   // tp_trigger_price - NONE
+            undefined,                   // tp_limit_price - NONE
+            undefined,                   // sl_trigger_price - NONE
+            undefined,                   // sl_limit_price - NONE
+            undefined,                   // builder_address - NONE
+            undefined,                   // max_builder_fee - NONE
           ],
         },
       })
@@ -935,14 +922,14 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Limit order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Limit order failed: ${executedTxn.vm_status}`)
+        throw new Error(`Market order failed: ${executedTxn.vm_status}`)
       }
 
       console.log(`🎰 YOLO POSITION OPENED! Monitoring for profit/loss...`)
@@ -973,8 +960,7 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position by placing an opposite limit order
-   * Since place_order doesn't have reduce_only, we just place opposite direction
+   * Close position with MARKET ORDER for instant execution
    */
   private async closePositionWithMarketOrder(
     size: number,
@@ -984,27 +970,11 @@ export class VolumeBotEngine {
       // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position...`)
-
-      // Get current price and calculate aggressive limit price
-      const currentPrice = await this.getCurrentMarketPrice()
-      const slippageBps = 100 // 1% slippage tolerance for guaranteed fill
-
-      // For closing LONG (selling): place below current price to fill instantly
-      // For closing SHORT (buying): place above current price to fill instantly
-      const limitPrice = closeDirection
-        ? currentPrice * (1 - slippageBps / 10000)  // selling
-        : currentPrice * (1 + slippageBps / 10000)  // buying
-
-      const limitPriceRounded = this.roundPriceToTickerSize(limitPrice)
-
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with MARKET ORDER...`)
       console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
-      console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
+      console.log(`   Order type: MARKET with reduce_only=true`)
 
-      // Use MARKET ORDER with reduce_only=true to close
-      const stopPrice = this.roundPriceToTickerSize(currentPrice)
-      console.log(`   Stop price: ${stopPrice}`)
-
+      // Use PURE MARKET ORDER with reduce_only=true to close position
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -1016,14 +986,14 @@ export class VolumeBotEngine {
             size.toString(),
             closeDirection,
             true,                      // reduce_only = TRUE to close position
-            undefined,                 // client_order_id
-            stopPrice.toString(),      // stop_price - aligned to ticker
-            undefined,                 // tp_trigger_price
-            undefined,                 // tp_limit_price
-            undefined,                 // sl_trigger_price
-            undefined,                 // sl_limit_price
-            undefined,                 // builder_address
-            undefined,                 // max_builder_fee
+            undefined,                 // client_order_id - NONE
+            undefined,                 // stop_price - NONE (pure market order!)
+            undefined,                 // tp_trigger_price - NONE
+            undefined,                 // tp_limit_price - NONE
+            undefined,                 // sl_trigger_price - NONE
+            undefined,                 // sl_limit_price - NONE
+            undefined,                 // builder_address - NONE
+            undefined,                 // max_builder_fee - NONE
           ],
         },
       })

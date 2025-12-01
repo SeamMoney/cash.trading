@@ -153,27 +153,209 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Fetch current market price from Decibel API
-   * Note: API requires auth, so we use fallback values
+   * Fetch current market price from on-chain oracle
    */
   private async getCurrentMarketPrice(): Promise<number> {
-    // Decibel API requires authentication - use fallback price
-    // TODO: Add API key when available or use on-chain oracle
+    try {
+      // Get price from market's Price resource
+      const resources = await this.aptos.getAccountResources({
+        accountAddress: this.config.market
+      })
+
+      const priceResource = resources.find(r =>
+        r.type.includes('price_management::Price')
+      )
+
+      if (priceResource && priceResource.data) {
+        const data = priceResource.data as { price?: string; last_price?: string }
+        const priceRaw = data.price || data.last_price
+        if (priceRaw) {
+          // Price is stored with 6 decimals
+          return parseInt(priceRaw) / 1_000_000
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Could not fetch on-chain price, using fallback')
+    }
+
+    // Fallback prices
     const fallbackPrices: Record<string, number> = {
-      'BTC/USD': 100000,
+      'BTC/USD': 97000,
       'ETH/USD': 3500,
-      'SOL/USD': 200,
+      'SOL/USD': 240,
+      'APT/USD': 12,
     }
     return fallbackPrices[this.config.marketName] || 100000
   }
 
   /**
+   * Fetch user's current position for this market
+   */
+  private async getCurrentPosition(): Promise<{
+    hasPosition: boolean
+    isLong: boolean
+    size: number
+    entryPrice: number
+    leverage: number
+  }> {
+    try {
+      const resources = await this.aptos.getAccountResources({
+        accountAddress: this.config.userSubaccount
+      })
+
+      const positionsResource = resources.find(r =>
+        r.type.includes('perp_positions::UserPositions')
+      )
+
+      if (!positionsResource) {
+        return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
+      }
+
+      // Parse positions map to find this market
+      const data = positionsResource.data as {
+        positions?: {
+          root?: {
+            children?: {
+              entries?: Array<{
+                key: { inner: string }
+                value: {
+                  value: {
+                    size: string
+                    is_long: boolean
+                    avg_acquire_entry_px: string
+                    user_leverage: number
+                  }
+                }
+              }>
+            }
+          }
+        }
+      }
+
+      const entries = data.positions?.root?.children?.entries || []
+      const marketPosition = entries.find(e =>
+        e.key.inner.toLowerCase() === this.config.market.toLowerCase()
+      )
+
+      if (!marketPosition || parseInt(marketPosition.value.value.size) === 0) {
+        return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
+      }
+
+      const pos = marketPosition.value.value
+      return {
+        hasPosition: true,
+        isLong: pos.is_long,
+        size: parseInt(pos.size),
+        entryPrice: parseInt(pos.avg_acquire_entry_px) / 1_000_000,
+        leverage: pos.user_leverage
+      }
+    } catch (error) {
+      console.error('Error fetching position:', error)
+      return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
+    }
+  }
+
+  /**
+   * Close the current position with a reduce-only market order
+   */
+  private async closePosition(
+    size: number,
+    isLong: boolean
+  ): Promise<OrderResult> {
+    try {
+      // To close a long, place a short reduce-only order (and vice versa)
+      const closeDirection = !isLong
+
+      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only market order to close position...`)
+      console.log(`Size: ${size}`)
+
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,  // subaccount
+            this.config.market,          // market
+            size,                        // size (close full position)
+            closeDirection,              // is_long (opposite of position)
+            true,                        // reduce_only = TRUE to close
+            undefined,                   // client_order_id
+            undefined,                   // stop_price
+            undefined,                   // tp_trigger_price
+            undefined,                   // tp_limit_price
+            undefined,                   // sl_trigger_price
+            undefined,                   // sl_limit_price
+            undefined,                   // builder_address
+            undefined,                   // max_builder_fee
+          ],
+        },
+      })
+
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      console.log(`✅ Close order submitted: ${committedTxn.hash}`)
+
+      const executedTxn = await this.aptos.waitForTransaction({
+        transactionHash: committedTxn.hash,
+      })
+
+      if (!executedTxn.success) {
+        throw new Error('Close position transaction failed')
+      }
+
+      console.log(`✅ Position closed!`)
+
+      return {
+        success: true,
+        txHash: committedTxn.hash,
+        volumeGenerated: 0, // Will be calculated from actual close
+        direction: closeDirection ? 'short' : 'long',
+        size: size,
+      }
+    } catch (error) {
+      console.error('❌ Close position failed:', error)
+      return {
+        success: false,
+        txHash: '',
+        volumeGenerated: 0,
+        direction: 'long',
+        size: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  /**
    * Fetch user's current USDC balance from their subaccount
-   * Note: API requires auth, so we use config capital as fallback
    */
   private async getUserBalance(): Promise<number> {
-    // Decibel API requires authentication - use config capital as estimate
-    // TODO: Add API key when available or read from on-chain
+    try {
+      const resources = await this.aptos.getAccountResources({
+        accountAddress: this.config.userSubaccount
+      })
+
+      // Look for AccountInfo which has equity
+      const accountInfo = resources.find(r =>
+        r.type.includes('perp_positions::AccountInfo')
+      )
+
+      if (accountInfo && accountInfo.data) {
+        const data = accountInfo.data as { equity?: string; total_collateral_value?: string }
+        if (data.equity) {
+          return parseInt(data.equity) / 1_000_000 // USDC has 6 decimals
+        }
+        if (data.total_collateral_value) {
+          return parseInt(data.total_collateral_value) / 1_000_000
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Could not fetch on-chain balance')
+    }
+
     return this.config.capitalUSDC
   }
 
@@ -524,59 +706,156 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Calculate leverage for High Risk strategy
-   * HFT MODE: Maximum leverage for extreme PNL volatility
-   */
-  private calculateLeverage(): number {
-    const { capitalUSDC } = this.config
-    // HFT mode: Use 10x leverage for maximum PNL swings!
-    if (capitalUSDC >= 1000) return 10
-    if (capitalUSDC >= 500) return 7
-    return 5
-  }
-
-  /**
-   * Place larger TWAP order for High Risk strategy
-   * Uses larger position sizes for more PNL volatility
+   * HIGH RISK AGGRESSIVE PNL STRATEGY
+   *
+   * This strategy aims to generate actual PnL by:
+   * 1. Opening leveraged positions with market orders
+   * 2. Monitoring price for profit target (+0.5% to +2% depending on leverage)
+   * 3. Closing position when target reached or stop-loss hit
+   * 4. Generating volume from both open and close trades
+   *
+   * Risk parameters:
+   * - Uses max leverage available for the market
+   * - Larger position sizes (5-10% of capital per trade)
+   * - Tight stop-losses to limit downside
    */
   private async placeHighRiskOrder(
     size: number,
     isLong: boolean
   ): Promise<OrderResult> {
     const orderStartTime = Date.now()
-    let balanceBefore = 0
-    let balanceAfter = 0
-    let entryPrice = 0
 
     try {
-      const leverage = this.calculateLeverage()
+      // First, check if we have an existing position
+      const currentPosition = await this.getCurrentPosition()
 
-      console.log(`\n📝 [High Risk] Placing ${isLong ? 'LONG' : 'SHORT'} AGGRESSIVE order with ${leverage}x size...`)
-      console.log(`Size: $${size.toFixed(2)} USDC`)
+      // If we have a position, check if we should close it
+      if (currentPosition.hasPosition && currentPosition.size > 0) {
+        console.log(`\n📊 [High Risk] Existing ${currentPosition.isLong ? 'LONG' : 'SHORT'} position detected`)
+        console.log(`   Size: ${currentPosition.size}, Entry: $${currentPosition.entryPrice.toFixed(2)}`)
 
-      // Get balance before trade
-      balanceBefore = await this.getUserBalance()
-      entryPrice = await this.getCurrentMarketPrice()
+        const currentPrice = await this.getCurrentMarketPrice()
+        const priceChange = currentPosition.isLong
+          ? (currentPrice - currentPosition.entryPrice) / currentPosition.entryPrice
+          : (currentPosition.entryPrice - currentPrice) / currentPosition.entryPrice
 
-      // Use larger contract size for more PNL volatility
-      const contractSize = 10000 * leverage // Multiply base size by leverage factor
+        const priceChangePercent = priceChange * 100
+        console.log(`   Current price: $${currentPrice.toFixed(2)}, PnL: ${priceChangePercent.toFixed(3)}%`)
 
-      // Use TWAP - durations must be in SECONDS
+        // Profit target: +0.3% (with leverage this is significant)
+        // Stop loss: -0.2%
+        const PROFIT_TARGET = 0.003  // 0.3%
+        const STOP_LOSS = -0.002     // -0.2%
+
+        if (priceChange >= PROFIT_TARGET) {
+          console.log(`🎯 PROFIT TARGET HIT! Closing position for +${priceChangePercent.toFixed(3)}% gain`)
+
+          const closeResult = await this.closePosition(currentPosition.size, currentPosition.isLong)
+
+          if (closeResult.success) {
+            // Calculate realized PnL
+            const leveragedPnlPercent = priceChangePercent * currentPosition.leverage
+            const positionValueUSD = (currentPosition.size / 100_000_000) * currentPosition.entryPrice
+            const realizedPnl = positionValueUSD * (leveragedPnlPercent / 100)
+
+            console.log(`💰 Realized PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${currentPosition.leverage}x leverage)`)
+
+            return {
+              success: true,
+              txHash: closeResult.txHash,
+              volumeGenerated: positionValueUSD * 2, // Open + close volume
+              direction: closeResult.direction,
+              size: currentPosition.size,
+              entryPrice: currentPosition.entryPrice,
+              exitPrice: currentPrice,
+              pnl: realizedPnl,
+              positionHeldMs: Date.now() - orderStartTime,
+            }
+          }
+          return closeResult
+        } else if (priceChange <= STOP_LOSS) {
+          console.log(`🛑 STOP LOSS HIT! Closing position for ${priceChangePercent.toFixed(3)}% loss`)
+
+          const closeResult = await this.closePosition(currentPosition.size, currentPosition.isLong)
+
+          if (closeResult.success) {
+            const leveragedPnlPercent = priceChangePercent * currentPosition.leverage
+            const positionValueUSD = (currentPosition.size / 100_000_000) * currentPosition.entryPrice
+            const realizedPnl = positionValueUSD * (leveragedPnlPercent / 100)
+
+            console.log(`💸 Realized Loss: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${currentPosition.leverage}x leverage)`)
+
+            return {
+              success: true,
+              txHash: closeResult.txHash,
+              volumeGenerated: positionValueUSD * 2,
+              direction: closeResult.direction,
+              size: currentPosition.size,
+              entryPrice: currentPosition.entryPrice,
+              exitPrice: currentPrice,
+              pnl: realizedPnl,
+              positionHeldMs: Date.now() - orderStartTime,
+            }
+          }
+          return closeResult
+        } else {
+          console.log(`⏳ Position still open, waiting for target (need ${((PROFIT_TARGET - priceChange) * 100).toFixed(3)}% more)`)
+          // Don't open another position, just report waiting
+          return {
+            success: true,
+            txHash: 'waiting',
+            volumeGenerated: 0,
+            direction: currentPosition.isLong ? 'long' : 'short',
+            size: currentPosition.size,
+            entryPrice: currentPosition.entryPrice,
+            pnl: 0,
+          }
+        }
+      }
+
+      // No existing position - open a new one
+      console.log(`\n📝 [High Risk] Opening new ${isLong ? 'LONG' : 'SHORT'} position...`)
+
+      const entryPrice = await this.getCurrentMarketPrice()
+      console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(2)}`)
+
+      // Calculate position size: 5% of capital with leverage consideration
+      // For BTC: size is in satoshis (8 decimals)
+      // Position value = (size / 10^8) * price
+      // We want position_value = capital * 0.05 * leverage
+      // So size = (capital * 0.05 * leverage * 10^8) / price
+
+      const capitalToUse = this.config.capitalUSDC * 0.05 // 5% of capital
+      const maxLeverage = this.getMarketMaxLeverage()
+      const leverageToUse = Math.min(maxLeverage, 20) // Cap at 20x for safety
+
+      // Size in contract units (satoshis for BTC)
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const contractSize = Math.floor((capitalToUse * leverageToUse * Math.pow(10, sizeDecimals)) / entryPrice)
+
+      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
+      console.log(`   Contract size: ${contractSize} (${(contractSize / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
+
+      // Place market order for immediate execution
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
             contractSize,
             isLong,
-            false,     // reduce_only
-            300,       // min duration: 5 minutes in SECONDS
-            600,       // max duration: 10 minutes in SECONDS
-            undefined, // builder_address (optional)
-            undefined, // max_builder_fee (optional)
+            false,     // reduce_only = false (opening position)
+            undefined, // client_order_id
+            undefined, // stop_price
+            undefined, // tp_trigger_price
+            undefined, // tp_limit_price
+            undefined, // sl_trigger_price
+            undefined, // sl_limit_price
+            undefined, // builder_address
+            undefined, // max_builder_fee
           ],
         },
       })
@@ -586,7 +865,7 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ High-risk AGGRESSIVE order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
@@ -596,20 +875,10 @@ export class VolumeBotEngine {
         throw new Error('Transaction failed')
       }
 
-      console.log(`✅ High-risk order confirmed! (${leverage}x position, 60-90sec FAST fill)`)
+      console.log(`✅ Position opened! Now monitoring for profit target...`)
 
-      // Wait a bit for the order to potentially fill, then check balance
-      await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds
-      balanceAfter = await this.getUserBalance()
-      const exitPrice = await this.getCurrentMarketPrice()
-
-      // Calculate PNL
-      const pnl = balanceAfter - balanceBefore
-      const positionHeldMs = Date.now() - orderStartTime
-
-      console.log(`📊 PNL: $${pnl.toFixed(2)} USDC (held for ${(positionHeldMs / 1000).toFixed(1)}s)`)
-
-      const volumeGenerated = size * leverage
+      // Calculate volume generated from opening
+      const volumeGenerated = capitalToUse * leverageToUse
 
       return {
         success: true,
@@ -618,9 +887,8 @@ export class VolumeBotEngine {
         direction: isLong ? 'long' : 'short',
         size: contractSize,
         entryPrice,
-        exitPrice,
-        pnl,
-        positionHeldMs,
+        pnl: 0, // No PnL yet, position just opened
+        positionHeldMs: 0,
       }
     } catch (error) {
       console.error('❌ High-risk order failed:', error)
@@ -633,6 +901,42 @@ export class VolumeBotEngine {
         error: error instanceof Error ? error.message : 'Unknown error',
       }
     }
+  }
+
+  /**
+   * Get max leverage for current market
+   */
+  private getMarketMaxLeverage(): number {
+    const leverageMap: Record<string, number> = {
+      'BTC/USD': 40,
+      'ETH/USD': 20,
+      'SOL/USD': 20,
+      'APT/USD': 10,
+      'XRP/USD': 3,
+      'LINK/USD': 3,
+      'AAVE/USD': 3,
+      'ENA/USD': 3,
+      'HYPE/USD': 3,
+    }
+    return leverageMap[this.config.marketName] || 10
+  }
+
+  /**
+   * Get size decimals for current market
+   */
+  private getMarketSizeDecimals(): number {
+    const decimalsMap: Record<string, number> = {
+      'BTC/USD': 8,
+      'ETH/USD': 7,
+      'SOL/USD': 6,
+      'APT/USD': 6,
+      'XRP/USD': 4,
+      'LINK/USD': 6,
+      'AAVE/USD': 6,
+      'ENA/USD': 3,
+      'HYPE/USD': 6,
+    }
+    return decimalsMap[this.config.marketName] || 6
   }
 
   /**

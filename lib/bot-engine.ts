@@ -281,8 +281,8 @@ export class VolumeBotEngine {
       console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only TWAP order to close position...`)
       console.log(`Size: ${size}`)
 
-      // Use ultra-fast TWAP with reduce_only=true to close position
-      // 30-60s duration for near-instant closing (market orders don't work due to ticker_size bug)
+      // Use TWAP with reduce_only=true to close position
+      // Minimum TWAP duration on Decibel is 5 minutes (300s)
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -294,8 +294,8 @@ export class VolumeBotEngine {
             size,                        // size (close full position)
             closeDirection,              // is_long (opposite of position)
             true,                        // reduce_only = TRUE to close
-            30,                          // min duration: 30 seconds (ultra-fast close)
-            60,                          // max duration: 60 seconds
+            300,                         // min duration: 5 minutes (minimum allowed)
+            600,                         // max duration: 10 minutes
             undefined,                   // builder_address
             undefined,                   // max_builder_fee
           ],
@@ -317,7 +317,7 @@ export class VolumeBotEngine {
         throw new Error('Close position transaction failed')
       }
 
-      console.log(`✅ Position close order placed! (TWAP will execute over 30-60s)`)
+      console.log(`✅ Position close order placed! (TWAP will execute over 5-10 min)`)
 
       return {
         success: true,
@@ -757,14 +757,14 @@ export class VolumeBotEngine {
    * HIGH RISK AGGRESSIVE PNL STRATEGY
    *
    * This strategy aims to generate actual PnL by:
-   * 1. Opening leveraged positions with ultra-fast TWAP orders (30-60s fill)
+   * 1. Opening leveraged positions with TWAP orders (5-10 min fill)
    * 2. Monitoring price for profit target (+0.3%) or stop-loss (-0.2%)
-   * 3. Closing position when target reached with reduce-only fast TWAP
+   * 3. Closing position when target reached with reduce-only TWAP
    * 4. Generating volume from both open and close trades
    *
    * NOTE: Market orders fail on Decibel testnet with EPRICE_NOT_RESPECTING_TICKER_SIZE
    * when positions have entry prices not aligned to ticker_size (a testnet bug).
-   * Using ultra-fast TWAPs (30-60s) as workaround for near-instant execution.
+   * Minimum TWAP duration on Decibel is 5 minutes (300 seconds).
    *
    * Risk parameters:
    * - Uses up to 20x leverage (capped for safety)
@@ -891,7 +891,8 @@ export class VolumeBotEngine {
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
       console.log(`   Contract size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place ultra-fast TWAP order (30-60s) for near-instant execution
+      // Place TWAP order for position entry
+      // Minimum TWAP duration on Decibel is 5 minutes (300s)
       // Using TWAP because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
@@ -904,8 +905,8 @@ export class VolumeBotEngine {
             contractSize.toString(),  // bigint to string for transaction
             isLong,
             false,     // reduce_only = false (opening position)
-            30,        // min duration: 30 seconds (ultra-fast fill)
-            60,        // max duration: 60 seconds
+            300,       // min duration: 5 minutes (minimum allowed)
+            600,       // max duration: 10 minutes
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -927,7 +928,7 @@ export class VolumeBotEngine {
         throw new Error('Transaction failed')
       }
 
-      console.log(`✅ Position opening! (TWAP filling over 30-60s, then monitoring for profit target...)`)
+      console.log(`✅ Position opening! (TWAP filling over 5-10 min, then monitoring for profit target...)`)
 
       // Calculate volume generated from opening
       const volumeGenerated = capitalToUse * leverageToUse

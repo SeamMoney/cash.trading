@@ -871,9 +871,9 @@ export class VolumeBotEngine {
       }
 
       // No position - OPEN NEW YOLO POSITION
-      // NOTE: Market orders have a bug on Decibel testnet (EPRICE_NOT_RESPECTING_TICKER_SIZE)
-      // Using fastest possible TWAP (5 min) as workaround
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with FAST TWAP...`)
+      // Using IOC (Immediate-Or-Cancel) limit order with aggressive price for INSTANT execution
+      // Market orders have a bug, but IOC limit orders work!
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC LIMIT ORDER...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -893,27 +893,43 @@ export class VolumeBotEngine {
 
       console.log(`   Notional: $${notionalUSD.toFixed(2)} → ${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]}`)
 
+      // Calculate aggressive limit price for instant fill
+      // LONG: place 1% ABOVE market to guarantee fill
+      // SHORT: place 1% BELOW market to guarantee fill
+      const slippagePct = 0.01 // 1% slippage tolerance
+      const aggressivePrice = isLong
+        ? entryPrice * (1 + slippagePct)
+        : entryPrice * (1 - slippagePct)
+      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+
       console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
+      console.log(`   Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)} (${isLong ? '+1%' : '-1%'} for instant fill)`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Use TWAP order - minimum duration is 5 minutes (300 seconds)
-      // This is a workaround because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
-      console.log(`   Order type: TWAP (5 min duration - market orders have testnet bug)`)
+      // Use IOC (Immediate-Or-Cancel) limit order for INSTANT execution
+      // time_in_force: 0=GTC, 1=IOC, 2=FOK
+      console.log(`   Order type: IOC LIMIT (instant execution at limit price or better)`)
 
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
             this.config.market,          // market
             contractSize.toString(),     // size (u64)
+            limitPrice.toString(),       // price (u64) - rounded to ticker_size
             isLong,                      // is_long (bool)
-            false,                       // reduce_only (bool)
-            300,                         // min_duration: 5 minutes (minimum)
-            300,                         // max_duration: 5 minutes (as fast as possible)
+            1,                           // time_in_force: 1 = IOC (Immediate-Or-Cancel)
+            false,                       // post_only: false (we want to take liquidity)
+            undefined,                   // client_order_id - NONE
+            undefined,                   // limit_price - NONE
+            undefined,                   // take_profit_price - NONE
+            undefined,                   // stop_loss_price - NONE
+            undefined,                   // trigger_price - NONE
+            undefined,                   // max_leverage - NONE (use account default)
             undefined,                   // builder_address - NONE
             undefined,                   // max_builder_fee - NONE
           ],
@@ -925,17 +941,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ TWAP order submitted: ${committedTxn.hash}`)
+      console.log(`✅ IOC order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`TWAP order failed: ${executedTxn.vm_status}`)
+        throw new Error(`IOC order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`🎰 YOLO POSITION OPENING via TWAP (fills over 5 min)...`)
+      console.log(`🎰 YOLO POSITION OPENED INSTANTLY!`)
 
       const volumeGenerated = capitalToUse * maxLeverage
 
@@ -963,7 +979,7 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with TWAP order (market orders have testnet bug)
+   * Close position with IOC limit order for INSTANT execution
    */
   private async closePositionWithMarketOrder(
     size: number,
@@ -973,27 +989,46 @@ export class VolumeBotEngine {
       // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with IOC LIMIT...`)
       console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
-      console.log(`   Order type: TWAP with reduce_only=true (5 min)`)
 
-      // Use TWAP with reduce_only=true to close position
-      // Market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
+      // Get current price and calculate aggressive limit for instant fill
+      const currentPrice = await this.getCurrentMarketPrice()
+      const slippagePct = 0.01 // 1% slippage tolerance
+
+      // For closing: opposite direction
+      // Closing LONG = selling = place SHORT = price BELOW market
+      // Closing SHORT = buying = place LONG = price ABOVE market
+      const aggressivePrice = closeDirection
+        ? currentPrice * (1 - slippagePct)  // selling (closing long)
+        : currentPrice * (1 + slippagePct)  // buying (closing short)
+      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+
+      console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
+      console.log(`   Order type: IOC LIMIT (instant close)`)
+
+      // Use IOC limit order - place_order doesn't have reduce_only, so we just place opposite direction
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
             size.toString(),
+            limitPrice.toString(),
             closeDirection,
-            true,                      // reduce_only = TRUE to close position
-            300,                       // min_duration: 5 minutes
-            300,                       // max_duration: 5 minutes
-            undefined,                 // builder_address - NONE
-            undefined,                 // max_builder_fee - NONE
+            1,                         // time_in_force: 1 = IOC
+            false,                     // post_only: false
+            undefined,                 // client_order_id
+            undefined,                 // limit_price
+            undefined,                 // take_profit_price
+            undefined,                 // stop_loss_price
+            undefined,                 // trigger_price
+            undefined,                 // max_leverage
+            undefined,                 // builder_address
+            undefined,                 // max_builder_fee
           ],
         },
       })

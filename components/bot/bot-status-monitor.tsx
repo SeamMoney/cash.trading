@@ -252,10 +252,14 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs text-zinc-400 uppercase tracking-widest">Recent Trades</h3>
-            <span className="text-[10px] text-zinc-500">{status.orderHistory.length} total</span>
+            <span className="text-[10px] text-zinc-500">
+              {status.orderHistory.filter((o: any) => o.txHash && o.txHash !== 'waiting').length} total
+            </span>
           </div>
           <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-            {status.orderHistory.map((order: any, index: number) => {
+            {status.orderHistory
+              .filter((order: any) => order.txHash && order.txHash !== 'waiting')
+              .map((order: any, index: number) => {
               // Determine if this is an OPEN or CLOSE based on exitPrice
               const isClose = order.exitPrice && order.exitPrice > 0
               const hasPnl = order.pnl && order.pnl !== 0

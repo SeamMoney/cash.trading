@@ -901,24 +901,25 @@ export class VolumeBotEngine {
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Place aggressive LIMIT ORDER (IOC - Immediate or Cancel for instant fill)
-      // place_order_to_subaccount params: subaccount, market, size, price, is_long, time_in_force, post_only,
-      //   client_order_id?, trigger_price?, tp_trigger?, tp_limit?, sl_trigger?, sl_limit?, builder?, max_fee?
+      // Use MARKET ORDER with stop_price set to work around ticker_size issue
+      // place_market_order_to_subaccount params: subaccount, market, size, is_long, reduce_only,
+      //   client_order_id?, stop_price?, tp_trigger?, tp_limit?, sl_trigger?, sl_limit?, builder?, max_fee?
+      const stopPrice = this.roundPriceToTickerSize(entryPrice)  // Use oracle price rounded as stop
+      console.log(`   Stop price: ${stopPrice}`)
+
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
             this.config.market,          // market
             contractSize.toString(),     // size (u64)
-            limitPriceRounded.toString(), // price (u64)
             isLong,                      // is_long (bool)
-            1,                           // time_in_force: 1 = IOC (u8)
-            false,                       // post_only (bool)
+            false,                       // reduce_only (bool)
             undefined,                   // client_order_id (Option<String>)
-            undefined,                   // trigger_price (Option<u64>)
+            stopPrice.toString(),        // stop_price (Option<u64>) - aligned to ticker
             undefined,                   // tp_trigger_price (Option<u64>)
             undefined,                   // tp_limit_price (Option<u64>)
             undefined,                   // sl_trigger_price (Option<u64>)
@@ -1000,28 +1001,29 @@ export class VolumeBotEngine {
       console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
       console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPriceRounded) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
 
-      // place_order_to_subaccount params: subaccount, market, size, price, is_long, time_in_force, post_only, ...options
+      // Use MARKET ORDER with reduce_only=true to close
+      const stopPrice = this.roundPriceToTickerSize(currentPrice)
+      console.log(`   Stop price: ${stopPrice}`)
+
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
             size.toString(),
-            limitPriceRounded.toString(),
             closeDirection,
-            1,         // time_in_force: 1 = IOC
-            false,     // post_only
-            undefined, // client_order_id
-            undefined, // trigger_price
-            undefined, // tp_trigger_price
-            undefined, // tp_limit_price
-            undefined, // sl_trigger_price
-            undefined, // sl_limit_price
-            undefined, // builder_address
-            undefined, // max_builder_fee
+            true,                      // reduce_only = TRUE to close position
+            undefined,                 // client_order_id
+            stopPrice.toString(),      // stop_price - aligned to ticker
+            undefined,                 // tp_trigger_price
+            undefined,                 // tp_limit_price
+            undefined,                 // sl_trigger_price
+            undefined,                 // sl_limit_price
+            undefined,                 // builder_address
+            undefined,                 // max_builder_fee
           ],
         },
       })

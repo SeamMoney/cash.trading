@@ -21,7 +21,7 @@ export function ServerBotConfig() {
   const [volumeTarget, setVolumeTarget] = useState<number>(500)
   const [bias, setBias] = useState<Bias>("neutral")
   const [strategy, setStrategy] = useState<Strategy>("high_risk")
-  const [market, setMarket] = useState<string>("APT/USD")
+  const [market, setMarket] = useState<string>("BTC/USD")
   const [aggressiveness, setAggressiveness] = useState<number>(5)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,52 +48,52 @@ export function ServerBotConfig() {
     }
   }, [marketDropdownOpen])
 
-  // All Decibel markets with their addresses and metadata - APT first
+  // All Decibel TESTNET markets with their addresses and metadata - updated Nov 2025
   const MARKETS: Record<string, { address: string; logo: string; leverage: number }> = {
-    "APT/USD": {
-      address: "0xe6de4f6ec47f1bc2ab73920e9f202953e60482e1c1a90e7eef3ee45c8aafee36",
-      logo: "/tokens/apt.png",
-      leverage: 10,
-    },
     "BTC/USD": {
-      address: "0x6a39745aaa7af8258060566f6501d84581de815128694f8ee013cae28e3357e7",
+      address: "0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e",
       logo: "/tokens/btc.svg",
       leverage: 40,
     },
     "ETH/USD": {
-      address: "0xd9093834d0ee89ca16bb3aac64e321241fe091354fc526f0e03686e206e936f8",
+      address: "0x5d4a373896cc46ce5bd27f795587c1d682e7f57a3de6149d19cc3f3cb6c6800d",
       logo: "/tokens/eth.svg",
-      leverage: 40,
+      leverage: 20,
     },
     "SOL/USD": {
-      address: "0x1fa58fb1d8d1fff57bea37fa1bb38c79acf8bbf489d99a74eed45e44b9fb19d0",
+      address: "0xef5eee5ae8ba5726efcd8af6ee89dffe2ca08d20631fff3bafe98d89137a58c4",
       logo: "/tokens/sol.png",
       leverage: 20,
     },
+    "APT/USD": {
+      address: "0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2",
+      logo: "/tokens/apt.png",
+      leverage: 10,
+    },
     "XRP/USD": {
-      address: "0x14e529cc523562d84c169d3b7b238c0764d8574af4af71e9bbde58828ca20026",
+      address: "0x2b0858711c401b2ff1d22156241127c4500b9cc88aaab1e54aca88f29282a144",
       logo: "/tokens/xrp.svg",
-      leverage: 20,
+      leverage: 3,
     },
     "LINK/USD": {
-      address: "0xafa14b84214814cddfdab01170cd721ea687f402aecf595930160ea74f8d62c8",
+      address: "0x7eda0461c46e464d7a155f77626be1d268b48f1c7b2e864c5dcf12aa5bf3159a",
       logo: "/tokens/link.svg",
-      leverage: 10,
+      leverage: 3,
     },
     "AAVE/USD": {
-      address: "0x66b8e6c288ab02c14e082811cf37f6d0f019301fabee0cc916ed5dcb912edf92",
+      address: "0x7c6d96f972a4986030ec3012217621f117f6be8a9380ffa29a7941cd62ccd34d",
       logo: "/tokens/aave.svg",
-      leverage: 10,
+      leverage: 3,
     },
     "ENA/USD": {
-      address: "0x4dc4aac045ab751f597acc46decb7ebec05ad45d2bb64130fabd120f40b80547",
+      address: "0xbc6857d4255c58eb97643a6a3c9aed718322bf677b2556ce09097ab1bb3b47be",
       logo: "/tokens/ena.svg",
-      leverage: 10,
+      leverage: 3,
     },
     "HYPE/USD": {
-      address: "0xb23912e94e6c804602387b965496165896a3d1b616ece0ee610f5b68afc6b0b5",
+      address: "0x5f848e543d8a3021e74282fd258ab1919bcfd934d730368fb04398b64cbef9cf",
       logo: "/tokens/hype.png",
-      leverage: 10,
+      leverage: 3,
     },
   }
 

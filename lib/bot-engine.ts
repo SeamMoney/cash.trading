@@ -871,8 +871,9 @@ export class VolumeBotEngine {
       }
 
       // No position - OPEN NEW YOLO POSITION
-      // Using MARKET ORDER for instant execution at best available price
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with MARKET ORDER...`)
+      // NOTE: Market orders have a bug on Decibel testnet (EPRICE_NOT_RESPECTING_TICKER_SIZE)
+      // Using fastest possible TWAP (5 min) as workaround
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with FAST TWAP...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -896,15 +897,14 @@ export class VolumeBotEngine {
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
 
-      // Use PURE MARKET ORDER - no stop_price (that was creating stop orders!)
-      // place_market_order_to_subaccount: subaccount, market, size, is_long, reduce_only,
-      //   client_order_id?, stop_price?, tp_trigger?, tp_limit?, sl_trigger?, sl_limit?, builder?, max_fee?
-      console.log(`   Order type: MARKET (instant execution at best price)`)
+      // Use TWAP order - minimum duration is 5 minutes (300 seconds)
+      // This is a workaround because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
+      console.log(`   Order type: TWAP (5 min duration - market orders have testnet bug)`)
 
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
@@ -912,12 +912,8 @@ export class VolumeBotEngine {
             contractSize.toString(),     // size (u64)
             isLong,                      // is_long (bool)
             false,                       // reduce_only (bool)
-            undefined,                   // client_order_id - NONE
-            undefined,                   // stop_price - NONE (this makes it a regular market order!)
-            undefined,                   // tp_trigger_price - NONE
-            undefined,                   // tp_limit_price - NONE
-            undefined,                   // sl_trigger_price - NONE
-            undefined,                   // sl_limit_price - NONE
+            300,                         // min_duration: 5 minutes (minimum)
+            300,                         // max_duration: 5 minutes (as fast as possible)
             undefined,                   // builder_address - NONE
             undefined,                   // max_builder_fee - NONE
           ],
@@ -929,17 +925,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ TWAP order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Market order failed: ${executedTxn.vm_status}`)
+        throw new Error(`TWAP order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`🎰 YOLO POSITION OPENED! Monitoring for profit/loss...`)
+      console.log(`🎰 YOLO POSITION OPENING via TWAP (fills over 5 min)...`)
 
       const volumeGenerated = capitalToUse * maxLeverage
 
@@ -967,7 +963,7 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with MARKET ORDER for instant execution
+   * Close position with TWAP order (market orders have testnet bug)
    */
   private async closePositionWithMarketOrder(
     size: number,
@@ -977,15 +973,16 @@ export class VolumeBotEngine {
       // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with MARKET ORDER...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
       console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
-      console.log(`   Order type: MARKET with reduce_only=true`)
+      console.log(`   Order type: TWAP with reduce_only=true (5 min)`)
 
-      // Use PURE MARKET ORDER with reduce_only=true to close position
+      // Use TWAP with reduce_only=true to close position
+      // Market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -993,12 +990,8 @@ export class VolumeBotEngine {
             size.toString(),
             closeDirection,
             true,                      // reduce_only = TRUE to close position
-            undefined,                 // client_order_id - NONE
-            undefined,                 // stop_price - NONE (pure market order!)
-            undefined,                 // tp_trigger_price - NONE
-            undefined,                 // tp_limit_price - NONE
-            undefined,                 // sl_trigger_price - NONE
-            undefined,                 // sl_limit_price - NONE
+            300,                       // min_duration: 5 minutes
+            300,                       // max_duration: 5 minutes
             undefined,                 // builder_address - NONE
             undefined,                 // max_builder_fee - NONE
           ],

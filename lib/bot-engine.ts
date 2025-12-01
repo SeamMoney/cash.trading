@@ -503,9 +503,10 @@ export class VolumeBotEngine {
 
       console.log(`✅ Order confirmed!`)
 
-      // For volume calculation: opening a position generates volume
-      // When we close it (in next order cycle), it generates more volume
-      const volumeGenerated = size
+      // Calculate actual volume: contractSize in base units * price
+      const currentPrice = await this.getCurrentMarketPrice()
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
@@ -581,7 +582,10 @@ export class VolumeBotEngine {
 
       console.log(`✅ Market order filled!`)
 
-      const volumeGenerated = size
+      // Calculate actual volume: contractSize in base units * price
+      const currentPrice = await this.getCurrentMarketPrice()
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
@@ -654,7 +658,10 @@ export class VolumeBotEngine {
 
       console.log(`✅ Fast TWAP order confirmed!`)
 
-      const volumeGenerated = size
+      // Calculate actual volume: contractSize in base units * price
+      const currentPrice = await this.getCurrentMarketPrice()
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
@@ -734,10 +741,14 @@ export class VolumeBotEngine {
 
       console.log(`✅ Limit order confirmed!`)
 
+      // Calculate actual volume: contractSize in base units * price
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * price
+
       return {
         success: true,
         txHash: committedTxn.hash,
-        volumeGenerated: size,
+        volumeGenerated,
         direction: isLong ? 'long' : 'short',
         size: contractSize,
       }

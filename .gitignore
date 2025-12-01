@@ -31,10 +31,10 @@ yarn-error.log*
 .aptos/
 wallets/
 
-# Test scripts with potential secrets
-scripts/
-test_*.mjs
-*_test.mjs
+# Test scripts with hardcoded private wallet addresses
+scripts/test_bot_single_tx.mjs
+scripts/temp_script.mjs
+scripts/temp_api_script.mjs
 
 # OS files
 .DS_Store

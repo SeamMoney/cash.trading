@@ -883,11 +883,13 @@ export class VolumeBotEngine {
       const leverageToUse = Math.min(maxLeverage, 20) // Cap at 20x for safety
 
       // Size in contract units (satoshis for BTC)
+      // Must be rounded to lot_size to avoid ESIZE_NOT_RESPECTING_LOT_SIZE error
       const sizeDecimals = this.getMarketSizeDecimals()
-      const contractSize = Math.floor((capitalToUse * leverageToUse * Math.pow(10, sizeDecimals)) / entryPrice)
+      const rawSize = Math.floor((capitalToUse * leverageToUse * Math.pow(10, sizeDecimals)) / entryPrice)
+      const contractSize = this.roundSizeToLotSize(rawSize)
 
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${leverageToUse}x`)
-      console.log(`   Contract size: ${contractSize} (${(contractSize / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
+      console.log(`   Contract size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(6)} ${this.config.marketName.split('/')[0]})`)
 
       // Place ultra-fast TWAP order (30-60s) for near-instant execution
       // Using TWAP because market orders fail with EPRICE_NOT_RESPECTING_TICKER_SIZE on testnet
@@ -899,7 +901,7 @@ export class VolumeBotEngine {
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            contractSize,
+            contractSize.toString(),  // bigint to string for transaction
             isLong,
             false,     // reduce_only = false (opening position)
             30,        // min duration: 30 seconds (ultra-fast fill)
@@ -935,7 +937,7 @@ export class VolumeBotEngine {
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: Number(contractSize),
         entryPrice,
         pnl: 0, // No PnL yet, position just opened
         positionHeldMs: 0,

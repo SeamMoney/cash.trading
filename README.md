@@ -465,13 +465,20 @@ APTOS_NODE_API_KEY=...                       # For higher rate limits
 
 ## Documentation
 
-Comprehensive documentation in `/docs`:
+All documentation is in the `/docs` folder:
 
+### SDK Documentation
 - **[OFFICIAL_SDK_REFERENCE.md](./docs/OFFICIAL_SDK_REFERENCE.md)** - Official `@decibel/sdk` API reference (not yet public)
 - **[DECIBEL_SDK.md](./docs/DECIBEL_SDK.md)** - Our custom SDK implementation details
 - **[SDK_COMPARISON_MATRIX.md](./docs/SDK_COMPARISON_MATRIX.md)** - Feature comparison & migration guide
-- **[ARCHITECTURE_DIAGRAMS.md](./docs/ARCHITECTURE_DIAGRAMS.md)** - 14 visual diagrams explaining the system
 - **[SDK_ANALYSIS_SUMMARY.md](./docs/SDK_ANALYSIS_SUMMARY.md)** - Key findings from SDK review
+
+### Project Documentation
+- **[ARCHITECTURE_DIAGRAMS.md](./docs/ARCHITECTURE_DIAGRAMS.md)** - 14 visual diagrams explaining the system
+- **[COMPREHENSIVE_AUDIT.md](./docs/COMPREHENSIVE_AUDIT.md)** - Complete feature inventory & roadmap
+- **[DEVELOPMENT_NOTES.md](./docs/DEVELOPMENT_NOTES.md)** - Technical deep dive & decisions
+- **[DATABASE_SETUP.md](./docs/DATABASE_SETUP.md)** - PostgreSQL/Neon setup guide
+- **[SECURITY.md](./docs/SECURITY.md)** - Security best practices
 
 ---
 

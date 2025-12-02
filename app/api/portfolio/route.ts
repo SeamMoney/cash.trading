@@ -15,18 +15,19 @@ const MARKET_NAMES: Record<string, string> = {
   '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2': 'WLFI/USD',
 }
 
-// Price decimals for each market (varies by asset)
+// Price decimals for each market - all use 6 decimals on Decibel testnet
+// Verified from on-chain oracle_px values (e.g., BTC: 87001041693 → $87,001)
 const MARKET_PRICE_DECIMALS: Record<string, number> = {
-  'BTC/USD': 9,
-  'ETH/USD': 9,
-  'SOL/USD': 9,
+  'BTC/USD': 6,
+  'ETH/USD': 6,
+  'SOL/USD': 6,
   'APT/USD': 6,
   'WLFI/USD': 6,
 }
 
 // Get price decimals for a market
 function getPriceDecimals(marketName: string): number {
-  return MARKET_PRICE_DECIMALS[marketName] || 9
+  return MARKET_PRICE_DECIMALS[marketName] || 6
 }
 
 // Default leverage for each market

@@ -69,13 +69,16 @@ const MARKETS = {
 // ticker_size: minimum price increment (prices must be multiples of this)
 // lot_size: minimum size increment (sizes must be multiples of this)
 // min_size: minimum order size
-// pxDecimals: price decimals (BTC=9 for $85,948.528751, APT=6 for $1.859498)
+// pxDecimals: price decimals - verified from on-chain oracle_px values
+//   BTC testnet: oracle_px=87001041693 → $87,001 → 6 decimals
+//   APT: oracle_px=12859498 → $12.86 → 6 decimals
 // szDecimals: size decimals (BTC=8 for satoshis, APT=4 based on sz_precision)
 const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
-  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 9, szDecimals: 8 },
-  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },  // sz_precision.decimals=4
-  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },  // sz_precision.decimals=3
-  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 9, szDecimals: 6 },
+  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
+  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
+  'ETH/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 7 },
 }
 
 export class VolumeBotEngine {

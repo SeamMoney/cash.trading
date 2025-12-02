@@ -51,7 +51,10 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         if (onStatusChange) {
           onStatusChange(false)
         }
-      } else if (data.success) {
+      } else if (data.status === 'monitoring') {
+        // Bot is monitoring position, no toast needed (or subtle one)
+        console.log('Bot monitoring position...')
+      } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
         const cumVol = data.cumulativeVolume?.toFixed(0) || '0'

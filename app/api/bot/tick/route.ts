@@ -99,16 +99,22 @@ export async function POST(request: NextRequest) {
       console.log(`📅 Saved lastTwapOrderTime to DB`)
     }
 
-    // Get updated status and most recent order
-    const [updatedBot, latestOrder] = await Promise.all([
-      prisma.botInstance.findUnique({
-        where: { id: bot.id },
-      }),
-      prisma.orderHistory.findFirst({
+    // Get updated bot status
+    const updatedBot = await prisma.botInstance.findUnique({
+      where: { id: bot.id },
+    })
+
+    // Check if a NEW order was placed (ordersPlaced increased)
+    const newOrderPlaced = updatedBot && updatedBot.ordersPlaced > bot.ordersPlaced
+
+    // Only fetch latest order if a new one was placed
+    let latestOrder = null
+    if (newOrderPlaced) {
+      latestOrder = await prisma.orderHistory.findFirst({
         where: { botId: bot.id },
         orderBy: { timestamp: 'desc' },
-      }),
-    ])
+      })
+    }
 
     // Check if bot was auto-stopped due to reaching target
     const wasAutoStopped = updatedBot && !updatedBot.isRunning
@@ -118,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success,
-      status: wasAutoStopped ? 'completed' : (success ? 'executed' : 'failed'),
+      status: wasAutoStopped ? 'completed' : (newOrderPlaced ? 'executed' : 'monitoring'),
       isRunning: updatedBot?.isRunning ?? false,
       cumulativeVolume: updatedBot?.cumulativeVolume || bot.cumulativeVolume,
       volumeTargetUSDC: updatedBot?.volumeTargetUSDC || bot.volumeTargetUSDC,
@@ -126,7 +132,7 @@ export async function POST(request: NextRequest) {
       ordersPlaced: updatedBot?.ordersPlaced || bot.ordersPlaced,
       lastOrderTime: updatedBot?.lastOrderTime?.toISOString(),
       message: wasAutoStopped ? '🎯 Volume target reached! Bot stopped.' : undefined,
-      // Trade details for toast
+      // Trade details for toast - only if new order was placed
       direction: latestOrder?.direction,
       volumeGenerated: latestOrder?.volumeGenerated,
       txHash: latestOrder?.txHash,

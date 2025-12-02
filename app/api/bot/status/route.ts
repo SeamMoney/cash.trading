@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get orders filtered by current session
-    const sessionOrders = await prisma.orderHistory.findMany({
+    const sessionOrdersRaw = await prisma.orderHistory.findMany({
       where: {
         botId: botInstance.id,
         sessionId: botInstance.sessionId,  // Only orders from current session
@@ -37,6 +37,12 @@ export async function GET(request: NextRequest) {
       orderBy: { timestamp: 'desc' },
       take: 50,
     })
+
+    // Convert BigInt fields to numbers for JSON serialization
+    const sessionOrders = sessionOrdersRaw.map(order => ({
+      ...order,
+      size: Number(order.size),  // BigInt -> number for JSON
+    }))
 
     // Calculate progress
     const progress = (botInstance.cumulativeVolume / botInstance.volumeTargetUSDC) * 100

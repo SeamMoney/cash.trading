@@ -122,6 +122,30 @@ export async function POST(request: NextRequest) {
       ? (updatedBot.cumulativeVolume / updatedBot.volumeTargetUSDC) * 100
       : 0
 
+    // Calculate current PnL for monitoring status
+    let currentPnl: number | undefined
+    let positionDirection: string | undefined
+    if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
+      positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
+      // Fetch current price to calculate PnL
+      try {
+        const priceRes = await fetch(
+          `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
+        )
+        const resources = await priceRes.json()
+        const priceResource = resources.find((r: any) => r.type.includes('price_management::Price'))
+        if (priceResource) {
+          const currentPrice = Number(priceResource.data.oracle_px) / 1e9
+          const entryPrice = updatedBot.activePositionEntry
+          currentPnl = updatedBot.activePositionIsLong
+            ? ((currentPrice - entryPrice) / entryPrice) * 100
+            : ((entryPrice - currentPrice) / entryPrice) * 100
+        }
+      } catch (e) {
+        console.error('Failed to fetch current price for PnL:', e)
+      }
+    }
+
     return NextResponse.json({
       success,
       status: wasAutoStopped ? 'completed' : (newOrderPlaced ? 'executed' : 'monitoring'),
@@ -137,6 +161,9 @@ export async function POST(request: NextRequest) {
       volumeGenerated: latestOrder?.volumeGenerated,
       txHash: latestOrder?.txHash,
       market: bot.marketName,
+      // Monitoring info
+      currentPnl,
+      positionDirection,
     })
   } catch (error) {
     console.error('Manual tick error:', error)

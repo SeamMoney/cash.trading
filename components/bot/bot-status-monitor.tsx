@@ -52,9 +52,12 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           onStatusChange(false)
         }
       } else if (data.status === 'monitoring') {
-        // Bot is monitoring position - show subtle info toast occasionally
-        toast.info('Monitoring position...', {
-          description: `Waiting for profit target (+0.5%) or stop loss (-0.3%)`,
+        // Bot is monitoring position - show current PnL status
+        const pnlInfo = data.currentPnl !== undefined
+          ? `Current PnL: ${data.currentPnl >= 0 ? '+' : ''}${data.currentPnl.toFixed(3)}%`
+          : 'Checking price...'
+        toast.info(`Monitoring ${data.positionDirection?.toUpperCase() || ''} position`, {
+          description: `${pnlInfo} · Target: +0.5% / Stop: -0.3%`,
           duration: 2000,
         })
       } else if (data.success && data.volumeGenerated) {

@@ -6,6 +6,99 @@ export const runtime = 'nodejs'
 const APTOS_NODE = 'https://api.testnet.aptoslabs.com/v1'
 const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
+// Market address to name mapping
+const MARKET_NAMES: Record<string, string> = {
+  '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e': 'BTC/USD',
+  '0x5d4a373896cc46ce5bd27f795587c1d682e7f57a3de6149d19cc3f3cb6c6800d': 'ETH/USD',
+  '0xef5eee5ae8ba5726efcd8af6ee89dffe2ca08d20631fff3bafe98d89137a58c4': 'SOL/USD',
+  '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2': 'APT/USD',
+  '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2': 'WLFI/USD',
+}
+
+/**
+ * Fetch on-chain trade history from Decibel events
+ */
+async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
+  const trades: any[] = []
+
+  try {
+    // Fetch account transactions
+    const response = await fetch(
+      `${APTOS_NODE}/accounts/${subaccount}/events/${DECIBEL_PACKAGE}::events::PositionUpdateEvent/position_update?limit=100`
+    )
+
+    if (!response.ok) {
+      // Try alternate event path
+      const txResponse = await fetch(
+        `${APTOS_NODE}/accounts/${subaccount}/transactions?limit=50`
+      )
+
+      if (txResponse.ok) {
+        const transactions = await txResponse.json()
+
+        for (const tx of transactions) {
+          if (!tx.success) continue
+
+          // Look for Decibel trading functions
+          const func = tx.payload?.function || ''
+          if (func.includes('place_twap_order') ||
+              func.includes('place_order') ||
+              func.includes('place_market_order')) {
+
+            // Extract market from arguments
+            const marketArg = tx.payload?.arguments?.[1]?.inner || tx.payload?.arguments?.[1]
+            const market = MARKET_NAMES[marketArg] || 'Unknown'
+
+            // Determine direction from arguments
+            const isLong = tx.payload?.arguments?.[3] === true || tx.payload?.arguments?.[3] === 'true'
+
+            trades.push({
+              id: tx.hash,
+              timestamp: new Date(Number(tx.timestamp) / 1000),
+              txHash: tx.hash,
+              direction: isLong ? 'long' : 'short',
+              strategy: func.includes('twap') ? 'twap' : 'market',
+              market,
+              size: 0,
+              volumeGenerated: 0,
+              success: true,
+              entryPrice: null,
+              exitPrice: null,
+              pnl: 0,
+            })
+          }
+        }
+      }
+    } else {
+      const events = await response.json()
+
+      for (const event of events) {
+        const data = event.data
+        const market = MARKET_NAMES[data.market?.inner] || 'Unknown'
+
+        trades.push({
+          id: event.sequence_number,
+          timestamp: new Date(Number(event.timestamp) / 1000),
+          txHash: event.transaction_hash || `event_${event.sequence_number}`,
+          direction: data.is_long ? 'long' : 'short',
+          strategy: 'manual',
+          market,
+          size: Number(data.size || 0),
+          volumeGenerated: Number(data.notional || 0) / 1e6,
+          success: true,
+          entryPrice: Number(data.entry_price || 0) / 1e9,
+          exitPrice: data.exit_price ? Number(data.exit_price) / 1e9 : null,
+          pnl: Number(data.realized_pnl || 0) / 1e6,
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching on-chain trades:', err)
+  }
+
+  return trades
+}
+
 /**
  * Portfolio API - Returns user's USDC balance, trade history, total volume, and PNL
  *
@@ -55,13 +148,39 @@ export async function GET(request: NextRequest) {
     }
 
     // Get ALL trade history for this user (across all sessions)
-    let allOrders: any[] = []
+    let botOrders: any[] = []
     if (botInstance) {
-      allOrders = await prisma.orderHistory.findMany({
+      const rawOrders = await prisma.orderHistory.findMany({
         where: { botId: botInstance.id },
         orderBy: { timestamp: 'desc' },
       })
+      // Convert BigInt to Number for JSON serialization
+      botOrders = rawOrders.map(order => ({
+        ...order,
+        size: Number(order.size),
+        source: 'bot' as const,
+      }))
     }
+
+    // Fetch on-chain trade history from Decibel
+    let onChainTrades: any[] = []
+    if (botInstance?.userSubaccount) {
+      try {
+        onChainTrades = await fetchOnChainTrades(botInstance.userSubaccount)
+      } catch (err) {
+        console.warn('Could not fetch on-chain trades:', err)
+      }
+    }
+
+    // Merge and dedupe trades (bot orders + on-chain trades)
+    // On-chain trades that aren't in bot orders are manual trades
+    const botTxHashes = new Set(botOrders.map(o => o.txHash))
+    const manualTrades = onChainTrades
+      .filter(t => !botTxHashes.has(t.txHash))
+      .map(t => ({ ...t, source: 'manual' as const }))
+
+    const allOrders = [...botOrders, ...manualTrades]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
     // Calculate statistics from all orders
     const stats = calculateStats(allOrders)
@@ -97,6 +216,8 @@ export async function GET(request: NextRequest) {
         exitPrice: order.exitPrice,
         pnl: order.pnl,
         positionHeldMs: order.positionHeldMs,
+        source: order.source || 'bot', // 'bot' or 'manual'
+        market: order.market,
       })),
       dailyStats,
       botStatus: botInstance ? {

@@ -143,9 +143,12 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   }, [userWalletAddress, isRunning])
 
   // Get tick interval based on strategy
+  // TX Spammer: 5 seconds (rapid fire)
   // High risk: 15 seconds (frequent monitoring)
   // Other strategies: 60 seconds
-  const tickInterval = config?.strategy === 'high_risk' ? 15 : 60
+  const tickInterval = config?.strategy === 'tx_spammer' ? 5
+    : config?.strategy === 'high_risk' ? 15
+    : 60
 
   // Reset countdown when strategy/config changes
   useEffect(() => {

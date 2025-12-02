@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 
 type Bias = "long" | "short" | "neutral"
-type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk"
+type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer"
 
 export function ServerBotConfig() {
   const { account, connected, signAndSubmitTransaction } = useWallet()
@@ -620,29 +620,50 @@ export function ServerBotConfig() {
                 <span className="font-bold text-sm tracking-wider relative z-10">High Risk</span>
                 <span className="text-[10px] opacity-70 relative z-10">Max PNL swings</span>
               </button>
+              <button
+                onClick={() => setStrategy("tx_spammer")}
+                disabled={isRunning || loading}
+                className={cn(
+                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50 col-span-2",
+                  strategy === "tx_spammer"
+                    ? "bg-pink-500/10 text-pink-400 border border-pink-500/50"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
+              >
+                {strategy === "tx_spammer" && <div className="absolute inset-0 bg-pink-500/5 animate-pulse" />}
+                <div className="flex items-center gap-2 relative z-10">
+                  <Zap className="w-4 h-4" />
+                  <span className="font-bold text-sm tracking-wider">TX Spammer</span>
+                </div>
+                <span className="text-[10px] opacity-70 relative z-10">Rapid-fire tiny TWAPs</span>
+              </button>
             </div>
             <div className={cn(
               "p-2 border relative flex items-center gap-2",
               strategy === "twap" && "bg-blue-500/5 border-blue-500/30",
               strategy === "market_maker" && "bg-purple-500/5 border-purple-500/30",
               strategy === "delta_neutral" && "bg-cyan-500/5 border-cyan-500/30",
-              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/30"
+              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/30",
+              strategy === "tx_spammer" && "bg-pink-500/5 border-pink-500/30"
             )}>
               {strategy === "twap" && <BarChart3 className="w-4 h-4 text-blue-400 flex-shrink-0" />}
               {strategy === "market_maker" && <Bolt className="w-4 h-4 text-purple-400 flex-shrink-0" />}
               {strategy === "delta_neutral" && <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
               {strategy === "high_risk" && <Flame className="w-4 h-4 text-orange-400 flex-shrink-0" />}
+              {strategy === "tx_spammer" && <Zap className="w-4 h-4 text-pink-400 flex-shrink-0" />}
               <p className={cn(
                 "text-xs",
                 strategy === "twap" && "text-blue-400",
                 strategy === "market_maker" && "text-purple-400",
                 strategy === "delta_neutral" && "text-cyan-400",
-                strategy === "high_risk" && "text-orange-400"
+                strategy === "high_risk" && "text-orange-400",
+                strategy === "tx_spammer" && "text-pink-400"
               )}>
                 {strategy === "twap" && "Passive limit orders for volume generation. Low PNL impact."}
                 {strategy === "market_maker" && "Market orders with tight spreads. Active PNL movement."}
                 {strategy === "delta_neutral" && "Opens positions and immediately hedges them. Minimal risk."}
                 {strategy === "high_risk" && "Max leverage, fast TWAPs. Targets +0.15% / -0.1% for quick trades. Real PNL."}
+                {strategy === "tx_spammer" && "Spam tiny TWAP orders as fast as possible. Maximum transaction count. Each order is ~$10-50."}
               </p>
             </div>
           </div>

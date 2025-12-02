@@ -1022,6 +1022,91 @@ export class VolumeBotEngine {
   }
 
   /**
+   * TX Spammer strategy - spam tiny TWAP orders as fast as possible
+   * Each order is ~$10-50 notional, minimum size allowed
+   * Goal: Maximum transaction count, not volume
+   */
+  private async placeTxSpammerOrder(isLong: boolean): Promise<OrderResult> {
+    try {
+      console.log(`\n⚡ [TX SPAMMER] Placing tiny TWAP order...`)
+
+      const currentPrice = await this.getCurrentMarketPrice()
+      const sizeDecimals = this.getMarketSizeDecimals()
+      const marketConfig = this.getMarketConfig()
+
+      // Use minimum size for the market (fastest execution, least capital)
+      const minSize = Number(marketConfig.minSize)
+      const contractSize = minSize
+
+      // Calculate notional value for logging
+      const sizeInBaseAsset = contractSize / Math.pow(10, sizeDecimals)
+      const notionalUSD = sizeInBaseAsset * currentPrice
+
+      console.log(`   Size: ${contractSize} (${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]})`)
+      console.log(`   Notional: ~$${notionalUSD.toFixed(2)}`)
+      console.log(`   Direction: ${isLong ? 'LONG' : 'SHORT'}`)
+
+      // Use shortest possible TWAP (60-120 seconds)
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,
+            this.config.market,
+            contractSize.toString(),
+            isLong,
+            false,     // reduce_only
+            60,        // min duration: 1 minute (minimum)
+            120,       // max duration: 2 minutes
+            undefined, // builder_address
+            undefined, // max_builder_fee
+          ],
+        },
+      })
+
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      console.log(`✅ TX SPAM order submitted: ${committedTxn.hash}`)
+
+      const executedTxn = await this.aptos.waitForTransaction({
+        transactionHash: committedTxn.hash,
+      })
+
+      if (!executedTxn.success) {
+        throw new Error(`TX spam order failed: ${executedTxn.vm_status}`)
+      }
+
+      console.log(`⚡ TX SPAMMED! Notional: $${notionalUSD.toFixed(2)}`)
+
+      return {
+        success: true,
+        txHash: committedTxn.hash,
+        volumeGenerated: notionalUSD,
+        direction: isLong ? 'long' : 'short',
+        size: contractSize,
+        entryPrice: currentPrice,
+        pnl: 0,
+        positionHeldMs: 0,
+      }
+    } catch (error) {
+      console.error('❌ TX spam order failed:', error)
+      return {
+        success: false,
+        txHash: '',
+        volumeGenerated: 0,
+        direction: isLong ? 'long' : 'short',
+        size: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  /**
    * Close position with IOC limit order for INSTANT execution
    */
   private async closePositionWithMarketOrder(
@@ -1251,6 +1336,10 @@ export class VolumeBotEngine {
 
       case 'high_risk':
         result = await this.placeHighRiskOrder(orderSize, isLong)
+        break
+
+      case 'tx_spammer':
+        result = await this.placeTxSpammerOrder(isLong)
         break
 
       case 'twap':

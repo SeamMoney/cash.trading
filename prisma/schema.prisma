@@ -42,7 +42,7 @@ model OrderHistory {
   txHash          String
   direction       String
   strategy        String      @default("twap")
-  size            Int
+  size            BigInt      // Changed from Int - contract sizes can exceed 2^31
   volumeGenerated Float
   success         Boolean
   entryPrice      Float?

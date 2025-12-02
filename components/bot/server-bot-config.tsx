@@ -124,6 +124,11 @@ export function ServerBotConfig() {
       logo: "/tokens/hype.png",
       leverage: 3,
     },
+    "WLFI/USD": {
+      address: "0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2",
+      logo: "/tokens/wlfi.png",
+      leverage: 3,
+    },
   }
 
   const selectedMarket = MARKETS[market]
@@ -308,7 +313,7 @@ export function ServerBotConfig() {
   }
 
   return (
-    <div className="space-y-3 sm:space-y-4 md:space-y-6 animate-in fade-in zoom-in duration-500 h-full flex flex-col">
+    <div className="space-y-6 animate-in fade-in zoom-in duration-500">
       {/* Bot Status Monitor */}
       {account && (
         <BotStatusMonitor
@@ -319,22 +324,22 @@ export function ServerBotConfig() {
       )}
 
       {/* Main Configuration Panel */}
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 relative flex-1 flex flex-col min-h-0">
+      <div className="bg-black/40 backdrop-blur-sm border border-white/10 relative">
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/50" />
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/50" />
 
         {/* Header */}
-        <div className="px-3 sm:px-4 py-2 sm:py-3 bg-white/5 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-primary" />
-            <h3 className="text-primary font-mono text-xs sm:text-sm uppercase tracking-widest font-bold">Volume Bot Config</h3>
+            <h3 className="text-primary font-mono text-sm uppercase tracking-widest font-bold">Volume Bot Config</h3>
           </div>
           <div className="flex gap-1">
             <div className={cn("w-2 h-2", isRunning ? "bg-green-500 animate-pulse" : "bg-zinc-600")} />
           </div>
         </div>
 
-        <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6 font-mono flex-1 overflow-y-auto md:overflow-y-auto">
+        <div className="p-6 space-y-6 font-mono">
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>

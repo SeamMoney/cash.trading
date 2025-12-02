@@ -75,6 +75,12 @@ export const MARKETS = {
     sizeDecimals: 6,
     priceDecimals: 6,
   },
+  'WLFI/USD': {
+    address: '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2',
+    maxLeverage: 3,
+    sizeDecimals: 3,
+    priceDecimals: 6,
+  },
 } as const;
 
 export type MarketName = keyof typeof MARKETS;

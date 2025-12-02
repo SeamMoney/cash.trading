@@ -301,36 +301,56 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close the current position with a reduce-only FAST TWAP order
-   * Uses minimum TWAP duration (1-2 min) for quick but reliable execution
+   * Close the current position with IOC limit order for INSTANT execution
+   * Uses 2% slippage tolerance for guaranteed fills
    */
   private async closePosition(
     size: number,
     isLong: boolean
   ): Promise<OrderResult> {
+    const SLIPPAGE_PCT = 0.02 // 2% slippage for guaranteed IOC fills
+
     try {
-      // To close a long, place a short reduce-only order (and vice versa)
+      // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only FAST TWAP to close position...`)
-      console.log(`Size: ${size}`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
+      console.log(`   Size: ${size}`)
 
-      // Use TWAP with reduce_only=true and minimum duration for fast close
+      // Get current price and calculate aggressive limit for instant fill
+      const currentPrice = await this.getCurrentMarketPrice()
+
+      // Closing LONG = selling = price BELOW market
+      // Closing SHORT = buying = price ABOVE market
+      const aggressivePrice = closeDirection
+        ? currentPrice * (1 - SLIPPAGE_PCT)  // selling (closing long)
+        : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short)
+      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+
+      console.log(`   Price: $${currentPrice.toFixed(2)} → Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
+
+      // Use IOC limit order for instant close
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
-            this.config.userSubaccount,  // subaccount
-            this.config.market,          // market
-            size,                        // size (close full position)
-            closeDirection,              // is_long (opposite of position)
-            true,                        // reduce_only = TRUE to close
-            60,                          // min duration: 1 minute (fastest allowed)
-            120,                         // max duration: 2 minutes
-            undefined,                   // builder_address
-            undefined,                   // max_builder_fee
+            this.config.userSubaccount,
+            this.config.market,
+            limitPrice.toString(),         // px FIRST
+            size.toString(),               // sz SECOND
+            closeDirection,                // is_long (opposite to close)
+            1,                             // time_in_force: 1 = IOC
+            false,                         // post_only: false
+            undefined,                     // client_order_id
+            undefined,                     // conditional_order
+            undefined,                     // trigger_price
+            undefined,                     // take_profit_px
+            undefined,                     // stop_loss_px
+            undefined,                     // reduce_only
+            undefined,                     // builder_address
+            undefined,                     // max_builder_fee
           ],
         },
       })
@@ -340,17 +360,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Close TWAP order submitted: ${committedTxn.hash}`)
+      console.log(`   TX: ${committedTxn.hash.slice(0, 20)}...`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error('Close position transaction failed')
+        throw new Error(`Close order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`✅ Position CLOSING via FAST TWAP (1-2 min)!`)
+      console.log(`✅ Position CLOSED instantly!`)
 
       return {
         success: true,
@@ -709,17 +729,17 @@ export class VolumeBotEngine {
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            contractSize,
-            priceInContractFormat,
+            priceInContractFormat,     // px FIRST
+            contractSize,              // sz SECOND
             isLong,
             0,         // time_in_force: GTC (Good Till Cancel)
             true,      // post_only: true for better fees
             undefined, // client_order_id
-            undefined, // limit_price
-            undefined, // take_profit_price
-            undefined, // stop_loss_price
+            undefined, // conditional_order
             undefined, // trigger_price
-            undefined, // max_leverage
+            undefined, // take_profit_px
+            undefined, // stop_loss_px
+            undefined, // reduce_only
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -798,12 +818,12 @@ export class VolumeBotEngine {
   }
 
   /**
-   * HIGH RISK YOLO STRATEGY
+   * HIGH RISK HFT STRATEGY
    *
-   * Uses TWAP orders (since IOC limit orders require different delegation):
-   * 1. Opens position with short TWAP (5 min)
+   * Uses IOC (Immediate Or Cancel) limit orders for INSTANT execution:
+   * 1. Opens position with IOC order (fills in ~1 second)
    * 2. Monitors BOT'S OWN position for profit target or stop-loss
-   * 3. Closes with TWAP when target hit
+   * 3. Closes with IOC order when target hit (instant)
    *
    * IMPORTANT: Tracks bot's own positions in database so it doesn't interfere
    * with user's manual trades!
@@ -811,14 +831,16 @@ export class VolumeBotEngine {
    * Risk parameters:
    * - Uses MAX leverage for the market
    * - Uses significant portion of capital (configurable)
-   * - Profit target: +0.5% price move
-   * - Stop loss: -0.3% price move
+   * - Profit target: +0.15% price move
+   * - Stop loss: -0.1% price move
+   * - 2% slippage tolerance for guaranteed fills
    */
   private async placeHighRiskOrder(
     size: number,
     isLong: boolean
   ): Promise<OrderResult> {
     const orderStartTime = Date.now()
+    const SLIPPAGE_PCT = 0.02 // 2% slippage for guaranteed IOC fills
 
     try {
       // Check if BOT has an active position (from database, NOT on-chain)
@@ -832,7 +854,7 @@ export class VolumeBotEngine {
         throw new Error('Bot instance not found in database')
       }
 
-      console.log(`\n🎰 [YOLO] Bot position check:`, {
+      console.log(`\n🎰 [HFT] Bot position check:`, {
         hasPosition: botInstance.activePositionSize !== null,
         size: botInstance.activePositionSize,
         isLong: botInstance.activePositionIsLong,
@@ -845,8 +867,8 @@ export class VolumeBotEngine {
         const positionIsLong = botInstance.activePositionIsLong!
         const positionEntry = botInstance.activePositionEntry!
 
-        console.log(`\n📊 [YOLO] Bot's ${positionIsLong ? 'LONG' : 'SHORT'} position`)
-        console.log(`   Size: ${positionSize}, Entry: $${positionEntry.toFixed(4)}`)
+        console.log(`\n📊 [HFT] Bot's ${positionIsLong ? 'LONG' : 'SHORT'} position`)
+        console.log(`   Size: ${positionSize}, Entry: $${positionEntry.toFixed(2)}`)
 
         const currentPrice = await this.getCurrentMarketPrice()
         const priceChange = positionIsLong
@@ -854,13 +876,12 @@ export class VolumeBotEngine {
           : (positionEntry - currentPrice) / positionEntry
 
         const priceChangePercent = priceChange * 100
-        console.log(`   Current: $${currentPrice.toFixed(4)}, PnL: ${priceChangePercent.toFixed(3)}%`)
+        console.log(`   Current: $${currentPrice.toFixed(2)}, PnL: ${priceChangePercent.toFixed(3)}%`)
 
         // Check if volume target reached - if so, FORCE CLOSE regardless of PNL
-        // Use database value since this.status might not be synced
         const volumeTargetReached = botInstance.cumulativeVolume >= botInstance.volumeTargetUSDC
         if (volumeTargetReached) {
-          console.log(`🎯 VOLUME TARGET REACHED! Force closing position regardless of PNL...`)
+          console.log(`🎯 VOLUME TARGET REACHED! Force closing position...`)
           console.log(`   Volume: $${botInstance.cumulativeVolume.toFixed(2)} / $${botInstance.volumeTargetUSDC}`)
         }
 
@@ -880,20 +901,63 @@ export class VolumeBotEngine {
               : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
           }
 
-          // Close with TWAP (reduce-only)
-          const closeResult = await this.closePosition(
-            positionSize,
-            positionIsLong
-          )
+          // Close with IOC order (instant execution)
+          const closeDirection = !positionIsLong // Opposite direction to close
 
-          if (closeResult.success) {
+          // Calculate aggressive limit price for instant fill
+          // Closing LONG = selling = price BELOW market
+          // Closing SHORT = buying = price ABOVE market
+          const aggressivePrice = closeDirection
+            ? currentPrice * (1 - SLIPPAGE_PCT)  // selling (closing long)
+            : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short)
+          const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+
+          console.log(`   Closing with IOC: $${currentPrice.toFixed(2)} → limit $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
+
+          const closeTransaction = await this.aptos.transaction.build.simple({
+            sender: this.botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              typeArguments: [],
+              functionArguments: [
+                this.config.userSubaccount,
+                this.config.market,
+                limitPrice.toString(),       // px FIRST
+                positionSize.toString(),     // sz SECOND
+                closeDirection,              // is_long (opposite to close)
+                1,                           // time_in_force: 1 = IOC
+                false,                       // post_only: false
+                undefined,                   // client_order_id
+                undefined,                   // conditional_order
+                undefined,                   // trigger_price
+                undefined,                   // take_profit_px
+                undefined,                   // stop_loss_px
+                undefined,                   // reduce_only
+                undefined,                   // builder_address
+                undefined,                   // max_builder_fee
+              ],
+            },
+          })
+
+          const closeCommittedTxn = await this.aptos.signAndSubmitTransaction({
+            signer: this.botAccount,
+            transaction: closeTransaction,
+          })
+
+          console.log(`   TX: ${closeCommittedTxn.hash.slice(0, 20)}...`)
+
+          const closeExecutedTxn = await this.aptos.waitForTransaction({
+            transactionHash: closeCommittedTxn.hash,
+          })
+
+          if (closeExecutedTxn.success) {
             const sizeDecimals = this.getMarketSizeDecimals()
             const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * positionEntry
             const maxLeverage = this.getMarketMaxLeverage()
             const leveragedPnlPercent = priceChangePercent * maxLeverage
             const realizedPnl = positionValueUSD * priceChange
 
-            console.log(`💰 Realized: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+            console.log(`✅ CLOSED! PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
             // Clear bot's position in database
             await prisma.botInstance.update({
@@ -905,21 +969,21 @@ export class VolumeBotEngine {
                 activePositionTxHash: null,
               }
             })
-            console.log(`💾 Cleared bot position from database`)
 
             return {
               success: true,
-              txHash: closeResult.txHash,
+              txHash: closeCommittedTxn.hash,
               volumeGenerated: positionValueUSD * 2,
-              direction: closeResult.direction,
+              direction: closeDirection ? 'short' : 'long',
               size: positionSize,
               entryPrice: positionEntry,
               exitPrice: currentPrice,
               pnl: realizedPnl,
               positionHeldMs: Date.now() - orderStartTime,
             }
+          } else {
+            throw new Error(`Close order failed: ${closeExecutedTxn.vm_status}`)
           }
-          return closeResult
         } else {
           // Still waiting for target
           const needMore = ((PROFIT_TARGET - priceChange) * 100).toFixed(3)
@@ -936,10 +1000,8 @@ export class VolumeBotEngine {
         }
       }
 
-      // No BOT position - OPEN NEW YOLO POSITION using FAST TWAP
-      // Use minimum TWAP duration (60s min, 120s max) for quick execution
-      // Market orders have price validation issues, TWAP works reliably
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with FAST TWAP...`)
+      // No BOT position - OPEN NEW POSITION with IOC order (instant execution)
+      console.log(`\n🎰 [HFT] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -954,28 +1016,42 @@ export class VolumeBotEngine {
       const rawSize = Math.floor(sizeInBaseAsset * Math.pow(10, sizeDecimals))
       const contractSize = this.roundSizeToLotSize(rawSize)
 
-      console.log(`   Notional: $${notionalUSD.toFixed(2)} → ${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]}`)
-      console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
-      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
-      console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
-      console.log(`   Order type: FAST TWAP (1-2 min execution)`)
+      // Calculate aggressive limit price for instant fill
+      // LONG = buy = price ABOVE market (willing to pay more)
+      // SHORT = sell = price BELOW market (willing to accept less)
+      const aggressivePrice = isLong
+        ? entryPrice * (1 + SLIPPAGE_PCT)
+        : entryPrice * (1 - SLIPPAGE_PCT)
+      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
 
-      // Use TWAP with minimum duration for fast but reliable execution
+      console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(2)}`)
+      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x`)
+      console.log(`   Notional: $${notionalUSD.toFixed(2)} → ${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]}`)
+      console.log(`   Size: ${contractSize}, Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
+      console.log(`   Order type: IOC (instant execution)`)
+
+      // Use IOC limit order for instant execution
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            contractSize.toString(),
-            isLong,
-            false,     // reduce_only
-            60,        // min duration: 1 minute (fastest allowed)
-            120,       // max duration: 2 minutes
-            undefined, // builder_address
-            undefined, // max_builder_fee
+            limitPrice.toString(),         // px FIRST
+            contractSize.toString(),       // sz SECOND
+            isLong,                        // is_long
+            1,                             // time_in_force: 1 = IOC
+            false,                         // post_only: false
+            undefined,                     // client_order_id
+            undefined,                     // conditional_order
+            undefined,                     // trigger_price
+            undefined,                     // take_profit_px
+            undefined,                     // stop_loss_px
+            undefined,                     // reduce_only
+            undefined,                     // builder_address
+            undefined,                     // max_builder_fee
           ],
         },
       })
@@ -985,17 +1061,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Fast TWAP order submitted: ${committedTxn.hash}`)
+      console.log(`   TX: ${committedTxn.hash.slice(0, 20)}...`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`TWAP order failed: ${executedTxn.vm_status}`)
+        throw new Error(`IOC order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`🎰 YOLO POSITION OPENING via FAST TWAP (1-2 min)!`)
+      console.log(`✅ FILLED! Position opened instantly`)
 
       // Save bot's position to database so we can track it separately from manual trades
       await prisma.botInstance.update({
@@ -1007,10 +1083,8 @@ export class VolumeBotEngine {
           activePositionTxHash: committedTxn.hash,
         }
       })
-      console.log(`💾 Saved bot position to database`)
 
-      // Calculate actual volume: contractSize in base units * price
-      // This matches how other strategies calculate volume
+      // Calculate actual volume
       const volumeGenerated = (Number(contractSize) / Math.pow(10, sizeDecimals)) * entryPrice
 
       return {
@@ -1024,7 +1098,7 @@ export class VolumeBotEngine {
         positionHeldMs: 0,
       }
     } catch (error) {
-      console.error('❌ YOLO order failed:', error)
+      console.error('❌ HFT order failed:', error)
       return {
         success: false,
         txHash: '',
@@ -1167,17 +1241,17 @@ export class VolumeBotEngine {
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            size.toString(),
-            limitPrice.toString(),
+            limitPrice.toString(),     // px FIRST
+            size.toString(),           // sz SECOND
             closeDirection,
             1,                         // time_in_force: 1 = IOC
             false,                     // post_only: false
             undefined,                 // client_order_id
-            undefined,                 // limit_price
-            undefined,                 // take_profit_price
-            undefined,                 // stop_loss_price
+            undefined,                 // conditional_order
             undefined,                 // trigger_price
-            undefined,                 // max_leverage
+            undefined,                 // take_profit_px
+            undefined,                 // stop_loss_px
+            undefined,                 // reduce_only
             undefined,                 // builder_address
             undefined,                 // max_builder_fee
           ],

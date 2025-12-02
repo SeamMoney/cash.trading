@@ -27,6 +27,11 @@ model BotInstance {
   updatedAt          DateTime       @updatedAt
   sessionId          String?
   lastTwapOrderTime  DateTime?
+  // High-risk strategy position tracking (so bot doesn't interfere with manual trades)
+  activePositionSize    Float?     // Size of position opened by bot (null = no bot position)
+  activePositionIsLong  Boolean?   // Direction of bot's position
+  activePositionEntry   Float?     // Entry price of bot's position
+  activePositionTxHash  String?    // Tx hash that opened the position
   orders             OrderHistory[]
 }
 

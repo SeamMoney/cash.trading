@@ -1284,7 +1284,7 @@ export class VolumeBotEngine {
               txHash: result.txHash,
               direction: result.direction,
               strategy: this.config.strategy || 'twap',
-              size: result.size,
+              size: BigInt(result.size),  // Convert to BigInt for Prisma
               volumeGenerated: result.volumeGenerated,
               success: result.success,
               entryPrice: result.entryPrice,

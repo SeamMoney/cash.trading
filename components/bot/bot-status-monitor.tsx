@@ -37,9 +37,11 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
       // Handle different responses
       if (response.status === 429) {
-        const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '30'
+        const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '10'
         toast.warning(`Rate limited · wait ${waitTime}s`, {
-          description: 'Trades are limited to once per 30 seconds',
+          description: config?.strategy === 'high_risk'
+            ? 'High risk monitors every 10 seconds'
+            : 'Trades are limited to once per 30 seconds',
         })
       } else if (data.status === 'completed' || data.isRunning === false) {
         toast.success('Volume Target Reached!', {
@@ -122,9 +124,17 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     return () => clearInterval(interval)
   }, [userWalletAddress, isRunning])
 
+  // Get tick interval based on strategy
+  // High risk: 15 seconds (frequent monitoring)
+  // Other strategies: 60 seconds
+  const getTickInterval = useCallback(() => {
+    return config?.strategy === 'high_risk' ? 15 : 60
+  }, [config?.strategy])
+
   useEffect(() => {
+    const interval = getTickInterval()
     if (!isRunning) {
-      setNextTickIn(60)
+      setNextTickIn(interval)
       return
     }
 
@@ -132,14 +142,14 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       setNextTickIn(prev => {
         if (prev <= 1) {
           triggerTick()
-          return 60
+          return getTickInterval()
         }
         return prev - 1
       })
     }, 1000)
 
     return () => clearInterval(countdownInterval)
-  }, [isRunning, triggerTick])
+  }, [isRunning, triggerTick, getTickInterval])
 
   if (!status || !config) {
     return null

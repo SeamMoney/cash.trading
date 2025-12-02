@@ -38,14 +38,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check rate limiting - don't allow more than 1 trade per 30 seconds
+    // Check rate limiting based on strategy
+    // High risk: 10 seconds (mostly monitoring, actual trades are infrequent)
+    // Other strategies: 30 seconds
+    const rateLimit = bot.strategy === 'high_risk' ? 10000 : 30000
     if (bot.lastOrderTime) {
       const timeSinceLastOrder = Date.now() - new Date(bot.lastOrderTime).getTime()
-      if (timeSinceLastOrder < 30000) {
+      if (timeSinceLastOrder < rateLimit) {
         return NextResponse.json({
           error: 'Rate limited',
-          message: `Please wait ${Math.ceil((30000 - timeSinceLastOrder) / 1000)} seconds`,
-          nextAllowedAt: new Date(new Date(bot.lastOrderTime).getTime() + 30000).toISOString(),
+          message: `Please wait ${Math.ceil((rateLimit - timeSinceLastOrder) / 1000)} seconds`,
+          nextAllowedAt: new Date(new Date(bot.lastOrderTime).getTime() + rateLimit).toISOString(),
         }, { status: 429 })
       }
     }

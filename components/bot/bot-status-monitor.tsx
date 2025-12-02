@@ -17,7 +17,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isExecuting, setIsExecuting] = useState(false)
-  const [nextTickIn, setNextTickIn] = useState(60)
+  const [nextTickIn, setNextTickIn] = useState(15) // Start with faster interval, will adjust
   const lastTickTimeRef = useRef<number>(0)
 
   // Trigger a trade tick
@@ -130,14 +130,16 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   // Get tick interval based on strategy
   // High risk: 15 seconds (frequent monitoring)
   // Other strategies: 60 seconds
-  const getTickInterval = useCallback(() => {
-    return config?.strategy === 'high_risk' ? 15 : 60
-  }, [config?.strategy])
+  const tickInterval = config?.strategy === 'high_risk' ? 15 : 60
+
+  // Reset countdown when strategy/config changes
+  useEffect(() => {
+    setNextTickIn(tickInterval)
+  }, [tickInterval])
 
   useEffect(() => {
-    const interval = getTickInterval()
     if (!isRunning) {
-      setNextTickIn(interval)
+      setNextTickIn(tickInterval)
       return
     }
 
@@ -145,14 +147,14 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       setNextTickIn(prev => {
         if (prev <= 1) {
           triggerTick()
-          return getTickInterval()
+          return tickInterval
         }
         return prev - 1
       })
     }, 1000)
 
     return () => clearInterval(countdownInterval)
-  }, [isRunning, triggerTick, getTickInterval])
+  }, [isRunning, triggerTick, tickInterval])
 
   if (!status || !config) {
     return null

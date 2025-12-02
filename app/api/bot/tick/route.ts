@@ -135,7 +135,8 @@ export async function POST(request: NextRequest) {
         const resources = await priceRes.json()
         const priceResource = resources.find((r: any) => r.type.includes('price_management::Price'))
         if (priceResource) {
-          const currentPrice = Number(priceResource.data.oracle_px) / 1e9
+          // All markets on Decibel testnet use 6 decimals for prices
+          const currentPrice = Number(priceResource.data.oracle_px) / 1e6
           const entryPrice = updatedBot.activePositionEntry
           currentPnl = updatedBot.activePositionIsLong
             ? ((currentPrice - entryPrice) / entryPrice) * 100

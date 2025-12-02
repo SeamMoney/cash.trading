@@ -15,6 +15,34 @@ const MARKET_NAMES: Record<string, string> = {
   '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2': 'WLFI/USD',
 }
 
+// Price decimals for each market (varies by asset)
+const MARKET_PRICE_DECIMALS: Record<string, number> = {
+  'BTC/USD': 9,
+  'ETH/USD': 9,
+  'SOL/USD': 9,
+  'APT/USD': 6,
+  'WLFI/USD': 6,
+}
+
+// Get price decimals for a market
+function getPriceDecimals(marketName: string): number {
+  return MARKET_PRICE_DECIMALS[marketName] || 9
+}
+
+// Default leverage for each market
+const MARKET_MAX_LEVERAGE: Record<string, number> = {
+  'BTC/USD': 40,
+  'ETH/USD': 20,
+  'SOL/USD': 20,
+  'APT/USD': 10,
+  'WLFI/USD': 10,
+}
+
+// Get default leverage for a market
+function getDefaultLeverage(marketName: string): number {
+  return MARKET_MAX_LEVERAGE[marketName] || 10
+}
+
 /**
  * Fetch on-chain trade history from Decibel events
  */
@@ -65,6 +93,7 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
               entryPrice: null,
               exitPrice: null,
               pnl: 0,
+              leverage: getDefaultLeverage(market),
             })
           }
         }
@@ -75,6 +104,8 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
       for (const event of events) {
         const data = event.data
         const market = MARKET_NAMES[data.market?.inner] || 'Unknown'
+        const pxDecimals = getPriceDecimals(market)
+        const priceDivisor = Math.pow(10, pxDecimals)
 
         trades.push({
           id: event.sequence_number,
@@ -86,9 +117,10 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
           size: Number(data.size || 0),
           volumeGenerated: Number(data.notional || 0) / 1e6,
           success: true,
-          entryPrice: Number(data.entry_price || 0) / 1e9,
-          exitPrice: data.exit_price ? Number(data.exit_price) / 1e9 : null,
+          entryPrice: Number(data.entry_price || 0) / priceDivisor,
+          exitPrice: data.exit_price ? Number(data.exit_price) / priceDivisor : null,
           pnl: Number(data.realized_pnl || 0) / 1e6,
+          leverage: getDefaultLeverage(market),
         })
       }
     }
@@ -155,10 +187,14 @@ export async function GET(request: NextRequest) {
         orderBy: { timestamp: 'desc' },
       })
       // Convert BigInt to Number for JSON serialization
+      // Add fallback market/leverage for legacy orders
       botOrders = rawOrders.map(order => ({
         ...order,
         size: Number(order.size),
         source: 'bot' as const,
+        // Fall back to bot instance values for legacy orders
+        market: order.market || botInstance.marketName,
+        leverage: order.leverage || getDefaultLeverage(botInstance.marketName),
       }))
     }
 
@@ -217,7 +253,8 @@ export async function GET(request: NextRequest) {
         pnl: order.pnl,
         positionHeldMs: order.positionHeldMs,
         source: order.source || 'bot', // 'bot' or 'manual'
-        market: order.market,
+        market: order.market || botInstance?.marketName || 'Unknown',
+        leverage: order.leverage,
       })),
       dailyStats,
       botStatus: botInstance ? {

@@ -243,7 +243,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     isExecuting ? "text-yellow-400 animate-pulse" : "text-primary"
                   )} />
                   <span className="text-xs text-zinc-300 uppercase tracking-wider">
-                    {isExecuting ? 'Executing...' : 'Next trade'}
+                    {isExecuting ? 'Checking...' : (monitoringInfo ? 'Next check' : 'Next trade')}
                   </span>
                 </div>
                 <span className="text-lg font-bold text-primary flex items-center gap-1">

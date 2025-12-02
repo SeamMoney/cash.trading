@@ -50,6 +50,8 @@ model OrderHistory {
   pnl             Float       @default(0)
   positionHeldMs  Int         @default(0)
   sessionId       String?
+  market          String?     // Market name (e.g., "BTC/USD")
+  leverage        Int?        // Leverage used for this trade
   bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@index([botId])

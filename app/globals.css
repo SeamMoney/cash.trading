@@ -142,6 +142,22 @@
   body {
     @apply bg-background text-foreground;
     background-color: #000000 !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Improve mobile touch scrolling */
+  @media (max-width: 768px) {
+    html, body {
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+  }
+
+  /* Ensure shader background doesn't block touch */
+  .shader-background,
+  .shader-background * {
+    pointer-events: none !important;
+    touch-action: none !important;
   }
 
   /* Custom scrollbar styles */

@@ -1292,6 +1292,8 @@ export class VolumeBotEngine {
               exitPrice: result.exitPrice,
               pnl: result.pnl || 0,
               positionHeldMs: result.positionHeldMs || 0,
+              market: this.config.marketName,  // Save market name
+              leverage: this.getMarketMaxLeverage(),  // Save leverage used
             }
           })
 

@@ -19,6 +19,9 @@ interface Trade {
   exitPrice: number | null
   pnl: number
   positionHeldMs: number
+  market?: string
+  leverage?: number
+  source?: 'bot' | 'manual'
 }
 
 export function HistoryTable() {
@@ -130,7 +133,7 @@ export function HistoryTable() {
         <Table>
           <TableHeader className="bg-white/5 border-none">
             <TableRow className="border-none hover:bg-transparent">
-              {["Time", "Direction", "Strategy", "Volume", "Entry", "Exit", "PnL", "Duration", "Tx"].map(
+              {["Time", "Market", "Direction", "Leverage", "Volume", "Entry", "Exit", "PnL", "Tx"].map(
                 (head, i) => (
                   <TableHead
                     key={head}
@@ -168,6 +171,9 @@ export function HistoryTable() {
                   <TableCell className="pl-6 font-mono text-xs text-zinc-400">
                     {formatTime(trade.timestamp)}
                   </TableCell>
+                  <TableCell className="font-mono text-xs text-white">
+                    {trade.market || 'Unknown'}
+                  </TableCell>
                   <TableCell className="font-mono">
                     <div className="flex items-center gap-2">
                       {trade.direction === 'long' ? (
@@ -183,8 +189,8 @@ export function HistoryTable() {
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-400 uppercase">
-                    {trade.strategy}
+                  <TableCell className="font-mono text-xs text-primary font-bold">
+                    {trade.leverage ? `${trade.leverage}x` : '-'}
                   </TableCell>
                   <TableCell className="font-mono text-xs text-white">
                     ${trade.volumeGenerated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -204,9 +210,6 @@ export function HistoryTable() {
                         {trade.pnl > 0 ? '+' : ''}${trade.pnl.toFixed(2)}
                       </>
                     ) : '-'}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-500">
-                    {formatDuration(trade.positionHeldMs)}
                   </TableCell>
                   <TableCell className="text-right pr-6">
                     {trade.txHash && trade.txHash !== 'waiting' ? (
@@ -265,9 +268,14 @@ export function HistoryTable() {
                   )}>
                     {trade.direction}
                   </span>
-                  <span className="text-zinc-600 text-xs font-mono uppercase">
-                    {trade.strategy}
+                  <span className="text-white text-xs font-mono">
+                    {trade.market || 'Unknown'}
                   </span>
+                  {trade.leverage && (
+                    <span className="text-primary text-xs font-mono font-bold">
+                      {trade.leverage}x
+                    </span>
+                  )}
                 </div>
                 <span className="text-xs font-mono text-zinc-500">
                   {formatTime(trade.timestamp)}

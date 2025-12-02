@@ -344,14 +344,14 @@ export function PortfolioView() {
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4">
             <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Best Trade</div>
-            <div className="text-2xl font-mono font-bold text-green-500">
-              +${stats.bestTrade.toFixed(2)}
+            <div className={`text-2xl font-mono font-bold ${stats.bestTrade >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {stats.bestTrade >= 0 ? '+$' : '-$'}{Math.abs(stats.bestTrade).toFixed(2)}
             </div>
           </div>
           <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4">
             <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Worst Trade</div>
             <div className="text-2xl font-mono font-bold text-red-500">
-              ${stats.worstTrade.toFixed(2)}
+              -${Math.abs(stats.worstTrade).toFixed(2)}
             </div>
           </div>
         </div>

@@ -58,15 +58,23 @@ export async function POST(request: NextRequest) {
 
     // Check if bot has reached volume target
     if (bot.cumulativeVolume >= bot.volumeTargetUSDC) {
-      await prisma.botInstance.update({
-        where: { id: bot.id },
-        data: { isRunning: false },
-      })
-      return NextResponse.json({
-        success: true,
-        status: 'completed',
-        message: 'Volume target reached, bot stopped',
-      })
+      // For high_risk strategy, must close any open position before stopping
+      if (bot.strategy === 'high_risk' && bot.activePositionSize && bot.activePositionSize > 0) {
+        console.log(`📊 Volume target reached but high_risk has open position - must close first!`)
+        console.log(`   Position: ${bot.activePositionIsLong ? 'LONG' : 'SHORT'} ${bot.activePositionSize}`)
+        // Don't stop yet - let the engine close the position first
+        // The executeSingleTrade will handle closing it
+      } else {
+        await prisma.botInstance.update({
+          where: { id: bot.id },
+          data: { isRunning: false },
+        })
+        return NextResponse.json({
+          success: true,
+          status: 'completed',
+          message: 'Volume target reached, bot stopped',
+        })
+      }
     }
 
     // Execute trade
@@ -106,6 +114,33 @@ export async function POST(request: NextRequest) {
     const updatedBot = await prisma.botInstance.findUnique({
       where: { id: bot.id },
     })
+
+    // For high_risk: if volume target reached AND position is now closed, stop the bot
+    if (updatedBot &&
+        bot.strategy === 'high_risk' &&
+        updatedBot.cumulativeVolume >= updatedBot.volumeTargetUSDC &&
+        (!updatedBot.activePositionSize || updatedBot.activePositionSize === 0)) {
+      console.log(`🎯 High risk: Volume target reached and position closed - stopping bot`)
+      await prisma.botInstance.update({
+        where: { id: bot.id },
+        data: { isRunning: false },
+      })
+      // Refetch to get the updated isRunning status
+      const finalBot = await prisma.botInstance.findUnique({
+        where: { id: bot.id },
+      })
+      return NextResponse.json({
+        success: true,
+        status: 'completed',
+        isRunning: false,
+        cumulativeVolume: finalBot?.cumulativeVolume || updatedBot.cumulativeVolume,
+        volumeTargetUSDC: finalBot?.volumeTargetUSDC || updatedBot.volumeTargetUSDC,
+        progress: '100.0',
+        ordersPlaced: finalBot?.ordersPlaced || updatedBot.ordersPlaced,
+        message: '🎯 Volume target reached! Position closed and bot stopped.',
+        market: bot.marketName,
+      })
+    }
 
     // Check if a NEW order was placed (ordersPlaced increased)
     const newOrderPlaced = updatedBot && updatedBot.ordersPlaced > bot.ordersPlaced
@@ -181,8 +216,22 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Manual tick error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Check if this is a rate limit error (429)
+    const isRateLimit = errorMessage.includes('429') || errorMessage.includes('Too Many Requests') || errorMessage.includes('rate limit')
+
+    if (isRateLimit) {
+      return NextResponse.json({
+        error: 'Rate limited by Aptos API',
+        message: 'Too many requests. Will retry automatically.',
+        retryAfter: 10, // Suggest 10 second backoff
+        isRateLimit: true,
+      }, { status: 429 })
+    }
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

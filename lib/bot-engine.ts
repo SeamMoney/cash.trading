@@ -856,16 +856,29 @@ export class VolumeBotEngine {
         const priceChangePercent = priceChange * 100
         console.log(`   Current: $${currentPrice.toFixed(4)}, PnL: ${priceChangePercent.toFixed(3)}%`)
 
+        // Check if volume target reached - if so, FORCE CLOSE regardless of PNL
+        // Use database value since this.status might not be synced
+        const volumeTargetReached = botInstance.cumulativeVolume >= botInstance.volumeTargetUSDC
+        if (volumeTargetReached) {
+          console.log(`🎯 VOLUME TARGET REACHED! Force closing position regardless of PNL...`)
+          console.log(`   Volume: $${botInstance.cumulativeVolume.toFixed(2)} / $${botInstance.volumeTargetUSDC}`)
+        }
+
         // Tighter targets for faster trades
         // With 40x leverage: 0.15% price move = 6% account PnL
         const PROFIT_TARGET = 0.0015  // 0.15% price move = take profit
         const STOP_LOSS = -0.001     // -0.1% price move = stop loss
 
-        if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS) {
+        // Close if: profit target, stop loss, OR volume target reached (force close)
+        if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {
           const isProfit = priceChange >= PROFIT_TARGET
-          console.log(isProfit
-            ? `🎯 PROFIT TARGET! Closing for +${priceChangePercent.toFixed(3)}%`
-            : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
+          if (volumeTargetReached && priceChange < PROFIT_TARGET && priceChange > STOP_LOSS) {
+            console.log(`🎯 FORCE CLOSE (volume target)! Closing at ${priceChangePercent.toFixed(3)}%`)
+          } else {
+            console.log(isProfit
+              ? `🎯 PROFIT TARGET! Closing for +${priceChangePercent.toFixed(3)}%`
+              : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
+          }
 
           // Close with TWAP (reduce-only)
           const closeResult = await this.closePosition(
@@ -996,7 +1009,9 @@ export class VolumeBotEngine {
       })
       console.log(`💾 Saved bot position to database`)
 
-      const volumeGenerated = capitalToUse * maxLeverage
+      // Calculate actual volume: contractSize in base units * price
+      // This matches how other strategies calculate volume
+      const volumeGenerated = (Number(contractSize) / Math.pow(10, sizeDecimals)) * entryPrice
 
       return {
         success: true,
@@ -1022,23 +1037,31 @@ export class VolumeBotEngine {
   }
 
   /**
-   * TX Spammer strategy - spam tiny TWAP orders as fast as possible
-   * Each order is ~$10-50 notional, minimum size allowed
-   * Goal: Maximum transaction count, not volume
+   * TX Spammer strategy - spam TWAP orders as fast as possible
+   * Uses ~$500 notional per order for faster volume generation
+   * Goal: Maximum transaction count AND reasonable volume per tx
    */
   private async placeTxSpammerOrder(isLong: boolean): Promise<OrderResult> {
     try {
-      console.log(`\n⚡ [TX SPAMMER] Placing tiny TWAP order...`)
+      console.log(`\n⚡ [TX SPAMMER] Placing fast TWAP order...`)
 
       const currentPrice = await this.getCurrentMarketPrice()
       const sizeDecimals = this.getMarketSizeDecimals()
       const marketConfig = this.getMarketConfig()
 
-      // Use minimum size for the market (fastest execution, least capital)
-      const minSize = Number(marketConfig.minSize)
-      const contractSize = minSize
+      // Target ~$500 notional per order for faster volume
+      // This balances speed with volume generation
+      const targetNotionalUSD = 500
+      const rawSizeInBaseAsset = targetNotionalUSD / currentPrice
+      const rawContractSize = Math.floor(rawSizeInBaseAsset * Math.pow(10, sizeDecimals))
 
-      // Calculate notional value for logging
+      // Round to lot size and ensure minimum
+      const contractSize = Math.max(
+        Number(this.roundSizeToLotSize(rawContractSize)),
+        Number(marketConfig.minSize)
+      )
+
+      // Calculate actual notional value for logging
       const sizeInBaseAsset = contractSize / Math.pow(10, sizeDecimals)
       const notionalUSD = sizeInBaseAsset * currentPrice
 

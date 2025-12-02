@@ -25,6 +25,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     entry?: number,
     currentPrice?: number
   } | null>(null)
+  const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
   const lastTickTimeRef = useRef<number>(0)
 
   // Trigger a trade tick
@@ -43,13 +44,18 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       console.log('Bot tick result:', data)
 
       // Handle different responses
-      if (response.status === 429) {
-        const waitTime = data.message?.match(/(\d+) seconds/)?.[1] || '10'
-        toast.warning(`Rate limited · wait ${waitTime}s`, {
-          description: config?.strategy === 'high_risk'
-            ? 'High risk monitors every 10 seconds'
-            : 'Trades are limited to once per 30 seconds',
-        })
+      if (response.status === 429 || data.isRateLimit) {
+        // Rate limit - add backoff and don't show alarming error
+        const backoffTime = data.retryAfter || 10
+        setRateLimitBackoff(backoffTime)
+        // Only show toast occasionally to avoid spam
+        if (Math.random() < 0.3) {
+          toast.info(`Slowing down...`, {
+            description: `API rate limit hit, backing off ${backoffTime}s`,
+            duration: 2000,
+          })
+        }
+        console.log(`Rate limited, backing off ${backoffTime}s`)
       } else if (data.status === 'completed' || data.isRunning === false) {
         toast.success('Volume Target Reached!', {
           description: `Completed ${data.ordersPlaced} trades · Total volume: $${data.cumulativeVolume?.toFixed(0)} USDC`,
@@ -158,10 +164,17 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   useEffect(() => {
     if (!isRunning) {
       setNextTickIn(tickInterval)
+      setRateLimitBackoff(0)
       return
     }
 
     const countdownInterval = setInterval(() => {
+      // Handle rate limit backoff first
+      if (rateLimitBackoff > 0) {
+        setRateLimitBackoff(prev => prev - 1)
+        return
+      }
+
       setNextTickIn(prev => {
         if (prev <= 1) {
           triggerTick()
@@ -172,7 +185,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     }, 1000)
 
     return () => clearInterval(countdownInterval)
-  }, [isRunning, triggerTick, tickInterval])
+  }, [isRunning, triggerTick, tickInterval, rateLimitBackoff])
 
   if (!status || !config) {
     return null
@@ -249,20 +262,35 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
             </div>
 
             {/* Next Trade Countdown */}
-            <div className="p-3 bg-primary/5 border border-primary/20 relative">
-              <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-6 w-[3px] bg-primary/50" />
+            <div className={cn(
+              "p-3 border relative",
+              rateLimitBackoff > 0
+                ? "bg-orange-500/5 border-orange-500/20"
+                : "bg-primary/5 border-primary/20"
+            )}>
+              <div className={cn(
+                "absolute -left-[1px] top-1/2 -translate-y-1/2 h-6 w-[3px]",
+                rateLimitBackoff > 0 ? "bg-orange-500/50" : "bg-primary/50"
+              )} />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Zap className={cn(
                     "w-4 h-4",
-                    isExecuting ? "text-yellow-400 animate-pulse" : "text-primary"
+                    isExecuting ? "text-yellow-400 animate-pulse" :
+                    rateLimitBackoff > 0 ? "text-orange-400" : "text-primary"
                   )} />
                   <span className="text-xs text-zinc-300 uppercase tracking-wider">
-                    {isExecuting ? 'Checking...' : (monitoringInfo ? 'Next check' : 'Next trade')}
+                    {isExecuting ? 'Checking...' :
+                     rateLimitBackoff > 0 ? 'Cooling down' :
+                     (monitoringInfo ? 'Next check' : 'Next trade')}
                   </span>
                 </div>
-                <span className="text-lg font-bold text-primary flex items-center gap-1">
-                  {isExecuting ? <Timer className="w-4 h-4 animate-spin" /> : `${nextTickIn}s`}
+                <span className={cn(
+                  "text-lg font-bold flex items-center gap-1",
+                  rateLimitBackoff > 0 ? "text-orange-400" : "text-primary"
+                )}>
+                  {isExecuting ? <Timer className="w-4 h-4 animate-spin" /> :
+                   rateLimitBackoff > 0 ? `${rateLimitBackoff}s` : `${nextTickIn}s`}
                 </span>
               </div>
             </div>
@@ -311,8 +339,8 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
               </div>
             )}
 
-            {/* Error Display */}
-            {status.error && (
+            {/* Error Display - don't show rate limit errors as they auto-recover */}
+            {status.error && !status.error.includes('429') && !status.error.includes('rate limit') && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500" />
                 <p className="text-xs text-red-400">

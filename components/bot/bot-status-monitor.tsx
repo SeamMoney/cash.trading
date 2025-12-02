@@ -52,14 +52,9 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           onStatusChange(false)
         }
       } else if (data.status === 'monitoring') {
-        // Bot is monitoring position - show current PnL status
-        const pnlInfo = data.currentPnl !== undefined
-          ? `Current PnL: ${data.currentPnl >= 0 ? '+' : ''}${data.currentPnl.toFixed(3)}%`
-          : 'Checking price...'
-        toast.info(`Monitoring ${data.positionDirection?.toUpperCase() || ''} position`, {
-          description: `${pnlInfo} · Target: +0.5% / Stop: -0.3%`,
-          duration: 2000,
-        })
+        // Bot is monitoring position - update state for persistent UI display (no toast)
+        // The monitoring info will be shown in the status panel instead
+        console.log(`Monitoring ${data.positionDirection} position: PnL ${data.currentPnl?.toFixed(3)}%`)
       } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'

@@ -18,7 +18,7 @@ export function ServerBotConfig() {
   const { balance, subaccount } = useWalletBalance()
 
   const [capital, setCapital] = useState<string>("")
-  const [volumeTarget, setVolumeTarget] = useState<number>(500)
+  const [volumeTarget, setVolumeTarget] = useState<number>(10000)
   const [bias, setBias] = useState<Bias>("neutral")
   const [strategy, setStrategy] = useState<Strategy>("high_risk")
   const [market, setMarket] = useState<string>("BTC/USD")
@@ -378,23 +378,27 @@ export function ServerBotConfig() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Volume Target</h3>
-              <span className="text-2xl font-bold text-primary font-mono">${volumeTarget.toFixed(0)}</span>
+              <span className="text-2xl font-bold text-primary font-mono">
+                ${volumeTarget >= 1000000 ? `${(volumeTarget / 1000000).toFixed(1)}M` :
+                  volumeTarget >= 1000 ? `${(volumeTarget / 1000).toFixed(0)}K` :
+                  volumeTarget.toFixed(0)}
+              </span>
             </div>
             <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
               <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-zinc-800 via-primary/30 to-primary" />
               <Slider
                 value={[volumeTarget]}
                 onValueChange={([value]) => setVolumeTarget(value)}
-                min={100}
-                max={10000}
-                step={100}
+                min={1000}
+                max={1000000}
+                step={1000}
                 disabled={isRunning || loading}
                 className="cursor-pointer relative z-10"
               />
             </div>
             <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
-              <span>$100</span>
-              <span>$10,000</span>
+              <span>$1K</span>
+              <span>$1M</span>
             </div>
           </div>
 

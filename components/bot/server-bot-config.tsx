@@ -642,7 +642,7 @@ export function ServerBotConfig() {
                 {strategy === "twap" && "Passive limit orders for volume generation. Low PNL impact."}
                 {strategy === "market_maker" && "Market orders with tight spreads. Active PNL movement."}
                 {strategy === "delta_neutral" && "Opens positions and immediately hedges them. Minimal risk."}
-                {strategy === "high_risk" && "20x leverage, 5-10 min TWAPs. Targets +0.3% profit / -0.2% stop-loss. Real PNL."}
+                {strategy === "high_risk" && "Max leverage, fast TWAPs. Targets +0.15% / -0.1% for quick trades. Real PNL."}
               </p>
             </div>
           </div>

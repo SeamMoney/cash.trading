@@ -854,9 +854,10 @@ export class VolumeBotEngine {
         const priceChangePercent = priceChange * 100
         console.log(`   Current: $${currentPrice.toFixed(4)}, PnL: ${priceChangePercent.toFixed(3)}%`)
 
-        // Profit target: +0.5% / Stop loss: -0.3%
-        const PROFIT_TARGET = 0.005  // 0.5%
-        const STOP_LOSS = -0.003     // -0.3%
+        // Tighter targets for faster trades
+        // With 40x leverage: 0.15% price move = 6% account PnL
+        const PROFIT_TARGET = 0.0015  // 0.15% price move = take profit
+        const STOP_LOSS = -0.001     // -0.1% price move = stop loss
 
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS) {
           const isProfit = priceChange >= PROFIT_TARGET

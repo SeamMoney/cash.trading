@@ -125,8 +125,15 @@ export async function POST(request: NextRequest) {
     // Calculate current PnL for monitoring status
     let currentPnl: number | undefined
     let positionDirection: string | undefined
+    let positionSize: number | undefined
+    let positionEntry: number | undefined
+    let currentPrice: number | undefined
+
     if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
       positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
+      positionSize = updatedBot.activePositionSize
+      positionEntry = updatedBot.activePositionEntry
+
       // Fetch current price to calculate PnL
       try {
         const priceRes = await fetch(
@@ -136,7 +143,7 @@ export async function POST(request: NextRequest) {
         const priceResource = resources.find((r: any) => r.type.includes('price_management::Price'))
         if (priceResource) {
           // All markets on Decibel testnet use 6 decimals for prices
-          const currentPrice = Number(priceResource.data.oracle_px) / 1e6
+          currentPrice = Number(priceResource.data.oracle_px) / 1e6
           const entryPrice = updatedBot.activePositionEntry
           currentPnl = updatedBot.activePositionIsLong
             ? ((currentPrice - entryPrice) / entryPrice) * 100
@@ -162,9 +169,12 @@ export async function POST(request: NextRequest) {
       volumeGenerated: latestOrder?.volumeGenerated,
       txHash: latestOrder?.txHash,
       market: bot.marketName,
-      // Monitoring info
+      // Monitoring info - full position details
       currentPnl,
       positionDirection,
+      positionSize,
+      positionEntry,
+      currentPrice,
     })
   } catch (error) {
     console.error('Manual tick error:', error)

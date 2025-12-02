@@ -18,7 +18,13 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   const [loading, setLoading] = useState(true)
   const [isExecuting, setIsExecuting] = useState(false)
   const [nextTickIn, setNextTickIn] = useState(15) // Start with faster interval, will adjust
-  const [monitoringInfo, setMonitoringInfo] = useState<{pnl: number, direction: string} | null>(null)
+  const [monitoringInfo, setMonitoringInfo] = useState<{
+    pnl: number,
+    direction: string,
+    size?: number,
+    entry?: number,
+    currentPrice?: number
+  } | null>(null)
   const lastTickTimeRef = useRef<number>(0)
 
   // Trigger a trade tick
@@ -55,7 +61,13 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       } else if (data.status === 'monitoring') {
         // Bot is monitoring position - update state for persistent UI display
         if (data.currentPnl !== undefined && data.positionDirection) {
-          setMonitoringInfo({ pnl: data.currentPnl, direction: data.positionDirection })
+          setMonitoringInfo({
+            pnl: data.currentPnl,
+            direction: data.positionDirection,
+            size: data.positionSize,
+            entry: data.positionEntry,
+            currentPrice: data.currentPrice
+          })
         }
       } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
@@ -267,7 +279,30 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     {monitoringInfo.pnl >= 0 ? '+' : ''}{monitoringInfo.pnl.toFixed(3)}%
                   </span>
                 </div>
-                <div className="mt-1 text-[10px] text-zinc-500">
+                {/* Position Details */}
+                {monitoringInfo.size && monitoringInfo.entry && (
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
+                    <div>
+                      <span className="text-zinc-500">Size</span>
+                      <p className="text-white font-medium">
+                        {(monitoringInfo.size / 1e8).toFixed(4)} BTC
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500">Entry</span>
+                      <p className="text-white font-medium">
+                        ${monitoringInfo.entry.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500">Current</span>
+                      <p className="text-white font-medium">
+                        ${monitoringInfo.currentPrice?.toLocaleString(undefined, { maximumFractionDigits: 0 }) || '-'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2 text-[10px] text-zinc-500">
                   Target: +0.15% · Stop: -0.1%
                 </div>
               </div>

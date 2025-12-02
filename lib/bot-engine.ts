@@ -1184,15 +1184,38 @@ export class VolumeBotEngine {
   private async runLoop() {
     console.log('\n🔄 Bot loop iteration...')
 
-    // Check if we've reached volume target
-    if (this.status.cumulativeVolume >= this.config.volumeTargetUSDC) {
-      console.log('🎉 Volume target reached! Stopping bot.')
-      await this.stop()
-      // Remove from botManager
-      const { botManager } = await import('./bot-manager')
-      botManager.deleteBot(this.config.userWalletAddress)
-      console.log('🗑️  Removed bot from active bots')
-      return
+    // For high_risk strategy, check if we have an open position that needs closing
+    // We must close positions before stopping, even if volume target is reached
+    if (this.config.strategy === 'high_risk') {
+      const { prisma } = await import('./prisma')
+      const botInstance = await prisma.botInstance.findUnique({
+        where: { userWalletAddress: this.config.userWalletAddress }
+      })
+
+      if (botInstance?.activePositionSize && botInstance.activePositionSize > 0) {
+        console.log('📊 High risk: Have open position, must monitor/close before stopping')
+        // Don't check volume target - proceed to placeHighRiskOrder which will monitor/close
+      } else {
+        // No open position - safe to check volume target
+        if (this.status.cumulativeVolume >= this.config.volumeTargetUSDC) {
+          console.log('🎉 Volume target reached! Stopping bot.')
+          await this.stop()
+          const { botManager } = await import('./bot-manager')
+          botManager.deleteBot(this.config.userWalletAddress)
+          console.log('🗑️  Removed bot from active bots')
+          return
+        }
+      }
+    } else {
+      // Non high_risk strategies: normal volume target check
+      if (this.status.cumulativeVolume >= this.config.volumeTargetUSDC) {
+        console.log('🎉 Volume target reached! Stopping bot.')
+        await this.stop()
+        const { botManager } = await import('./bot-manager')
+        botManager.deleteBot(this.config.userWalletAddress)
+        console.log('🗑️  Removed bot from active bots')
+        return
+      }
     }
 
     // Calculate next order

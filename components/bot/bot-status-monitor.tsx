@@ -52,8 +52,11 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           onStatusChange(false)
         }
       } else if (data.status === 'monitoring') {
-        // Bot is monitoring position, no toast needed (or subtle one)
-        console.log('Bot monitoring position...')
+        // Bot is monitoring position - show subtle info toast occasionally
+        toast.info('Monitoring position...', {
+          description: `Waiting for profit target (+0.5%) or stop loss (-0.3%)`,
+          duration: 2000,
+        })
       } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'

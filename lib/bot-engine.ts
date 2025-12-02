@@ -301,8 +301,8 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close the current position with a reduce-only market order
-   * Market orders execute instantly for fast high_risk trading
+   * Close the current position with a reduce-only FAST TWAP order
+   * Uses minimum TWAP duration (1-2 min) for quick but reliable execution
    */
   private async closePosition(
     size: number,
@@ -312,27 +312,23 @@ export class VolumeBotEngine {
       // To close a long, place a short reduce-only order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only MARKET order to close position...`)
+      console.log(`\n📝 [CLOSE] Placing ${closeDirection ? 'SHORT' : 'LONG'} reduce-only FAST TWAP to close position...`)
       console.log(`Size: ${size}`)
 
-      // Use market order with reduce_only=true for instant close
+      // Use TWAP with reduce_only=true and minimum duration for fast close
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
             this.config.market,          // market
-            size.toString(),             // size (close full position)
+            size,                        // size (close full position)
             closeDirection,              // is_long (opposite of position)
             true,                        // reduce_only = TRUE to close
-            undefined,                   // client_order_id
-            undefined,                   // stop_price
-            undefined,                   // tp_trigger_price
-            undefined,                   // tp_limit_price
-            undefined,                   // sl_trigger_price
-            undefined,                   // sl_limit_price
+            60,                          // min duration: 1 minute (fastest allowed)
+            120,                         // max duration: 2 minutes
             undefined,                   // builder_address
             undefined,                   // max_builder_fee
           ],
@@ -344,7 +340,7 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Close market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Close TWAP order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
@@ -354,7 +350,7 @@ export class VolumeBotEngine {
         throw new Error('Close position transaction failed')
       }
 
-      console.log(`✅ Position CLOSED INSTANTLY!`)
+      console.log(`✅ Position CLOSING via FAST TWAP (1-2 min)!`)
 
       return {
         success: true,
@@ -927,9 +923,10 @@ export class VolumeBotEngine {
         }
       }
 
-      // No BOT position - OPEN NEW YOLO POSITION using MARKET ORDER
-      // Market orders execute instantly at current price
-      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with MARKET ORDER...`)
+      // No BOT position - OPEN NEW YOLO POSITION using FAST TWAP
+      // Use minimum TWAP duration (60s min, 120s max) for quick execution
+      // Market orders have price validation issues, TWAP works reliably
+      console.log(`\n🎰 [YOLO] Opening ${isLong ? 'LONG' : 'SHORT'} position with FAST TWAP...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -948,28 +945,24 @@ export class VolumeBotEngine {
       console.log(`   Market: ${this.config.marketName}, Oracle: $${entryPrice.toFixed(4)}`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x (MAX)`)
       console.log(`   Size: ${contractSize} (${(Number(contractSize) / Math.pow(10, sizeDecimals)).toFixed(4)} ${this.config.marketName.split('/')[0]})`)
-      console.log(`   Order type: MARKET (instant execution)`)
+      console.log(`   Order type: FAST TWAP (1-2 min execution)`)
 
-      // Use market order for instant execution
+      // Use TWAP with minimum duration for fast but reliable execution
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
-            this.config.userSubaccount,  // subaccount
-            this.config.market,          // market
-            contractSize.toString(),     // size
-            isLong,                      // is_long
-            false,                       // reduce_only
-            undefined,                   // client_order_id
-            undefined,                   // stop_price
-            undefined,                   // tp_trigger_price
-            undefined,                   // tp_limit_price
-            undefined,                   // sl_trigger_price
-            undefined,                   // sl_limit_price
-            undefined,                   // builder_address
-            undefined,                   // max_builder_fee
+            this.config.userSubaccount,
+            this.config.market,
+            contractSize.toString(),
+            isLong,
+            false,     // reduce_only
+            60,        // min duration: 1 minute (fastest allowed)
+            120,       // max duration: 2 minutes
+            undefined, // builder_address
+            undefined, // max_builder_fee
           ],
         },
       })
@@ -979,17 +972,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Market order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Fast TWAP order submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Market order failed: ${executedTxn.vm_status}`)
+        throw new Error(`TWAP order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`🎰 YOLO POSITION OPENED INSTANTLY!`)
+      console.log(`🎰 YOLO POSITION OPENING via FAST TWAP (1-2 min)!`)
 
       // Save bot's position to database so we can track it separately from manual trades
       await prisma.botInstance.update({

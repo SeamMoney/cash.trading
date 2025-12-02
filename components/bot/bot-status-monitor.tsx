@@ -18,6 +18,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
   const [loading, setLoading] = useState(true)
   const [isExecuting, setIsExecuting] = useState(false)
   const [nextTickIn, setNextTickIn] = useState(15) // Start with faster interval, will adjust
+  const [monitoringInfo, setMonitoringInfo] = useState<{pnl: number, direction: string} | null>(null)
   const lastTickTimeRef = useRef<number>(0)
 
   // Trigger a trade tick
@@ -52,9 +53,10 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
           onStatusChange(false)
         }
       } else if (data.status === 'monitoring') {
-        // Bot is monitoring position - update state for persistent UI display (no toast)
-        // The monitoring info will be shown in the status panel instead
-        console.log(`Monitoring ${data.positionDirection} position: PnL ${data.currentPnl?.toFixed(3)}%`)
+        // Bot is monitoring position - update state for persistent UI display
+        if (data.currentPnl !== undefined && data.positionDirection) {
+          setMonitoringInfo({ pnl: data.currentPnl, direction: data.positionDirection })
+        }
       } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
@@ -249,6 +251,27 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                 </span>
               </div>
             </div>
+
+            {/* Monitoring Info - shows when watching an open position */}
+            {monitoringInfo && config?.strategy === 'high_risk' && (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-blue-300 uppercase tracking-wider">
+                    Monitoring {monitoringInfo.direction.toUpperCase()} Position
+                  </span>
+                  <span className={cn(
+                    "text-sm font-bold",
+                    monitoringInfo.pnl >= 0 ? "text-green-400" : "text-red-400"
+                  )}>
+                    {monitoringInfo.pnl >= 0 ? '+' : ''}{monitoringInfo.pnl.toFixed(3)}%
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] text-zinc-500">
+                  Target: +0.5% · Stop: -0.3%
+                </div>
+              </div>
+            )}
 
             {/* Error Display */}
             {status.error && (

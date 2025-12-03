@@ -453,7 +453,7 @@ export class VolumeBotEngine {
             limitPrice.toString(),         // px FIRST
             size.toString(),               // sz SECOND
             closeDirection,                // is_long (opposite to close)
-            1,                             // time_in_force: 1 = IOC
+            2,                             // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
             false,                         // post_only: false
             undefined,                     // client_order_id
             undefined,                     // conditional_order
@@ -1211,7 +1211,7 @@ export class VolumeBotEngine {
             limitPrice.toString(),         // px FIRST
             contractSize.toString(),       // sz SECOND
             isLong,                        // is_long
-            1,                             // time_in_force: 1 = IOC
+            2,                             // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
             false,                         // post_only: false
             undefined,                     // client_order_id
             undefined,                     // conditional_order
@@ -1438,7 +1438,7 @@ export class VolumeBotEngine {
             limitPrice.toString(),     // px FIRST
             size.toString(),           // sz SECOND
             closeDirection,
-            1,                         // time_in_force: 1 = IOC
+            2,                         // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
             false,                     // post_only: false
             undefined,                 // client_order_id
             undefined,                 // conditional_order

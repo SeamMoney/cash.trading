@@ -301,6 +301,25 @@ export class VolumeBotEngine {
   }
 
   /**
+   * Get on-chain position (alias for getCurrentPosition for clarity)
+   */
+  private async getOnChainPosition(): Promise<{
+    size: number
+    isLong: boolean
+    entryPrice: number
+  } | null> {
+    const pos = await this.getCurrentPosition()
+    if (!pos.hasPosition || pos.size === 0) {
+      return null
+    }
+    return {
+      size: pos.size,
+      isLong: pos.isLong,
+      entryPrice: pos.entryPrice,
+    }
+  }
+
+  /**
    * Close the current position with IOC limit order for INSTANT execution
    * Uses 2% slippage tolerance for guaranteed fills
    */
@@ -854,18 +873,36 @@ export class VolumeBotEngine {
         throw new Error('Bot instance not found in database')
       }
 
-      console.log(`\n🎰 [HFT] Bot position check:`, {
-        hasPosition: botInstance.activePositionSize !== null,
-        size: botInstance.activePositionSize,
-        isLong: botInstance.activePositionIsLong,
-        entry: botInstance.activePositionEntry
+      // CRITICAL: Always sync with on-chain position to prevent tracking issues
+      const onChainPosition = await this.getOnChainPosition()
+
+      // If on-chain has a position but database doesn't, sync it
+      if (onChainPosition && onChainPosition.size > 0) {
+        if (botInstance.activePositionSize === null || botInstance.activePositionSize === 0) {
+          console.log(`⚠️ Position sync: Found on-chain position not in DB, syncing...`)
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: onChainPosition.size,
+              activePositionIsLong: onChainPosition.isLong,
+              activePositionEntry: onChainPosition.entryPrice,
+            }
+          })
+        }
+      }
+
+      console.log(`\n🎰 [HFT] Position check:`, {
+        dbPosition: botInstance.activePositionSize,
+        onChainPosition: onChainPosition?.size || 0,
+        isLong: onChainPosition?.isLong ?? botInstance.activePositionIsLong,
       })
 
-      // If BOT has an active position, monitor it
-      if (botInstance.activePositionSize !== null && botInstance.activePositionSize > 0) {
-        const positionSize = botInstance.activePositionSize
-        const positionIsLong = botInstance.activePositionIsLong!
-        const positionEntry = botInstance.activePositionEntry!
+      // Use on-chain position as source of truth
+      const hasPosition = onChainPosition && onChainPosition.size > 0
+      if (hasPosition) {
+        const positionSize = onChainPosition.size
+        const positionIsLong = onChainPosition.isLong
+        const positionEntry = onChainPosition.entryPrice
 
         console.log(`\n📊 [HFT] Bot's ${positionIsLong ? 'LONG' : 'SHORT'} position`)
         console.log(`   Size: ${positionSize}, Entry: $${positionEntry.toFixed(2)}`)
@@ -1539,7 +1576,55 @@ export class VolumeBotEngine {
       } catch (dbError) {
         console.error('⚠️  Failed to persist to database:', dbError)
         console.error('⚠️  Error details:', JSON.stringify(dbError, Object.getOwnPropertyNames(dbError)))
-        // Don't fail the bot if database write fails
+
+        // CRITICAL: Retry once after a short delay - we don't want to lose trade records!
+        console.log('🔄 Retrying database write...')
+        try {
+          await new Promise(r => setTimeout(r, 1000)) // Wait 1 second
+          const { prisma } = await import('./prisma')
+
+          const botInstance = await prisma.botInstance.findUnique({
+            where: { userWalletAddress: this.config.userWalletAddress }
+          })
+
+          if (botInstance) {
+            await prisma.orderHistory.create({
+              data: {
+                botId: botInstance.id,
+                sessionId: botInstance.sessionId,
+                txHash: result.txHash,
+                direction: result.direction,
+                strategy: this.config.strategy || 'twap',
+                size: BigInt(result.size),
+                volumeGenerated: result.volumeGenerated,
+                success: result.success,
+                entryPrice: result.entryPrice,
+                exitPrice: result.exitPrice,
+                pnl: result.pnl || 0,
+                positionHeldMs: result.positionHeldMs || 0,
+                market: this.config.marketName,
+                leverage: this.getMarketMaxLeverage(),
+              }
+            })
+
+            const newCumulativeVolume = botInstance.cumulativeVolume + result.volumeGenerated
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                cumulativeVolume: newCumulativeVolume,
+                ordersPlaced: botInstance.ordersPlaced + 1,
+                lastOrderTime: new Date(),
+              }
+            })
+
+            console.log('✅ Retry successful - order persisted to database')
+          }
+        } catch (retryError) {
+          console.error('❌ CRITICAL: Database write failed after retry!')
+          console.error('❌ Trade may be lost:', result.txHash)
+          console.error('❌ Run backfill script to recover: npx tsx scripts/backfill-trades.ts')
+          // Still don't crash the bot, but log prominently
+        }
       }
 
       console.log(`\n📊 Bot Status:`)

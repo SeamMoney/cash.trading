@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
 
     // Check rate limiting based on strategy
     // TX Spammer: 3 seconds (rapid fire transactions)
-    // High risk: 10 seconds (mostly monitoring, actual trades are infrequent)
+    // High risk: 5 seconds (fast monitoring for quick PnL trades)
     // Other strategies: 30 seconds
     const rateLimit = bot.strategy === 'tx_spammer' ? 3000
-      : bot.strategy === 'high_risk' ? 10000
+      : bot.strategy === 'high_risk' ? 5000
       : 30000
     if (bot.lastOrderTime) {
       const timeSinceLastOrder = Date.now() - new Date(bot.lastOrderTime).getTime()

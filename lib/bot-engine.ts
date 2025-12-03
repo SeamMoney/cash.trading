@@ -1185,7 +1185,7 @@ export class VolumeBotEngine {
       await prisma.botInstance.update({
         where: { id: botInstance.id },
         data: {
-          activePositionSize: contractSize,
+          activePositionSize: Number(contractSize),
           activePositionIsLong: isLong,
           activePositionEntry: entryPrice,
           activePositionTxHash: committedTxn.hash,

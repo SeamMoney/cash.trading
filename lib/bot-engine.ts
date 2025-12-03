@@ -58,6 +58,99 @@ export interface OrderResult {
 const DECIBEL_PACKAGE = process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
   '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
+/**
+ * Parse actual fill information from transaction events
+ * Returns the actual filled size and price from BulkOrderFilledEvent or TradeEvent
+ */
+interface FillInfo {
+  filled: boolean
+  filledSize: number
+  fillPrice: number
+  realizedPnl: number
+}
+
+async function parseTransactionFill(
+  aptos: Aptos,
+  txHash: string,
+  subaccount: string,
+  sizeDecimals: number,
+  priceDecimals: number
+): Promise<FillInfo> {
+  try {
+    const tx = await aptos.getTransactionByHash({ transactionHash: txHash })
+
+    if (!tx || !(tx as any).success) {
+      return { filled: false, filledSize: 0, fillPrice: 0, realizedPnl: 0 }
+    }
+
+    const events = (tx as any).events || []
+    let filledSize = 0
+    let fillPrice = 0
+    let realizedPnl = 0
+
+    for (const event of events) {
+      // Check BulkOrderFilledEvent - contains actual fill info for our order
+      if (event.type?.includes('BulkOrderFilledEvent')) {
+        const data = event.data || {}
+        // BulkOrderFilledEvent has user field
+        if (data.user === subaccount) {
+          filledSize = parseInt(data.filled_size || data.size || '0')
+          fillPrice = parseInt(data.avg_price || data.price || '0')
+          console.log(`📊 BulkOrderFilledEvent: size=${filledSize}, price=${fillPrice}`)
+        }
+      }
+
+      // Also check OrderEvent for FILLED status
+      if (event.type?.includes('OrderEvent')) {
+        const data = event.data || {}
+        if (data.user === subaccount && data.status?.__variant__ === 'FILLED') {
+          // Order was filled - get size from orig_size minus remaining_size
+          const origSize = parseInt(data.orig_size || '0')
+          const remaining = parseInt(data.remaining_size || '0')
+          filledSize = origSize - remaining
+          fillPrice = parseInt(data.price || '0')
+          console.log(`📊 OrderEvent FILLED: size=${filledSize}, price=${fillPrice}`)
+        }
+      }
+
+      // Check PositionUpdateEvent for our account - this tracks actual position changes
+      if (event.type?.includes('PositionUpdateEvent')) {
+        const data = event.data || {}
+        // This event uses 'user' field which is the position account, not subaccount
+        // We can use this to verify fills happened
+      }
+
+      // Check TradeEvent for realized PnL
+      if (event.type?.includes('TradeEvent')) {
+        const data = event.data || {}
+        // TradeEvent account field is the position account, not subaccount
+        // But we can still extract PnL from it
+        if (data.realized_pnl) {
+          const pnl = parseInt(data.realized_pnl) / Math.pow(10, 6) // USDC decimals
+          if (pnl !== 0) {
+            realizedPnl += pnl
+            console.log(`📊 TradeEvent PnL: $${pnl.toFixed(2)}`)
+          }
+        }
+      }
+    }
+
+    // Convert to human-readable units
+    const filledSizeDecimal = filledSize / Math.pow(10, sizeDecimals)
+    const fillPriceDecimal = fillPrice / Math.pow(10, priceDecimals)
+
+    return {
+      filled: filledSize > 0,
+      filledSize,
+      fillPrice: fillPriceDecimal,
+      realizedPnl,
+    }
+  } catch (error) {
+    console.error('Error parsing transaction fill:', error)
+    return { filled: false, filledSize: 0, fillPrice: 0, realizedPnl: 0 }
+  }
+}
+
 const MARKETS = {
   'BTC/USD': '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
   'APT/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
@@ -987,39 +1080,76 @@ export class VolumeBotEngine {
             transactionHash: closeCommittedTxn.hash,
           })
 
-          if (closeExecutedTxn.success) {
-            const sizeDecimals = this.getMarketSizeDecimals()
-            const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * positionEntry
-            const maxLeverage = this.getMarketMaxLeverage()
-            const leveragedPnlPercent = priceChangePercent * maxLeverage
-            const realizedPnl = positionValueUSD * priceChange
-
-            console.log(`✅ CLOSED! PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
-
-            // Clear bot's position in database
-            await prisma.botInstance.update({
-              where: { id: botInstance.id },
-              data: {
-                activePositionSize: null,
-                activePositionIsLong: null,
-                activePositionEntry: null,
-                activePositionTxHash: null,
-              }
-            })
-
-            return {
-              success: true,
-              txHash: closeCommittedTxn.hash,
-              volumeGenerated: positionValueUSD * 2,
-              direction: closeDirection ? 'short' : 'long',
-              size: positionSize,
-              entryPrice: positionEntry,
-              exitPrice: currentPrice,
-              pnl: realizedPnl,
-              positionHeldMs: Date.now() - orderStartTime,
-            }
-          } else {
+          if (!closeExecutedTxn.success) {
             throw new Error(`Close order failed: ${closeExecutedTxn.vm_status}`)
+          }
+
+          // IMPORTANT: Verify the close order actually filled by checking transaction events
+          const sizeDecimals = this.getMarketSizeDecimals()
+          const closeFillInfo = await parseTransactionFill(
+            this.aptos,
+            closeCommittedTxn.hash,
+            this.config.userSubaccount,
+            sizeDecimals,
+            this.getMarketConfig().pxDecimals
+          )
+
+          if (!closeFillInfo.filled || closeFillInfo.filledSize === 0) {
+            console.log(`⚠️ Close IOC order submitted but NOT FILLED (no liquidity)`)
+            return {
+              success: false,
+              txHash: closeCommittedTxn.hash,
+              volumeGenerated: 0,
+              direction: closeDirection ? 'short' : 'long',
+              size: 0,
+              error: 'Close IOC order not filled - no liquidity',
+            }
+          }
+
+          // Calculate volume from ACTUAL fill, not intended order
+          const actualClosePrice = closeFillInfo.fillPrice > 0 ? closeFillInfo.fillPrice : currentPrice
+          const actualClosedSize = closeFillInfo.filledSize
+          const closedValueUSD = (actualClosedSize / Math.pow(10, sizeDecimals)) * actualClosePrice
+
+          // Calculate PnL from actual close price
+          const priceChangeActual = positionIsLong
+            ? (actualClosePrice - positionEntry) / positionEntry
+            : (positionEntry - actualClosePrice) / positionEntry
+          const realizedPnl = closeFillInfo.realizedPnl !== 0
+            ? closeFillInfo.realizedPnl
+            : closedValueUSD * priceChangeActual
+
+          const maxLeverage = this.getMarketMaxLeverage()
+          const leveragedPnlPercent = priceChangeActual * 100 * maxLeverage
+
+          console.log(`✅ CLOSED! Size: ${actualClosedSize} @ $${actualClosePrice.toFixed(2)}`)
+          console.log(`   PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+
+          // Clear bot's position in database
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: null,
+              activePositionIsLong: null,
+              activePositionEntry: null,
+              activePositionTxHash: null,
+            }
+          })
+
+          // Volume = open value + close value (based on actual fills)
+          const openValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * positionEntry
+          const totalVolume = openValueUSD + closedValueUSD
+
+          return {
+            success: true,
+            txHash: closeCommittedTxn.hash,
+            volumeGenerated: closedValueUSD, // Only count the close side volume here
+            direction: closeDirection ? 'short' : 'long',
+            size: actualClosedSize,
+            entryPrice: positionEntry,
+            exitPrice: actualClosePrice,
+            pnl: realizedPnl,
+            positionHeldMs: Date.now() - orderStartTime,
           }
         } else {
           // Still waiting for target
@@ -1108,29 +1238,54 @@ export class VolumeBotEngine {
         throw new Error(`IOC order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`✅ FILLED! Position opened instantly`)
+      // IMPORTANT: Verify the order actually filled by checking transaction events
+      // IOC orders can succeed (tx goes through) but not fill if no liquidity
+      const fillInfo = await parseTransactionFill(
+        this.aptos,
+        committedTxn.hash,
+        this.config.userSubaccount,
+        sizeDecimals,
+        this.getMarketConfig().pxDecimals
+      )
+
+      if (!fillInfo.filled || fillInfo.filledSize === 0) {
+        console.log(`⚠️ IOC order submitted but NOT FILLED (no liquidity at price)`)
+        return {
+          success: false,
+          txHash: committedTxn.hash,
+          volumeGenerated: 0,
+          direction: isLong ? 'long' : 'short',
+          size: 0,
+          error: 'IOC order not filled - no liquidity',
+        }
+      }
+
+      console.log(`✅ FILLED! Position opened: ${fillInfo.filledSize} @ $${fillInfo.fillPrice.toFixed(2)}`)
+
+      // Use ACTUAL fill size and price, not the intended order values
+      const actualFillPrice = fillInfo.fillPrice > 0 ? fillInfo.fillPrice : entryPrice
 
       // Save bot's position to database so we can track it separately from manual trades
       await prisma.botInstance.update({
         where: { id: botInstance.id },
         data: {
-          activePositionSize: Number(contractSize),
+          activePositionSize: fillInfo.filledSize,
           activePositionIsLong: isLong,
-          activePositionEntry: entryPrice,
+          activePositionEntry: actualFillPrice,
           activePositionTxHash: committedTxn.hash,
         }
       })
 
-      // Calculate actual volume
-      const volumeGenerated = (Number(contractSize) / Math.pow(10, sizeDecimals)) * entryPrice
+      // Calculate actual volume from ACTUAL fill, not intended order
+      const volumeGenerated = (fillInfo.filledSize / Math.pow(10, sizeDecimals)) * actualFillPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: Number(contractSize),
-        entryPrice,
+        size: fillInfo.filledSize,
+        entryPrice: actualFillPrice,
         pnl: 0,
         positionHeldMs: 0,
       }

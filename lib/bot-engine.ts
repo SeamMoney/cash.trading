@@ -952,7 +952,9 @@ export class VolumeBotEngine {
     isLong: boolean
   ): Promise<OrderResult> {
     const orderStartTime = Date.now()
-    const SLIPPAGE_PCT = 0.02 // 2% slippage for guaranteed IOC fills
+    // 5% slippage for testnet - liquidity is thin, need aggressive pricing
+    // This means we're willing to pay up to 5% more (for longs) or accept 5% less (for shorts)
+    const SLIPPAGE_PCT = 0.05
 
     try {
       // Check if BOT has an active position (from database, NOT on-chain)

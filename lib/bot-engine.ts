@@ -952,9 +952,9 @@ export class VolumeBotEngine {
     isLong: boolean
   ): Promise<OrderResult> {
     const orderStartTime = Date.now()
-    // 5% slippage for testnet - liquidity is thin, need aggressive pricing
-    // This means we're willing to pay up to 5% more (for longs) or accept 5% less (for shorts)
-    const SLIPPAGE_PCT = 0.05
+    // 10% slippage for testnet - liquidity is extremely thin
+    // This is essentially a market order - we just want to get filled
+    const SLIPPAGE_PCT = 0.10
 
     try {
       // Check if BOT has an active position (from database, NOT on-chain)

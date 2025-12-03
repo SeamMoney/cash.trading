@@ -1033,38 +1033,25 @@ export class VolumeBotEngine {
               : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
           }
 
-          // Close with IOC order (instant execution)
+          // Close with TWAP order (testnet has no IOC liquidity)
           const closeDirection = !positionIsLong // Opposite direction to close
+          const sizeDecimals = this.getMarketSizeDecimals()
 
-          // Calculate aggressive limit price for instant fill
-          // Closing LONG = selling = price BELOW market
-          // Closing SHORT = buying = price ABOVE market
-          const aggressivePrice = closeDirection
-            ? currentPrice * (1 - SLIPPAGE_PCT)  // selling (closing long)
-            : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short)
-          const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
-
-          console.log(`   Closing with IOC: $${currentPrice.toFixed(2)} → limit $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
+          console.log(`   Closing with TWAP: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
 
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
                 this.config.market,
-                limitPrice.toString(),       // px FIRST
-                positionSize.toString(),     // sz SECOND
+                positionSize.toString(),     // size
                 closeDirection,              // is_long (opposite to close)
-                2,                           // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
-                false,                       // post_only: false
-                undefined,                   // client_order_id
-                undefined,                   // conditional_order
-                undefined,                   // trigger_price
-                undefined,                   // take_profit_px
-                undefined,                   // stop_loss_px
-                undefined,                   // reduce_only
+                true,                        // reduce_only: true for closing
+                60,                          // min duration: 1 minute
+                120,                         // max duration: 2 minutes
                 undefined,                   // builder_address
                 undefined,                   // max_builder_fee
               ],
@@ -1083,51 +1070,20 @@ export class VolumeBotEngine {
           })
 
           if (!closeExecutedTxn.success) {
-            throw new Error(`Close order failed: ${closeExecutedTxn.vm_status}`)
+            throw new Error(`Close TWAP order failed: ${closeExecutedTxn.vm_status}`)
           }
 
-          // IMPORTANT: Verify the close order actually filled by checking transaction events
-          const sizeDecimals = this.getMarketSizeDecimals()
-          const closeFillInfo = await parseTransactionFill(
-            this.aptos,
-            closeCommittedTxn.hash,
-            this.config.userSubaccount,
-            sizeDecimals,
-            this.getMarketConfig().pxDecimals
-          )
+          console.log(`✅ TWAP CLOSE SUBMITTED! Will fill over 1-2 minutes.`)
 
-          if (!closeFillInfo.filled || closeFillInfo.filledSize === 0) {
-            console.log(`⚠️ Close IOC order submitted but NOT FILLED (no liquidity)`)
-            return {
-              success: false,
-              txHash: closeCommittedTxn.hash,
-              volumeGenerated: 0,
-              direction: closeDirection ? 'short' : 'long',
-              size: 0,
-              error: 'Close IOC order not filled - no liquidity',
-            }
-          }
-
-          // Calculate volume from ACTUAL fill, not intended order
-          const actualClosePrice = closeFillInfo.fillPrice > 0 ? closeFillInfo.fillPrice : currentPrice
-          const actualClosedSize = closeFillInfo.filledSize
-          const closedValueUSD = (actualClosedSize / Math.pow(10, sizeDecimals)) * actualClosePrice
-
-          // Calculate PnL from actual close price
-          const priceChangeActual = positionIsLong
-            ? (actualClosePrice - positionEntry) / positionEntry
-            : (positionEntry - actualClosePrice) / positionEntry
-          const realizedPnl = closeFillInfo.realizedPnl !== 0
-            ? closeFillInfo.realizedPnl
-            : closedValueUSD * priceChangeActual
-
+          // Estimate volume based on position value (TWAP will fill gradually)
+          const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
+          const estimatedPnl = positionValueUSD * priceChange
           const maxLeverage = this.getMarketMaxLeverage()
-          const leveragedPnlPercent = priceChangeActual * 100 * maxLeverage
+          const leveragedPnlPercent = priceChangePercent * maxLeverage
 
-          console.log(`✅ CLOSED! Size: ${actualClosedSize} @ $${actualClosePrice.toFixed(2)}`)
-          console.log(`   PnL: $${realizedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+          console.log(`   Estimated PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-          // Clear bot's position in database
+          // Clear bot's position in database (TWAP will close it)
           await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
@@ -1138,19 +1094,16 @@ export class VolumeBotEngine {
             }
           })
 
-          // Volume = open value + close value (based on actual fills)
-          const openValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * positionEntry
-          const totalVolume = openValueUSD + closedValueUSD
-
+          // For TWAP, we estimate the volume - actual fills happen over 1-2 minutes
           return {
             success: true,
             txHash: closeCommittedTxn.hash,
-            volumeGenerated: closedValueUSD, // Only count the close side volume here
+            volumeGenerated: positionValueUSD, // Count the close side volume
             direction: closeDirection ? 'short' : 'long',
-            size: actualClosedSize,
+            size: positionSize,
             entryPrice: positionEntry,
-            exitPrice: actualClosePrice,
-            pnl: realizedPnl,
+            exitPrice: currentPrice,
+            pnl: estimatedPnl,
             positionHeldMs: Date.now() - orderStartTime,
           }
         } else {
@@ -1169,8 +1122,8 @@ export class VolumeBotEngine {
         }
       }
 
-      // No BOT position - OPEN NEW POSITION with IOC order (instant execution)
-      console.log(`\n🎰 [HFT] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
+      // No BOT position - OPEN NEW POSITION with TWAP (testnet has no IOC liquidity)
+      console.log(`\n🎰 [HFT] Opening ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
@@ -1185,40 +1138,26 @@ export class VolumeBotEngine {
       const rawSize = Math.floor(sizeInBaseAsset * Math.pow(10, sizeDecimals))
       const contractSize = this.roundSizeToLotSize(rawSize)
 
-      // Calculate aggressive limit price for instant fill
-      // LONG = buy = price ABOVE market (willing to pay more)
-      // SHORT = sell = price BELOW market (willing to accept less)
-      const aggressivePrice = isLong
-        ? entryPrice * (1 + SLIPPAGE_PCT)
-        : entryPrice * (1 - SLIPPAGE_PCT)
-      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
-
       console.log(`   Market: ${this.config.marketName}, Price: $${entryPrice.toFixed(2)}`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Leverage: ${maxLeverage}x`)
       console.log(`   Notional: $${notionalUSD.toFixed(2)} → ${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]}`)
-      console.log(`   Size: ${contractSize}, Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
-      console.log(`   Order type: IOC (instant execution)`)
+      console.log(`   Size: ${contractSize}`)
+      console.log(`   Order type: TWAP (1-2 min fill)`)
 
-      // Use IOC limit order for instant execution
+      // Use TWAP order - testnet has no IOC liquidity
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            limitPrice.toString(),         // px FIRST
-            contractSize.toString(),       // sz SECOND
+            contractSize.toString(),      // size
             isLong,                        // is_long
-            2,                             // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
-            false,                         // post_only: false
-            undefined,                     // client_order_id
-            undefined,                     // conditional_order
-            undefined,                     // trigger_price
-            undefined,                     // take_profit_px
-            undefined,                     // stop_loss_px
-            undefined,                     // reduce_only
+            false,                         // reduce_only: false for opening
+            60,                            // min duration: 1 minute
+            120,                           // max duration: 2 minutes
             undefined,                     // builder_address
             undefined,                     // max_builder_fee
           ],
@@ -1237,57 +1176,32 @@ export class VolumeBotEngine {
       })
 
       if (!executedTxn.success) {
-        throw new Error(`IOC order failed: ${executedTxn.vm_status}`)
+        throw new Error(`TWAP order failed: ${executedTxn.vm_status}`)
       }
 
-      // IMPORTANT: Verify the order actually filled by checking transaction events
-      // IOC orders can succeed (tx goes through) but not fill if no liquidity
-      const fillInfo = await parseTransactionFill(
-        this.aptos,
-        committedTxn.hash,
-        this.config.userSubaccount,
-        sizeDecimals,
-        this.getMarketConfig().pxDecimals
-      )
+      console.log(`✅ TWAP OPEN SUBMITTED! Will fill over 1-2 minutes.`)
 
-      if (!fillInfo.filled || fillInfo.filledSize === 0) {
-        console.log(`⚠️ IOC order submitted but NOT FILLED (no liquidity at price)`)
-        return {
-          success: false,
-          txHash: committedTxn.hash,
-          volumeGenerated: 0,
-          direction: isLong ? 'long' : 'short',
-          size: 0,
-          error: 'IOC order not filled - no liquidity',
-        }
-      }
-
-      console.log(`✅ FILLED! Position opened: ${fillInfo.filledSize} @ $${fillInfo.fillPrice.toFixed(2)}`)
-
-      // Use ACTUAL fill size and price, not the intended order values
-      const actualFillPrice = fillInfo.fillPrice > 0 ? fillInfo.fillPrice : entryPrice
-
-      // Save bot's position to database so we can track it separately from manual trades
+      // Save bot's expected position to database (TWAP will fill it)
       await prisma.botInstance.update({
         where: { id: botInstance.id },
         data: {
-          activePositionSize: fillInfo.filledSize,
+          activePositionSize: contractSize,
           activePositionIsLong: isLong,
-          activePositionEntry: actualFillPrice,
+          activePositionEntry: entryPrice,
           activePositionTxHash: committedTxn.hash,
         }
       })
 
-      // Calculate actual volume from ACTUAL fill, not intended order
-      const volumeGenerated = (fillInfo.filledSize / Math.pow(10, sizeDecimals)) * actualFillPrice
+      // Estimate volume based on intended position
+      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * entryPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: fillInfo.filledSize,
-        entryPrice: actualFillPrice,
+        size: contractSize,
+        entryPrice: entryPrice,
         pnl: 0,
         positionHeldMs: 0,
       }

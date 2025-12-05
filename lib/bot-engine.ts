@@ -968,6 +968,23 @@ export class VolumeBotEngine {
         throw new Error('Bot instance not found in database')
       }
 
+      // Check if we recently sent a TWAP order - wait for it to fill (2 min max)
+      const TWAP_COOLDOWN_MS = 2 * 60 * 1000 // 2 minutes
+      if (botInstance.lastTwapOrderTime) {
+        const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
+        if (timeSinceTwap < TWAP_COOLDOWN_MS) {
+          const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
+          console.log(`⏳ TWAP cooldown: waiting ${waitSecs}s for previous TWAP to fill...`)
+          return {
+            success: true,
+            txHash: 'cooldown',
+            volumeGenerated: 0,
+            direction: isLong ? 'long' : 'short',
+            size: 0,
+          }
+        }
+      }
+
       // CRITICAL: Always sync with on-chain position to prevent tracking issues
       const onChainPosition = await this.getOnChainPosition()
 
@@ -1003,41 +1020,30 @@ export class VolumeBotEngine {
         const biasMismatch = this.config.bias !== 'neutral' && positionIsLong !== (this.config.bias === 'long')
         if (biasMismatch) {
           console.log(`⚠️ Position direction (${positionIsLong ? 'LONG' : 'SHORT'}) doesn't match bias (${this.config.bias.toUpperCase()})`)
-          console.log(`   FORCE CLOSING to open correct direction...`)
+          console.log(`   FORCE CLOSING with TWAP to open correct direction...`)
 
-          // Force close regardless of PnL
+          // Force close regardless of PnL using TWAP (IOC has no liquidity on testnet)
           const currentPrice = await this.getCurrentMarketPrice()
           const closeDirection = !positionIsLong
           const sizeDecimals = this.getMarketSizeDecimals()
 
-          const aggressivePrice = closeDirection
-            ? currentPrice * (1 - SLIPPAGE_PCT)
-            : currentPrice * (1 + SLIPPAGE_PCT)
-          const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
-
-          console.log(`   Closing with IOC: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
+          console.log(`   Closing with TWAP: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
 
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
                 this.config.market,
-                limitPrice.toString(),
-                positionSize.toString(),
-                closeDirection,
-                2, // IOC
-                false,
-                undefined, // client_order_id
-                undefined, // conditional_order
-                undefined, // trigger_price
-                undefined, // take_profit_px
-                undefined, // stop_loss_px
-                undefined, // reduce_only (IOC handles it)
-                undefined, // builder_address
-                undefined, // max_builder_fee
+                positionSize.toString(),  // size
+                closeDirection,           // is_long
+                true,                     // reduce_only: TRUE for closing
+                60,                       // min duration: 1 minute
+                120,                      // max duration: 2 minutes
+                undefined,                // builder_address
+                undefined,                // max_builder_fee
               ],
             },
           })
@@ -1049,7 +1055,7 @@ export class VolumeBotEngine {
 
           await this.aptos.waitForTransaction({ transactionHash: closeCommittedTxn.hash })
 
-          // Clear DB and return - next tick will open correct direction
+          // Clear DB and track TWAP time - next tick will check if position closed
           await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
@@ -1057,6 +1063,7 @@ export class VolumeBotEngine {
               activePositionIsLong: null,
               activePositionEntry: null,
               activePositionTxHash: null,
+              lastTwapOrderTime: new Date(),
             }
           })
 
@@ -1066,7 +1073,8 @@ export class VolumeBotEngine {
             : (positionEntry - currentPrice) / positionEntry
           const pnl = positionValueUSD * priceChange
 
-          console.log(`   ✅ Closed wrong-direction position. PnL: $${pnl.toFixed(2)}`)
+          console.log(`   ✅ TWAP close submitted for wrong-direction position. Expected PnL: $${pnl.toFixed(2)}`)
+          console.log(`   ⏳ TWAP will fill over 1-2 minutes. Next tick will open ${this.config.bias.toUpperCase()} position.`)
 
           return {
             success: true,
@@ -1126,28 +1134,23 @@ export class VolumeBotEngine {
             : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short) - price above market
           const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
 
-          console.log(`   Closing with IOC: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
-          console.log(`   Price: $${currentPrice.toFixed(2)} → Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)} (${SLIPPAGE_PCT*100}% slippage)`)
+          console.log(`   Closing with TWAP (1-2 min): size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
+          console.log(`   Current price: $${currentPrice.toFixed(2)}`)
 
+          // Use TWAP for closes - IOC doesn't have liquidity on testnet
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
                 this.config.market,
-                limitPrice.toString(),         // px FIRST
-                positionSize.toString(),       // sz SECOND
+                positionSize.toString(),       // size
                 closeDirection,                // is_long (opposite to close)
-                2,                             // time_in_force: 2 = IOC (instant)
-                false,                         // post_only: false
-                undefined,                     // client_order_id
-                undefined,                     // conditional_order
-                undefined,                     // trigger_price
-                undefined,                     // take_profit_px
-                undefined,                     // stop_loss_px
-                undefined,                     // reduce_only (IOC handles closing)
+                true,                          // reduce_only: TRUE for closing
+                60,                            // min duration: 1 minute
+                120,                           // max duration: 2 minutes
                 undefined,                     // builder_address
                 undefined,                     // max_builder_fee
               ],
@@ -1166,49 +1169,41 @@ export class VolumeBotEngine {
           })
 
           if (!closeExecutedTxn.success) {
-            throw new Error(`Close IOC order failed: ${closeExecutedTxn.vm_status}`)
+            throw new Error(`Close TWAP order failed: ${closeExecutedTxn.vm_status}`)
           }
 
-          console.log(`✅ IOC CLOSE TX CONFIRMED!`)
+          console.log(`✅ CLOSE TWAP SUBMITTED! Will fill over 1-2 minutes.`)
 
-          // Verify position is actually closed on-chain before clearing DB
-          const postClosePosition = await this.getOnChainPosition()
-          const actuallyFilled = !postClosePosition || postClosePosition.size === 0 ||
-            postClosePosition.size < positionSize * 0.1 // 90%+ filled counts as closed
-
-          // Calculate actual volume and PnL
+          // Calculate expected volume and PnL (will be realized when TWAP fills)
           const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
           const estimatedPnl = positionValueUSD * priceChange
           const maxLeverage = this.getMarketMaxLeverage()
           const leveragedPnlPercent = priceChangePercent * maxLeverage
 
-          if (actuallyFilled) {
-            console.log(`   Position CLOSED! PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+          console.log(`   Expected PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-            // Clear position from DB only when actually closed
-            await prisma.botInstance.update({
-              where: { id: botInstance.id },
-              data: {
-                activePositionSize: null,
-                activePositionIsLong: null,
-                activePositionEntry: null,
-                activePositionTxHash: null,
-              }
-            })
-          } else {
-            console.log(`   Partial fill - remaining: ${postClosePosition?.size}. Will retry next tick.`)
-            // Don't clear DB - let next tick try again
-          }
+          // Mark position as closing in DB (TWAP will take 1-2 min to fill)
+          // We'll clear it fully when we detect no position on next tick
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: null,  // Clear so we don't try to close again
+              activePositionIsLong: null,
+              activePositionEntry: null,
+              activePositionTxHash: null,
+              lastTwapOrderTime: new Date(),  // Track when we sent close TWAP
+            }
+          })
 
           return {
             success: true,
             txHash: closeCommittedTxn.hash,
-            volumeGenerated: actuallyFilled ? positionValueUSD : 0, // Only count volume if closed
+            volumeGenerated: positionValueUSD,
             direction: closeDirection ? 'short' : 'long',
             size: positionSize,
             entryPrice: positionEntry,
-            exitPrice: actuallyFilled ? currentPrice : undefined,
-            pnl: actuallyFilled ? estimatedPnl : 0,
+            exitPrice: currentPrice,  // Estimated - TWAP will fill around this
+            pnl: estimatedPnl,
             positionHeldMs: Date.now() - orderStartTime,
           }
         } else {

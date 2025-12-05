@@ -45,9 +45,17 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         throw new Error(data.error || 'Failed to stop bot')
       }
 
-      toast.info('Bot Stopped', {
-        description: 'Trading has been paused',
-      })
+      // Show appropriate message based on whether we closed a position
+      if (data.closedPosition) {
+        toast.success('Bot Stopped - Closing Position', {
+          description: `Closing ${data.closeResult?.direction} position. TWAP will fill in 1-2 minutes.`,
+          duration: 5000,
+        })
+      } else {
+        toast.info('Bot Stopped', {
+          description: 'Trading has been paused',
+        })
+      }
       if (onStatusChange) {
         onStatusChange(false)
       }

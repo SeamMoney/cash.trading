@@ -402,84 +402,114 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       {status.orderHistory && status.orderHistory.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs text-zinc-400 uppercase tracking-widest">Recent Trades</h3>
-            <span className="text-[10px] text-zinc-500">{status.orderHistory.length} total</span>
+            <h3 className="text-xs text-zinc-400 uppercase tracking-widest">Trade History</h3>
+            <span className="text-[10px] text-zinc-500">{status.orderHistory.length} trades</span>
           </div>
-          <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+          <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1 scrollbar-thin">
             {status.orderHistory.map((order: any, index: number) => {
-              // Determine order type: MONITORING (waiting), CLOSE (has exit), or OPEN
-              const isWaiting = order.txHash === 'waiting'
-              const isClose = order.exitPrice && order.exitPrice > 0
+              // Calculate margin used (volume / leverage)
+              const leverage = order.leverage || 40
+              const marginUsed = order.volumeGenerated / leverage
               const hasPnl = order.pnl && order.pnl !== 0
-              const orderType = isWaiting ? 'MONITORING' : (isClose ? 'CLOSE' : 'OPEN')
+              const isClose = order.exitPrice && order.exitPrice > 0
+              const strategyLabel = order.strategy === 'high_risk' ? 'HIGH RISK' :
+                                   order.strategy === 'twap' ? 'TWAP' :
+                                   order.strategy === 'market_maker' ? 'MM' :
+                                   order.strategy?.toUpperCase() || 'TWAP'
 
               return (
                 <div
                   key={index}
-                  className="flex items-center justify-between p-2 bg-black/30 border border-white/5 hover:border-white/10 transition-colors"
+                  className="p-3 bg-black/30 border border-white/5 hover:border-white/10 transition-colors space-y-2"
                 >
-                  {/* Left: Direction, Time, Asset */}
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      "w-5 h-5 flex items-center justify-center",
-                      order.direction === 'long'
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-red-500/20 text-red-400'
-                    )}>
-                      {order.direction === 'long' ? (
-                        <TrendingUp className="w-3 h-3" />
+                  {/* Top Row: Direction, Market, Time, Strategy */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold uppercase",
+                        order.direction === 'long'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      )}>
+                        {order.direction === 'long' ? '↑ LONG' : '↓ SHORT'}
+                      </div>
+                      <span className="text-[10px] text-white font-medium">
+                        {order.market || config?.marketName || 'BTC/USD'}
+                      </span>
+                      <span className="text-[9px] px-1 py-0.5 bg-zinc-800 text-zinc-400">
+                        {leverage}x
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] px-1 py-0.5 bg-purple-500/20 text-purple-400">
+                        {strategyLabel}
+                      </span>
+                      <span className="text-[9px] text-zinc-500">
+                        {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Prices and Size */}
+                  <div className="grid grid-cols-4 gap-2 text-[10px]">
+                    <div>
+                      <span className="text-zinc-500 block">Margin</span>
+                      <span className="text-white font-medium">${marginUsed.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Volume</span>
+                      <span className="text-white font-medium">${order.volumeGenerated?.toFixed(0) || '0'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">{isClose ? 'Entry' : 'Price'}</span>
+                      <span className="text-white font-medium">
+                        ${order.entryPrice?.toLocaleString(undefined, { maximumFractionDigits: 0 }) || '-'}
+                      </span>
+                    </div>
+                    {isClose ? (
+                      <div>
+                        <span className="text-zinc-500 block">Exit</span>
+                        <span className="text-white font-medium">
+                          ${order.exitPrice?.toLocaleString(undefined, { maximumFractionDigits: 0 }) || '-'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-zinc-500 block">Size</span>
+                        <span className="text-white font-medium">
+                          {order.size ? (Number(order.size) / 1e8).toFixed(4) : '-'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom Row: PnL and TX Link */}
+                  <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                    <div className="flex items-center gap-2">
+                      {hasPnl ? (
+                        <span className={cn(
+                          "text-xs font-bold px-2 py-0.5",
+                          order.pnl > 0
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                        )}>
+                          {order.pnl > 0 ? '+' : ''}${order.pnl.toFixed(2)} PnL
+                        </span>
                       ) : (
-                        <TrendingDown className="w-3 h-3" />
+                        <span className="text-[10px] text-zinc-500">
+                          {isClose ? 'No PnL data' : 'Position opened'}
+                        </span>
                       )}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-white font-medium uppercase tracking-wider">
-                        {config?.marketName || 'BTC/USD'}
-                      </span>
-                      <span className="text-[9px] text-zinc-500">
-                        {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Middle: Action (OPEN/CLOSE/MONITORING), PnL if closed */}
-                  <div className="flex items-center gap-1">
-                    <span className={cn(
-                      "text-[9px] px-1 py-0.5 font-medium",
-                      isWaiting ? "bg-yellow-500/20 text-yellow-400 animate-pulse" :
-                      isClose ? "bg-purple-500/20 text-purple-400" :
-                      "bg-blue-500/20 text-blue-400"
-                    )}>
-                      {orderType}
-                    </span>
-                    {hasPnl && (
-                      <span className={cn(
-                        "text-[9px] px-1 py-0.5 font-bold",
-                        order.pnl > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                      )}>
-                        {order.pnl > 0 ? '+' : ''}${order.pnl.toFixed(2)}
-                      </span>
-                    )}
-                    {isWaiting && order.entryPrice && (
-                      <span className="text-[9px] text-zinc-500">
-                        @${order.entryPrice.toFixed(0)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Right: Volume, TX Link */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-white font-bold">
-                      ${order.volumeGenerated?.toFixed(0) || '0'}
-                    </span>
                     {order.txHash && order.txHash !== 'waiting' && (
                       <a
                         href={`https://explorer.aptoslabs.com/txn/${order.txHash}?network=testnet`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-5 h-5 bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                        className="text-[9px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"
                       >
-                        <ExternalLink className="w-2.5 h-2.5 text-zinc-400" />
+                        <span>{order.txHash.slice(0, 8)}...</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
                   </div>
@@ -491,17 +521,43 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       )}
 
       {/* Session Complete Summary */}
-      {!isRunning && status.orderHistory && status.orderHistory.length > 0 && (
-        <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-3 relative">
-          <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-400 uppercase tracking-wider">Session Complete</span>
-            <span className="text-xs text-white font-bold">
-              {status.orderHistory.length} trades · ${status.cumulativeVolume?.toFixed(0) || '0'} volume
-            </span>
+      {!isRunning && status.orderHistory && status.orderHistory.length > 0 && (() => {
+        // Calculate total PnL from all orders
+        const totalPnl = status.orderHistory.reduce((sum: number, order: any) => sum + (order.pnl || 0), 0)
+        const wins = status.orderHistory.filter((o: any) => o.pnl > 0).length
+        const losses = status.orderHistory.filter((o: any) => o.pnl < 0).length
+
+        return (
+          <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4 relative space-y-3">
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-zinc-400 uppercase tracking-wider">Session Complete</span>
+              <span className="text-xs text-white font-bold">
+                {status.orderHistory.length} trades · ${status.cumulativeVolume?.toFixed(0) || '0'} volume
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/10">
+              <div className="text-center">
+                <span className="text-[10px] text-zinc-500 block uppercase">Total PnL</span>
+                <span className={cn(
+                  "text-lg font-bold",
+                  totalPnl >= 0 ? "text-green-400" : "text-red-400"
+                )}>
+                  {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
+                </span>
+              </div>
+              <div className="text-center">
+                <span className="text-[10px] text-zinc-500 block uppercase">Wins</span>
+                <span className="text-lg font-bold text-green-400">{wins}</span>
+              </div>
+              <div className="text-center">
+                <span className="text-[10px] text-zinc-500 block uppercase">Losses</span>
+                <span className="text-lg font-bold text-red-400">{losses}</span>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

@@ -331,10 +331,14 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
             <button
               onClick={handleStop}
               disabled={isStopping}
-              className="w-full p-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 hover:border-red-500 text-red-400 hover:text-red-300 font-mono text-sm uppercase tracking-widest font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full h-14 text-lg font-bold font-mono tracking-[0.2em] border relative overflow-hidden group transition-all duration-300 disabled:opacity-50 bg-red-500/90 hover:bg-red-500 text-white border-red-500 shadow-[0_0_30px_-5px_rgba(239,68,68,0.6)] hover:shadow-[0_0_50px_-10px_rgba(239,68,68,0.8)]"
             >
-              <Square className="w-4 h-4" />
-              {isStopping ? 'STOPPING...' : 'STOP BOT'}
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                <Square className="w-5 h-5" />
+                {isStopping ? 'STOPPING...' : 'STOP BOT'}
+              </span>
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
             </button>
 
             {/* Monitoring Info - shows when watching an open position */}

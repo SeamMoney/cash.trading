@@ -637,17 +637,18 @@ export class VolumeBotEngine {
 
       console.log(`✅ Order confirmed!`)
 
-      // Calculate actual volume: contractSize in base units * price
+      // Calculate actual volume: contractSize in base units * price (convert bigint to number)
       const currentPrice = await this.getCurrentMarketPrice()
       const sizeDecimals = this.getMarketSizeDecimals()
-      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
+      const contractSizeNum = Number(contractSize)
+      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: contractSizeNum,
       }
     } catch (error) {
       console.error('❌ Order placement failed:', error)
@@ -716,17 +717,18 @@ export class VolumeBotEngine {
 
       console.log(`✅ Market order filled!`)
 
-      // Calculate actual volume: contractSize in base units * price
+      // Calculate actual volume: contractSize in base units * price (convert bigint to number)
       const currentPrice = await this.getCurrentMarketPrice()
       const sizeDecimals = this.getMarketSizeDecimals()
-      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
+      const contractSizeNum = Number(contractSize)
+      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: contractSizeNum,
       }
     } catch (error) {
       console.error('❌ Market order failed:', error)
@@ -792,17 +794,18 @@ export class VolumeBotEngine {
 
       console.log(`✅ Fast TWAP order confirmed!`)
 
-      // Calculate actual volume: contractSize in base units * price
+      // Calculate actual volume: contractSize in base units * price (convert bigint to number)
       const currentPrice = await this.getCurrentMarketPrice()
       const sizeDecimals = this.getMarketSizeDecimals()
-      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * currentPrice
+      const contractSizeNum = Number(contractSize)
+      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * currentPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: contractSizeNum,
       }
     } catch (error) {
       console.error('❌ Fast TWAP order failed:', error)
@@ -875,16 +878,17 @@ export class VolumeBotEngine {
 
       console.log(`✅ Limit order confirmed!`)
 
-      // Calculate actual volume: contractSize in base units * price
+      // Calculate actual volume: contractSize in base units * price (convert bigint to number)
       const sizeDecimals = this.getMarketSizeDecimals()
-      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * price
+      const contractSizeNum = Number(contractSize)
+      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * price
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: contractSizeNum,
       }
     } catch (error) {
       console.error('❌ Limit order failed:', error)
@@ -1292,15 +1296,16 @@ export class VolumeBotEngine {
         }
       })
 
-      // Estimate volume based on intended position
-      const volumeGenerated = (contractSize / Math.pow(10, sizeDecimals)) * entryPrice
+      // Estimate volume based on intended position (convert bigint to number)
+      const contractSizeNum = Number(contractSize)
+      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * entryPrice
 
       return {
         success: true,
         txHash: committedTxn.hash,
         volumeGenerated,
         direction: isLong ? 'long' : 'short',
-        size: contractSize,
+        size: contractSizeNum,
         entryPrice: entryPrice,
         pnl: 0,
         positionHeldMs: 0,
@@ -1667,8 +1672,15 @@ export class VolumeBotEngine {
       positionHeldMs: result.positionHeldMs,
     }
     // Skip recording "waiting" status orders - these are just monitoring checks
-    if (result.txHash === 'waiting') {
-      console.log('⏳ Monitoring position, not recording as trade')
+    // Skip non-trade results (monitoring/cooldown states)
+    if (result.txHash === 'waiting' || result.txHash === 'cooldown') {
+      console.log(`⏳ ${result.txHash === 'waiting' ? 'Monitoring position' : 'TWAP cooldown'}, not recording as trade`)
+      return
+    }
+
+    // Skip if no volume generated (failed or skipped trades)
+    if (!result.volumeGenerated || result.volumeGenerated === 0) {
+      console.log('⏭️ No volume generated, skipping trade record')
       return
     }
 
@@ -1705,7 +1717,7 @@ export class VolumeBotEngine {
               txHash: result.txHash,
               direction: result.direction,
               strategy: this.config.strategy || 'twap',
-              size: BigInt(result.size),  // Convert to BigInt for Prisma
+              size: BigInt(result.size || 0),  // Convert to BigInt for Prisma (default 0 if undefined)
               volumeGenerated: result.volumeGenerated,
               success: result.success,
               entryPrice: result.entryPrice,
@@ -1766,7 +1778,7 @@ export class VolumeBotEngine {
                 txHash: result.txHash,
                 direction: result.direction,
                 strategy: this.config.strategy || 'twap',
-                size: BigInt(result.size),
+                size: BigInt(result.size || 0),
                 volumeGenerated: result.volumeGenerated,
                 success: result.success,
                 entryPrice: result.entryPrice,

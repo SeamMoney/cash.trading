@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
+import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
+
+// Market configs for size/price decimals
+const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
+  'BTC/USD': { pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { pxDecimals: 6, szDecimals: 4 },
+  'WLFI/USD': { pxDecimals: 6, szDecimals: 3 },
+  'SOL/USD': { pxDecimals: 6, szDecimals: 6 },
+  'ETH/USD': { pxDecimals: 6, szDecimals: 7 },
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -160,35 +170,61 @@ export async function POST(request: NextRequest) {
       ? (updatedBot.cumulativeVolume / updatedBot.volumeTargetUSDC) * 100
       : 0
 
-    // Calculate current PnL for monitoring status
+    // Calculate current PnL for monitoring status - fetch REAL on-chain position
     let currentPnl: number | undefined
     let positionDirection: string | undefined
     let positionSize: number | undefined
     let positionEntry: number | undefined
     let currentPrice: number | undefined
 
-    if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
-      positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
-      positionSize = Number(updatedBot.activePositionSize)  // Convert BigInt to Number for JSON
-      positionEntry = updatedBot.activePositionEntry
+    // Always fetch real on-chain position for accurate display
+    try {
+      const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+      const marketConfig = MARKET_CONFIG[bot.marketName] || MARKET_CONFIG['BTC/USD']
 
-      // Fetch current price to calculate PnL
-      try {
-        const priceRes = await fetch(
-          `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
+      // Fetch position from on-chain
+      const resources = await aptos.getAccountResources({
+        accountAddress: bot.userSubaccount
+      })
+
+      const positionsResource = resources.find((r: any) =>
+        r.type.includes('perp_positions::UserPositions')
+      )
+
+      if (positionsResource) {
+        const data = positionsResource.data as any
+        const entries = data.positions?.root?.children?.entries || []
+        const marketPosition = entries.find((e: any) =>
+          e.key.inner.toLowerCase() === bot.market.toLowerCase()
         )
-        const resources = await priceRes.json()
-        const priceResource = resources.find((r: any) => r.type.includes('price_management::Price'))
-        if (priceResource) {
-          // All markets on Decibel testnet use 6 decimals for prices
-          currentPrice = Number(priceResource.data.oracle_px) / 1e6
-          const entryPrice = updatedBot.activePositionEntry
-          currentPnl = updatedBot.activePositionIsLong
-            ? ((currentPrice - entryPrice) / entryPrice) * 100
-            : ((entryPrice - currentPrice) / entryPrice) * 100
+
+        if (marketPosition && parseInt(marketPosition.value.value.size) > 0) {
+          const pos = marketPosition.value.value
+          positionSize = parseInt(pos.size)
+          positionDirection = pos.is_long ? 'long' : 'short'
+          positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, marketConfig.pxDecimals)
+
+          // Fetch current price
+          const priceRes = await fetch(
+            `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
+          )
+          const priceResources = await priceRes.json()
+          const priceResource = priceResources.find((r: any) => r.type.includes('price_management::Price'))
+          if (priceResource) {
+            currentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, marketConfig.pxDecimals)
+            currentPnl = pos.is_long
+              ? ((currentPrice - positionEntry) / positionEntry) * 100
+              : ((positionEntry - currentPrice) / positionEntry) * 100
+          }
         }
-      } catch (e) {
-        console.error('Failed to fetch current price for PnL:', e)
+      }
+    } catch (e) {
+      console.error('Failed to fetch on-chain position:', e)
+      // Fallback to database if on-chain fetch fails
+      if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
+        positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
+        positionSize = Number(updatedBot.activePositionSize)
+        positionEntry = updatedBot.activePositionEntry
       }
     }
 

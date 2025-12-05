@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
+import { getMarkPrice } from '@/lib/price-feed'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+
+// Market configs for size decimals
+const MARKET_CONFIG: Record<string, { szDecimals: number }> = {
+  'BTC/USD': { szDecimals: 8 },
+  'APT/USD': { szDecimals: 4 },
+  'WLFI/USD': { szDecimals: 3 },
+  'SOL/USD': { szDecimals: 6 },
+  'ETH/USD': { szDecimals: 7 },
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,9 +72,14 @@ export async function POST(request: NextRequest) {
             const positionSize = parseInt(pos.size)
             const positionIsLong = pos.is_long
             const closeDirection = !positionIsLong
+            const entryPrice = parseInt(pos.avg_acquire_entry_px) / 1e6 // BTC uses 6 decimals for price
 
             console.log(`📊 Found open ${positionIsLong ? 'LONG' : 'SHORT'} position, closing...`)
-            console.log(`   Size: ${positionSize}`)
+            console.log(`   Size: ${positionSize}, Entry: $${entryPrice.toFixed(2)}`)
+
+            // Get current mark price for volume/PnL calculation
+            const priceData = await getMarkPrice(bot.market, 'testnet', 3000)
+            const currentPrice = priceData?.markPx || entryPrice // Fallback to entry if WebSocket fails
 
             // Close the position with TWAP
             const privateKey = new Ed25519PrivateKey(process.env.BOT_OPERATOR_PRIVATE_KEY!)
@@ -96,12 +111,50 @@ export async function POST(request: NextRequest) {
 
             await aptos.waitForTransaction({ transactionHash: closeCommittedTxn.hash })
 
+            // Calculate volume and PnL
+            const marketConfig = MARKET_CONFIG[bot.marketName] || { szDecimals: 8 }
+            const sizeInBaseAsset = positionSize / Math.pow(10, marketConfig.szDecimals)
+            const volumeGenerated = sizeInBaseAsset * currentPrice
+            const priceChange = positionIsLong
+              ? (currentPrice - entryPrice) / entryPrice
+              : (entryPrice - currentPrice) / entryPrice
+            const estimatedPnl = volumeGenerated * priceChange
+
             console.log(`✅ Close TWAP submitted: ${closeCommittedTxn.hash}`)
+            console.log(`   Volume: $${volumeGenerated.toFixed(2)}, Est PnL: $${estimatedPnl.toFixed(2)}`)
+
+            // Record the close order in history
+            await prisma.orderHistory.create({
+              data: {
+                botId: bot.id,
+                direction: positionIsLong ? 'long' : 'short',
+                size: positionSize,
+                entryPrice: entryPrice,
+                exitPrice: currentPrice,
+                volumeGenerated: volumeGenerated,
+                pnl: estimatedPnl,
+                txHash: closeCommittedTxn.hash,
+                timestamp: new Date(),
+              }
+            })
+
+            // Update cumulative volume
+            await prisma.botInstance.update({
+              where: { id: bot.id },
+              data: {
+                cumulativeVolume: { increment: volumeGenerated },
+                ordersPlaced: { increment: 1 },
+                lastOrderTime: new Date(),
+              }
+            })
+
             closedPosition = true
             closeResult = {
               txHash: closeCommittedTxn.hash,
               direction: positionIsLong ? 'LONG' : 'SHORT',
               size: positionSize,
+              volumeGenerated,
+              estimatedPnl,
             }
           }
         }

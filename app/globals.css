@@ -153,24 +153,28 @@
     }
 
     /* Make components more transparent on mobile iOS */
-    /* iOS has issues with backdrop-blur, so we reduce opacity and remove blur */
+    /* Slightly reduce opacity for better transparency while maintaining readability */
     .bg-black\/40 {
-      background-color: rgba(0, 0, 0, 0.15) !important;
+      background-color: rgba(0, 0, 0, 0.25) !important;
     }
 
     .bg-black\/80 {
-      background-color: rgba(0, 0, 0, 0.4) !important;
+      background-color: rgba(0, 0, 0, 0.6) !important;
     }
 
     .bg-zinc-900\/50 {
-      background-color: rgba(24, 24, 27, 0.25) !important;
+      background-color: rgba(24, 24, 27, 0.35) !important;
     }
 
-    /* Reduce backdrop blur on mobile for better performance and transparency */
-    .backdrop-blur-sm,
+    /* Keep backdrop blur but slightly reduced on mobile */
+    .backdrop-blur-sm {
+      -webkit-backdrop-filter: blur(6px) !important;
+      backdrop-filter: blur(6px) !important;
+    }
+
     .backdrop-blur-md {
-      -webkit-backdrop-filter: blur(4px) !important;
-      backdrop-filter: blur(4px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      backdrop-filter: blur(8px) !important;
     }
   }
 

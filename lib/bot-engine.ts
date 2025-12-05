@@ -1287,24 +1287,27 @@ export class VolumeBotEngine {
       console.log(`✅ TWAP OPEN SUBMITTED! Will fill over 1-2 minutes.`)
 
       // Save bot's expected position to database (TWAP will fill it)
+      const contractSizeNum = Number(contractSize)
       await prisma.botInstance.update({
         where: { id: botInstance.id },
         data: {
-          activePositionSize: Number(contractSize),
+          activePositionSize: contractSizeNum,
           activePositionIsLong: isLong,
           activePositionEntry: entryPrice,
           activePositionTxHash: committedTxn.hash,
+          lastTwapOrderTime: new Date(),  // Track TWAP time for cooldown
         }
       })
 
-      // Estimate volume based on intended position (convert bigint to number)
-      const contractSizeNum = Number(contractSize)
-      const volumeGenerated = (contractSizeNum / Math.pow(10, sizeDecimals)) * entryPrice
+      // DON'T count volume on OPEN - only count when position CLOSES
+      // This ensures we don't prematurely hit volume target
+      // The close will count the full round-trip volume
+      console.log(`   Position value: ~$${((contractSizeNum / Math.pow(10, sizeDecimals)) * entryPrice).toFixed(0)} (counted on close)`)
 
       return {
         success: true,
         txHash: committedTxn.hash,
-        volumeGenerated,
+        volumeGenerated: 0,  // Don't count volume on open
         direction: isLong ? 'long' : 'short',
         size: contractSizeNum,
         entryPrice: entryPrice,

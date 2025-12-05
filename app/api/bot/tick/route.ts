@@ -68,13 +68,47 @@ export async function POST(request: NextRequest) {
 
     // Check if bot has reached volume target
     if (bot.cumulativeVolume >= bot.volumeTargetUSDC) {
-      // For high_risk strategy, must close any open position before stopping
-      if (bot.strategy === 'high_risk' && bot.activePositionSize && bot.activePositionSize > 0) {
-        console.log(`📊 Volume target reached but high_risk has open position - must close first!`)
-        console.log(`   Position: ${bot.activePositionIsLong ? 'LONG' : 'SHORT'} ${bot.activePositionSize}`)
-        // Don't stop yet - let the engine close the position first
-        // The executeSingleTrade will handle closing it
+      // For high_risk strategy, ALWAYS check on-chain position before stopping
+      // DB might not reflect actual position state
+      if (bot.strategy === 'high_risk') {
+        // Check on-chain position
+        const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+        try {
+          const resources = await aptos.getAccountResources({
+            accountAddress: bot.userSubaccount
+          })
+          const positionsResource = resources.find((r: any) =>
+            r.type.includes('perp_positions::UserPositions')
+          )
+          if (positionsResource) {
+            const data = positionsResource.data as any
+            const entries = data.positions?.root?.children?.entries || []
+            const marketPosition = entries.find((e: any) =>
+              e.key.inner.toLowerCase() === bot.market.toLowerCase()
+            )
+            if (marketPosition && parseInt(marketPosition.value.value.size) > 0) {
+              console.log(`📊 Volume target reached but ON-CHAIN position exists - must close first!`)
+              console.log(`   On-chain size: ${marketPosition.value.value.size}`)
+              // Don't stop - let engine close the position
+            } else {
+              // No on-chain position, safe to stop
+              await prisma.botInstance.update({
+                where: { id: bot.id },
+                data: { isRunning: false },
+              })
+              return NextResponse.json({
+                success: true,
+                status: 'completed',
+                message: 'Volume target reached, bot stopped',
+              })
+            }
+          }
+        } catch (e) {
+          console.error('Failed to check on-chain position:', e)
+          // If we can't check, don't stop - better safe than sorry
+        }
       } else {
+        // Non high_risk strategies - just stop
         await prisma.botInstance.update({
           where: { id: bot.id },
           data: { isRunning: false },

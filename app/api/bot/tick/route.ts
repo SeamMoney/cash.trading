@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
+import { getMarkPrice } from '@/lib/price-feed'
 
 // Market configs for size/price decimals
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -238,17 +239,26 @@ export async function POST(request: NextRequest) {
           positionDirection = pos.is_long ? 'long' : 'short'
           positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, marketConfig.pxDecimals)
 
-          // Fetch current price
-          const priceRes = await fetch(
-            `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
-          )
-          const priceResources = await priceRes.json()
-          const priceResource = priceResources.find((r: any) => r.type.includes('price_management::Price'))
-          if (priceResource) {
-            currentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, marketConfig.pxDecimals)
+          // Fetch mark price from WebSocket (more accurate for PnL)
+          const priceData = await getMarkPrice(bot.market, 'testnet', 3000)
+          if (priceData) {
+            currentPrice = priceData.markPx
             currentPnl = pos.is_long
               ? ((currentPrice - positionEntry) / positionEntry) * 100
               : ((positionEntry - currentPrice) / positionEntry) * 100
+          } else {
+            // Fallback to on-chain oracle price
+            const priceRes = await fetch(
+              `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
+            )
+            const priceResources = await priceRes.json()
+            const priceResource = priceResources.find((r: any) => r.type.includes('price_management::Price'))
+            if (priceResource) {
+              currentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, marketConfig.pxDecimals)
+              currentPnl = pos.is_long
+                ? ((currentPrice - positionEntry) / positionEntry) * 100
+                : ((positionEntry - currentPrice) / positionEntry) * 100
+            }
           }
         }
       }

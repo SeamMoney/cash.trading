@@ -1024,6 +1024,24 @@ export class VolumeBotEngine {
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {
+          // Check if we recently placed a close order (prevent spam)
+          // If lastTwapOrderTime is within 30 seconds, skip (close is pending)
+          if (botInstance.lastTwapOrderTime) {
+            const timeSinceLastClose = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
+            if (timeSinceLastClose < 30000) {
+              console.log(`⏳ Close order already pending (${Math.round(timeSinceLastClose/1000)}s ago), waiting...`)
+              return {
+                success: true,
+                txHash: 'close_pending',
+                volumeGenerated: 0,
+                direction: positionIsLong ? 'long' : 'short',
+                size: positionSize,
+                entryPrice: positionEntry,
+                pnl: 0,
+              }
+            }
+          }
+
           const isProfit = priceChange >= PROFIT_TARGET
           if (volumeTargetReached && priceChange < PROFIT_TARGET && priceChange > STOP_LOSS) {
             console.log(`🎯 FORCE CLOSE (volume target)! Closing at ${priceChangePercent.toFixed(3)}%`)
@@ -1097,7 +1115,7 @@ export class VolumeBotEngine {
 
           console.log(`   Estimated PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-          // Clear bot's position in database
+          // Mark close time to prevent duplicate closes, and clear position
           await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
@@ -1105,6 +1123,7 @@ export class VolumeBotEngine {
               activePositionIsLong: null,
               activePositionEntry: null,
               activePositionTxHash: null,
+              lastTwapOrderTime: new Date(), // Track close time to prevent spam
             }
           })
 

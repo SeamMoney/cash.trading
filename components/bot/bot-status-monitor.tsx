@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
-import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer } from "lucide-react"
+import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface BotStatusMonitorProps {
@@ -26,7 +26,39 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     currentPrice?: number
   } | null>(null)
   const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
+  const [isStopping, setIsStopping] = useState(false)
   const lastTickTimeRef = useRef<number>(0)
+
+  // Stop bot handler
+  const handleStop = useCallback(async () => {
+    setIsStopping(true)
+    try {
+      const response = await fetch('/api/bot/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userWalletAddress }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to stop bot')
+      }
+
+      toast.info('Bot Stopped', {
+        description: 'Trading has been paused',
+      })
+      if (onStatusChange) {
+        onStatusChange(false)
+      }
+    } catch (err: any) {
+      toast.error('Failed to stop bot', {
+        description: err.message,
+      })
+    } finally {
+      setIsStopping(false)
+    }
+  }, [userWalletAddress, onStatusChange])
 
   // Trigger a trade tick
   const triggerTick = useCallback(async () => {
@@ -294,6 +326,16 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                 </span>
               </div>
             </div>
+
+            {/* Stop Bot Button */}
+            <button
+              onClick={handleStop}
+              disabled={isStopping}
+              className="w-full p-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 hover:border-red-500 text-red-400 hover:text-red-300 font-mono text-sm uppercase tracking-widest font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Square className="w-4 h-4" />
+              {isStopping ? 'STOPPING...' : 'STOP BOT'}
+            </button>
 
             {/* Monitoring Info - shows when watching an open position */}
             {monitoringInfo && config?.strategy === 'high_risk' && (

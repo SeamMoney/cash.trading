@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
 
     if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
       positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
-      positionSize = updatedBot.activePositionSize
+      positionSize = Number(updatedBot.activePositionSize)  // Convert BigInt to Number for JSON
       positionEntry = updatedBot.activePositionEntry
 
       // Fetch current price to calculate PnL

@@ -729,35 +729,27 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {/* Start/Stop Button */}
-          <Button
-            onClick={isRunning ? handleStop : handleStart}
-            disabled={loading}
-            className={cn(
-              "w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50",
-              isRunning
-                ? "bg-red-500/90 hover:bg-red-500 text-white border-red-500 shadow-[0_0_30px_-5px_rgba(239,68,68,0.6)] hover:shadow-[0_0_50px_-10px_rgba(239,68,68,0.8)]"
-                : "bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)]"
-            )}
-          >
-            <span className="relative z-10 flex items-center justify-center gap-2">
-              {loading ? (
-                "PROCESSING..."
-              ) : isRunning ? (
-                <>
-                  <Square className="w-5 h-5" />
-                  STOP BOT
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5" />
-                  START BOT
-                </>
-              )}
-            </span>
-            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
-          </Button>
+          {/* Start Button - only show when not running (Stop button is in BotStatusMonitor) */}
+          {!isRunning && (
+            <Button
+              onClick={handleStart}
+              disabled={loading}
+              className="w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50 bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)]"
+            >
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                {loading ? (
+                  "PROCESSING..."
+                ) : (
+                  <>
+                    <Play className="w-5 h-5" />
+                    START BOT
+                  </>
+                )}
+              </span>
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
+            </Button>
+          )}
 
           {/* Bot Info */}
           {!isRunning && (

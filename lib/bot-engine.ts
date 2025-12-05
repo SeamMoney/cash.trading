@@ -1111,10 +1111,11 @@ export class VolumeBotEngine {
           console.log(`   Volume: $${botInstance.cumulativeVolume.toFixed(2)} / $${botInstance.volumeTargetUSDC}`)
         }
 
-        // Tighter targets for faster trades
-        // With 40x leverage: 0.15% price move = 6% account PnL
-        const PROFIT_TARGET = 0.0015  // 0.15% price move = take profit
-        const STOP_LOSS = -0.001     // -0.1% price move = stop loss
+        // VERY tight targets for fast scalping with 40x leverage
+        // 0.05% price move × 40x = 2% account PnL
+        // 0.03% price move × 40x = 1.2% account PnL (stop)
+        const PROFIT_TARGET = 0.0005  // 0.05% price move = take profit (~$46 on BTC)
+        const STOP_LOSS = -0.0003    // -0.03% price move = stop loss (~$28 on BTC)
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {

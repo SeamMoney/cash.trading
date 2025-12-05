@@ -1,0 +1,215 @@
+/**
+ * Decibel REST API Client
+ *
+ * Provides authenticated access to Decibel's REST API endpoints.
+ * Requires GEOMI_API_KEY environment variable.
+ */
+
+const TESTNET_API_URL = 'https://api.testnet.aptoslabs.com/decibel/api/v1'
+const MAINNET_API_URL = 'https://api.mainnet.aptoslabs.com/decibel/api/v1'
+
+export type VolumeWindow = '7d' | '14d' | '30d' | '90d'
+
+export interface DecibelAccountOverview {
+  perp_equity_balance: number
+  unrealized_pnl: number
+  realized_pnl: number
+  unrealized_funding_cost: number
+  cross_margin_ratio: number
+  maintenance_margin: number
+  cross_account_leverage_ratio: number
+  cross_account_position: number
+  total_margin: number
+  usdc_cross_withdrawable_balance: number
+  usdc_isolated_withdrawable_balance: number
+  // Volume (requires volume_window param)
+  volume?: number
+  // Performance metrics (requires include_performance param)
+  all_time_return?: number | null
+  pnl_90d?: number | null
+  sharpe_ratio?: number | null
+  max_drawdown?: number | null
+  weekly_win_rate_12w?: number | null
+  average_cash_position?: number | null
+  average_leverage?: number | null
+}
+
+export interface DecibelTrade {
+  account: string
+  market: string
+  action: string
+  trade_id: number
+  size: number
+  price: number
+  is_profit: boolean
+  realized_pnl_amount: number
+  is_funding_positive: boolean
+  realized_funding_amount: number
+  is_rebate: boolean
+  fee_amount: number
+  order_id: string
+  client_order_id: string
+  transaction_unix_ms: number
+  transaction_version: number
+}
+
+/**
+ * Get the API key from environment
+ */
+function getApiKey(): string {
+  const apiKey = process.env.GEOMI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEOMI_API_KEY environment variable is not set')
+  }
+  return apiKey
+}
+
+/**
+ * Get base URL for the specified network
+ */
+function getBaseUrl(network: 'testnet' | 'mainnet' = 'testnet'): string {
+  return network === 'testnet' ? TESTNET_API_URL : MAINNET_API_URL
+}
+
+/**
+ * Fetch account overview from Decibel REST API
+ *
+ * @param userAddr - User's wallet or subaccount address
+ * @param options - Optional parameters
+ * @returns Account overview with equity, PnL, volume, and performance metrics
+ */
+export async function getDecibelAccountOverview(
+  userAddr: string,
+  options: {
+    network?: 'testnet' | 'mainnet'
+    volumeWindow?: VolumeWindow
+    includePerformance?: boolean
+    performanceLookbackDays?: number
+  } = {}
+): Promise<DecibelAccountOverview | null> {
+  const {
+    network = 'testnet',
+    volumeWindow = '30d',
+    includePerformance = false,
+    performanceLookbackDays = 90
+  } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({
+      user: userAddr,
+      volume_window: volumeWindow,
+    })
+
+    if (includePerformance) {
+      params.set('include_performance', 'true')
+      params.set('performance_lookback_days', performanceLookbackDays.toString())
+    }
+
+    const response = await fetch(`${baseUrl}/account_overviews?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      console.error(`Decibel API error: ${response.status} ${response.statusText}`)
+      return null
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching Decibel account overview:', error)
+    return null
+  }
+}
+
+/**
+ * Fetch trade history from Decibel REST API
+ *
+ * @param userAddr - User's wallet or subaccount address
+ * @param options - Optional parameters
+ * @returns Array of trades
+ */
+export async function getDecibelTradeHistory(
+  userAddr: string,
+  options: {
+    network?: 'testnet' | 'mainnet'
+    limit?: number
+    market?: string
+    orderId?: string
+  } = {}
+): Promise<DecibelTrade[]> {
+  const {
+    network = 'testnet',
+    limit = 100,
+    market,
+    orderId
+  } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({
+      user: userAddr,
+      limit: limit.toString(),
+    })
+
+    if (market) params.set('market', market)
+    if (orderId) params.set('order_id', orderId)
+
+    const response = await fetch(`${baseUrl}/trade_history?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      console.error(`Decibel API error: ${response.status} ${response.statusText}`)
+      return []
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching Decibel trade history:', error)
+    return []
+  }
+}
+
+/**
+ * Get volume for a user from Decibel
+ * Convenience function that returns just the volume
+ *
+ * @param userAddr - User's wallet or subaccount address
+ * @param volumeWindow - Time window for volume calculation
+ * @param network - Network to query
+ * @returns Volume in USD or null if unavailable
+ */
+export async function getDecibelVolume(
+  userAddr: string,
+  volumeWindow: VolumeWindow = '30d',
+  network: 'testnet' | 'mainnet' = 'testnet'
+): Promise<number | null> {
+  const overview = await getDecibelAccountOverview(userAddr, {
+    network,
+    volumeWindow,
+  })
+
+  return overview?.volume ?? null
+}
+
+/**
+ * Format volume for display
+ */
+export function formatVolume(volume: number): string {
+  if (volume >= 1_000_000) {
+    return `$${(volume / 1_000_000).toFixed(2)}M`
+  } else if (volume >= 1_000) {
+    return `$${(volume / 1_000).toFixed(2)}K`
+  } else {
+    return `$${volume.toFixed(2)}`
+  }
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getDecibelAccountOverview, type VolumeWindow } from '@/lib/decibel-api'
 
 export const runtime = 'nodejs'
 
@@ -12,6 +13,7 @@ export const runtime = 'nodejs'
  *   - user: (optional) wallet address to filter by specific user
  *   - period: (optional) '24h' | '7d' | '30d' | 'all' (default: 'all')
  *   - leaderboard: (optional) 'true' to include top users by volume
+ *   - decibel: (optional) 'true' to include volume from Decibel API (more accurate)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +21,7 @@ export async function GET(request: NextRequest) {
     const userWallet = searchParams.get('user')
     const period = searchParams.get('period') || 'all'
     const includeLeaderboard = searchParams.get('leaderboard') === 'true'
+    const includeDecibel = searchParams.get('decibel') === 'true'
 
     // Calculate time filter
     let dateFilter: Date | undefined
@@ -168,6 +171,7 @@ export async function GET(request: NextRequest) {
         where: { userWalletAddress: userWallet },
         select: {
           userWalletAddress: true,
+          userSubaccount: true,
           cumulativeVolume: true,
           ordersPlaced: true,
           strategy: true,
@@ -182,6 +186,61 @@ export async function GET(request: NextRequest) {
         periodVolume: totalVolume,
         periodTrades: totalTrades,
         periodPnl: totalPnl,
+      }
+
+      // Fetch Decibel volume for this user if requested
+      if (includeDecibel && userBot?.userSubaccount) {
+        const volumeWindow = mapPeriodToVolumeWindow(period)
+        const decibelData = await getDecibelAccountOverview(userBot.userSubaccount, {
+          volumeWindow,
+          includePerformance: true,
+        })
+
+        if (decibelData) {
+          stats.user.decibel = {
+            volume: decibelData.volume ?? 0,
+            volumeFormatted: formatCurrency(decibelData.volume ?? 0),
+            equityBalance: decibelData.perp_equity_balance,
+            unrealizedPnl: decibelData.unrealized_pnl,
+            realizedPnl: decibelData.realized_pnl,
+            allTimeReturn: decibelData.all_time_return,
+            sharpeRatio: decibelData.sharpe_ratio,
+            maxDrawdown: decibelData.max_drawdown,
+            winRate12w: decibelData.weekly_win_rate_12w,
+          }
+        }
+      }
+    }
+
+    // Fetch aggregate Decibel volume across all users if requested
+    if (includeDecibel && !userWallet) {
+      const allBots = await prisma.botInstance.findMany({
+        select: { userSubaccount: true }
+      })
+
+      const volumeWindow = mapPeriodToVolumeWindow(period)
+      let totalDecibelVolume = 0
+      let decibelUsersQueried = 0
+
+      // Fetch Decibel data for all users (in parallel, limit concurrency)
+      const decibelPromises = allBots
+        .filter(bot => bot.userSubaccount)
+        .map(bot => getDecibelAccountOverview(bot.userSubaccount, { volumeWindow }))
+
+      const decibelResults = await Promise.all(decibelPromises)
+
+      for (const data of decibelResults) {
+        if (data?.volume) {
+          totalDecibelVolume += data.volume
+          decibelUsersQueried++
+        }
+      }
+
+      stats.decibel = {
+        totalVolume: Math.round(totalDecibelVolume * 100) / 100,
+        totalVolumeFormatted: formatCurrency(totalDecibelVolume),
+        usersQueried: decibelUsersQueried,
+        note: 'Volume from Decibel API (includes all TWAP fills)',
       }
     }
 
@@ -258,5 +317,24 @@ function formatCurrency(value: number): string {
     return `$${(value / 1_000).toFixed(2)}K`
   } else {
     return `$${value.toFixed(2)}`
+  }
+}
+
+/**
+ * Map period string to Decibel volume window
+ */
+function mapPeriodToVolumeWindow(period: string): VolumeWindow {
+  switch (period) {
+    case '7d':
+      return '7d'
+    case '14d':
+      return '14d'
+    case '30d':
+      return '30d'
+    case '90d':
+      return '90d'
+    default:
+      // For 'all' or '24h', use 90d as that's the max Decibel supports
+      return '90d'
   }
 }

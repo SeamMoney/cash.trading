@@ -1024,24 +1024,6 @@ export class VolumeBotEngine {
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {
-          // Check if we recently placed a close order (prevent spam)
-          // If lastTwapOrderTime is within 30 seconds, skip (close is pending)
-          if (botInstance.lastTwapOrderTime) {
-            const timeSinceLastClose = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
-            if (timeSinceLastClose < 30000) {
-              console.log(`⏳ Close order already pending (${Math.round(timeSinceLastClose/1000)}s ago), waiting...`)
-              return {
-                success: true,
-                txHash: 'close_pending',
-                volumeGenerated: 0,
-                direction: positionIsLong ? 'long' : 'short',
-                size: positionSize,
-                entryPrice: positionEntry,
-                pnl: 0,
-              }
-            }
-          }
-
           const isProfit = priceChange >= PROFIT_TARGET
           if (volumeTargetReached && priceChange < PROFIT_TARGET && priceChange > STOP_LOSS) {
             console.log(`🎯 FORCE CLOSE (volume target)! Closing at ${priceChangePercent.toFixed(3)}%`)
@@ -1105,7 +1087,12 @@ export class VolumeBotEngine {
             throw new Error(`Close IOC order failed: ${closeExecutedTxn.vm_status}`)
           }
 
-          console.log(`✅ IOC CLOSE EXECUTED! Position closed instantly.`)
+          console.log(`✅ IOC CLOSE TX CONFIRMED!`)
+
+          // Verify position is actually closed on-chain before clearing DB
+          const postClosePosition = await this.getOnChainPosition()
+          const actuallyFilled = !postClosePosition || postClosePosition.size === 0 ||
+            postClosePosition.size < positionSize * 0.1 // 90%+ filled counts as closed
 
           // Calculate actual volume and PnL
           const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
@@ -1113,29 +1100,33 @@ export class VolumeBotEngine {
           const maxLeverage = this.getMarketMaxLeverage()
           const leveragedPnlPercent = priceChangePercent * maxLeverage
 
-          console.log(`   Estimated PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+          if (actuallyFilled) {
+            console.log(`   Position CLOSED! PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-          // Mark close time to prevent duplicate closes, and clear position
-          await prisma.botInstance.update({
-            where: { id: botInstance.id },
-            data: {
-              activePositionSize: null,
-              activePositionIsLong: null,
-              activePositionEntry: null,
-              activePositionTxHash: null,
-              lastTwapOrderTime: new Date(), // Track close time to prevent spam
-            }
-          })
+            // Clear position from DB only when actually closed
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                activePositionSize: null,
+                activePositionIsLong: null,
+                activePositionEntry: null,
+                activePositionTxHash: null,
+              }
+            })
+          } else {
+            console.log(`   Partial fill - remaining: ${postClosePosition?.size}. Will retry next tick.`)
+            // Don't clear DB - let next tick try again
+          }
 
           return {
             success: true,
             txHash: closeCommittedTxn.hash,
-            volumeGenerated: positionValueUSD,
+            volumeGenerated: actuallyFilled ? positionValueUSD : 0, // Only count volume if closed
             direction: closeDirection ? 'short' : 'long',
             size: positionSize,
             entryPrice: positionEntry,
-            exitPrice: currentPrice,
-            pnl: estimatedPnl,
+            exitPrice: actuallyFilled ? currentPrice : undefined,
+            pnl: actuallyFilled ? estimatedPnl : 0,
             positionHeldMs: Date.now() - orderStartTime,
           }
         } else {

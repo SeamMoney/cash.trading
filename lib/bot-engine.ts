@@ -999,6 +999,83 @@ export class VolumeBotEngine {
         const positionIsLong = onChainPosition.isLong
         const positionEntry = onChainPosition.entryPrice
 
+        // Check if position matches desired bias - if not, FORCE CLOSE it
+        const biasMismatch = this.config.bias !== 'neutral' && positionIsLong !== (this.config.bias === 'long')
+        if (biasMismatch) {
+          console.log(`⚠️ Position direction (${positionIsLong ? 'LONG' : 'SHORT'}) doesn't match bias (${this.config.bias.toUpperCase()})`)
+          console.log(`   FORCE CLOSING to open correct direction...`)
+
+          // Force close regardless of PnL
+          const currentPrice = await this.getCurrentMarketPrice()
+          const closeDirection = !positionIsLong
+          const sizeDecimals = this.getMarketSizeDecimals()
+
+          const aggressivePrice = closeDirection
+            ? currentPrice * (1 - SLIPPAGE_PCT)
+            : currentPrice * (1 + SLIPPAGE_PCT)
+          const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+
+          console.log(`   Closing with IOC: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
+
+          const closeTransaction = await this.aptos.transaction.build.simple({
+            sender: this.botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              typeArguments: [],
+              functionArguments: [
+                this.config.userSubaccount,
+                this.config.market,
+                limitPrice.toString(),
+                positionSize.toString(),
+                closeDirection,
+                2, // IOC
+                false,
+                undefined, undefined, undefined, undefined, undefined,
+                true, // reduce_only
+                undefined, undefined,
+              ],
+            },
+          })
+
+          const closeCommittedTxn = await this.aptos.signAndSubmitTransaction({
+            signer: this.botAccount,
+            transaction: closeTransaction,
+          })
+
+          await this.aptos.waitForTransaction({ transactionHash: closeCommittedTxn.hash })
+
+          // Clear DB and return - next tick will open correct direction
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: null,
+              activePositionIsLong: null,
+              activePositionEntry: null,
+              activePositionTxHash: null,
+            }
+          })
+
+          const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
+          const priceChange = positionIsLong
+            ? (currentPrice - positionEntry) / positionEntry
+            : (positionEntry - currentPrice) / positionEntry
+          const pnl = positionValueUSD * priceChange
+
+          console.log(`   ✅ Closed wrong-direction position. PnL: $${pnl.toFixed(2)}`)
+
+          return {
+            success: true,
+            txHash: closeCommittedTxn.hash,
+            volumeGenerated: positionValueUSD,
+            direction: closeDirection ? 'short' : 'long',
+            size: positionSize,
+            entryPrice: positionEntry,
+            exitPrice: currentPrice,
+            pnl,
+            positionHeldMs: 0,
+          }
+        }
+
         console.log(`\n📊 [HFT] Bot's ${positionIsLong ? 'LONG' : 'SHORT'} position`)
         console.log(`   Size: ${positionSize}, Entry: $${positionEntry.toFixed(2)}`)
 

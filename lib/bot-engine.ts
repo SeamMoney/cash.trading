@@ -1030,9 +1030,14 @@ export class VolumeBotEngine {
                 closeDirection,
                 2, // IOC
                 false,
-                undefined, undefined, undefined, undefined, undefined,
-                true, // reduce_only
-                undefined, undefined,
+                undefined, // client_order_id
+                undefined, // conditional_order
+                undefined, // trigger_price
+                undefined, // take_profit_px
+                undefined, // stop_loss_px
+                undefined, // reduce_only (IOC handles it)
+                undefined, // builder_address
+                undefined, // max_builder_fee
               ],
             },
           })
@@ -1142,7 +1147,7 @@ export class VolumeBotEngine {
                 undefined,                     // trigger_price
                 undefined,                     // take_profit_px
                 undefined,                     // stop_loss_px
-                true,                          // reduce_only: true for closing
+                undefined,                     // reduce_only (IOC handles closing)
                 undefined,                     // builder_address
                 undefined,                     // max_builder_fee
               ],

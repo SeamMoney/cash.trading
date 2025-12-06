@@ -1161,7 +1161,7 @@ export class VolumeBotEngine {
                 undefined,                     // trigger_price
                 undefined,                     // take_profit_px
                 undefined,                     // stop_loss_px
-                undefined,                     // reduce_only (not available on place_order)
+                true,                          // reduce_only: TRUE for closing positions
                 undefined,                     // builder_address
                 undefined,                     // max_builder_fee
               ],

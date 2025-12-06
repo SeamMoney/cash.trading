@@ -152,11 +152,16 @@
       overscroll-behavior-x: none;
     }
 
-    /* Remove backdrop blur on mobile for performance and transparency */
+    /* Remove backdrop blur and make backgrounds transparent on mobile */
     .backdrop-blur-sm,
     .backdrop-blur-md {
       -webkit-backdrop-filter: none !important;
       backdrop-filter: none !important;
+    }
+
+    /* Make semi-transparent black backgrounds fully transparent on mobile */
+    [class*="bg-black/"] {
+      background-color: transparent !important;
     }
   }
 

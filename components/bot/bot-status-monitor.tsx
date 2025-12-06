@@ -388,7 +388,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                   </div>
                 )}
                 <div className="mt-2 text-[10px] text-zinc-500">
-                  Target: +0.05% · Stop: -0.03%
+                  Target: +0.05% · Stop: -0.05%
                 </div>
               </div>
             )}

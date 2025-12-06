@@ -1112,10 +1112,10 @@ export class VolumeBotEngine {
         }
 
         // VERY tight targets for fast scalping with 40x leverage
-        // 0.05% price move × 40x = 2% account PnL
-        // 0.03% price move × 40x = 1.2% account PnL (stop)
+        // SYMMETRIC risk/reward for fair win rate
+        // 0.05% price move × 40x = 2% account PnL (both directions)
         const PROFIT_TARGET = 0.0005  // 0.05% price move = take profit (~$46 on BTC)
-        const STOP_LOSS = -0.0003    // -0.03% price move = stop loss (~$28 on BTC)
+        const STOP_LOSS = -0.0005    // -0.05% price move = stop loss (symmetric)
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {

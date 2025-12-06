@@ -4,7 +4,7 @@ import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '
 import { getMarkPrice } from '@/lib/price-feed'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
 
 const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
@@ -143,6 +143,42 @@ export async function POST(request: NextRequest) {
 
             await aptos.waitForTransaction({ transactionHash: closeCommittedTxn.hash })
 
+            console.log(`✅ Close TWAP submitted: ${closeCommittedTxn.hash}`)
+            console.log(`   Waiting for TWAP to fully fill...`)
+
+            // CRITICAL: Wait for the TWAP to fully close the position (max 3 minutes)
+            const closeStartTime = Date.now()
+            const MAX_WAIT_MS = 3 * 60 * 1000 // 3 minutes
+
+            while (Date.now() - closeStartTime < MAX_WAIT_MS) {
+              await new Promise(r => setTimeout(r, 10000)) // Wait 10 seconds
+
+              // Re-fetch position
+              const updatedResources = await aptos.getAccountResources({
+                accountAddress: bot.userSubaccount
+              })
+              const updatedPositionsResource = updatedResources.find((r: any) =>
+                r.type.includes('perp_positions::UserPositions')
+              )
+
+              if (updatedPositionsResource) {
+                const updatedData = updatedPositionsResource.data as any
+                const updatedEntries = updatedData.positions?.root?.children?.entries || []
+                const updatedMarketPosition = updatedEntries.find((e: any) =>
+                  e.key.inner.toLowerCase() === bot.market.toLowerCase()
+                )
+
+                if (!updatedMarketPosition || parseInt(updatedMarketPosition.value.value.size) === 0) {
+                  console.log(`✅ Position fully closed!`)
+                  break
+                }
+
+                const remainingSize = parseInt(updatedMarketPosition.value.value.size)
+                const remainingPct = (remainingSize / positionSize) * 100
+                console.log(`   TWAP filling... ${remainingPct.toFixed(1)}% remaining`)
+              }
+            }
+
             // Calculate volume and PnL
             const marketConfig = MARKET_CONFIG[bot.marketName] || { szDecimals: 8 }
             const sizeInBaseAsset = positionSize / Math.pow(10, marketConfig.szDecimals)
@@ -152,7 +188,6 @@ export async function POST(request: NextRequest) {
               : (entryPrice - currentPrice) / entryPrice
             const estimatedPnl = volumeGenerated * priceChange
 
-            console.log(`✅ Close TWAP submitted: ${closeCommittedTxn.hash}`)
             console.log(`   Volume: $${volumeGenerated.toFixed(2)}, Est PnL: $${estimatedPnl.toFixed(2)}`)
 
             // Record the close order in history

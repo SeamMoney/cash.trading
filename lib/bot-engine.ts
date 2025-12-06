@@ -1162,7 +1162,7 @@ export class VolumeBotEngine {
             throw new Error(`Close TWAP order failed: ${closeExecutedTxn.vm_status}`)
           }
 
-          console.log(`✅ CLOSE TWAP SUBMITTED! Position will close over 1-2 minutes.`)
+          console.log(`✅ CLOSE TWAP SUBMITTED! Waiting for it to fill...`)
 
           // Calculate volume and PnL
           const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
@@ -1172,8 +1172,48 @@ export class VolumeBotEngine {
 
           console.log(`   Expected PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-          // Clear position from DB and set TWAP cooldown
-          // The position will actually close over the next 1-2 minutes
+          // CRITICAL: Wait for the TWAP to fully fill before returning
+          // Poll on-chain position until it's closed (max 3 minutes)
+          const closeStartTime = Date.now()
+          const MAX_WAIT_MS = 3 * 60 * 1000 // 3 minutes
+          let positionClosed = false
+
+          while (Date.now() - closeStartTime < MAX_WAIT_MS) {
+            await new Promise(r => setTimeout(r, 10000)) // Wait 10 seconds between checks
+
+            const currentPos = await this.getOnChainPosition()
+            if (!currentPos || currentPos.size === 0) {
+              console.log(`✅ Position fully closed!`)
+              positionClosed = true
+              break
+            }
+
+            const remainingSize = currentPos.size
+            const remainingPct = (remainingSize / positionSize) * 100
+            console.log(`   TWAP filling... ${remainingPct.toFixed(1)}% remaining (${remainingSize} units)`)
+          }
+
+          if (!positionClosed) {
+            console.log(`⚠️ Close TWAP still filling after 3 min. Will check again next tick.`)
+            // Don't clear DB - position still exists
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                lastTwapOrderTime: new Date(),  // Track close time for cooldown
+              }
+            })
+            return {
+              success: true,
+              txHash: closeCommittedTxn.hash,
+              volumeGenerated: 0,  // Don't count volume until fully closed
+              direction: closeDirection ? 'short' : 'long',
+              size: positionSize,
+              entryPrice: positionEntry,
+              pnl: 0,
+            }
+          }
+
+          // Position fully closed - clear DB and return success
           await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
@@ -1181,7 +1221,7 @@ export class VolumeBotEngine {
               activePositionIsLong: null,
               activePositionEntry: null,
               activePositionTxHash: null,
-              lastTwapOrderTime: new Date(),  // Track close time for cooldown
+              lastTwapOrderTime: new Date(),
             }
           })
 

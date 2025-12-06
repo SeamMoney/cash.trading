@@ -14,7 +14,7 @@ const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> 
 }
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300 // 5 minutes - need time to wait for TWAP fills
 
 /**
  * Manual bot tick endpoint - executes one trade cycle for a specific bot

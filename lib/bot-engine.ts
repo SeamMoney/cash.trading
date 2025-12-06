@@ -1103,10 +1103,12 @@ export class VolumeBotEngine {
         }
 
         // Scalping strategy: take small profits consistently, cut losses before they grow
-        // Target is TIGHTER than stop - we want high win rate with small gains
-        // Stop is wider to give trades room to breathe, but still cuts before big losses
-        const PROFIT_TARGET = 0.0003  // 0.03% price move = take profit (small, consistent gains)
-        const STOP_LOSS = -0.0008    // -0.08% price move = stop loss (cut before it gets big)
+        // With 40x leverage, small price moves = big PnL swings
+        // We use PRICE CHANGE targets, not leveraged PnL:
+        //   +0.03% price × 40x = +1.2% leveraged profit
+        //   -0.02% price × 40x = -0.8% leveraged loss (tighter stop to protect capital!)
+        const PROFIT_TARGET = 0.0003  // 0.03% price move = +1.2% leveraged profit
+        const STOP_LOSS = -0.0002    // -0.02% price move = -0.8% leveraged loss (MUCH TIGHTER!)
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {

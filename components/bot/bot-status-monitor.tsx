@@ -357,12 +357,20 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                   <span className="text-xs text-blue-300 uppercase tracking-wider">
                     Monitoring {monitoringInfo.direction.toUpperCase()} Position
                   </span>
-                  <span className={cn(
-                    "text-sm font-bold",
-                    monitoringInfo.pnl >= 0 ? "text-green-400" : "text-red-400"
-                  )}>
-                    {monitoringInfo.pnl >= 0 ? '+' : ''}{monitoringInfo.pnl.toFixed(3)}%
-                  </span>
+                  <div className="text-right">
+                    <span className={cn(
+                      "text-sm font-bold",
+                      monitoringInfo.pnl >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      {monitoringInfo.pnl >= 0 ? '+' : ''}{monitoringInfo.pnl.toFixed(3)}%
+                    </span>
+                    <span className={cn(
+                      "text-[10px] ml-1",
+                      monitoringInfo.pnl >= 0 ? "text-green-400/70" : "text-red-400/70"
+                    )}>
+                      ({monitoringInfo.pnl >= 0 ? '+' : ''}{(monitoringInfo.pnl * 40).toFixed(1)}% w/ 40x)
+                    </span>
+                  </div>
                 </div>
                 {/* Position Details */}
                 {monitoringInfo.size && monitoringInfo.entry && (
@@ -388,7 +396,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                   </div>
                 )}
                 <div className="mt-2 text-[10px] text-zinc-500">
-                  Target: +0.03% · Stop: -0.08%
+                  Target: +0.03% (+1.2% w/ 40x) · Stop: -0.02% (-0.8% w/ 40x)
                 </div>
               </div>
             )}

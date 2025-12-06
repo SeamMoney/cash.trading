@@ -32,7 +32,7 @@ export function WalletButton() {
           <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
           <span className="hidden sm:inline text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>
           {!loading && balance !== null && (
-            <span className="text-lg sm:text-xl font-bold text-primary">${balance.toFixed(2)}</span>
+            <span className="text-lg sm:text-xl font-bold text-primary drop-shadow-[0_0_8px_rgba(255,246,0,0.5)]">${balance.toFixed(2)}</span>
           )}
           <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
         </button>

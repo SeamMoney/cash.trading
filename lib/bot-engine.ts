@@ -413,54 +413,38 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close the current position with IOC limit order for INSTANT execution
-   * Uses 2% slippage tolerance for guaranteed fills
+   * Close the current position with TWAP order
+   * TWAP is used because IOC has no liquidity on testnet
    */
   private async closePosition(
     size: number,
     isLong: boolean
   ): Promise<OrderResult> {
-    const SLIPPAGE_PCT = 0.02 // 2% slippage for guaranteed IOC fills
-
     try {
       // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
       console.log(`   Size: ${size}`)
 
-      // Get current price and calculate aggressive limit for instant fill
       const currentPrice = await this.getCurrentMarketPrice()
+      console.log(`   Current Price: $${currentPrice.toFixed(2)}`)
+      console.log(`   TWAP will fill over 1-2 minutes (IOC has no liquidity on testnet)`)
 
-      // Closing LONG = selling = price BELOW market
-      // Closing SHORT = buying = price ABOVE market
-      const aggressivePrice = closeDirection
-        ? currentPrice * (1 - SLIPPAGE_PCT)  // selling (closing long)
-        : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short)
-      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
-
-      console.log(`   Price: $${currentPrice.toFixed(2)} → Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
-
-      // Use IOC limit order for instant close
+      // Use TWAP order for guaranteed close
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            limitPrice.toString(),         // px FIRST
-            size.toString(),               // sz SECOND
+            size.toString(),               // size
             closeDirection,                // is_long (opposite to close)
-            2,                             // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
-            false,                         // post_only: false
-            undefined,                     // client_order_id
-            undefined,                     // conditional_order
-            undefined,                     // trigger_price
-            undefined,                     // take_profit_px
-            undefined,                     // stop_loss_px
-            undefined,                     // reduce_only
+            true,                          // reduce_only: TRUE for closing
+            60,                            // min duration: 1 minute
+            120,                           // max duration: 2 minutes
             undefined,                     // builder_address
             undefined,                     // max_builder_fee
           ],
@@ -479,10 +463,10 @@ export class VolumeBotEngine {
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Close order failed: ${executedTxn.vm_status}`)
+        throw new Error(`Close TWAP order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`✅ Position CLOSED instantly!`)
+      console.log(`✅ Close TWAP submitted! Position will close over 1-2 minutes.`)
 
       return {
         success: true,
@@ -1128,40 +1112,28 @@ export class VolumeBotEngine {
               : `🛑 STOP LOSS! Closing for ${priceChangePercent.toFixed(3)}%`)
           }
 
-          // Close with IOC limit order for INSTANT execution
+          // Close with TWAP - IOC has NO LIQUIDITY on testnet!
+          // TWAP will fill over 1-2 minutes, which is much better than IOC that doesn't fill at all
           const closeDirection = !positionIsLong // Opposite direction to close
           const sizeDecimals = this.getMarketSizeDecimals()
 
-          // Use 15% slippage for guaranteed instant fills - better than waiting 2 min for TWAP
-          const SLIPPAGE_PCT = 0.15
-          const aggressivePrice = closeDirection
-            ? currentPrice * (1 - SLIPPAGE_PCT)  // selling (closing long) - price below market
-            : currentPrice * (1 + SLIPPAGE_PCT)  // buying (closing short) - price above market
-          const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
+          console.log(`   Closing with TWAP: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
+          console.log(`   TWAP will fill over 1-2 minutes (IOC has no liquidity on testnet)`)
 
-          console.log(`   Closing with IOC (instant): size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
-          console.log(`   Current price: $${currentPrice.toFixed(2)}, Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(2)}`)
-
-          // Use IOC limit order for instant close - TWAP is too slow and causes slippage
+          // Use TWAP order for guaranteed close - IOC simply doesn't work on testnet
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
                 this.config.market,
-                limitPrice.toString(),         // px FIRST
-                positionSize.toString(),       // sz SECOND
+                positionSize.toString(),       // size
                 closeDirection,                // is_long (opposite to close)
-                2,                             // time_in_force: 2 = IOC (instant or cancel)
-                false,                         // post_only: false
-                undefined,                     // client_order_id
-                undefined,                     // conditional_order
-                undefined,                     // trigger_price
-                undefined,                     // take_profit_px
-                undefined,                     // stop_loss_px
                 true,                          // reduce_only: TRUE for closing positions
+                60,                            // min duration: 1 minute
+                120,                           // max duration: 2 minutes
                 undefined,                     // builder_address
                 undefined,                     // max_builder_fee
               ],
@@ -1180,20 +1152,21 @@ export class VolumeBotEngine {
           })
 
           if (!closeExecutedTxn.success) {
-            throw new Error(`Close IOC order failed: ${closeExecutedTxn.vm_status}`)
+            throw new Error(`Close TWAP order failed: ${closeExecutedTxn.vm_status}`)
           }
 
-          console.log(`✅ CLOSE IOC EXECUTED! Position closed instantly.`)
+          console.log(`✅ CLOSE TWAP SUBMITTED! Position will close over 1-2 minutes.`)
 
-          // Calculate volume and PnL - IOC fills instantly at limit price
+          // Calculate volume and PnL
           const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
           const estimatedPnl = positionValueUSD * priceChange
           const maxLeverage = this.getMarketMaxLeverage()
           const leveragedPnlPercent = priceChangePercent * maxLeverage
 
-          console.log(`   Realized PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
+          console.log(`   Expected PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
 
-          // Clear position from DB - IOC closed it instantly
+          // Clear position from DB and set TWAP cooldown
+          // The position will actually close over the next 1-2 minutes
           await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
@@ -1426,7 +1399,7 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with IOC limit order for INSTANT execution
+   * Close position with TWAP order (IOC has no liquidity on testnet)
    */
   private async closePositionWithMarketOrder(
     size: number,
@@ -1436,44 +1409,27 @@ export class VolumeBotEngine {
       // To close a long, place a short order (and vice versa)
       const closeDirection = !isLong
 
-      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with IOC LIMIT...`)
+      console.log(`\n📝 [CLOSE] Closing ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
       console.log(`   Size: ${size}, Direction: ${closeDirection ? 'SHORT' : 'LONG'} (to close)`)
 
-      // Get current price and calculate aggressive limit for instant fill
       const currentPrice = await this.getCurrentMarketPrice()
-      const slippagePct = 0.01 // 1% slippage tolerance
+      console.log(`   Current: $${currentPrice.toFixed(4)}`)
+      console.log(`   Order type: TWAP (1-2 min fill - IOC has no liquidity on testnet)`)
 
-      // For closing: opposite direction
-      // Closing LONG = selling = place SHORT = price BELOW market
-      // Closing SHORT = buying = place LONG = price ABOVE market
-      const aggressivePrice = closeDirection
-        ? currentPrice * (1 - slippagePct)  // selling (closing long)
-        : currentPrice * (1 + slippagePct)  // buying (closing short)
-      const limitPrice = this.roundPriceToTickerSize(aggressivePrice)
-
-      console.log(`   Current: $${currentPrice.toFixed(4)}, Limit: $${(Number(limitPrice) / Math.pow(10, this.getMarketConfig().pxDecimals)).toFixed(4)}`)
-      console.log(`   Order type: IOC LIMIT (instant close)`)
-
-      // Use IOC limit order - place_order doesn't have reduce_only, so we just place opposite direction
+      // Use TWAP order for guaranteed close
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
             this.config.market,
-            limitPrice.toString(),     // px FIRST
-            size.toString(),           // sz SECOND
-            closeDirection,
-            2,                         // time_in_force: 2 = IOC (0=GTC, 1=POST_ONLY, 2=IOC)
-            false,                     // post_only: false
-            undefined,                 // client_order_id
-            undefined,                 // conditional_order
-            undefined,                 // trigger_price
-            undefined,                 // take_profit_px
-            undefined,                 // stop_loss_px
-            undefined,                 // reduce_only
+            size.toString(),           // size
+            closeDirection,            // is_long (opposite to close)
+            true,                      // reduce_only: TRUE for closing
+            60,                        // min duration: 1 minute
+            120,                       // max duration: 2 minutes
             undefined,                 // builder_address
             undefined,                 // max_builder_fee
           ],
@@ -1485,17 +1441,17 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`✅ Close order submitted: ${committedTxn.hash}`)
+      console.log(`✅ Close TWAP submitted: ${committedTxn.hash}`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (!executedTxn.success) {
-        throw new Error(`Close order failed: ${executedTxn.vm_status}`)
+        throw new Error(`Close TWAP order failed: ${executedTxn.vm_status}`)
       }
 
-      console.log(`✅ Position CLOSED!`)
+      console.log(`✅ Position will close over 1-2 minutes!`)
 
       return {
         success: true,

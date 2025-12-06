@@ -190,10 +190,10 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
   // Get tick interval based on strategy
   // TX Spammer: 5 seconds (rapid fire)
-  // High risk: 15 seconds (frequent monitoring)
+  // High risk: 8 seconds (very fast for quick TP/SL monitoring)
   // Other strategies: 60 seconds
   const tickInterval = config?.strategy === 'tx_spammer' ? 5
-    : config?.strategy === 'high_risk' ? 15
+    : config?.strategy === 'high_risk' ? 8
     : 60
 
   // Reset countdown when strategy/config changes

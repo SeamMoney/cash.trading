@@ -301,21 +301,10 @@ export function ServerBotConfig() {
     }
   }
 
-  if (!connected) {
-    return (
-      <div className="border border-white/10 p-6 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white/20" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
-        <h3 className="text-white font-mono font-bold tracking-wide">Volume Market Maker Bot</h3>
-        <p className="text-zinc-500 font-mono text-sm mt-1">Connect your wallet to get started</p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
       {/* Bot Status Monitor */}
-      {account && (
+      {connected && account && (
         <BotStatusMonitor
           userWalletAddress={account.address.toString()}
           isRunning={isRunning}
@@ -352,13 +341,13 @@ export function ServerBotConfig() {
                   type="number"
                   value={capital}
                   onChange={(e) => setCapital(e.target.value)}
-                  disabled={isRunning || loading}
+                  disabled={!connected || isRunning || loading}
                   className="flex-1 min-w-0 bg-transparent border-none text-2xl md:text-4xl font-mono text-white placeholder-zinc-600 focus:outline-none disabled:opacity-50"
                   placeholder="0.00"
                 />
                 <Button
                   onClick={handleSetMax}
-                  disabled={isRunning || loading}
+                  disabled={!connected || isRunning || loading}
                   variant="outline"
                   size="sm"
                   className="border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest flex-shrink-0 px-2 md:px-3"
@@ -366,9 +355,14 @@ export function ServerBotConfig() {
                   MAX
                 </Button>
               </div>
-              {balance !== null && (
+              {connected && balance !== null && (
                 <p className="text-xs text-zinc-500 mt-2">
                   Available: <span className="text-primary">${balance.toFixed(2)} USDC</span>
+                </p>
+              )}
+              {!connected && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  Connect wallet to see balance
                 </p>
               )}
             </div>
@@ -680,8 +674,8 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {/* Delegation Section */}
-          {!isRunning && !hasDelegation && !checkingDelegation && (
+          {/* Delegation Section - only show when connected */}
+          {connected && !isRunning && !hasDelegation && !checkingDelegation && (
             <div className="space-y-3">
               <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
@@ -709,7 +703,7 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {checkingDelegation && (
+          {connected && checkingDelegation && (
             <div className="p-3 bg-zinc-500/10 border border-zinc-500/30 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-500" />
               <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
@@ -719,7 +713,7 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {!isRunning && hasDelegation && (
+          {connected && !isRunning && hasDelegation && (
             <div className="p-3 bg-green-500/10 border border-green-500/30 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
               <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
@@ -730,7 +724,7 @@ export function ServerBotConfig() {
           )}
 
           {/* Start Button - only show when not running (Stop button is in BotStatusMonitor) */}
-          {!isRunning && (
+          {!isRunning && connected && (
             <Button
               onClick={handleStart}
               disabled={loading}
@@ -751,20 +745,27 @@ export function ServerBotConfig() {
             </Button>
           )}
 
-          {/* Bot Info */}
-          {!isRunning && (
-            <div className="p-4 bg-black/40 border border-white/10 relative">
-              <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
-              <h4 className="font-mono text-xs uppercase tracking-widest text-primary mb-3">How it works:</h4>
-              <ul className="text-xs text-zinc-500 space-y-1 font-mono">
-                <li>• Bot runs on the server (keeps running even if you close the tab)</li>
-                <li>• Places TWAP orders every 10 minutes</li>
-                <li>• Uses delegated permissions (you approved this once)</li>
-                <li>• Alternates long/short for neutral bias</li>
-                <li>• Real-time status tracking via Decibel API</li>
-              </ul>
+          {/* Connect Wallet prompt when not connected */}
+          {!connected && (
+            <div className="p-4 bg-primary/10 border border-primary/30 relative text-center">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />
+              <p className="text-primary font-mono font-bold">Connect your wallet to start the bot</p>
             </div>
           )}
+
+          {/* Bot Info */}
+          <div className="p-4 bg-black/40 border border-white/10 relative">
+            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
+            <h4 className="font-mono text-xs uppercase tracking-widest text-primary mb-3">How it works:</h4>
+            <ul className="text-xs text-zinc-500 space-y-1 font-mono">
+              <li>• Bot runs on the server (keeps running even if you close the tab)</li>
+              <li>• Places TWAP orders every 10 minutes</li>
+              <li>• Uses delegated permissions (you approved this once)</li>
+              <li>• Alternates long/short for neutral bias</li>
+              <li>• Real-time status tracking via Decibel API</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

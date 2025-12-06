@@ -100,16 +100,6 @@ export function PortfolioView() {
     return () => clearInterval(interval)
   }, [account?.address, subaccount])
 
-  if (!connected) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4 animate-in fade-in">
-        <div className="text-zinc-500 font-mono text-sm uppercase tracking-widest">
-          Connect wallet to view portfolio
-        </div>
-      </div>
-    )
-  }
-
   const stats = portfolio?.stats
   const balance = portfolio?.balance?.usdc || 0
   const dailyStats = portfolio?.dailyStats || []
@@ -354,6 +344,15 @@ export function PortfolioView() {
               -${Math.abs(stats.worstTrade).toFixed(2)}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Connect Wallet prompt when not connected */}
+      {!connected && (
+        <div className="p-4 bg-primary/10 border border-primary/30 relative text-center">
+          <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
+          <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />
+          <p className="text-primary font-mono font-bold">Connect wallet to see your stats</p>
         </div>
       )}
     </div>

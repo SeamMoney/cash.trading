@@ -750,7 +750,7 @@ export function ServerBotConfig() {
             <div className="p-4 bg-primary/10 border border-primary/30 relative text-center">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />
-              <p className="text-primary font-mono font-bold">Connect your wallet to start the bot</p>
+              <p className="text-primary font-mono font-bold">Connect wallet to start</p>
             </div>
           )}
 

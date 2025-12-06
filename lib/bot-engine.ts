@@ -956,25 +956,32 @@ export class VolumeBotEngine {
         throw new Error('Bot instance not found in database')
       }
 
-      // Check if we recently sent a TWAP order - wait for it to fill (2 min max)
-      const TWAP_COOLDOWN_MS = 2 * 60 * 1000 // 2 minutes
-      if (botInstance.lastTwapOrderTime) {
-        const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
-        if (timeSinceTwap < TWAP_COOLDOWN_MS) {
-          const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
-          console.log(`⏳ TWAP cooldown: waiting ${waitSecs}s for previous TWAP to fill...`)
-          return {
-            success: true,
-            txHash: 'cooldown',
-            volumeGenerated: 0,
-            direction: isLong ? 'long' : 'short',
-            size: 0,
+      // CRITICAL: FIRST check on-chain position BEFORE cooldown check
+      // This prevents opening new positions when one already exists
+      const onChainPosition = await this.getOnChainPosition()
+
+      // If there's an on-chain position, we should ONLY monitor it, never open more
+      if (onChainPosition && onChainPosition.size > 0) {
+        console.log(`📊 On-chain position exists: ${onChainPosition.size} (${onChainPosition.isLong ? 'LONG' : 'SHORT'})`)
+        // Continue to monitoring logic below - don't check cooldown
+      } else {
+        // No position - check if we recently sent a TWAP order - wait for it to fill (3 min max)
+        const TWAP_COOLDOWN_MS = 3 * 60 * 1000 // 3 minutes (increased from 2)
+        if (botInstance.lastTwapOrderTime) {
+          const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
+          if (timeSinceTwap < TWAP_COOLDOWN_MS) {
+            const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
+            console.log(`⏳ TWAP cooldown: waiting ${waitSecs}s for previous TWAP to fill...`)
+            return {
+              success: true,
+              txHash: 'cooldown',
+              volumeGenerated: 0,
+              direction: isLong ? 'long' : 'short',
+              size: 0,
+            }
           }
         }
       }
-
-      // CRITICAL: Always sync with on-chain position to prevent tracking issues
-      const onChainPosition = await this.getOnChainPosition()
 
       // If on-chain has a position but database doesn't, sync it
       if (onChainPosition && onChainPosition.size > 0) {
@@ -991,11 +998,11 @@ export class VolumeBotEngine {
         }
       }
 
-      console.log(`\n🎰 [HFT] Position check:`, {
-        dbPosition: botInstance.activePositionSize,
-        onChainPosition: onChainPosition?.size || 0,
-        isLong: onChainPosition?.isLong ?? botInstance.activePositionIsLong,
-      })
+      console.log(`\n🎰 [HFT] Position check:`)
+      console.log(`   DB position: ${botInstance.activePositionSize || 0}`)
+      console.log(`   On-chain position: ${onChainPosition?.size || 0}`)
+      console.log(`   Direction: ${onChainPosition?.isLong ? 'LONG' : 'SHORT'}`)
+      console.log(`   Entry: $${onChainPosition?.entryPrice?.toFixed(2) || 'N/A'}`)
 
       // Use on-chain position as source of truth
       const hasPosition = onChainPosition && onChainPosition.size > 0

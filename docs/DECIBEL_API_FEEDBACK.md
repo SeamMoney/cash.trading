@@ -1,391 +1,312 @@
-# Decibel API & SDK Technical Feedback
+# Decibel API Feedback & Questions
 
-**Date**: December 5, 2025
 **Project**: Decibrrr - Automated TWAP Volume Bot
-**Strategies Implemented**: Delta Neutral, High-Risk HFT Scalping, Market Maker, TWAP
+**Volume Generated**: ~$10M on testnet
+**Date**: December 5, 2025
 
 ---
 
-## What We Built
+## Questions We Need Answered
 
-A comprehensive trading bot system that:
-- Places TWAP orders via delegation (bot operator executes on behalf of user)
-- Implements multiple strategies with different risk/volume profiles
-- Tracks volume, PnL, and positions across sessions
-- Recovers from database failures via on-chain backfill scripts
-- Built WebSocket client for real-time data when REST API requires auth
+### 1. TWAP Slice Execution Algorithm
 
-**Total volume generated**: ~$10M on testnet
+We place TWAP orders with `min_duration` and `max_duration`, but we don't understand how slices are calculated.
 
----
-
-## 1. Volume Tracking Discrepancy - Root Cause Analysis
-
-**The Problem**: Our database showed ~$5.35M volume, but Decibel portfolio showed ~$10.04M.
-
-**Investigation Process**:
-
-We built `scripts/reconcile-volume.ts` to compare on-chain `TradeEvent`s against our database:
-
-```typescript
-// scripts/reconcile-volume.ts - extracting trades from on-chain
-for (const event of tx.events || []) {
-  if (event.type?.includes('TradeEvent')) {
-    const data = event.data || {}
-    if (data.account?.toLowerCase() === SUBACCOUNT.toLowerCase()) {
-      const sizeRaw = BigInt(data.size || '0')
-      const sizeBTC = Number(sizeRaw) / 1e8
-      const price = parseInt(data.price || '0') / 1e6
-      const volumeUSD = sizeBTC * price
-      // Each TradeEvent is ONE fill, not one order
-    }
-  }
-}
-```
-
-**Root Cause Found**: TWAP orders create multiple `TradeEvent`s (one per slice fill), but we were only recording one database entry per order submission.
-
-Example flow:
-```
-Bot places 1 TWAP order → Creates 1 OrderHistory record ($8.70 volume)
-                        ↓
-TWAP executes 3 slices  → Creates 3 TradeEvents on-chain ($8.70 × 3 ≈ $26 volume counted by Decibel)
-```
-
-**What We Built to Fix It**:
-
-1. `lib/decibel-ws.ts` - WebSocket client to fetch real-time trade data:
-```typescript
-// Subscribe to trade history via WebSocket (REST requires auth)
-ws.send(JSON.stringify({
-  Subscribe: { topic: `user_trade_history:${userAddr}` }
-}))
-
-// Returns individual fills, not order submissions
-// But limited to ~50 most recent trades, no pagination
-```
-
-2. `scripts/restore-trades-from-chain.ts` - Rebuilds database from `TradeEvent`s:
-```typescript
-// Parse TradeEvents which represent actual fills
-function extractTradesFromTx(tx: any): Trade[] {
-  for (const event of tx.events || []) {
-    if (event.type?.includes('TradeEvent')) {
-      if (data.account === SUBACCOUNT) {
-        // This is ONE fill of potentially many from a TWAP order
-        const volume = (Number(size) / 1e8) * price
-      }
-    }
-  }
-}
-```
-
-**What Would Help**:
-- Document that TWAP orders generate multiple `TradeEvent`s (typically 2-5 per order)
-- Provide `/api/v1/twap_fills?order_id=X` to get all fills for a specific TWAP order
-- Or include `twap_order_id` field in `TradeEvent` to correlate fills to orders
-
----
-
-## 2. TWAP Duration Units
-
-**Error**: `EINVALID_TWAP_DURATION(0x11)`
-
-**Discovery Process**: Initial attempt used milliseconds (standard JS convention):
-
-```typescript
-// lib/bot-engine.ts - WRONG (first attempt)
-functionArguments: [
-  this.config.userSubaccount,
-  this.config.market,
-  contractSize,
-  isLong,
-  false,     // reduce_only
-  300000,    // 5 minutes - WRONG! This is milliseconds
-  600000,    // 10 minutes
-]
-```
-
-**Working Code** (`lib/bot-engine.ts:599`):
-```typescript
-// CORRECT - seconds
-functionArguments: [
-  this.config.userSubaccount,
-  this.config.market,
-  contractSize,
-  isLong,
-  false,     // reduce_only
-  300,       // min duration: 5 minutes in SECONDS
-  600,       // max duration: 10 minutes in SECONDS
-  undefined, // builder_address
-  undefined, // max_builder_fee
-]
-```
-
-**For HFT/fast fills** (`lib/bot-engine.ts:1130-1136`):
-```typescript
-// Short TWAP for "fast" fills (IOC doesn't work on testnet)
-60,   // min duration: 1 minute
-120,  // max duration: 2 minutes
-```
-
-**What Would Help**: Better error message: "duration must be between 60 and 86400 seconds (got 300000)"
-
----
-
-## 3. Market Configuration Discovery
-
-**Problem**: Each market has different `ticker_size`, `lot_size`, `min_size`, and decimal precision. None of this is in the API response.
-
-**Error Without Proper Rounding**: `EPRICE_NOT_RESPECTING_TICKER_SIZE`
-
-**What We Had to Build** (`lib/bot-engine.ts:169-175`):
-```typescript
-// Manually discovered by querying on-chain PerpMarketConfig resources
-const MARKET_CONFIG: Record<string, {
-  tickerSize: bigint; lotSize: bigint; minSize: bigint;
-  pxDecimals: number; szDecimals: number
-}> = {
-  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
-  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
-  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
-  'ETH/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 7 },
-}
-```
-
-**Price Rounding Function** (`lib/bot-engine.ts:541-549`):
-```typescript
-private roundPriceToTickerSize(priceUSD: number): bigint {
-  const config = this.getMarketConfig()
-  const priceInChainUnits = BigInt(Math.floor(priceUSD * Math.pow(10, config.pxDecimals)))
-  const rounded = (priceInChainUnits / config.tickerSize) * config.tickerSize
-  return rounded
-}
-```
-
-**What Would Help**: Include in `/api/v1/markets` response:
+**Current observation from API response**:
 ```json
 {
-  "symbol": "BTC/USD",
-  "address": "0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e",
-  "ticker_size": 100000,
-  "lot_size": 10,
-  "min_size": 100000,
-  "price_decimals": 6,
-  "size_decimals": 8
+  "duration_s": 300,
+  "frequency_s": 30,
+  "orig_size": 1000,
+  "remaining_size": 600
 }
 ```
+
+**Questions**:
+- How is `frequency_s` derived from `min_duration`/`max_duration`?
+- What determines slice size? Is it `orig_size / (duration / frequency)`?
+- Can we control slice size or frequency directly?
+- How does the algorithm handle partial fills on individual slices?
+
+**Why this matters**: We're tracking volume by order submission, but Decibel counts each slice fill separately. Understanding the algorithm would help us predict expected fills.
 
 ---
 
-## 4. Position Parsing from On-Chain Resources
+### 2. Builder Fees
 
-**Problem**: Getting current position requires parsing nested `BPlusTreeMap` structure.
+We pass `undefined` for `builder_address` and `max_builder_fee` in all our orders:
 
-**What We Built** (`lib/bot-engine.ts:330-394`):
 ```typescript
-private async getCurrentPosition() {
-  const resources = await this.aptos.getAccountResources({
-    accountAddress: this.config.userSubaccount
-  })
-
-  const positionsResource = resources.find(r =>
-    r.type.includes('perp_positions::UserPositions')
-  )
-
-  // Parse the BPlusTreeMap structure
-  const data = positionsResource.data as {
-    positions?: {
-      root?: {
-        children?: {
-          entries?: Array<{
-            key: { inner: string }  // market address
-            value: {
-              value: {
-                size: string
-                is_long: boolean
-                avg_acquire_entry_px: string
-                user_leverage: number
-              }
-            }
-          }>
-        }
-      }
-    }
-  }
-
-  const entries = data.positions?.root?.children?.entries || []
-  const marketPosition = entries.find(e =>
-    e.key.inner.toLowerCase() === this.config.market.toLowerCase()
-  )
-  // ... extract size, is_long, entry price
-}
+// lib/bot-engine.ts:1251-1252
+undefined, // builder_address
+undefined, // max_builder_fee
 ```
 
-**What Would Help**: View function that returns clean position data:
-```move
-public fun get_position(subaccount: address, market: Object<PerpMarket>): (u64, bool, u64)
-// Returns: (size, is_long, entry_price)
-```
+**Questions**:
+- What is the builder fee system?
+- When should we use it vs leaving undefined?
+- What are valid fee values (format, units, range)?
+- Is there a benefit to setting a builder address (faster execution, MEV protection)?
 
 ---
 
-## 5. Event Schema Inconsistencies
+### 3. Fee Payer Service
 
-**Problem**: Different events use different field names for the account identifier.
+The SDK docs mention `gasStationUrl` and `noFeePayer` options:
 
-**What We Found** (`lib/bot-engine.ts:72-151`, `scripts/find-event-types.ts`):
 ```typescript
-// BulkOrderFilledEvent uses 'user'
-if (event.type?.includes('BulkOrderFilledEvent')) {
-  if (data.user === subaccount) { ... }
-}
-
-// OrderEvent uses 'user'
-if (event.type?.includes('OrderEvent')) {
-  if (data.user === subaccount) { ... }
-}
-
-// TradeEvent uses 'account' (not 'user')
-if (event.type?.includes('TradeEvent')) {
-  if (data.account === subaccount) { ... }
-}
+const write = new DecibelWriteDex(NETNA_CONFIG, account, {
+  noFeePayer: false, // use Decibel's fee payer service
+});
 ```
 
-**What Would Help**: Standardize on one field name across all events.
+**Questions**:
+- What is the fee payer endpoint URL?
+- How do we authenticate?
+- Is it available for testnet?
+- What are rate limits?
+- Should we be using this instead of paying gas from our bot wallet?
+
+**Current situation**: Our bot wallet pays all gas directly. We've spent significant APT on gas.
 
 ---
 
-## 6. IOC Orders Don't Fill on Testnet
+### 4. Time-in-Force Values for Limit Orders
 
-**Problem**: Immediate-Or-Cancel limit orders never fill due to thin liquidity.
-
-**Our Workaround**: Use short-duration TWAP instead of IOC for "fast" fills.
+We use `place_order_to_subaccount` with `time_in_force: 0`:
 
 ```typescript
-// lib/bot-engine.ts - HFT strategy close position
-// We wanted IOC but it doesn't work, so we use short TWAP
-const closeTransaction = await this.aptos.transaction.build.simple({
-  data: {
-    function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
-    functionArguments: [
-      this.config.userSubaccount,
-      this.config.market,
-      positionSize.toString(),
-      closeDirection,
-      true,   // reduce_only
-      60,     // 1 minute min (shortest that reliably fills)
-      120,    // 2 minutes max
-    ],
-  },
-})
+// lib/bot-engine.ts:834
+0,  // time_in_force: we know 0=GTC, but what are other values?
 ```
 
-Comment in our code (`lib/bot-engine.ts:1115-1116`):
-```typescript
-// Close with TWAP - IOC has NO LIQUIDITY on testnet!
-// TWAP will fill over 1-2 minutes, which is much better than IOC that doesn't fill at all
-```
+**Questions**:
+- What are all valid `time_in_force` enum values? (0=GTC, 1=?, 2=?, etc.)
+- Is there an IOC (Immediate-Or-Cancel) option? What value?
+- Is there FOK (Fill-Or-Kill)?
+
+**Context**: We wanted to use IOC for fast fills but couldn't find the right value. We worked around it by using short-duration TWAP (60-120 seconds) instead.
 
 ---
 
-## 7. Market Address Discovery
+### 5. Conditional Order Types
 
-**Problem**: `/api/v1/markets` doesn't return full Object addresses, only symbols.
+The `conditional_order` parameter is undocumented:
 
-**What We Had to Do** (`lib/bot-engine.ts:154-159`):
 ```typescript
-// Hardcoded after finding on-chain via explorer
-const MARKETS = {
-  'BTC/USD': '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
-  'APT/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
-  'WLFI/USD': '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2',
-}
+// lib/bot-engine.ts:837
+undefined, // conditional_order - what values are valid?
 ```
 
-Also in backfill script (`scripts/backfill-trades.ts:25-31`):
+**Questions**:
+- What are the valid `conditional_order` enum values?
+- How do conditional orders interact with `trigger_price`?
+- Can we use this for stop-limit orders programmatically?
+
+---
+
+### 6. Session Keys / Account Override
+
+SDK docs mention:
+> "Prefer wallets/session keys and pass `accountOverride` for specific calls"
+
+**Questions**:
+- How do session keys work in the Aptos/Decibel context?
+- How do we create a session key?
+- What's the `accountOverride` parameter format?
+- What's the security model - what can session keys do vs full private key?
+
+**Why this matters**: Currently our bot operator has a full private key in `.env`. Session keys could be more secure.
+
+---
+
+### 7. REST API Authentication
+
+We found that some REST endpoints require authentication:
+
 ```typescript
-const MARKETS: Record<string, { name: string; pxDecimals: number; szDecimals: number }> = {
-  '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e': { name: 'BTC/USD', pxDecimals: 6, szDecimals: 8, maxLeverage: 40 },
-  '0x5d4a373896cc46ce5bd27f795587c1d682e7f57a3de6149d19cc3f3cb6c6800d': { name: 'ETH/USD', pxDecimals: 6, szDecimals: 7, maxLeverage: 20 },
+// scripts/fetch-decibel-volume.ts - we had to use WebSocket instead
+// GET /api/v1/account_overviews?volume_window=30d requires API key
+```
+
+**Questions**:
+- How do we get an API key for REST endpoints?
+- Is there a developer program or do we request directly?
+- Which endpoints require auth vs which are public?
+
+**Current workaround**: We use WebSocket for account data (which doesn't require auth but has limitations like volume field returning 0).
+
+---
+
+### 8. WebSocket Volume Field
+
+When we subscribe to `account_overview:{address}` via WebSocket, the `volume` field is always 0:
+
+```typescript
+// lib/decibel-ws.ts - AccountOverview type
+export interface AccountOverview {
+  perp_equity_balance: number
+  unrealized_pnl: number
+  volume: number  // Always returns 0 via WebSocket
   // ...
 }
 ```
 
+**Questions**:
+- Is this intentional? Should volume be populated via WebSocket?
+- Is there a different topic for volume data?
+- Or is volume only available via authenticated REST API?
+
 ---
 
-## 8. REST API Authentication
+### 9. Reduce-Only Behavior
 
-**Problem**: Useful endpoints like `/api/v1/account_overviews?volume_window=30d` require API key.
+We use `reduce_only: true` when closing positions:
 
-**What We Built Instead** (`lib/decibel-ws.ts`):
 ```typescript
-// WebSocket doesn't require auth, but has limitations
-export async function getAccountOverview(userAddr: string): Promise<AccountOverview | null> {
-  const ws = new WebSocket('wss://api.testnet.aptoslabs.com/decibel/ws')
+// lib/bot-engine.ts:1134
+true,  // reduce_only: TRUE for closing positions
+```
 
-  ws.on('open', () => {
-    ws.send(JSON.stringify({
-      Subscribe: { topic: `account_overview:${userAddr}` }
-    }))
-  })
+**Questions**:
+- If `reduce_only` is true but order size exceeds position size, what happens?
+  - Does it partially fill up to position size?
+  - Does it reject entirely?
+  - Does it flip the position?
+- Can we place a reduce-only order when we have no position? (for stop-loss pre-placement)
 
-  // Returns equity, margin, PnL... but volume field is always 0
+---
+
+## Features That Would Help Us
+
+### 1. Market Config in API Response
+
+Currently we hardcode market configuration discovered by inspecting on-chain resources:
+
+```typescript
+// lib/bot-engine.ts:169-175
+const MARKET_CONFIG = {
+  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  // ... manually discovered values
 }
 ```
 
-**Limitation Discovered** (`scripts/fetch-decibel-volume.ts:69-87`):
-```
-The Decibel WebSocket API provides:
-- Account overview (equity, margin, PnL) - but volume field returns 0
-- Last ~50 trades with full details (no pagination)
-
-The REST API (which has volume data) requires authentication.
+**Request**: Add to `/api/v1/markets` response:
+```json
+{
+  "symbol": "BTC/USD",
+  "address": "0xf50add10...",
+  "ticker_size": 100000,
+  "lot_size": 10,
+  "min_size": 100000,
+  "price_decimals": 6,
+  "size_decimals": 8,
+  "max_leverage": 40
+}
 ```
 
 ---
 
-## 9. Error Codes Without Documentation
+### 2. TWAP Fill Correlation
 
-**Errors we encountered and had to figure out**:
+When we submit a TWAP order, we get one transaction hash. But the order creates multiple `TradeEvent`s (slices).
 
-| Error Code | Actual Meaning | How We Discovered |
-|------------|----------------|-------------------|
-| `EINVALID_TWAP_DURATION(0x11)` | Duration in wrong units | Trial and error - seconds not ms |
-| `EPRICE_NOT_RESPECTING_TICKER_SIZE` | Price not rounded | On-chain PerpMarketConfig inspection |
-| `0x6507` | No subaccount exists | User never used Decibel UI |
-| `INSUFFICIENT_MARGIN(0x0a)` | Not enough collateral | Self-explanatory but undocumented |
+**Current problem**: We can't easily correlate which `TradeEvent`s belong to which TWAP order.
+
+**Request**: Either:
+- Add `twap_order_id` field to `TradeEvent` events
+- Or provide `/api/v1/twap_fills?order_id=X` endpoint
+- Or include fill breakdown in `/api/v1/active_twaps` response
 
 ---
 
-## 10. What Worked Well
+### 3. Position View Function
 
-**Successfully Implemented**:
+Currently we parse the `UserPositions` resource with nested `BPlusTreeMap`:
 
-1. **Delegation System** - Bot operator executes on behalf of users securely
-2. **TWAP Orders** - Reliable fills, just needed to learn the units
-3. **On-Chain Price Fetching** (`lib/bot-engine.ts:285-325`):
 ```typescript
-// This works great - price from oracle
-const priceResource = resources.find(r => r.type.includes('price_management::Price'))
-const priceRaw = data.oracle_px || data.mark_px
-return parseInt(priceRaw) / Math.pow(10, pxDecimals)
+// lib/bot-engine.ts:351-372 - 40+ lines of parsing
+const data = positionsResource.data as {
+  positions?: {
+    root?: {
+      children?: {
+        entries?: Array<{
+          key: { inner: string }
+          value: { value: { size, is_long, avg_acquire_entry_px, ... } }
+        }>
+      }
+    }
+  }
+}
 ```
 
-4. **Trade Recovery Scripts** - Can rebuild entire database from on-chain events
-5. **WebSocket Real-Time Data** - Works without auth for prices and trades
+**Request**: View function that returns clean position data:
+```move
+public fun get_position(subaccount: address, market: Object<PerpMarket>): (u64, bool, u64, u64)
+// Returns: (size, is_long, entry_price, unrealized_pnl)
+```
 
 ---
 
-## Summary of Suggestions
+### 4. Error Code Documentation
 
-| Issue | Impact | Suggested Fix |
-|-------|--------|---------------|
-| TWAP creates multiple TradeEvents | Volume tracking confusion | Document behavior, add correlation ID |
-| Duration units undocumented | Wasted debugging time | Better error messages with expected range |
-| Market config not in API | Manual on-chain inspection needed | Add to /api/v1/markets response |
-| Position parsing complex | 50+ lines of parsing code | Add view function |
-| Event field names inconsistent | Different parsing per event type | Standardize on one field name |
-| Market addresses not in API | Hardcoding required | Include in /api/v1/markets |
-| Error codes cryptic | Trial and error debugging | Error code reference table |
+Errors we encountered and had to figure out through trial and error:
+
+| Error | What it means | How we discovered |
+|-------|---------------|-------------------|
+| `EINVALID_TWAP_DURATION(0x11)` | Duration must be in seconds, not milliseconds | Trial and error |
+| `EPRICE_NOT_RESPECTING_TICKER_SIZE` | Price not rounded to ticker_size | Inspected on-chain PerpMarketConfig |
+| `0x6507` | User has no subaccount (never used Decibel) | Tested with fresh wallet |
+
+**Request**: Error code reference table in docs.
+
+---
+
+### 5. WebSocket Trade History Pagination
+
+Currently `user_trade_history:{address}` returns only ~50 most recent trades with no pagination:
+
+```typescript
+// lib/decibel-ws.ts:122-127
+// Returns last ~50 trades, no pagination available via WebSocket
+```
+
+**Request**: Either:
+- Add pagination params to WebSocket subscription
+- Or provide cursor-based pagination in initial response
+- Or document that full history requires REST API with auth
+
+---
+
+## What's Working Well
+
+For context, these things work great:
+
+1. **TWAP order execution** - Reliable fills once we learned the units
+2. **Delegation system** - Secure, works as documented
+3. **On-chain price oracle** - `price_management::Price` resource is reliable
+4. **WebSocket real-time prices** - `market_price:{symbol}` works well
+5. **Transaction building** - Standard Aptos SDK patterns work
+
+---
+
+## Summary
+
+**Need clarification on**:
+1. TWAP slice algorithm (frequency calculation, partial fills)
+2. Builder fee system (when to use, valid values)
+3. Fee payer service (endpoint, auth, availability)
+4. Time-in-force enum values (especially IOC)
+5. Conditional order types
+6. Session keys implementation
+7. REST API authentication process
+8. WebSocket volume field behavior
+9. Reduce-only edge cases
+
+**Would help us build better**:
+1. Market config in API (ticker_size, decimals, etc.)
+2. TWAP fill correlation (link TradeEvents to orders)
+3. Position view function (avoid BPlusTreeMap parsing)
+4. Error code documentation
+5. WebSocket pagination for trade history

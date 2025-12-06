@@ -44,12 +44,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // For high_risk strategy, check if there's an open position and close it
+    // For high_risk strategy, cancel all pending TWAPs and close position
     let closedPosition = false
     let closeResult: any = null
+    let cancelledTwaps = false
 
     if (bot.strategy === 'high_risk') {
       const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+
+      // First, cancel ALL pending TWAP orders to prevent more position buildup
+      try {
+        console.log('🛑 Cancelling all pending TWAP orders...')
+        const privateKey = new Ed25519PrivateKey(process.env.BOT_OPERATOR_PRIVATE_KEY!)
+        const botAccount = new Ed25519Account({ privateKey })
+
+        const cancelTransaction = await aptos.transaction.build.simple({
+          sender: botAccount.accountAddress,
+          data: {
+            function: `${DECIBEL_PACKAGE}::dex_accounts::cancel_twap_orders_to_subaccount`,
+            typeArguments: [],
+            functionArguments: [
+              bot.userSubaccount,
+              bot.market,
+            ],
+          },
+        })
+
+        const cancelCommittedTxn = await aptos.signAndSubmitTransaction({
+          signer: botAccount,
+          transaction: cancelTransaction,
+        })
+
+        await aptos.waitForTransaction({ transactionHash: cancelCommittedTxn.hash })
+        console.log(`✅ Cancelled all TWAPs: ${cancelCommittedTxn.hash}`)
+        cancelledTwaps = true
+      } catch (e: any) {
+        console.error('Error cancelling TWAPs:', e.message || e)
+        // Continue - maybe there were no TWAPs to cancel
+      }
 
       try {
         // Check on-chain position
@@ -182,9 +214,12 @@ export async function POST(request: NextRequest) {
       success: true,
       message: closedPosition
         ? `Bot stopped. Closing ${closeResult.direction} position (TWAP will fill in 1-2 min)`
-        : 'Volume bot stopped successfully',
+        : cancelledTwaps
+          ? 'Bot stopped. All pending TWAPs cancelled.'
+          : 'Volume bot stopped successfully',
       closedPosition,
       closeResult,
+      cancelledTwaps,
       status: {
         isRunning: false,
         cumulativeVolume: updatedBot.cumulativeVolume,

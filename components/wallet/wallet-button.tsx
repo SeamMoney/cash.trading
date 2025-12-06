@@ -27,7 +27,7 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-2 sm:gap-3 px-3 py-2 border border-white/10 rounded-lg hover:border-primary/50 transition-colors" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
+          className="flex items-center gap-2 sm:gap-3 px-3 py-2 border border-white/10 rounded-lg hover:border-primary/50 transition-colors" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
         >
           <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
           <span className="hidden sm:inline text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>

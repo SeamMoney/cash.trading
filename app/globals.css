@@ -152,11 +152,29 @@
       overscroll-behavior-x: none;
     }
 
-    /* Remove backdrop blur on mobile for performance */
-    .backdrop-blur-sm,
+    /* Make components more transparent on mobile iOS */
+    /* Slightly reduce opacity for better transparency while maintaining readability */
+    .bg-black\/40 {
+      background-color: rgba(0, 0, 0, 0.25) !important;
+    }
+
+    .bg-black\/80 {
+      background-color: rgba(0, 0, 0, 0.6) !important;
+    }
+
+    .bg-zinc-900\/50 {
+      background-color: rgba(24, 24, 27, 0.35) !important;
+    }
+
+    /* Keep backdrop blur but slightly reduced on mobile */
+    .backdrop-blur-sm {
+      -webkit-backdrop-filter: blur(6px) !important;
+      backdrop-filter: blur(6px) !important;
+    }
+
     .backdrop-blur-md {
-      -webkit-backdrop-filter: none !important;
-      backdrop-filter: none !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      backdrop-filter: blur(8px) !important;
     }
   }
 

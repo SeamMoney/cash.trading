@@ -237,7 +237,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     <div className="space-y-4 font-mono">
       {/* Status Panel - ALWAYS SHOW FIRST when running */}
       {isRunning && (
-        <div className="bg-black/80 backdrop-blur-sm border border-primary/30 relative">
+        <div className="bg-black/40 backdrop-blur-sm border border-primary/30 relative">
           <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary" />
           <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary" />
 
@@ -536,7 +536,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         const losses = status.orderHistory.filter((o: any) => o.pnl < 0).length
 
         return (
-          <div className="bg-black/80 backdrop-blur-sm border border-white/10 p-4 relative space-y-3">
+          <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-4 relative space-y-3">
             <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-400 uppercase tracking-wider">Session Complete</span>

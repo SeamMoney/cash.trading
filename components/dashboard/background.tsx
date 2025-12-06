@@ -23,7 +23,7 @@ export function DashboardBackground() {
           }}
         />
       </div>
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-black/80" />
     </div>
   )
 }

@@ -303,7 +303,7 @@ export function ServerBotConfig() {
 
   if (!connected) {
     return (
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
+      <div className="bg-black/80 backdrop-blur-sm border border-white/10 p-6 relative">
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white/20" />
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
         <h3 className="text-white font-mono font-bold tracking-wide">Volume Market Maker Bot</h3>
@@ -324,7 +324,7 @@ export function ServerBotConfig() {
       )}
 
       {/* Main Configuration Panel */}
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 relative">
+      <div className="bg-black/80 backdrop-blur-sm border border-white/10 relative">
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/50" />
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/50" />
 
@@ -343,7 +343,7 @@ export function ServerBotConfig() {
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
-            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-3 md:p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
+            <div className="bg-black/70 backdrop-blur-sm border border-primary/30 p-3 md:p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary opacity-70" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary opacity-70" />
               <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />

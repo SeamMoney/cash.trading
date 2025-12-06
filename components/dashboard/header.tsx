@@ -3,7 +3,7 @@ import { WalletButton } from "@/components/wallet/wallet-button"
 
 export function DashboardHeader() {
   return (
-    <header className="relative z-10 w-full border-b border-white/10 bg-black/40 backdrop-blur-md px-2 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4">
+    <header className="relative z-10 w-full border-b border-white/10 bg-black/80 backdrop-blur-md px-2 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1">
           <span className="text-xl sm:text-2xl md:text-3xl" role="img" aria-label="Decibel logo">🔊💵</span>

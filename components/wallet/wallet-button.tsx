@@ -27,7 +27,7 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
+          className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-black/80 border border-white/10 rounded-lg hover:border-primary/50 transition-colors"
         >
           <div className="flex items-center gap-1 sm:gap-2">
             <Wallet className="w-4 h-4 text-primary flex-shrink-0" />

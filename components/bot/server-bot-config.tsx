@@ -303,7 +303,7 @@ export function ServerBotConfig() {
 
   if (!connected) {
     return (
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
+      <div className="bg-black/30 backdrop-blur-sm border border-white/10 p-6 relative">
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-white/20" />
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
         <h3 className="text-white font-mono font-bold tracking-wide">Volume Market Maker Bot</h3>
@@ -324,7 +324,7 @@ export function ServerBotConfig() {
       )}
 
       {/* Main Configuration Panel */}
-      <div className="bg-black/40 backdrop-blur-sm border border-white/10 relative">
+      <div className="bg-black/30 backdrop-blur-sm border border-white/10 relative">
         <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/50" />
         <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/50" />
 

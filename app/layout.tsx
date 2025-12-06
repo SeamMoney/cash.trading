@@ -18,36 +18,40 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Decibel Market Making Bot",
+  metadataBase: new URL("https://decibrrr.vercel.app"),
+  title: "Decibrrr - Farm Decibel Points on Aptos",
   description:
-    "Automated market making bot for Decibel. Execute TWAP orders and manage trading strategies on Aptos.",
+    "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
   keywords: [
     "Decibel",
-    "market making",
-    "trading bot",
+    "Decibrrr",
+    "points farming",
     "Aptos",
     "perpetual futures",
+    "perp DEX",
     "TWAP",
     "automated trading",
     "DeFi",
     "perpetuals",
+    "volume farming",
   ],
-  authors: [{ name: "Decibel" }],
-  creator: "Decibel",
-  publisher: "Decibel",
+  authors: [{ name: "Decibrrr" }],
+  creator: "Decibrrr",
+  publisher: "Decibrrr",
   openGraph: {
     type: "website",
     locale: "en_US",
-    title: "Decibel Market Making Bot",
+    url: "https://decibrrr.vercel.app",
+    title: "Decibrrr - Farm Decibel Points on Aptos",
     description:
-      "Automated market making bot for Decibel. Execute TWAP orders and manage trading strategies on Aptos.",
-    siteName: "Decibel Market Making Bot",
+      "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
+    siteName: "Decibrrr",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Decibel Market Making Bot",
+    title: "Decibrrr - Farm Decibel Points on Aptos",
     description:
-      "Automated market making bot for Decibel. Execute TWAP orders and manage trading strategies on Aptos.",
+      "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
   },
   robots: {
     index: true,

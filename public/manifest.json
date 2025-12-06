@@ -1,7 +1,7 @@
 {
-  "name": "Decibel Market Making Bot",
-  "short_name": "Decibel Bot",
-  "description": "Automated market making bot for Decibel",
+  "name": "Decibrrr - Farm Decibel Points",
+  "short_name": "Decibrrr",
+  "description": "Farm points on Decibel perp DEX on Aptos",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

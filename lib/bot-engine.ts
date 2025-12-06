@@ -1111,11 +1111,11 @@ export class VolumeBotEngine {
           console.log(`   Volume: $${botInstance.cumulativeVolume.toFixed(2)} / $${botInstance.volumeTargetUSDC}`)
         }
 
-        // VERY tight targets for fast scalping with 40x leverage
-        // SYMMETRIC risk/reward for fair win rate
-        // 0.05% price move × 40x = 2% account PnL (both directions)
-        const PROFIT_TARGET = 0.0005  // 0.05% price move = take profit (~$46 on BTC)
-        const STOP_LOSS = -0.0005    // -0.05% price move = stop loss (symmetric)
+        // Scalping strategy: take small profits consistently, cut losses before they grow
+        // Target is TIGHTER than stop - we want high win rate with small gains
+        // Stop is wider to give trades room to breathe, but still cuts before big losses
+        const PROFIT_TARGET = 0.0003  // 0.03% price move = take profit (small, consistent gains)
+        const STOP_LOSS = -0.0008    // -0.08% price move = stop loss (cut before it gets big)
 
         // Close if: profit target, stop loss, OR volume target reached (force close)
         if (priceChange >= PROFIT_TARGET || priceChange <= STOP_LOSS || volumeTargetReached) {

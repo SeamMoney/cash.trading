@@ -2,6 +2,9 @@
   "name": "decibrrr",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "build": "prisma generate && prisma migrate deploy && next build",
     "dev": "next dev",

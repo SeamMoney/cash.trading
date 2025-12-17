@@ -129,5 +129,5 @@ export async function getAllMarketAddresses(): Promise<
   }
 }
 
-// Export config for reference
-export { TESTNET_CONFIG };
+// Export config and TimeInForce for reference
+export { TESTNET_CONFIG, TimeInForce } from "@decibeltrade/sdk";

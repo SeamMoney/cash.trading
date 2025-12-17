@@ -1,208 +1,186 @@
-# 🚀 Decibrrr Trading Bot - Current Status
+# Decibrrr Trading Bot - Current Status
 
-**Last Updated**: November 27, 2025
-**Status**: Ready for Testing
-
----
-
-## ✅ COMPLETED FEATURES
-
-### 1. **Wallet Integration** (100%)
-- ✅ Aptos wallet connection (Petra/Martian)
-- ✅ Real-time USDC balance display
-- ✅ Automatic subaccount detection
-- ✅ Multi-wallet support UI
-
-### 2. **Delegation System** (100%)
-- ✅ `hooks/use-delegation.ts` - Delegation logic
-- ✅ `components/trading/delegation-button.tsx` - UI component
-- ✅ Smart contract integration (`is_delegated_trader`, `delegate_trading_to_for_subaccount`)
-- ✅ Visual feedback (green when authorized)
-- ✅ One-click revoke functionality
-
-### 3. **Bot Execution Backend** (100%)
-- ✅ `app/api/bot/start/route.ts` - Bot execution endpoint
-- ✅ Bot operator wallet created and secured
-- ✅ Delegation validation before execution
-- ✅ TWAP order placement via Decibel smart contracts
-- ✅ Multi-leg support (long + short simultaneously)
-
-### 4. **Trading Interface** (100%)
-- ✅ Notional size input
-- ✅ Trading mode selector (Aggressive/Normal/Passive)
-- ✅ Directional bias slider (0-100%)
-- ✅ Real-time balance validation
-- ✅ Start bot button with error handling
-- ✅ Loading states and user feedback
+**Last Updated**: December 16, 2025
+**Status**: Ready for Competition (pending testnet reset)
 
 ---
 
-## 📋 NEXT STEPS (To Do)
+## COMPLETED FEATURES
 
-### Priority 1: Fund & Test (30 minutes)
-- [ ] Fund bot operator wallet with testnet APT
-  - URL: https://faucet.testnet.aptoslabs.com/?address=0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da
-- [ ] Start dev server (`npm run dev`)
-- [ ] Connect wallet and check balance
-- [ ] Test delegation flow
-- [ ] Place test order ($10-20)
-- [ ] Verify transaction on explorer
+### Core Trading
+- TWAP order placement via Decibel SDK
+- IOC (Immediate-or-Cancel) orders with attached TP/SL
+- Multi-strategy support: twap, high_risk, tx_spammer
+- Automatic position management
+- Bot persistence across server restarts
 
-### Priority 2: Bot Monitoring (2-3 hours)
-- [ ] Create `GET /api/bot/status/:id` endpoint
-- [ ] Track order fills via Decibel API
-- [ ] Calculate execution progress
-- [ ] Build monitoring dashboard UI
-- [ ] Add real-time PnL tracking
+### SDK Integration (@decibeltrade/sdk v0.2.1)
+- DecibelReadDex for market data
+- DecibelWriteDex for order placement
+- Dynamic market address resolution (survives testnet resets)
+- Proper TimeInForce enum usage
+- TP/SL orders with chain unit conversion
 
-### Priority 3: Production Features (1-2 days)
-- [ ] Add market selector dropdown (BTC, ETH, SOL, etc.)
-- [ ] Implement real-time price feeds (Pyth oracle)
-- [ ] Add Take Profit / Stop Loss logic
-- [ ] Build bot history table
-- [ ] Add transaction export
+### High Risk Strategy (Competition Mode)
+- Fast IOC entry for instant fills
+- Attached TP/SL in single transaction
+- Automatic fallback to TWAP if IOC doesn't fill
+- Force close with IOC when targets hit
 
-### Priority 4: Polish & Deploy (1 day)
-- [ ] Error handling improvements
-- [ ] Better loading states
-- [ ] Success/error modals instead of alerts
-- [ ] Mobile responsive improvements
-- [ ] Deploy to Vercel
+### Backtesting Infrastructure
+- lib/backtest.ts - Simulation engine
+- app/api/backtest/route.ts - API endpoint
+- scripts/run-backtest.mjs - CLI tool
+- Parameter optimization support
 
 ---
 
-## 🔧 Technical Details
+## CODE QUALITY AUDIT (December 16, 2025)
 
-### Bot Operator Wallet
-```
-Address: 0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da
-Private Key: Stored in .env (BOT_OPERATOR_PRIVATE_KEY)
-Purpose: Executes trades on behalf of delegated users
-Needs: Testnet APT for gas fees
-```
+### Dead Code Identified
 
-### How Delegation Works
-```
-User Wallet → Signs delegation tx
-    ↓
-Decibel Subaccount → Stores permission
-    ↓
-Bot Wallet → Can place orders (but NOT withdraw funds)
-```
+| File/Function | Status | Notes |
+|--------------|--------|-------|
+| `lib/twap-bot.ts` | **UNUSED** | TWAPBot class not imported anywhere |
+| `lib/calculations.ts` | **UNUSED** | Functions never called |
+| `simplified_twap_bot.ts` | **UNUSED** | Example file at project root |
+| `lib/decibel-sdk.ts` → `getWriteDexForAccount()` | **UNUSED** | Defined but never called |
+| `lib/decibel-sdk.ts` → `getMarketAddressFromSDK()` | **UNUSED** | Defined but never called |
+| `lib/decibel-ws.ts` | **SCRIPT-ONLY** | Only used by scripts/ |
 
-**Security**: Users' funds never leave their subaccount. Bot can only trade.
+### Active Code (Verified Working)
+- `lib/bot-engine.ts` - Main trading logic
+- `lib/bot-manager.ts` - Bot singleton management
+- `lib/decibel-sdk.ts` → getReadDex, getAllMarketAddresses, getWriteDex
+- `lib/backtest.ts` - Backtesting engine
+- `lib/decibel-api.ts` - Stats route
+- `lib/price-feed.ts` - Bot tick routes
 
-### TWAP Order Parameters
+---
+
+## SDK VERIFICATION
+
+### Correct Usage
+| Method | Status | Notes |
+|--------|--------|-------|
+| `placeOrder` | OK | Uses TimeInForce.ImmediateOrCancel enum |
+| `placeTpSlOrderForPosition` | OK | Chain unit conversion correct |
+| `cancelTpSlOrderForPosition` | OK | |
+| `cancelTwapOrder` | OK | |
+| `markets.getAll` | OK | |
+| `marketPrices.getByName` | OK | |
+| `userOpenOrders.getByAddr` | OK | |
+
+### SDK Configuration
 ```typescript
-{
-  market: "BTC/USD",
-  size: 100000,           // In contract units (e.g., 0.001 BTC with 8 decimals)
-  is_long: true,          // Direction
-  min_duration: 300,      // Minimum execution window (seconds)
-  max_duration: 600,      // Maximum execution window (seconds)
-}
+const writeDex = new DecibelWriteDex(TESTNET_CONFIG, account, {
+  nodeApiKey: process.env.APTOS_NODE_API_KEY,
+  skipSimulate: true,   // Faster transactions
+  noFeePayer: true,     // Fee payer had issues per dev chat
+});
 ```
 
-**Duration Mapping**:
-- Aggressive: 5-10 minutes
-- Normal: 10-20 minutes
-- Passive: 20-40 minutes
+### TimeInForce Values
+```typescript
+TimeInForce.GoodTillCanceled = 0
+TimeInForce.PostOnly = 1
+TimeInForce.ImmediateOrCancel = 2
+```
 
 ---
 
-## 🐛 Known Issues
+## STRATEGY PARAMETERS
 
-### Critical
-None! 🎉
+### High Risk Strategy (Updated after backtest)
+```typescript
+const IOC_SLIPPAGE_PCT = 0.005     // 0.5% slippage
+const PROFIT_TARGET_PCT = 0.003    // 0.3% price move = +12% at 40x
+const STOP_LOSS_PCT = 0.0015       // 0.15% price move = -6% at 40x
+const CAPITAL_USAGE_PCT = 0.50     // Use 50% of capital
+```
 
-### Medium Priority
-1. **Hardcoded BTC Price** - Bot uses $100k placeholder for size conversion
-   - Fix: Fetch real-time price from Pyth oracle or Decibel API
+### Why These Parameters?
+Previous parameters (0.03% TP, 0.02% SL) were guaranteed losers:
+- Costs: ~0.12% (slippage + fees + spread)
+- TP target: 0.03%
+- Result: Costs > Profit target = 100% loss rate
 
-2. **Single Market** - Only BTC/USD is available
-   - Fix: Add market selector UI component
-
-3. **No Order Monitoring** - Orders placed but no tracking
-   - Fix: Build status dashboard (Priority 2)
-
-### Low Priority
-1. **Alert Modals** - Using browser `alert()` instead of nice UI
-2. **TP/SL Not Connected** - UI exists but not functional
-3. **No Retry Logic** - Failed transactions don't auto-retry
+New parameters ensure:
+- TP target (0.3%) > Costs (0.12%) = Profit possible
 
 ---
 
-## 📁 Important Files
+## PENDING ITEMS
 
-### Frontend
+### Testnet Reset (Today - Dec 16, 2025)
+- Testnet is being reset with new contract addresses
+- SDK `getAllMarketAddresses()` will fetch new addresses automatically
+- No code changes needed after reset
+
+### Before Competition
+- [ ] Verify testnet is back online
+- [ ] Run SDK test endpoint to confirm connectivity
+- [ ] Place test trade to verify flow
+- [ ] Monitor first few high_risk trades
+
+---
+
+## IMPORTANT FILES
+
+### Trading Core
 ```
-components/wallet/wallet-button.tsx       - Wallet connection UI
-components/wallet/wallet-connector.tsx    - Multi-wallet selector
-components/trading/delegation-button.tsx  - Delegation authorization
-components/dashboard/trading-view.tsx     - Main trading interface
-hooks/use-wallet-balance.ts              - Balance fetching
-hooks/use-delegation.ts                  - Delegation state management
+lib/bot-engine.ts           - Main trading logic (all strategies)
+lib/bot-manager.ts          - Bot singleton with DB persistence
+lib/decibel-sdk.ts          - SDK singleton initialization
+lib/backtest.ts             - Backtesting simulation engine
 ```
 
-### Backend
+### API Routes
 ```
-app/api/bot/start/route.ts               - Bot execution endpoint
-lib/decibel-client.ts                    - Decibel constants
-.env                                     - Environment variables (LOCAL ONLY)
-.env.example                             - Template for contributors
+app/api/bot/start/route.ts  - Start bot
+app/api/bot/stop/route.ts   - Stop bot
+app/api/bot/tick/route.ts   - Manual tick
+app/api/cron/bot-tick/route.ts - Cron tick
+app/api/backtest/route.ts   - Run backtests
+app/api/sdk-test/route.ts   - Verify SDK works
+app/api/markets/refresh/route.ts - Update market addresses
 ```
 
 ### Documentation
 ```
-README.md                                - Setup & overview
-SECURITY.md                              - Security practices
-DEVELOPMENT_NOTES.md                     - Technical deep dive
-docs/archive/BOT_SETUP_COMPLETE.md      - Full delegation guide
+docs/HIGH_RISK_STRATEGY_DESIGN.md - Test cases and strategy design
+docs/DECIBEL_ERROR_CODES.md - Contract error codes
 ```
 
 ---
 
-## 🎯 Success Criteria
+## REQUIREMENTS
 
-Before marking v1.0 complete:
-
-- [ ] At least 1 successful test TWAP order executed
-- [ ] Delegation flow works without errors
-- [ ] Balance updates correctly after trades
-- [ ] Orders appear on Decibel UI
-- [ ] Transaction hashes viewable on explorer
-- [ ] No security vulnerabilities
-- [ ] Clean error messages
-- [ ] Mobile-friendly UI
+- Node.js >= 20.9.0 (required for SDK ESM modules)
+- Vercel uses Node 20 by default (production OK)
+- Local dev: use `nvm use 20` if needed
 
 ---
 
-## 🔗 Quick Links
+## QUICK START
 
-**Testing**:
-- Decibel App: https://app.decibel.trade
-- APT Faucet: https://faucet.testnet.aptoslabs.com
-- Explorer: https://explorer.aptoslabs.com/?network=testnet
+```bash
+# Verify SDK connectivity (after testnet reset)
+curl http://localhost:3000/api/sdk-test
 
-**Documentation**:
-- Decibel Docs: https://geomi.dev
-- Aptos SDK: https://aptos.dev
+# Run backtest
+node scripts/run-backtest.mjs
 
-**Repository**:
-- GitHub: https://github.com/SeamMoney/decibrrr
-- Issues: https://github.com/SeamMoney/decibrrr/issues
-
----
-
-## 💬 Current Blockers
-
-**NONE!** 🎉
-
-Everything is implemented and ready for testing. Just need to:
-1. Fund the bot wallet with APT
-2. Run `npm run dev`
-3. Test the flow
-
----
-
-**Ready to test?** Start with funding the bot wallet, then follow the test steps above! 🚀
+# Start a high_risk bot
+POST /api/bot/start
+{
+  "userWalletAddress": "0x...",
+  "userSubaccount": "0x...",
+  "capitalUSDC": 100,
+  "volumeTargetUSDC": 10000,
+  "bias": "neutral",
+  "strategy": "high_risk",
+  "market": "0x...",
+  "marketName": "BTC/USD"
+}
+```

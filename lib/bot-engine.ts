@@ -57,7 +57,7 @@ export interface OrderResult {
 
 // Package address - prefer SDK config, fallback to env var, then hardcoded
 // After testnet reset, update SDK package to get new addresses automatically
-import { TESTNET_CONFIG } from './decibel-sdk'
+import { TESTNET_CONFIG, TimeInForce } from './decibel-sdk'
 const DECIBEL_PACKAGE = TESTNET_CONFIG.deployment.package ||
   process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
   '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
@@ -1349,7 +1349,7 @@ export class VolumeBotEngine {
           price: iocPriceChain,
           size: positionSize,
           isBuy: isLong,
-          timeInForce: 2, // ImmediateOrCancel
+          timeInForce: TimeInForce.ImmediateOrCancel,
           isReduceOnly: false,
           // Attach TP/SL directly to the order!
           tpTriggerPrice: tpPriceChain,
@@ -1491,7 +1491,7 @@ export class VolumeBotEngine {
         price: closePriceChain,
         size: position.size,
         isBuy: closeIsLong,
-        timeInForce: 2, // ImmediateOrCancel
+        timeInForce: TimeInForce.ImmediateOrCancel,
         isReduceOnly: true, // Important: reduce only for closing
         subaccountAddr: this.config.userSubaccount,
       })

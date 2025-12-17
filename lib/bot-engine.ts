@@ -955,9 +955,10 @@ export class VolumeBotEngine {
       const writeDex = getWriteDex()
 
       // Risk parameters matching the high_risk strategy
+      // Updated after backtest analysis - previous values were too tight
       // These are PRICE CHANGE targets, not leveraged PnL
-      const PROFIT_TARGET_PCT = 0.0003  // 0.03% price move = +1.2% leveraged profit at 40x
-      const STOP_LOSS_PCT = 0.0002      // 0.02% price move = -0.8% leveraged loss at 40x
+      const PROFIT_TARGET_PCT = 0.003   // 0.3% price move = +12% leveraged profit at 40x
+      const STOP_LOSS_PCT = 0.0015      // 0.15% price move = -6% leveraged loss at 40x
 
       const tpPrice = isLong
         ? entryPrice * (1 + PROFIT_TARGET_PCT)
@@ -1190,12 +1191,32 @@ export class VolumeBotEngine {
   private async placeHighRiskOrderWithIOC(
     isLong: boolean
   ): Promise<OrderResult> {
-    // Configuration
-    const IOC_SLIPPAGE_PCT = 0.02      // 2% slippage for aggressive IOC fills
-    const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move for TP
-    const STOP_LOSS_PCT = 0.0002       // 0.02% price move for SL
-    const CAPITAL_USAGE_PCT = 0.80     // Use 80% of capital
+    // ═══════════════════════════════════════════════════════════════════
+    // CONFIGURATION - Updated after backtest analysis
+    //
+    // Previous values (0.03% TP, 0.02% SL) were LOSING because:
+    // - Trading costs (~0.12%) exceeded profit targets
+    // - No statistical edge with random entry
+    //
+    // New values designed to:
+    // - Give room for costs (TP must be > total costs)
+    // - Asymmetric risk/reward (TP:SL = 2:1)
+    // - Still generate reasonable volume
+    // ═══════════════════════════════════════════════════════════════════
+    const IOC_SLIPPAGE_PCT = 0.005     // 0.5% slippage (IOC should be lower than TWAP)
+    const PROFIT_TARGET_PCT = 0.003    // 0.3% price move → 12% at 40x leverage
+    const STOP_LOSS_PCT = 0.0015       // 0.15% price move → 6% at 40x leverage
+    const CAPITAL_USAGE_PCT = 0.50     // Use 50% of capital (less aggressive)
     const USE_TWAP_FALLBACK = true     // Fallback to TWAP if IOC fails
+
+    // Cost breakdown:
+    // Entry slippage: ~0.01% (IOC)
+    // Exit slippage: ~0.01% (IOC)
+    // Fees: 0.05% x 2 = 0.1%
+    // Total: ~0.12%
+    // Net on TP: 0.3% - 0.12% = +0.18% profit
+    // Net on SL: -0.15% - 0.12% = -0.27% loss
+    // Break-even win rate: 0.27 / (0.18 + 0.27) = 60%
 
     try {
       const { prisma } = await import('./prisma')

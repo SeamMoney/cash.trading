@@ -4,5 +4,10 @@
       "path": "/api/cron/bot-tick",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "NODE_VERSION": "20"
+    }
+  }
 }

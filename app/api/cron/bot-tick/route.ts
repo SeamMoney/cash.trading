@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk'
+import { getAllMarketAddresses } from '@/lib/decibel-sdk'
+import type { BotConfig } from '@/lib/bot-engine'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
@@ -80,8 +82,27 @@ export async function GET(request: NextRequest) {
         // Execute trade based on strategy
         console.log(`🎯 Executing trade for ${bot.userWalletAddress} (${bot.strategy})`)
 
+        // Resolve market address from SDK (survives testnet resets)
+        let resolvedMarket = bot.market
+        try {
+          const markets = await getAllMarketAddresses()
+          const sdkMarket = markets.find((m) => m.name === bot.marketName)
+          if (sdkMarket?.address) {
+            if (sdkMarket.address.toLowerCase() !== bot.market.toLowerCase()) {
+              console.log(`⚠️  [SDK] Market address changed for ${bot.marketName}! Updating...`)
+              await prisma.botInstance.update({
+                where: { id: bot.id },
+                data: { market: sdkMarket.address },
+              })
+            }
+            resolvedMarket = sdkMarket.address
+          }
+        } catch (error) {
+          console.warn('⚠️  [SDK] Address resolution failed, using stored address')
+        }
+
         // Import the bot engine to execute a single trade
-        const { VolumeBotEngine, BotConfig } = await import('@/lib/bot-engine')
+        const { VolumeBotEngine } = await import('@/lib/bot-engine')
 
         const config: BotConfig = {
           userWalletAddress: bot.userWalletAddress,
@@ -90,7 +111,7 @@ export async function GET(request: NextRequest) {
           volumeTargetUSDC: bot.volumeTargetUSDC,
           bias: bot.bias as 'long' | 'short' | 'neutral',
           strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk',
-          market: bot.market,
+          market: resolvedMarket,
           marketName: bot.marketName,
         }
 

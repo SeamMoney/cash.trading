@@ -6,6 +6,7 @@
  */
 
 import { VolumeBotEngine, BotConfig } from './bot-engine'
+import { getAllMarketAddresses } from './decibel-sdk'
 
 class BotManager {
   private static instance: BotManager
@@ -37,7 +38,30 @@ class BotManager {
         where: { isRunning: true }
       })
 
+      // Pre-fetch market addresses from SDK once (more efficient)
+      let sdkMarkets: Array<{ name: string; address: string }> = []
+      try {
+        sdkMarkets = await getAllMarketAddresses()
+        console.log(`📊 [SDK] Fetched ${sdkMarkets.length} market addresses`)
+      } catch (error) {
+        console.warn('⚠️ [SDK] Failed to fetch market addresses, using stored values')
+      }
+
       for (const bot of runningBots) {
+        // Resolve market address from SDK (survives testnet resets)
+        let resolvedMarket = bot.market
+        const sdkMarket = sdkMarkets.find((m) => m.name === bot.marketName)
+        if (sdkMarket?.address) {
+          if (sdkMarket.address.toLowerCase() !== bot.market.toLowerCase()) {
+            console.log(`⚠️ [SDK] Address changed for ${bot.marketName}, updating...`)
+            await prisma.botInstance.update({
+              where: { id: bot.id },
+              data: { market: sdkMarket.address },
+            })
+          }
+          resolvedMarket = sdkMarket.address
+        }
+
         const config: BotConfig = {
           userWalletAddress: bot.userWalletAddress,
           userSubaccount: bot.userSubaccount,
@@ -45,7 +69,7 @@ class BotManager {
           volumeTargetUSDC: bot.volumeTargetUSDC,
           bias: bot.bias as 'long' | 'short' | 'neutral',
           strategy: (bot.strategy || 'twap') as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk',
-          market: bot.market,
+          market: resolvedMarket,
           marketName: bot.marketName,
         }
 

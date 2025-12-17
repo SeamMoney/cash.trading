@@ -15,7 +15,7 @@ export interface BotConfig {
   bias: 'long' | 'short' | 'neutral' // Directional bias
   market: string // Market address (BTC/USD, ETH/USD, etc.)
   marketName: string // Display name
-  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' // Trading strategy
+  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' // Trading strategy
   aggressiveness?: number // 1-10 scale for order frequency (optional, defaults to 5)
 }
 
@@ -55,7 +55,11 @@ export interface OrderResult {
   positionHeldMs?: number
 }
 
-const DECIBEL_PACKAGE = process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
+// Package address - prefer SDK config, fallback to env var, then hardcoded
+// After testnet reset, update SDK package to get new addresses automatically
+import { TESTNET_CONFIG } from './decibel-sdk'
+const DECIBEL_PACKAGE = TESTNET_CONFIG.deployment.package ||
+  process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
   '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
 /**
@@ -283,8 +287,22 @@ export class VolumeBotEngine {
    * Fetch current market price from on-chain oracle
    */
   private async getCurrentMarketPrice(): Promise<number> {
+    // Try SDK first (faster, more reliable)
     try {
-      // Get price from market's Price resource
+      const { getReadDex } = await import('./decibel-sdk')
+      const readDex = getReadDex()
+      const prices = await readDex.marketPrices.getAll()
+      const marketPrice = prices.find((p: any) => p.market_name === this.config.marketName)
+      if (marketPrice?.mark_px) {
+        console.log(`📊 [SDK] Price: $${marketPrice.mark_px.toFixed(2)}`)
+        return marketPrice.mark_px
+      }
+    } catch (error) {
+      console.log('⚠️ [SDK] Price fetch failed, trying on-chain...')
+    }
+
+    // Fallback: Get price from market's Price resource on-chain
+    try {
       const resources = await this.aptos.getAccountResources({
         accountAddress: this.config.market
       })
@@ -304,14 +322,16 @@ export class VolumeBotEngine {
         const pxDecimals = this.getMarketConfig().pxDecimals
         const priceRaw = data.oracle_px || data.mark_px || data.price || data.last_price
         if (priceRaw) {
-          return parseInt(priceRaw) / Math.pow(10, pxDecimals)
+          const price = parseInt(priceRaw) / Math.pow(10, pxDecimals)
+          console.log(`📊 [On-chain] Price: $${price.toFixed(2)}`)
+          return price
         }
       }
     } catch (error) {
       console.log('⚠️ Could not fetch on-chain price, using fallback')
     }
 
-    // Fallback prices - ONLY for order sizing, never for PNL calculation
+    // Last resort: Fallback prices - ONLY for order sizing, never for PNL calculation
     // These are approximate and should be updated periodically
     console.warn('⚠️ Using fallback price - PNL calculation may be inaccurate')
     const fallbackPrices: Record<string, number> = {
@@ -918,7 +938,738 @@ export class VolumeBotEngine {
   }
 
   /**
-   * HIGH RISK HFT STRATEGY
+   * Place TP/SL orders for a position using SDK
+   *
+   * GOTCHA from dev chat:
+   * - Max 10 TP/SL per market! Error: EMAX_FIXED_SIZED_PENDING_REQS_HIT(0x10008)
+   * - Must cancel old TP/SL before placing new ones
+   * - Use cancelTpSlOrderForPosition for reduce-only orders (NOT regular cancelOrder)
+   */
+  private async placeTpSlForPosition(
+    entryPrice: number,
+    size: number,
+    isLong: boolean
+  ): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+      const { getWriteDex } = await import('./decibel-sdk')
+      const writeDex = getWriteDex()
+
+      // Risk parameters matching the high_risk strategy
+      // These are PRICE CHANGE targets, not leveraged PnL
+      const PROFIT_TARGET_PCT = 0.0003  // 0.03% price move = +1.2% leveraged profit at 40x
+      const STOP_LOSS_PCT = 0.0002      // 0.02% price move = -0.8% leveraged loss at 40x
+
+      const tpPrice = isLong
+        ? entryPrice * (1 + PROFIT_TARGET_PCT)
+        : entryPrice * (1 - PROFIT_TARGET_PCT)
+
+      const slPrice = isLong
+        ? entryPrice * (1 - STOP_LOSS_PCT)
+        : entryPrice * (1 + STOP_LOSS_PCT)
+
+      // SDK requires prices in CHAIN UNITS (not human-readable!)
+      // See: docs/OFFICIAL_SDK_REFERENCE.md - "All prices and sizes must be in chain units (u64)"
+      const pxDecimals = this.getMarketConfig().pxDecimals
+      const tpPriceChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
+      const slPriceChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
+
+      console.log(`📊 [SDK] Placing TP/SL orders...`)
+      console.log(`   Entry: $${entryPrice.toFixed(2)}`)
+      console.log(`   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%) → ${tpPriceChain} chain units`)
+      console.log(`   SL: $${slPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%) → ${slPriceChain} chain units`)
+
+      const result = await writeDex.placeTpSlOrderForPosition({
+        marketAddr: this.config.market,
+        tpTriggerPrice: tpPriceChain,
+        tpLimitPrice: tpPriceChain,
+        tpSize: size,
+        slTriggerPrice: slPriceChain,
+        slLimitPrice: slPriceChain,
+        slSize: size,
+        subaccountAddr: this.config.userSubaccount,
+      })
+
+      console.log(`✅ [SDK] TP/SL placed! TX: ${result?.hash?.slice(0, 20) || 'unknown'}...`)
+      return {
+        success: true,
+        txHash: result?.hash || 'unknown'
+      }
+    } catch (error) {
+      // TP/SL failure is not critical - position still works, just no auto-exit
+      console.error('⚠️ [SDK] TP/SL placement failed (non-critical):', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
+
+  /**
+   * Cancel existing TP/SL orders for a position using SDK
+   */
+  private async cancelTpSlForPosition(): Promise<boolean> {
+    try {
+      const { getWriteDex, getReadDex } = await import('./decibel-sdk')
+      const readDex = getReadDex()
+      const writeDex = getWriteDex()
+
+      // Get open orders to find TP/SL orders
+      const openOrders = await readDex.userOpenOrders.getByAddr({
+        subAddr: this.config.userSubaccount
+      })
+
+      if (!openOrders || openOrders.length === 0) {
+        console.log('   No TP/SL orders to cancel')
+        return true
+      }
+
+      // Find TP/SL orders (reduce_only orders with stop_market or take_profit type)
+      const tpSlOrders = openOrders.filter((order: any) => {
+        const orderType = order.order_type?.toLowerCase() || ''
+        return (orderType.includes('stop_market') || orderType.includes('take_profit')) &&
+               order.is_reduce_only
+      })
+
+      if (tpSlOrders.length === 0) {
+        console.log('   No TP/SL orders found')
+        return true
+      }
+
+      console.log(`📊 [SDK] Cancelling ${tpSlOrders.length} TP/SL orders...`)
+
+      for (const order of tpSlOrders) {
+        try {
+          await writeDex.cancelTpSlOrderForPosition({
+            marketAddr: this.config.market,
+            orderId: order.order_id,
+            subaccountAddr: this.config.userSubaccount,
+          })
+          console.log(`   Cancelled order ${order.order_id}`)
+        } catch (e) {
+          console.warn(`   Failed to cancel order ${order.order_id}:`, e)
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error('⚠️ [SDK] Failed to cancel TP/SL orders:', error)
+      return false
+    }
+  }
+
+  /**
+   * Cancel a specific TWAP order by ID using SDK
+   * More precise than "cancel all" approach
+   */
+  private async cancelTwapOrderSDK(orderId: string): Promise<boolean> {
+    try {
+      const { getWriteDex } = await import('./decibel-sdk')
+      const writeDex = getWriteDex()
+
+      await writeDex.cancelTwapOrder({
+        orderId,
+        marketAddr: this.config.market,
+        subaccountAddr: this.config.userSubaccount,
+      })
+
+      console.log(`📊 [SDK] Cancelled TWAP order ${orderId}`)
+      return true
+    } catch (error) {
+      console.warn(`⚠️ [SDK] Failed to cancel TWAP order ${orderId}:`, error)
+      return false
+    }
+  }
+
+  /**
+   * Get all active TWAP orders using SDK
+   */
+  private async getActiveTwapsSDK(): Promise<Array<{
+    orderId: string
+    market: string
+    isBuy: boolean
+    origSize: number
+    remainingSize: number
+    status: string
+  }>> {
+    try {
+      const { getReadDex } = await import('./decibel-sdk')
+      const readDex = getReadDex()
+
+      const twaps = await readDex.userActiveTwaps.getByAddr({
+        subAddr: this.config.userSubaccount
+      })
+
+      if (!twaps || twaps.length === 0) {
+        return []
+      }
+
+      return twaps.map((twap: any) => ({
+        orderId: twap.order_id,
+        market: twap.market,
+        isBuy: twap.is_buy,
+        origSize: twap.orig_size,
+        remainingSize: twap.remaining_size,
+        status: twap.status,
+      }))
+    } catch (error) {
+      console.warn('⚠️ [SDK] Failed to get active TWAPs:', error)
+      return []
+    }
+  }
+
+  /**
+   * Cancel all active TWAP orders using SDK
+   * Useful for cleaning up before placing new orders
+   */
+  private async cancelAllActiveTwapsSDK(): Promise<number> {
+    try {
+      const activeTwaps = await this.getActiveTwapsSDK()
+
+      if (activeTwaps.length === 0) {
+        console.log('   No active TWAPs to cancel')
+        return 0
+      }
+
+      console.log(`📊 [SDK] Cancelling ${activeTwaps.length} active TWAPs...`)
+
+      let cancelled = 0
+      for (const twap of activeTwaps) {
+        if (await this.cancelTwapOrderSDK(twap.orderId)) {
+          cancelled++
+        }
+      }
+
+      console.log(`   Cancelled ${cancelled}/${activeTwaps.length} TWAPs`)
+      return cancelled
+    } catch (error) {
+      console.error('⚠️ [SDK] Failed to cancel all TWAPs:', error)
+      return 0
+    }
+  }
+
+  /**
+   * Get market address dynamically from SDK
+   * Falls back to hardcoded address if SDK fails
+   * This survives testnet resets!
+   */
+  private async getMarketAddressSDK(marketName: string): Promise<string | null> {
+    try {
+      const { getReadDex } = await import('./decibel-sdk')
+      const readDex = getReadDex()
+      const markets = await readDex.markets.getAll()
+      const market = markets.find((m: any) => m.market_name === marketName)
+
+      if (market?.market_addr) {
+        console.log(`📊 [SDK] Market ${marketName} address: ${market.market_addr.slice(0, 10)}...`)
+        return market.market_addr
+      }
+      return null
+    } catch (error) {
+      console.warn(`⚠️ [SDK] Failed to get market address for ${marketName}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * HIGH RISK STRATEGY - SDK IOC VERSION
+   *
+   * Uses SDK's placeOrder with ImmediateOrCancel for INSTANT execution.
+   * Attaches TP/SL directly to the order for automatic exits.
+   *
+   * Flow:
+   * 1. Check for existing position
+   * 2. If no position: Place IOC order with attached TP/SL
+   * 3. If IOC doesn't fill: Fallback to TWAP
+   * 4. If position exists: Monitor for TP/SL trigger or force close
+   *
+   * Risk parameters (configurable):
+   * - IOC_SLIPPAGE_PCT: 2% for aggressive fills
+   * - PROFIT_TARGET_PCT: 0.03% price move (+1.2% at 40x)
+   * - STOP_LOSS_PCT: 0.02% price move (-0.8% at 40x)
+   */
+  private async placeHighRiskOrderWithIOC(
+    isLong: boolean
+  ): Promise<OrderResult> {
+    // Configuration
+    const IOC_SLIPPAGE_PCT = 0.02      // 2% slippage for aggressive IOC fills
+    const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move for TP
+    const STOP_LOSS_PCT = 0.0002       // 0.02% price move for SL
+    const CAPITAL_USAGE_PCT = 0.80     // Use 80% of capital
+    const USE_TWAP_FALLBACK = true     // Fallback to TWAP if IOC fails
+
+    try {
+      const { prisma } = await import('./prisma')
+      const { getWriteDex, getReadDex } = await import('./decibel-sdk')
+
+      // Get bot instance from DB
+      const botInstance = await prisma.botInstance.findUnique({
+        where: { userWalletAddress: this.config.userWalletAddress }
+      })
+      if (!botInstance) {
+        throw new Error('Bot instance not found in database')
+      }
+
+      // Check on-chain position first
+      const onChainPosition = await this.getOnChainPosition()
+
+      // ═══════════════════════════════════════════════════════════════════
+      // SCENARIO: Position exists - monitor for TP/SL or force close
+      // ═══════════════════════════════════════════════════════════════════
+      if (onChainPosition && onChainPosition.size > 0) {
+        console.log(`\n📊 [IOC] Position exists: ${onChainPosition.size} (${onChainPosition.isLong ? 'LONG' : 'SHORT'})`)
+
+        // Sync DB if needed
+        if (!botInstance.activePositionSize || botInstance.activePositionSize === 0) {
+          console.log(`⚠️ [IOC] Syncing position to DB...`)
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: onChainPosition.size,
+              activePositionIsLong: onChainPosition.isLong,
+              activePositionEntry: onChainPosition.entryPrice,
+            }
+          })
+
+          // Place TP/SL for existing position if not already set
+          console.log(`📊 [IOC] Placing TP/SL for synced position...`)
+          await this.cancelTpSlForPosition()
+          await this.placeTpSlForPosition(
+            onChainPosition.entryPrice,
+            onChainPosition.size,
+            onChainPosition.isLong
+          )
+        }
+
+        // Check if volume target reached - force close
+        if (botInstance.cumulativeVolume >= botInstance.volumeTargetUSDC) {
+          console.log(`🎯 [IOC] Volume target reached! Force closing position...`)
+          return await this.forceClosePositionWithIOC(onChainPosition)
+        }
+
+        // Check PnL to see if TP/SL should have triggered
+        const currentPrice = await this.getCurrentMarketPrice()
+        const pnlPct = onChainPosition.isLong
+          ? (currentPrice - onChainPosition.entryPrice) / onChainPosition.entryPrice
+          : (onChainPosition.entryPrice - currentPrice) / onChainPosition.entryPrice
+
+        console.log(`   Entry: $${onChainPosition.entryPrice.toFixed(2)}, Current: $${currentPrice.toFixed(2)}`)
+        console.log(`   PnL: ${(pnlPct * 100).toFixed(4)}% (TP: +${(PROFIT_TARGET_PCT * 100).toFixed(3)}%, SL: -${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
+
+        // If PnL exceeds targets but position still open, TP/SL might have failed
+        // Try to close manually
+        if (pnlPct >= PROFIT_TARGET_PCT) {
+          console.log(`⚠️ [IOC] TP should have triggered! Attempting manual close...`)
+          return await this.forceClosePositionWithIOC(onChainPosition)
+        }
+        if (pnlPct <= -STOP_LOSS_PCT) {
+          console.log(`⚠️ [IOC] SL should have triggered! Attempting manual close...`)
+          return await this.forceClosePositionWithIOC(onChainPosition)
+        }
+
+        // Position still within range, TP/SL active - just monitoring
+        return {
+          success: true,
+          txHash: 'monitoring',
+          volumeGenerated: 0,
+          direction: onChainPosition.isLong ? 'long' : 'short',
+          size: onChainPosition.size,
+          entryPrice: onChainPosition.entryPrice,
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // SCENARIO: No position - open new position with IOC + TP/SL
+      // ═══════════════════════════════════════════════════════════════════
+      console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
+
+      const entryPrice = await this.getCurrentMarketPrice()
+      const maxLeverage = this.getMarketMaxLeverage()
+      const pxDecimals = this.getMarketConfig().pxDecimals
+      const sizeDecimals = this.getMarketSizeDecimals()
+
+      // Calculate position size
+      const capitalToUse = this.config.capitalUSDC * CAPITAL_USAGE_PCT
+      const notionalUSD = capitalToUse * maxLeverage
+      const sizeInBaseAsset = notionalUSD / entryPrice
+      const rawSize = Math.floor(sizeInBaseAsset * Math.pow(10, sizeDecimals))
+      const positionSize = Number(this.roundSizeToLotSize(rawSize))
+
+      // Calculate aggressive IOC price (to ensure fill)
+      const iocPrice = isLong
+        ? entryPrice * (1 + IOC_SLIPPAGE_PCT)
+        : entryPrice * (1 - IOC_SLIPPAGE_PCT)
+
+      // Calculate TP/SL prices
+      const tpPrice = isLong
+        ? entryPrice * (1 + PROFIT_TARGET_PCT)
+        : entryPrice * (1 - PROFIT_TARGET_PCT)
+      const slPrice = isLong
+        ? entryPrice * (1 - STOP_LOSS_PCT)
+        : entryPrice * (1 + STOP_LOSS_PCT)
+
+      // Convert all prices to chain units
+      const iocPriceChain = Math.floor(iocPrice * Math.pow(10, pxDecimals))
+      const tpPriceChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
+      const slPriceChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
+
+      console.log(`   Market: ${this.config.marketName}, Leverage: ${maxLeverage}x`)
+      console.log(`   Capital: $${capitalToUse.toFixed(2)}, Notional: $${notionalUSD.toFixed(2)}`)
+      console.log(`   Size: ${positionSize} (${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]})`)
+      console.log(`   IOC Price: $${iocPrice.toFixed(2)} (${IOC_SLIPPAGE_PCT * 100}% slippage)`)
+      console.log(`   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`)
+      console.log(`   SL: $${slPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
+
+      // Place IOC order with attached TP/SL using SDK
+      const writeDex = getWriteDex()
+
+      try {
+        const result = await writeDex.placeOrder({
+          marketName: this.config.marketName,
+          price: iocPriceChain,
+          size: positionSize,
+          isBuy: isLong,
+          timeInForce: 2, // ImmediateOrCancel
+          isReduceOnly: false,
+          // Attach TP/SL directly to the order!
+          tpTriggerPrice: tpPriceChain,
+          tpLimitPrice: tpPriceChain,
+          slTriggerPrice: slPriceChain,
+          slLimitPrice: slPriceChain,
+          subaccountAddr: this.config.userSubaccount,
+        })
+
+        if (result.success) {
+          console.log(`✅ [IOC] Order placed! TX: ${result.transactionHash.slice(0, 20)}...`)
+          console.log(`   Order ID: ${result.orderId || 'pending'}`)
+
+          // Wait a moment then check if order filled
+          await new Promise(r => setTimeout(r, 2000))
+
+          // Check on-chain position to verify fill
+          const newPosition = await this.getOnChainPosition()
+
+          if (newPosition && newPosition.size > 0) {
+            // IOC FILLED! Update DB
+            console.log(`🎯 [IOC] FILLED! Position opened at ~$${newPosition.entryPrice.toFixed(2)}`)
+
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                activePositionSize: newPosition.size,
+                activePositionIsLong: isLong,
+                activePositionEntry: newPosition.entryPrice,
+                activePositionTxHash: result.transactionHash,
+              }
+            })
+
+            // Position opened - don't count volume yet (count on close)
+            return {
+              success: true,
+              txHash: result.transactionHash,
+              volumeGenerated: 0, // Count on close only
+              direction: isLong ? 'long' : 'short',
+              size: newPosition.size,
+              entryPrice: newPosition.entryPrice,
+            }
+          } else {
+            // IOC didn't fill - no position created
+            console.log(`⚠️ [IOC] No fill - order likely cancelled (no liquidity)`)
+
+            if (USE_TWAP_FALLBACK) {
+              console.log(`📊 [IOC] Falling back to TWAP...`)
+              return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
+            }
+
+            return {
+              success: false,
+              txHash: result.transactionHash,
+              volumeGenerated: 0,
+              direction: isLong ? 'long' : 'short',
+              size: 0,
+              error: 'IOC order not filled - no liquidity',
+            }
+          }
+        } else {
+          // SDK returned error
+          console.error(`❌ [IOC] Order failed:`, result.error)
+
+          if (USE_TWAP_FALLBACK) {
+            console.log(`📊 [IOC] Falling back to TWAP...`)
+            return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
+          }
+
+          return {
+            success: false,
+            txHash: '',
+            volumeGenerated: 0,
+            direction: isLong ? 'long' : 'short',
+            size: 0,
+            error: result.error,
+          }
+        }
+      } catch (sdkError) {
+        console.error(`❌ [IOC] SDK error:`, sdkError)
+
+        if (USE_TWAP_FALLBACK) {
+          console.log(`📊 [IOC] Falling back to TWAP after error...`)
+          return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
+        }
+
+        throw sdkError
+      }
+    } catch (error) {
+      console.error('❌ [IOC] High risk order failed:', error)
+      return {
+        success: false,
+        txHash: '',
+        volumeGenerated: 0,
+        direction: isLong ? 'long' : 'short',
+        size: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  /**
+   * Force close position with IOC order
+   * Used when volume target reached or TP/SL should have triggered
+   */
+  private async forceClosePositionWithIOC(
+    position: { size: number; isLong: boolean; entryPrice: number }
+  ): Promise<OrderResult> {
+    const IOC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
+
+    try {
+      const { getWriteDex } = await import('./decibel-sdk')
+      const { prisma } = await import('./prisma')
+
+      const currentPrice = await this.getCurrentMarketPrice()
+      const pxDecimals = this.getMarketConfig().pxDecimals
+      const sizeDecimals = this.getMarketSizeDecimals()
+
+      // Close direction is opposite of position
+      const closeIsLong = !position.isLong
+
+      // Aggressive price to ensure fill
+      const closePrice = closeIsLong
+        ? currentPrice * (1 + IOC_SLIPPAGE_PCT)
+        : currentPrice * (1 - IOC_SLIPPAGE_PCT)
+      const closePriceChain = Math.floor(closePrice * Math.pow(10, pxDecimals))
+
+      console.log(`\n📝 [IOC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
+      console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
+
+      const writeDex = getWriteDex()
+
+      // Cancel existing TP/SL first
+      await this.cancelTpSlForPosition()
+
+      // Place IOC close order
+      const result = await writeDex.placeOrder({
+        marketName: this.config.marketName,
+        price: closePriceChain,
+        size: position.size,
+        isBuy: closeIsLong,
+        timeInForce: 2, // ImmediateOrCancel
+        isReduceOnly: true, // Important: reduce only for closing
+        subaccountAddr: this.config.userSubaccount,
+      })
+
+      if (result.success) {
+        console.log(`✅ [IOC] Close order placed! TX: ${result.transactionHash.slice(0, 20)}...`)
+
+        // Wait and check if closed
+        await new Promise(r => setTimeout(r, 2000))
+        const newPosition = await this.getOnChainPosition()
+
+        if (!newPosition || newPosition.size === 0) {
+          // Position closed!
+          console.log(`🎯 [IOC] Position CLOSED!`)
+
+          // Calculate PnL and volume
+          const positionValueUSD = (position.size / Math.pow(10, sizeDecimals)) * currentPrice
+          const pnlPct = position.isLong
+            ? (currentPrice - position.entryPrice) / position.entryPrice
+            : (position.entryPrice - currentPrice) / position.entryPrice
+          const pnlUSD = positionValueUSD * pnlPct
+
+          console.log(`   Volume: $${positionValueUSD.toFixed(2)}`)
+          console.log(`   PnL: $${pnlUSD.toFixed(2)} (${(pnlPct * 100).toFixed(3)}%)`)
+
+          // Clear DB position
+          const botInstance = await prisma.botInstance.findUnique({
+            where: { userWalletAddress: this.config.userWalletAddress }
+          })
+          if (botInstance) {
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                activePositionSize: null,
+                activePositionIsLong: null,
+                activePositionEntry: null,
+                activePositionTxHash: null,
+              }
+            })
+          }
+
+          return {
+            success: true,
+            txHash: result.transactionHash,
+            volumeGenerated: positionValueUSD,
+            direction: closeIsLong ? 'long' : 'short',
+            size: position.size,
+            entryPrice: position.entryPrice,
+            exitPrice: currentPrice,
+            pnl: pnlUSD,
+          }
+        } else {
+          // IOC close didn't fill - try TWAP
+          console.log(`⚠️ [IOC] Close didn't fill, falling back to TWAP close...`)
+          return await this.closePositionWithTwap(position)
+        }
+      } else {
+        console.error(`❌ [IOC] Close failed:`, result.error)
+        return await this.closePositionWithTwap(position)
+      }
+    } catch (error) {
+      console.error('❌ [IOC] Force close failed:', error)
+      return await this.closePositionWithTwap(position)
+    }
+  }
+
+  /**
+   * Close position with TWAP (fallback when IOC doesn't work)
+   */
+  private async closePositionWithTwap(
+    position: { size: number; isLong: boolean; entryPrice: number }
+  ): Promise<OrderResult> {
+    console.log(`\n📝 [TWAP] Closing position with TWAP fallback...`)
+
+    const closeDirection = !position.isLong
+    const currentPrice = await this.getCurrentMarketPrice()
+    const sizeDecimals = this.getMarketSizeDecimals()
+
+    const transaction = await this.aptos.transaction.build.simple({
+      sender: this.botAccount.accountAddress,
+      data: {
+        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        typeArguments: [],
+        functionArguments: [
+          this.config.userSubaccount,
+          this.config.market,
+          position.size.toString(),
+          closeDirection,
+          true,  // reduce_only
+          60,    // min duration
+          120,   // max duration
+          undefined,
+          undefined,
+        ],
+      },
+    })
+
+    const committedTxn = await this.aptos.signAndSubmitTransaction({
+      signer: this.botAccount,
+      transaction,
+    })
+
+    await this.aptos.waitForTransaction({ transactionHash: committedTxn.hash })
+
+    console.log(`✅ [TWAP] Close order submitted: ${committedTxn.hash.slice(0, 20)}...`)
+
+    // Track TWAP time for cooldown
+    const { prisma } = await import('./prisma')
+    const botInstance = await prisma.botInstance.findUnique({
+      where: { userWalletAddress: this.config.userWalletAddress }
+    })
+    if (botInstance) {
+      await prisma.botInstance.update({
+        where: { id: botInstance.id },
+        data: { lastTwapOrderTime: new Date() }
+      })
+    }
+
+    // Volume will be counted when TWAP fills
+    const positionValueUSD = (position.size / Math.pow(10, sizeDecimals)) * currentPrice
+
+    return {
+      success: true,
+      txHash: committedTxn.hash,
+      volumeGenerated: positionValueUSD,
+      direction: closeDirection ? 'short' : 'long',
+      size: position.size,
+      entryPrice: position.entryPrice,
+    }
+  }
+
+  /**
+   * TWAP fallback for opening position when IOC doesn't fill
+   */
+  private async placeHighRiskTwapFallback(
+    isLong: boolean,
+    size: number,
+    entryPrice: number
+  ): Promise<OrderResult> {
+    console.log(`\n📝 [TWAP] Opening position with TWAP fallback...`)
+
+    const transaction = await this.aptos.transaction.build.simple({
+      sender: this.botAccount.accountAddress,
+      data: {
+        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        typeArguments: [],
+        functionArguments: [
+          this.config.userSubaccount,
+          this.config.market,
+          size.toString(),
+          isLong,
+          false, // reduce_only
+          60,    // min duration
+          120,   // max duration
+          undefined,
+          undefined,
+        ],
+      },
+    })
+
+    const committedTxn = await this.aptos.signAndSubmitTransaction({
+      signer: this.botAccount,
+      transaction,
+    })
+
+    await this.aptos.waitForTransaction({ transactionHash: committedTxn.hash })
+
+    console.log(`✅ [TWAP] Order submitted: ${committedTxn.hash.slice(0, 20)}...`)
+
+    // Update DB with TWAP tracking
+    const { prisma } = await import('./prisma')
+    const botInstance = await prisma.botInstance.findUnique({
+      where: { userWalletAddress: this.config.userWalletAddress }
+    })
+    if (botInstance) {
+      await prisma.botInstance.update({
+        where: { id: botInstance.id },
+        data: {
+          activePositionSize: size,
+          activePositionIsLong: isLong,
+          activePositionEntry: entryPrice,
+          activePositionTxHash: committedTxn.hash,
+          lastTwapOrderTime: new Date(),
+        }
+      })
+    }
+
+    return {
+      success: true,
+      txHash: committedTxn.hash,
+      volumeGenerated: 0, // Count on close
+      direction: isLong ? 'long' : 'short',
+      size: size,
+      entryPrice: entryPrice,
+    }
+  }
+
+  /**
+   * HIGH RISK HFT STRATEGY (LEGACY - TWAP based)
    *
    * Uses IOC (Immediate Or Cancel) limit orders for INSTANT execution:
    * 1. Opens position with IOC order (fills in ~1 second)
@@ -995,6 +1746,16 @@ export class VolumeBotEngine {
               activePositionEntry: onChainPosition.entryPrice,
             }
           })
+
+          // NEW: Place TP/SL orders for the position using SDK
+          // This provides automatic on-chain exit triggers
+          console.log(`📊 [SDK] Attempting to place TP/SL for new position...`)
+          await this.cancelTpSlForPosition()  // Cancel any existing TP/SL first (max 10 limit)
+          await this.placeTpSlForPosition(
+            onChainPosition.entryPrice,
+            onChainPosition.size,
+            onChainPosition.isLong
+          )
         }
       }
 
@@ -1659,7 +2420,8 @@ export class VolumeBotEngine {
         break
 
       case 'high_risk':
-        result = await this.placeHighRiskOrder(orderSize, isLong)
+        // Use new SDK IOC-based strategy for fast entry/exit
+        result = await this.placeHighRiskOrderWithIOC(isLong)
         break
 
       case 'tx_spammer':
@@ -1685,10 +2447,10 @@ export class VolumeBotEngine {
       pnl: result.pnl,
       positionHeldMs: result.positionHeldMs,
     }
-    // Skip recording "waiting" status orders - these are just monitoring checks
-    // Skip non-trade results (monitoring/cooldown states)
-    if (result.txHash === 'waiting' || result.txHash === 'cooldown') {
-      console.log(`⏳ ${result.txHash === 'waiting' ? 'Monitoring position' : 'TWAP cooldown'}, not recording as trade`)
+    // Skip recording non-trade results (monitoring/cooldown states)
+    // These are status checks, not actual trades
+    if (result.txHash === 'waiting' || result.txHash === 'cooldown' || result.txHash === 'monitoring') {
+      console.log(`⏳ ${result.txHash === 'monitoring' ? 'Monitoring position (TP/SL active)' : result.txHash === 'waiting' ? 'Waiting for target' : 'TWAP cooldown'}, not recording as trade`)
       return
     }
 
@@ -1914,6 +2676,16 @@ export class VolumeBotEngine {
     if (this.loopInterval) {
       clearInterval(this.loopInterval)
       this.loopInterval = null
+    }
+
+    // Cancel all active TWAPs and TP/SL orders via SDK
+    try {
+      console.log('🧹 [SDK] Cleaning up active orders...')
+      await this.cancelAllActiveTwapsSDK()
+      await this.cancelTpSlForPosition()
+      console.log('✅ [SDK] Order cleanup complete')
+    } catch (error) {
+      console.warn('⚠️ [SDK] Order cleanup failed (non-critical):', error)
     }
 
     // Update database to mark bot as stopped

@@ -2,8 +2,34 @@ import { NextRequest, NextResponse } from 'next/server'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
+import { getAllMarketAddresses } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
+
+/**
+ * Resolve market address from SDK (survives testnet resets)
+ * Falls back to provided address if SDK fails
+ */
+async function resolveMarketAddress(marketName: string, fallbackAddress: string): Promise<string> {
+  try {
+    console.log(`🔍 [SDK] Resolving address for ${marketName}...`)
+    const markets = await getAllMarketAddresses()
+    const market = markets.find((m) => m.name === marketName)
+
+    if (market?.address) {
+      if (market.address.toLowerCase() !== fallbackAddress.toLowerCase()) {
+        console.log(`⚠️  [SDK] Address changed for ${marketName}!`)
+        console.log(`   Old: ${fallbackAddress.slice(0, 20)}...`)
+        console.log(`   New: ${market.address.slice(0, 20)}...`)
+      }
+      console.log(`✅ [SDK] Using address: ${market.address.slice(0, 20)}...`)
+      return market.address
+    }
+  } catch (error) {
+    console.warn(`⚠️  [SDK] Failed to resolve ${marketName}, using fallback:`, error)
+  }
+  return fallbackAddress
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,10 +87,13 @@ export async function POST(request: NextRequest) {
       botManager.deleteBot(userWalletAddress)
     }
 
+    // CRITICAL: Resolve market address from SDK (survives testnet resets!)
+    const resolvedMarket = await resolveMarketAddress(marketName, market)
+
     // Generate a new session ID for this bot run
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
-    // Create or update bot in database
+    // Create or update bot in database (with resolved market address)
     const botInstance = await prisma.botInstance.upsert({
       where: { userWalletAddress },
       create: {
@@ -74,7 +103,7 @@ export async function POST(request: NextRequest) {
         volumeTargetUSDC,
         bias,
         strategy,
-        market,
+        market: resolvedMarket,
         marketName,
         isRunning: true,
         sessionId,
@@ -85,7 +114,7 @@ export async function POST(request: NextRequest) {
         volumeTargetUSDC,
         bias,
         strategy,
-        market,
+        market: resolvedMarket,
         marketName,
         isRunning: true,
         cumulativeVolume: 0,
@@ -97,7 +126,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Create and start bot engine
+    // Create and start bot engine (using resolved market address)
     const config: BotConfig = {
       userWalletAddress,
       userSubaccount,
@@ -105,7 +134,7 @@ export async function POST(request: NextRequest) {
       volumeTargetUSDC,
       bias,
       strategy,
-      market,
+      market: resolvedMarket,
       marketName,
     }
 

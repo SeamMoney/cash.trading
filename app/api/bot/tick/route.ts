@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
+import { getAllMarketAddresses } from '@/lib/decibel-sdk'
 
 // Market configs for size/price decimals
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -122,6 +123,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Resolve market address from SDK (survives testnet resets)
+    let resolvedMarket = bot.market
+    try {
+      const markets = await getAllMarketAddresses()
+      const sdkMarket = markets.find((m) => m.name === bot.marketName)
+      if (sdkMarket?.address) {
+        if (sdkMarket.address.toLowerCase() !== bot.market.toLowerCase()) {
+          console.log(`⚠️  [SDK] Market address changed! Updating...`)
+          console.log(`   Old: ${bot.market.slice(0, 20)}...`)
+          console.log(`   New: ${sdkMarket.address.slice(0, 20)}...`)
+          // Update database with new address
+          await prisma.botInstance.update({
+            where: { id: bot.id },
+            data: { market: sdkMarket.address },
+          })
+        }
+        resolvedMarket = sdkMarket.address
+      }
+    } catch (error) {
+      console.warn('⚠️  [SDK] Address resolution failed, using stored address:', error)
+    }
+
     // Execute trade
     const config: BotConfig = {
       userWalletAddress: bot.userWalletAddress,
@@ -130,7 +153,7 @@ export async function POST(request: NextRequest) {
       volumeTargetUSDC: bot.volumeTargetUSDC,
       bias: bot.bias as 'long' | 'short' | 'neutral',
       strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk',
-      market: bot.market,
+      market: resolvedMarket,
       marketName: bot.marketName,
     }
 

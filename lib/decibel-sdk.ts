@@ -18,6 +18,9 @@ import { Account, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 let readDex: DecibelReadDex | null = null;
 let writeDex: DecibelWriteDex | null = null;
 
+// Get API key - try APTOS_NODE_API_KEY first, fall back to GEOMI_API_KEY
+const getNodeApiKey = () => process.env.APTOS_NODE_API_KEY || process.env.GEOMI_API_KEY;
+
 /**
  * Get the DecibelReadDex singleton instance
  * Used for: markets, prices, account overview, positions, orders
@@ -25,7 +28,7 @@ let writeDex: DecibelWriteDex | null = null;
 export function getReadDex(): DecibelReadDex {
   if (!readDex) {
     readDex = new DecibelReadDex(TESTNET_CONFIG, {
-      nodeApiKey: process.env.APTOS_NODE_API_KEY,
+      nodeApiKey: getNodeApiKey(),
       onWsError: (error) => {
         console.error("[SDK] WebSocket error:", error);
       },
@@ -61,7 +64,7 @@ export function getWriteDex(): DecibelWriteDex {
     // noFeePayer: true because fee payer service had issues
     // skipSimulate: true for faster transactions
     writeDex = new DecibelWriteDex(TESTNET_CONFIG, account, {
-      nodeApiKey: process.env.APTOS_NODE_API_KEY,
+      nodeApiKey: getNodeApiKey(),
       skipSimulate: true,
       noFeePayer: true,
     });
@@ -84,7 +87,7 @@ export function getWriteDexForAccount(privateKeyHex: string): DecibelWriteDex {
   const account = Account.fromPrivateKey({ privateKey });
 
   return new DecibelWriteDex(TESTNET_CONFIG, account, {
-    nodeApiKey: process.env.APTOS_NODE_API_KEY,
+    nodeApiKey: getNodeApiKey(),
     skipSimulate: true,
     noFeePayer: true,
   });

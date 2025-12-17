@@ -155,27 +155,37 @@ async function parseTransactionFill(
   }
 }
 
-const MARKETS = {
-  'BTC/USD': '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
-  'APT/USD': '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2',
-  'WLFI/USD': '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2',
-  // TODO: Find real ETH/USD market address on Decibel testnet
+// Market addresses (from SDK - TESTNET - updated Dec 16, 2025 after reset)
+const MARKETS: Record<string, string> = {
+  'BTC/USD': '0xdb8c5e968efa1b4dcbb4aaa7e4389358768d9b26bd126d5fe1a33e0aa076c380',
+  'ETH/USD': '0xd17355e1ac776bc91aa454c18c5dde81054a6ba6a4278d5296ec11f1cba4a274',
+  'SOL/USD': '0xc0a85e3b28244046399e74b934cc41f1eea8b315f412e985b1b26e3d6f617e97',
+  'APT/USD': '0x51657ded71c9b4edc74b2877f0fc3aa0c99f28ed12f6a18ecf9e1aeadb0f0463',
+  'XRP/USD': '0xd9973a5e626f529a4dde41ba20e76843ac508446195603184278df69702dfa28',
+  'LINK/USD': '0xbe7bace32193a55b357ed6a778813cb97879443aab7eee74f7a8924e42c15f01',
+  'AAVE/USD': '0x499a1b99be437b42a3e65838075dc0c3319b4bf4146fd8bbc5f1b441623c1a8d',
+  'ENA/USD': '0x65d5a08b4682197dd445681feb74b1c4b920d9623729089a7592ccc918b72c86',
+  'HYPE/USD': '0x7257fa2a4046358792b2cd07c386c62598806f2975ec4e02af9c0818fc66164c',
+  'WLFI/USD': '0xd7746e5f976b3e585ff382e42c9fa1dc1822b9c2b16e41e768fb30f3b1f542e4',
 }
 
-// Market configuration from on-chain PerpMarketConfig
-// ticker_size: minimum price increment (prices must be multiples of this)
-// lot_size: minimum size increment (sizes must be multiples of this)
-// min_size: minimum order size
-// pxDecimals: price decimals - verified from on-chain oracle_px values
-//   BTC testnet: oracle_px=87001041693 → $87,001 → 6 decimals
-//   APT: oracle_px=12859498 → $12.86 → 6 decimals
-// szDecimals: size decimals (BTC=8 for satoshis, APT=4 based on sz_precision)
+// Market configuration from SDK (TESTNET - updated Dec 16, 2025 after reset)
+// tickerSize: minimum price increment (from SDK tick_size)
+// lotSize: minimum size increment
+// minSize: minimum order size
+// pxDecimals: price decimals (all markets use 6)
+// szDecimals: size decimals (from SDK sz_decimals)
 const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
   'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
-  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
-  'SOL/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
   'ETH/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 7 },
+  'SOL/USD': { tickerSize: 1000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
+  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'XRP/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'LINK/USD': { tickerSize: 100n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 5 },
+  'AAVE/USD': { tickerSize: 1000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
+  'ENA/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
+  'HYPE/USD': { tickerSize: 100n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 5 },
+  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
 }
 
 export class VolumeBotEngine {

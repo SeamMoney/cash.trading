@@ -27,6 +27,12 @@
 - Automatic fallback to TWAP if IOC doesn't fill
 - Force close with IOC when targets hit
 
+### Cloud Mode (Browser-Independent)
+- Vercel Cron runs `/api/cron/bot-tick` every minute
+- Bot state persisted to database
+- UI shows cloud status indicator (green = cloud, yellow = browser-only)
+- TP/SL triggers on-chain automatically (no polling needed)
+
 ### Backtesting Infrastructure
 - lib/backtest.ts - Simulation engine
 - app/api/backtest/route.ts - API endpoint

@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider"
 import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
+import { CloudStatusIndicator } from "./cloud-status-indicator"
 
 type Bias = "long" | "short" | "neutral"
 type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer"
@@ -303,6 +304,9 @@ export function ServerBotConfig() {
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
+      {/* Cloud Status Indicator */}
+      <CloudStatusIndicator />
+
       {/* Bot Status Monitor */}
       {connected && account && (
         <BotStatusMonitor
@@ -759,11 +763,11 @@ export function ServerBotConfig() {
             <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
             <h4 className="font-mono text-xs uppercase tracking-widest text-primary mb-3">How it works:</h4>
             <ul className="text-xs text-zinc-500 space-y-1 font-mono">
-              <li>• Bot runs on the server (keeps running even if you close the tab)</li>
-              <li>• Places TWAP orders every 10 minutes</li>
+              <li>• Cloud mode: Bot runs every minute via Vercel Cron (browser can be closed)</li>
+              <li>• High Risk strategy: IOC orders with automatic TP/SL on-chain</li>
               <li>• Uses delegated permissions (you approved this once)</li>
               <li>• Alternates long/short for neutral bias</li>
-              <li>• Real-time status tracking via Decibel API</li>
+              <li>• TP/SL triggers automatically on blockchain - no polling needed</li>
             </ul>
           </div>
         </div>

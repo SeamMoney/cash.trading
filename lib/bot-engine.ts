@@ -1427,7 +1427,7 @@ export class VolumeBotEngine {
     const PROFIT_TARGET_PCT = 0.005    // 0.5% price move → 20% at 40x leverage
     const STOP_LOSS_PCT = 0.003        // 0.3% price move → 12% at 40x leverage
     const CAPITAL_USAGE_PCT = 0.25     // Use 25% of capital (conservative)
-    const USE_TWAP_FALLBACK = false    // NO TWAP fallback - we want instant execution only
+    const USE_TWAP_FALLBACK = true     // Enable TWAP fallback when IOC doesn't fill (testnet has no liquidity)
 
     try {
       const { prisma } = await import('./prisma')
@@ -1738,8 +1738,10 @@ export class VolumeBotEngine {
 
       // Place IOC order with direct Aptos call (SDK placeOrder is broken!)
       // Use place_order_to_subaccount with time_in_force=1 (IOC)
+      // NOTE: Do NOT attach TP/SL here - the IOC slippage price makes TP/SL invalid
+      // We'll add TP/SL after confirming the fill with actual entry price
       try {
-        console.log(`📝 [IOC] Placing direct Aptos order...`)
+        console.log(`📝 [IOC] Placing direct Aptos order (without TP/SL)...`)
 
         const transaction = await this.aptos.transaction.build.simple({
           sender: this.botAccount.accountAddress,
@@ -1757,8 +1759,8 @@ export class VolumeBotEngine {
               undefined,                      // client_order_id
               undefined,                      // conditional_order
               undefined,                      // trigger_price
-              tpPriceChain.toString(),        // take_profit_px
-              slPriceChain.toString(),        // stop_loss_px
+              undefined,                      // take_profit_px - ADD AFTER FILL
+              undefined,                      // stop_loss_px - ADD AFTER FILL
               undefined,                      // reduce_only
               undefined,                      // builder_address
               undefined,                      // max_builder_fee
@@ -1799,6 +1801,20 @@ export class VolumeBotEngine {
                 activePositionTxHash: committedTxn.hash,
               }
             })
+
+            // NOW place TP/SL using actual entry price (not IOC slippage price)
+            try {
+              console.log(`📊 [IOC] Placing TP/SL for position at actual entry $${newPosition.entryPrice.toFixed(2)}...`)
+              await this.placeTpSlForPosition(
+                newPosition.entryPrice,
+                newPosition.size,
+                isLong
+              )
+              console.log(`✅ [IOC] TP/SL orders placed!`)
+            } catch (tpslError) {
+              console.warn(`⚠️ [IOC] Failed to place TP/SL:`, tpslError)
+              // Continue - TP/SL will be placed on next tick
+            }
 
             // Position opened - don't count volume yet (count on close)
             return {

@@ -4,14 +4,16 @@ import { useState } from "react"
 import { useWallet, WalletName } from "@aptos-labs/wallet-adapter-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User } from "lucide-react"
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User, Plus, Check } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 export function WalletButton() {
   const { connected, account, disconnect, wallets, connect } = useWallet()
-  const { balance, aptBalance, subaccount, allSubaccounts, selectedSubaccountType, loading } = useWalletBalance()
+  const { balance, aptBalance, subaccount, allSubaccounts, selectedSubaccountType, setCompetitionSubaccount, loading, refetch } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
+  const [showAddCompetition, setShowAddCompetition] = useState(false)
+  const [competitionInput, setCompetitionInput] = useState('')
 
   const copyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr)
@@ -137,6 +139,68 @@ export function WalletButton() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Add Competition Subaccount */}
+              {!allSubaccounts.find(s => s.type === 'competition') && (
+                <div className="space-y-2">
+                  {!showAddCompetition ? (
+                    <button
+                      onClick={() => setShowAddCompetition(true)}
+                      className="w-full p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg hover:border-yellow-500/50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Trophy className="w-4 h-4 text-yellow-500" />
+                      <span className="text-sm text-yellow-500 font-medium">Add Competition Subaccount</span>
+                      <Plus className="w-4 h-4 text-yellow-500" />
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-black/40 border border-yellow-500/30 rounded-lg space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-yellow-500" />
+                        <span className="text-xs text-yellow-500 font-medium uppercase tracking-wide">Competition Subaccount Address</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={competitionInput}
+                        onChange={(e) => setCompetitionInput(e.target.value)}
+                        placeholder="0x..."
+                        className="w-full p-2 bg-black/60 border border-white/10 rounded text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-yellow-500/50"
+                      />
+                      <p className="text-xs text-zinc-500">
+                        Get this from Decibel&apos;s trading competition page (your competition subaccount address)
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => {
+                            if (competitionInput.startsWith('0x') && competitionInput.length >= 60) {
+                              setCompetitionSubaccount(competitionInput)
+                              setShowAddCompetition(false)
+                              setCompetitionInput('')
+                              refetch()
+                            }
+                          }}
+                          disabled={!competitionInput.startsWith('0x') || competitionInput.length < 60}
+                          className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-medium"
+                          size="sm"
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setShowAddCompetition(false)
+                            setCompetitionInput('')
+                          }}
+                          variant="outline"
+                          className="border-white/10"
+                          size="sm"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

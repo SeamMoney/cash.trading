@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
@@ -17,10 +17,13 @@ export interface WalletBalanceState {
   allSubaccounts: SubaccountInfo[]
   selectedSubaccountType: 'primary' | 'competition'
   setSelectedSubaccountType: (type: 'primary' | 'competition') => void
+  setCompetitionSubaccount: (address: string) => void
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
 }
+
+const COMPETITION_SUBACCOUNT_KEY = 'decibrrr_competition_subaccount'
 
 export function useWalletBalance(): WalletBalanceState {
   const { account, connected } = useWallet()
@@ -29,8 +32,31 @@ export function useWalletBalance(): WalletBalanceState {
   const [subaccount, setSubaccount] = useState<string | null>(null)
   const [allSubaccounts, setAllSubaccounts] = useState<SubaccountInfo[]>([])
   const [selectedSubaccountType, setSelectedSubaccountType] = useState<'primary' | 'competition'>('competition')
+  const [competitionSubaccountAddr, setCompetitionSubaccountAddr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Load competition subaccount from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && account) {
+      const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
+      const saved = localStorage.getItem(key)
+      if (saved) {
+        setCompetitionSubaccountAddr(saved)
+        console.log('📦 Loaded competition subaccount from localStorage:', saved.slice(0, 20) + '...')
+      }
+    }
+  }, [account])
+
+  // Function to set and persist competition subaccount
+  const setCompetitionSubaccount = useCallback((address: string) => {
+    if (typeof window !== 'undefined' && account) {
+      const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
+      localStorage.setItem(key, address)
+      setCompetitionSubaccountAddr(address)
+      console.log('💾 Saved competition subaccount:', address.slice(0, 20) + '...')
+    }
+  }, [account])
 
   const fetchMarginForSubaccount = async (subaccountAddr: string): Promise<number | null> => {
     const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
@@ -125,29 +151,21 @@ export function useWalletBalance(): WalletBalanceState {
         console.log("📦 Primary subaccount:", primaryAddr, `($${primaryBalance?.toFixed(2) || '0'})`)
       }
 
-      // Get competition subaccount (uses seed "trading_competition")
-      const competitionResponse = await fetch(`${APTOS_NODE}/view`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts::subaccount_with_seed`,
-          type_arguments: [],
-          arguments: [walletAddress, "trading_competition"],
-        }),
-      })
-
-      if (competitionResponse.ok) {
-        const competitionData = await competitionResponse.json()
-        const competitionAddr = competitionData[0] as string
-        // Check if competition subaccount exists (not zero address)
-        if (competitionAddr && competitionAddr !== "0x0" && !competitionAddr.startsWith("0x00000000")) {
-          const competitionBalance = await fetchMarginForSubaccount(competitionAddr)
-          subaccounts.push({
-            address: competitionAddr,
-            type: 'competition',
-            balance: competitionBalance,
-          })
-          console.log("🏆 Competition subaccount:", competitionAddr, `($${competitionBalance?.toFixed(2) || '0'})`)
+      // Get competition subaccount from localStorage (if saved)
+      if (competitionSubaccountAddr) {
+        try {
+          // Verify the competition subaccount exists on-chain
+          const competitionBalance = await fetchMarginForSubaccount(competitionSubaccountAddr)
+          if (competitionBalance !== null) {
+            subaccounts.push({
+              address: competitionSubaccountAddr,
+              type: 'competition',
+              balance: competitionBalance,
+            })
+            console.log("🏆 Competition subaccount:", competitionSubaccountAddr.slice(0, 20) + '...', `($${competitionBalance?.toFixed(2) || '0'})`)
+          }
+        } catch {
+          console.log("⚠️ Competition subaccount not found on-chain")
         }
       }
 
@@ -188,7 +206,7 @@ export function useWalletBalance(): WalletBalanceState {
 
   useEffect(() => {
     fetchBalance()
-  }, [connected, account])
+  }, [connected, account, competitionSubaccountAddr])
 
   return {
     balance,
@@ -197,6 +215,7 @@ export function useWalletBalance(): WalletBalanceState {
     allSubaccounts,
     selectedSubaccountType,
     setSelectedSubaccountType,
+    setCompetitionSubaccount,
     loading,
     error,
     refetch: fetchBalance,

@@ -1368,6 +1368,25 @@ export class VolumeBotEngine {
       }
 
       // ═══════════════════════════════════════════════════════════════════
+      // CHECK: Is there a pending TWAP that hasn't filled yet?
+      // ═══════════════════════════════════════════════════════════════════
+      const TWAP_COOLDOWN_MS = 3 * 60 * 1000 // 3 minutes for TWAP to fill
+      if (botInstance.lastTwapOrderTime) {
+        const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
+        if (timeSinceTwap < TWAP_COOLDOWN_MS) {
+          const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
+          console.log(`⏳ [IOC] TWAP cooldown: waiting ${waitSecs}s for previous TWAP to fill...`)
+          return {
+            success: true,
+            txHash: 'cooldown',
+            volumeGenerated: 0,
+            direction: isLong ? 'long' : 'short',
+            size: 0,
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
       // SCENARIO: No position - open new position with IOC + TP/SL
       // ═══════════════════════════════════════════════════════════════════
       console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)

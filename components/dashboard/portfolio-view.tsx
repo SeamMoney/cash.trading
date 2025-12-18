@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { TrendingDown, TrendingUp, RefreshCw, Loader2 } from "lucide-react"
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar } from "recharts"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 interface PortfolioData {
   balance: {
@@ -36,29 +37,10 @@ interface PortfolioData {
 
 export function PortfolioView() {
   const { account, connected } = useWallet()
+  const { subaccount, selectedSubaccountType } = useWalletBalance()
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [subaccount, setSubaccount] = useState<string | null>(null)
-
-  // Fetch subaccount from bot status
-  useEffect(() => {
-    async function fetchSubaccount() {
-      if (!account?.address) return
-
-      try {
-        const res = await fetch(`/api/bot/status?userWalletAddress=${account.address}`)
-        const data = await res.json()
-        if (data.config?.userSubaccount) {
-          setSubaccount(data.config.userSubaccount)
-        }
-      } catch (err) {
-        console.error('Error fetching subaccount:', err)
-      }
-    }
-
-    fetchSubaccount()
-  }, [account?.address])
 
   // Fetch portfolio data
   const fetchPortfolio = async () => {

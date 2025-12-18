@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { DECIBEL_PACKAGE, MARKETS } from '@/lib/decibel-client'
 
 export const runtime = 'nodejs'
 
 const APTOS_NODE = 'https://api.testnet.aptoslabs.com/v1'
-const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
-// Market address to name mapping
-const MARKET_NAMES: Record<string, string> = {
-  '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e': 'BTC/USD',
-  '0x5d4a373896cc46ce5bd27f795587c1d682e7f57a3de6149d19cc3f3cb6c6800d': 'ETH/USD',
-  '0xef5eee5ae8ba5726efcd8af6ee89dffe2ca08d20631fff3bafe98d89137a58c4': 'SOL/USD',
-  '0xfaade75b8302ef13835f40c66ee812c3c0c8218549c42c0aebe24d79c27498d2': 'APT/USD',
-  '0x25d0f38fb7a4210def4e62d41aa8e616172ea37692605961df63a1c773661c2': 'WLFI/USD',
-}
+// Testnet reset date - filter out all data before this
+// Dec 17, 2025 at 00:00 UTC (when Decibel testnet was reset)
+const TESTNET_RESET_DATE = new Date('2025-12-17T00:00:00Z')
+
+// Market address to name mapping (updated Dec 17, 2025 after reset)
+const MARKET_NAMES: Record<string, string> = Object.entries(MARKETS).reduce(
+  (acc, [name, config]) => {
+    acc[config.address.toLowerCase()] = name
+    return acc
+  },
+  {} as Record<string, string>
+)
 
 // Price decimals for each market - all use 6 decimals on Decibel testnet
 // Verified from on-chain oracle_px values (e.g., BTC: 87001041693 → $87,001)
@@ -141,6 +145,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')
+    const querySubaccount = searchParams.get('userSubaccount')
 
     if (!userWalletAddress) {
       return NextResponse.json(
@@ -154,11 +159,14 @@ export async function GET(request: NextRequest) {
       where: { userWalletAddress },
     })
 
+    // Use the subaccount from query param if provided, otherwise fall back to bot instance
+    const activeSubaccount = querySubaccount || botInstance?.userSubaccount
+
     // Try to fetch real-time available margin from blockchain
     // Falls back to capitalUSDC from database if API fails
     let usdcBalance = botInstance?.capitalUSDC || 0
 
-    if (botInstance?.userSubaccount) {
+    if (activeSubaccount) {
       try {
         const marginResponse = await fetch(`${APTOS_NODE}/view`, {
           method: 'POST',
@@ -166,7 +174,7 @@ export async function GET(request: NextRequest) {
           body: JSON.stringify({
             function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
             type_arguments: [],
-            arguments: [botInstance.userSubaccount],
+            arguments: [activeSubaccount],
           }),
         })
 
@@ -180,11 +188,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get ALL trade history for this user (across all sessions)
+    // Get trade history for this user (only after testnet reset)
     let botOrders: any[] = []
     if (botInstance) {
       const rawOrders = await prisma.orderHistory.findMany({
-        where: { botId: botInstance.id },
+        where: {
+          botId: botInstance.id,
+          // Filter out pre-reset data
+          timestamp: { gte: TESTNET_RESET_DATE },
+        },
         orderBy: { timestamp: 'desc' },
       })
       // Convert BigInt to Number for JSON serialization
@@ -199,11 +211,13 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    // Fetch on-chain trade history from Decibel
+    // Fetch on-chain trade history from Decibel (only post-reset)
     let onChainTrades: any[] = []
-    if (botInstance?.userSubaccount) {
+    if (activeSubaccount) {
       try {
-        onChainTrades = await fetchOnChainTrades(botInstance.userSubaccount)
+        const allTrades = await fetchOnChainTrades(activeSubaccount)
+        // Filter out pre-reset data
+        onChainTrades = allTrades.filter(t => new Date(t.timestamp) >= TESTNET_RESET_DATE)
       } catch (err) {
         console.warn('Could not fetch on-chain trades:', err)
       }
@@ -229,7 +243,7 @@ export async function GET(request: NextRequest) {
       success: true,
       balance: {
         usdc: usdcBalance,
-        accountAddress: botInstance?.userSubaccount || userWalletAddress,
+        accountAddress: activeSubaccount || userWalletAddress,
       },
       stats: {
         totalVolume: stats.totalVolume,

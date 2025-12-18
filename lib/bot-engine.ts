@@ -1309,6 +1309,58 @@ export class VolumeBotEngine {
       }
 
       // ═══════════════════════════════════════════════════════════════════
+      // CHECK: Did a position just get closed by on-chain TP/SL?
+      // ═══════════════════════════════════════════════════════════════════
+      if (botInstance.activePositionSize && botInstance.activePositionSize > 0) {
+        // DB says we have a position, but on-chain says we don't
+        // This means TP/SL triggered and closed the position!
+        console.log(`\n🎯 [IOC] Position was closed by on-chain TP/SL!`)
+        console.log(`   DB had: ${botInstance.activePositionSize} (${botInstance.activePositionIsLong ? 'LONG' : 'SHORT'})`)
+        console.log(`   Entry: $${botInstance.activePositionEntry?.toFixed(2)}`)
+
+        // Try to get the closing price from the market
+        const exitPrice = await this.getCurrentMarketPrice()
+        const entryPrice = botInstance.activePositionEntry || exitPrice
+        const posSize = botInstance.activePositionSize
+
+        // Calculate PNL
+        const pnlPct = botInstance.activePositionIsLong
+          ? (exitPrice - entryPrice) / entryPrice
+          : (entryPrice - exitPrice) / entryPrice
+        const notionalValue = posSize * entryPrice / Math.pow(10, this.getMarketSizeDecimals())
+        const pnlUsd = pnlPct * notionalValue
+
+        console.log(`   Exit: $${exitPrice.toFixed(2)}`)
+        console.log(`   PNL: ${(pnlPct * 100).toFixed(4)}% ($${pnlUsd.toFixed(2)})`)
+
+        // Record the close trade
+        const volumeGenerated = notionalValue * 2 // Round trip volume
+
+        // Clear the position from DB (don't update cumulativeVolume/ordersPlaced here - executeSingleTrade does that)
+        await prisma.botInstance.update({
+          where: { id: botInstance.id },
+          data: {
+            activePositionSize: null,
+            activePositionIsLong: null,
+            activePositionEntry: null,
+            activePositionTxHash: null,
+          }
+        })
+
+        // Return the close result - record this trade!
+        return {
+          success: true,
+          txHash: botInstance.activePositionTxHash || 'tp_sl_close',
+          volumeGenerated,
+          direction: botInstance.activePositionIsLong ? 'long' : 'short',
+          size: posSize,
+          entryPrice,
+          exitPrice,
+          pnl: pnlUsd,
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
       // SCENARIO: No position - open new position with IOC + TP/SL
       // ═══════════════════════════════════════════════════════════════════
       console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)

@@ -31,9 +31,13 @@ async function findCompetitionSubaccountFromHistory(walletAddress: string): Prom
   try {
     // Get recent transactions
     const response = await fetch(`${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=50`)
-    if (!response.ok) return null
+    if (!response.ok) {
+      console.warn('🔍 Failed to fetch tx history:', response.status)
+      return null
+    }
 
     const transactions = await response.json()
+    console.log(`🔍 Scanning ${transactions.length} transactions for competition subaccount...`)
 
     // Look for SubaccountCreatedEvent with is_primary: false
     for (const tx of transactions) {
@@ -42,8 +46,15 @@ async function findCompetitionSubaccountFromHistory(walletAddress: string): Prom
       for (const event of tx.events) {
         if (event.type?.includes('SubaccountCreatedEvent')) {
           const data = event.data
+          console.log('🔍 Found SubaccountCreatedEvent:', {
+            is_primary: data?.is_primary,
+            is_primary_type: typeof data?.is_primary,
+            subaccount: data?.subaccount?.slice(0, 20) + '...',
+          })
           // Check if this is a non-primary subaccount (competition)
-          if (data?.is_primary === false && data?.subaccount) {
+          // Handle both boolean and string representations from Aptos API
+          const isPrimary = data?.is_primary === true || data?.is_primary === 'true'
+          if (!isPrimary && data?.subaccount) {
             console.log('🔍 Auto-detected competition subaccount from tx history:', data.subaccount.slice(0, 20) + '...')
             return data.subaccount
           }
@@ -51,6 +62,7 @@ async function findCompetitionSubaccountFromHistory(walletAddress: string): Prom
       }
     }
 
+    console.log('🔍 No competition subaccount found in transaction history')
     return null
   } catch (err) {
     console.warn('Failed to scan transaction history:', err)

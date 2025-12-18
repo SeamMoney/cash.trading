@@ -36,10 +36,41 @@ export function ServerBotConfig() {
   const strategyDropdownRef = useRef<HTMLDivElement>(null)
 
   // Check delegation status when subaccount is available
+  // Uses localStorage cache to avoid showing delegation prompt on every reload
   useEffect(() => {
+    const DELEGATION_CACHE_KEY = 'decibrrr_delegation_status'
+
     const checkDelegation = async () => {
       if (!subaccount) return
 
+      // First, check localStorage cache
+      const cacheKey = `${DELEGATION_CACHE_KEY}_${subaccount}`
+      const cachedStatus = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null
+
+      if (cachedStatus === 'delegated') {
+        // Trust the cache, show as delegated immediately
+        setHasDelegation(true)
+        setCheckingDelegation(false)
+        console.log('📦 Loaded delegation status from cache: delegated')
+
+        // Verify in background (don't block UI)
+        fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (!data.hasDelegation) {
+              // Cache was wrong, update state and clear cache
+              console.log('⚠️ Cache was stale, delegation no longer valid')
+              setHasDelegation(false)
+              localStorage.removeItem(cacheKey)
+            }
+          })
+          .catch(() => {
+            // Network error, keep using cached value
+          })
+        return
+      }
+
+      // No cache, check blockchain
       setCheckingDelegation(true)
       try {
         const response = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}`)
@@ -47,6 +78,10 @@ export function ServerBotConfig() {
 
         if (data.hasDelegation) {
           setHasDelegation(true)
+          // Cache the successful delegation
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(cacheKey, 'delegated')
+          }
           console.log('✅ Bot operator already has delegation permissions')
         } else {
           setHasDelegation(false)
@@ -239,6 +274,13 @@ export function ServerBotConfig() {
 
       console.log("✅ Delegation transaction:", txResponse.hash)
       setHasDelegation(true)
+
+      // Cache delegation status in localStorage
+      if (typeof window !== 'undefined' && subaccount) {
+        const cacheKey = `decibrrr_delegation_status_${subaccount}`
+        localStorage.setItem(cacheKey, 'delegated')
+        console.log('💾 Cached delegation status for subaccount')
+      }
     } catch (err: any) {
       // Extract more detailed error message
       const errorMessage = err.message || err.toString() || "Failed to delegate permissions"

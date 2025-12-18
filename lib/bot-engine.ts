@@ -465,6 +465,7 @@ export class VolumeBotEngine {
     size: number
     entryPrice: number
     leverage: number
+    error?: boolean // Indicates if we couldn't check (API error, rate limit, etc.)
   }> {
     try {
       const resources = await this.aptos.getAccountResources({
@@ -521,19 +522,28 @@ export class VolumeBotEngine {
       }
     } catch (error) {
       console.error('Error fetching position:', error)
-      return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
+      // CRITICAL: Return error flag so we DON'T open a new position when API fails
+      return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1, error: true }
     }
   }
 
   /**
    * Get on-chain position (alias for getCurrentPosition for clarity)
+   * Returns null if no position, or { error: true } if API failed
    */
   private async getOnChainPosition(): Promise<{
     size: number
     isLong: boolean
     entryPrice: number
+    error?: boolean
   } | null> {
     const pos = await this.getCurrentPosition()
+
+    // If API error, return error flag so caller knows not to open new position
+    if (pos.error) {
+      return { size: 0, isLong: true, entryPrice: 0, error: true }
+    }
+
     if (!pos.hasPosition || pos.size === 0) {
       return null
     }
@@ -1369,6 +1379,43 @@ export class VolumeBotEngine {
       const onChainPosition = await this.getOnChainPosition()
 
       // ═══════════════════════════════════════════════════════════════════
+      // SAFETY CHECK: If API failed, DO NOT open new position
+      // Use DB state as backup to prevent duplicate positions
+      // ═══════════════════════════════════════════════════════════════════
+      if (onChainPosition?.error) {
+        console.log(`⚠️ [IOC] API error - cannot verify position state. Checking DB...`)
+
+        // If DB says we have a position, assume it exists
+        if (botInstance.activePositionSize && botInstance.activePositionSize > 0) {
+          console.log(`   DB shows position: ${botInstance.activePositionSize} - will monitor, not open new`)
+          return {
+            success: true,
+            txHash: 'api_error_monitoring',
+            volumeGenerated: 0,
+            direction: botInstance.activePositionIsLong ? 'long' : 'short',
+            size: botInstance.activePositionSize,
+          }
+        }
+
+        // If we placed an order in the last 60 seconds, assume position might exist
+        if (botInstance.lastOrderTime) {
+          const timeSinceLastOrder = Date.now() - new Date(botInstance.lastOrderTime).getTime()
+          if (timeSinceLastOrder < 60000) {
+            console.log(`   Last order was ${(timeSinceLastOrder / 1000).toFixed(0)}s ago - waiting for API...`)
+            return {
+              success: true,
+              txHash: 'waiting_for_api',
+              volumeGenerated: 0,
+              direction: isLong ? 'long' : 'short',
+              size: 0,
+            }
+          }
+        }
+
+        console.log(`   DB shows no position and no recent orders - safe to open`)
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
       // SCENARIO: Position exists - monitor for TP/SL or force close
       // ═══════════════════════════════════════════════════════════════════
       if (onChainPosition && onChainPosition.size > 0) {
@@ -1418,14 +1465,23 @@ export class VolumeBotEngine {
         console.log(`   Entry: $${onChainPosition.entryPrice.toFixed(2)}, Current: $${currentPrice.toFixed(2)}`)
         console.log(`   PnL: ${(pnlPct * 100).toFixed(4)}% (TP: +${(PROFIT_TARGET_PCT * 100).toFixed(3)}%, SL: -${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
 
-        // If PnL exceeds targets but position still open, TP/SL might have failed
-        // Try to close manually
+        // ═══════════════════════════════════════════════════════════════════
+        // MANUAL TP/SL CHECK - Don't rely on on-chain TP/SL (it's unreliable!)
+        // Close immediately when thresholds are hit
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Take profit at target
         if (pnlPct >= PROFIT_TARGET_PCT) {
-          console.log(`⚠️ [IOC] TP should have triggered! Attempting manual close...`)
+          console.log(`🎯 [IOC] TAKE PROFIT! PnL ${(pnlPct * 100).toFixed(3)}% >= target ${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`)
+          console.log(`   Force closing position NOW...`)
           return await this.forceClosePositionWithIOC(onChainPosition)
         }
-        if (pnlPct <= -STOP_LOSS_PCT) {
-          console.log(`⚠️ [IOC] SL should have triggered! Attempting manual close...`)
+
+        // Emergency stop loss - close at 80% of target to account for execution lag
+        const EMERGENCY_SL_PCT = STOP_LOSS_PCT * 0.8 // 0.24% instead of 0.3%
+        if (pnlPct <= -EMERGENCY_SL_PCT) {
+          console.log(`🛑 [IOC] STOP LOSS! PnL ${(pnlPct * 100).toFixed(3)}% <= emergency SL -${(EMERGENCY_SL_PCT * 100).toFixed(3)}%`)
+          console.log(`   Force closing position NOW to limit damage...`)
           return await this.forceClosePositionWithIOC(onChainPosition)
         }
 

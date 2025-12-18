@@ -4,13 +4,13 @@ import { useState } from "react"
 import { useWallet, WalletName } from "@aptos-labs/wallet-adapter-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User, Plus, Check, Loader2 } from "lucide-react"
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User, Loader2 } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
 export function WalletButton() {
   const { connected, account, disconnect, wallets, connect, signAndSubmitTransaction } = useWallet()
-  const { balance, aptBalance, subaccount, allSubaccounts, selectedSubaccountType, setCompetitionSubaccount, loading, refetch } = useWalletBalance()
+  const { balance, aptBalance, allSubaccounts, selectedSubaccountType, setCompetitionSubaccount, loading, refetch } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showAddCompetition, setShowAddCompetition] = useState(false)
@@ -34,11 +34,7 @@ export function WalletButton() {
         },
       })
       console.log('✅ Entered trading competition:', response.hash)
-
-      // Wait a moment for the tx to be indexed, then refetch
-      setTimeout(() => {
-        refetch()
-      }, 3000)
+      setTimeout(() => refetch(), 3000)
     } catch (err) {
       console.error('Failed to enter competition:', err)
     } finally {
@@ -48,7 +44,7 @@ export function WalletButton() {
 
   const formatAddress = (addr: string | { toString(): string }) => {
     const addrStr = typeof addr === 'string' ? addr : addr.toString()
-    return `${addrStr.slice(0, 6)}...${addrStr.slice(-5)}`
+    return `${addrStr.slice(0, 6)}...${addrStr.slice(-4)}`
   }
 
   if (connected && account) {
@@ -56,7 +52,7 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className={`flex items-center gap-2 sm:gap-3 px-3 py-2 border rounded-lg transition-colors ${
+          className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors ${
             selectedSubaccountType === 'competition'
               ? 'border-yellow-500/30 hover:border-yellow-500/50'
               : 'border-white/10 hover:border-primary/50'
@@ -70,9 +66,7 @@ export function WalletButton() {
           )}
           <span className="hidden sm:inline text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>
           {!loading && balance !== null && (
-            <span className={`text-lg sm:text-xl font-bold drop-shadow-[0_0_8px_rgba(255,246,0,0.5)] ${
-              selectedSubaccountType === 'competition' ? 'text-yellow-500' : 'text-primary'
-            }`}>
+            <span className={`text-lg font-bold ${selectedSubaccountType === 'competition' ? 'text-yellow-500' : 'text-primary'}`}>
               ${balance.toFixed(2)}
             </span>
           )}
@@ -80,87 +74,59 @@ export function WalletButton() {
         </button>
 
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
-          <DialogContent className="bg-zinc-900 border-white/10 max-w-[calc(100%-2rem)] sm:max-w-md max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-white text-lg sm:text-xl">Account Details</DialogTitle>
-              <DialogDescription className="text-zinc-400 text-sm">Your connected wallet information</DialogDescription>
+          <DialogContent className="bg-zinc-900 border-white/10 w-[calc(100vw-2rem)] max-w-sm p-4 overflow-hidden">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="text-white text-base">Account</DialogTitle>
+              <DialogDescription className="text-zinc-500 text-xs">Wallet info</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 mt-2 sm:mt-4">
-              {/* Main Wallet Address */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Wallet Address</label>
-                <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-black/40 border border-white/10 rounded-lg hover:border-white/20 transition-colors overflow-hidden">
-                  <span className="text-[10px] sm:text-xs font-mono text-white min-w-0 truncate">{account.address.toString()}</span>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => copyAddress(account.address.toString())}
-                      className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none"
-                      aria-label="Copy address"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
-                    </button>
-                    <a
-                      href={`https://explorer.aptoslabs.com/account/${account.address.toString()}?network=testnet`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none"
-                      aria-label="View on explorer"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
-                    </a>
-                  </div>
+            <div className="space-y-3">
+              {/* Wallet Address */}
+              <div>
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wide">Wallet</label>
+                <div className="mt-1 flex items-center gap-2 p-2 bg-black/40 border border-white/10 rounded">
+                  <code className="flex-1 text-[10px] text-white/80 overflow-hidden">{formatAddress(account.address)}</code>
+                  <button onClick={() => copyAddress(account.address.toString())} className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                    <Copy className="w-3 h-3 text-zinc-400" />
+                  </button>
+                  <a href={`https://explorer.aptoslabs.com/account/${account.address}?network=testnet`} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                    <ExternalLink className="w-3 h-3 text-zinc-400" />
+                  </a>
                 </div>
               </div>
 
               {/* Subaccounts */}
               {allSubaccounts.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
-                    Decibel Subaccounts ({allSubaccounts.length})
-                  </label>
-                  <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wide">Subaccounts ({allSubaccounts.length})</label>
+                  <div className="mt-1 space-y-1.5">
                     {allSubaccounts.map((sub) => (
                       <div
                         key={sub.address}
-                        className={`p-2.5 sm:p-3 bg-black/40 border rounded-lg transition-colors ${
+                        className={`p-2 rounded border ${
                           sub.type === selectedSubaccountType
-                            ? sub.type === 'competition'
-                              ? 'border-yellow-500/50 bg-yellow-500/5'
-                              : 'border-primary/50 bg-primary/5'
-                            : 'border-white/10 hover:border-white/20'
+                            ? sub.type === 'competition' ? 'bg-yellow-500/10 border-yellow-500/40' : 'bg-primary/10 border-primary/40'
+                            : 'bg-black/40 border-white/10'
                         }`}
                       >
-                        <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="flex items-center gap-1.5">
                           {sub.type === 'competition' ? (
-                            <Trophy className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                            <Trophy className="w-3 h-3 text-yellow-500 flex-shrink-0" />
                           ) : (
-                            <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                            <User className="w-3 h-3 text-primary flex-shrink-0" />
                           )}
-                          <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-wide ${
-                            sub.type === 'competition' ? 'text-yellow-500' : 'text-primary'
-                          }`}>
-                            {sub.type === 'competition' ? 'Competition' : 'Primary'}
+                          <span className={`text-[10px] font-bold uppercase ${sub.type === 'competition' ? 'text-yellow-500' : 'text-primary'}`}>
+                            {sub.type}
                           </span>
                           {sub.type === selectedSubaccountType && (
-                            <span className="text-[8px] sm:text-[10px] px-1 py-0.5 bg-white/10 text-zinc-400 rounded">
-                              ACTIVE
-                            </span>
+                            <span className="text-[8px] px-1 bg-white/10 text-zinc-400 rounded">ACTIVE</span>
                           )}
-                          <span className="ml-auto text-[10px] sm:text-xs text-zinc-400">
-                            ${sub.balance?.toFixed(2) || '0.00'}
-                          </span>
+                          <span className="ml-auto text-[10px] text-zinc-400">${sub.balance?.toFixed(2) || '0'}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 overflow-hidden">
-                          <span className="text-[10px] sm:text-xs font-mono text-white/70 min-w-0 truncate">
-                            {sub.address}
-                          </span>
-                          <button
-                            onClick={() => copyAddress(sub.address)}
-                            className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none flex-shrink-0"
-                            aria-label="Copy subaccount address"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
+                        <div className="mt-1 flex items-center gap-1">
+                          <code className="flex-1 text-[9px] text-white/60 overflow-hidden">{formatAddress(sub.address)}</code>
+                          <button onClick={() => copyAddress(sub.address)} className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                            <Copy className="w-2.5 h-2.5 text-zinc-500" />
                           </button>
                         </div>
                       </div>
@@ -169,47 +135,38 @@ export function WalletButton() {
                 </div>
               )}
 
-              {/* Enter Trading Competition */}
+              {/* Enter Competition */}
               {!allSubaccounts.find(s => s.type === 'competition') && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <button
                     onClick={handleEnterCompetition}
                     disabled={enteringCompetition}
-                    className="w-full p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded-lg hover:border-yellow-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full p-2.5 bg-yellow-500/20 border border-yellow-500/50 rounded flex items-center justify-center gap-2 hover:bg-yellow-500/30 disabled:opacity-50"
                   >
                     {enteringCompetition ? (
-                      <>
-                        <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
-                        <span className="text-sm text-yellow-500 font-medium">Entering...</span>
-                      </>
+                      <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
                     ) : (
-                      <>
-                        <Trophy className="w-4 h-4 text-yellow-500" />
-                        <span className="text-sm text-yellow-500 font-medium">Enter Trading Competition</span>
-                      </>
+                      <Trophy className="w-4 h-4 text-yellow-500" />
                     )}
+                    <span className="text-xs text-yellow-500 font-medium">
+                      {enteringCompetition ? 'Entering...' : 'Enter Competition'}
+                    </span>
                   </button>
-                  <p className="text-[10px] text-zinc-500 text-center">
-                    Get $10,000 virtual USDC to compete
-                  </p>
-                  {/* Manual entry fallback */}
+                  <p className="text-[9px] text-zinc-500 text-center">Get $10K virtual USDC</p>
                   {!showAddCompetition ? (
-                    <button
-                      onClick={() => setShowAddCompetition(true)}
-                      className="w-full text-[10px] text-zinc-500 hover:text-zinc-400 transition-colors"
-                    >
-                      Already entered? Add address manually
+                    <button onClick={() => setShowAddCompetition(true)} className="w-full text-[9px] text-zinc-600 hover:text-zinc-400">
+                      Already entered? Add manually
                     </button>
                   ) : (
-                    <div className="p-2 bg-black/40 border border-white/10 rounded-lg space-y-2">
+                    <div className="p-2 bg-black/40 border border-white/10 rounded space-y-2">
                       <input
                         type="text"
                         value={competitionInput}
                         onChange={(e) => setCompetitionInput(e.target.value)}
-                        placeholder="0x... (competition subaccount)"
-                        className="w-full p-2 bg-black/60 border border-white/10 rounded text-[10px] font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-yellow-500/50"
+                        placeholder="0x..."
+                        className="w-full p-1.5 bg-black/60 border border-white/10 rounded text-[10px] font-mono text-white"
                       />
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5">
                         <Button
                           onClick={() => {
                             if (competitionInput.startsWith('0x') && competitionInput.length >= 60) {
@@ -220,20 +177,11 @@ export function WalletButton() {
                             }
                           }}
                           disabled={!competitionInput.startsWith('0x') || competitionInput.length < 60}
-                          className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black text-xs"
-                          size="sm"
+                          className="flex-1 h-7 bg-yellow-500 hover:bg-yellow-600 text-black text-[10px]"
                         >
                           Save
                         </Button>
-                        <Button
-                          onClick={() => {
-                            setShowAddCompetition(false)
-                            setCompetitionInput('')
-                          }}
-                          variant="outline"
-                          className="border-white/10 text-xs"
-                          size="sm"
-                        >
+                        <Button onClick={() => { setShowAddCompetition(false); setCompetitionInput('') }} variant="outline" className="h-7 border-white/10 text-[10px]">
                           Cancel
                         </Button>
                       </div>
@@ -242,51 +190,26 @@ export function WalletButton() {
                 </div>
               )}
 
-              {/* USDC Balance */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Available Margin</label>
-                <div className="p-4 sm:p-5 bg-gradient-to-br from-black/60 to-black/40 border border-primary/30 rounded-lg shadow-lg shadow-primary/5">
-                  {loading ? (
-                    <div className="text-sm text-zinc-500">Loading...</div>
-                  ) : balance !== null ? (
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-2xl sm:text-3xl font-bold text-primary">${balance.toFixed(2)}</span>
-                      <span className="text-xs sm:text-sm text-zinc-400 font-medium">USDC</span>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-zinc-500">No balance found</div>
-                  )}
+              {/* Balances */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-black/40 border border-primary/30 rounded">
+                  <p className="text-[9px] text-zinc-500 uppercase">Margin</p>
+                  <p className="text-lg font-bold text-primary">${balance?.toFixed(2) || '0'}</p>
+                </div>
+                <div className="p-3 bg-black/40 border border-white/10 rounded">
+                  <p className="text-[9px] text-zinc-500 uppercase">APT</p>
+                  <p className="text-lg font-bold text-white">{aptBalance?.toFixed(2) || '0'}</p>
                 </div>
               </div>
 
-              {/* APT Balance */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Testnet APT</label>
-                <div className="p-4 sm:p-5 bg-gradient-to-br from-black/60 to-black/40 border border-white/10 rounded-lg">
-                  {loading ? (
-                    <div className="text-sm text-zinc-500">Loading...</div>
-                  ) : aptBalance !== null ? (
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-2xl sm:text-3xl font-bold text-white">{aptBalance.toFixed(4)}</span>
-                      <span className="text-xs sm:text-sm text-zinc-400 font-medium">APT</span>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-zinc-500">No APT found</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Disconnect Button */}
+              {/* Disconnect */}
               <Button
-                onClick={() => {
-                  disconnect()
-                  setShowAccountModal(false)
-                }}
+                onClick={() => { disconnect(); setShowAccountModal(false) }}
                 variant="outline"
-                className="w-full mt-2 border-red-500/20 text-red-500 hover:bg-red-500/10 hover:border-red-500/30 active:bg-red-500/20 focus:outline-none focus-visible:ring-0 transition-all"
+                className="w-full h-9 border-red-500/20 text-red-500 hover:bg-red-500/10 text-xs"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Disconnect Wallet
+                <LogOut className="w-3 h-3 mr-1.5" />
+                Disconnect
               </Button>
             </div>
           </DialogContent>
@@ -299,66 +222,46 @@ export function WalletButton() {
     <>
       <Button
         onClick={() => setShowWalletModal(true)}
-        className="bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_20px_rgba(255,246,0,0.3)] transition-all"
+        className="bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_20px_rgba(255,246,0,0.3)]"
       >
         <Wallet className="w-4 h-4 mr-2" />
-        Connect Wallet
+        Connect
       </Button>
 
       <Dialog open={showWalletModal} onOpenChange={setShowWalletModal}>
-        <DialogContent className="bg-zinc-900 border-white/10 max-w-[calc(100%-2rem)] sm:max-w-md">
+        <DialogContent className="bg-zinc-900 border-white/10 w-[calc(100vw-2rem)] max-w-sm p-4">
           <DialogHeader>
-            <DialogTitle className="text-white text-lg sm:text-xl">Connect Wallet</DialogTitle>
-            <DialogDescription className="text-zinc-400 text-sm">
-              Choose a wallet to connect to Decibrrr
-            </DialogDescription>
+            <DialogTitle className="text-white">Connect Wallet</DialogTitle>
+            <DialogDescription className="text-zinc-400 text-sm">Choose a wallet</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 mt-2 sm:mt-4">
-            {wallets?.filter((wallet) => wallet.readyState === "Installed" || wallet.readyState === "Loadable").length === 0 ? (
-              <div className="text-center py-6 sm:py-8 space-y-4">
+          <div className="space-y-2 mt-3">
+            {wallets?.filter((w) => w.readyState === "Installed" || w.readyState === "Loadable").length === 0 ? (
+              <div className="text-center py-6 space-y-3">
                 <p className="text-sm text-zinc-400">No Aptos wallets detected</p>
-                <a
-                  href="https://petra.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-black font-medium rounded-lg hover:bg-primary/90 active:bg-primary/80 transition-all focus:outline-none shadow-lg shadow-primary/20"
-                >
-                  Get Petra Wallet
-                  <ExternalLink className="w-4 h-4" />
+                <a href="https://petra.app" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-black font-medium rounded-lg">
+                  Get Petra Wallet <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
             ) : (
-              wallets
-                ?.filter((wallet) => wallet.readyState === "Installed" || wallet.readyState === "Loadable")
-                .map((wallet) => (
-                  <button
-                    key={wallet.name}
-                    onClick={async () => {
-                      try {
-                        await connect(wallet.name as WalletName)
-                        setShowWalletModal(false)
-                      } catch (error) {
-                        console.error("Failed to connect:", error)
-                      }
-                    }}
-                    className="flex items-center gap-3 p-4 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50 hover:bg-black/60 active:bg-black/80 transition-all group focus:outline-none"
-                  >
-                    {wallet.icon && (
-                      <img src={wallet.icon} alt={wallet.name} className="w-8 h-8 sm:w-10 sm:h-10 rounded flex-shrink-0" />
-                    )}
-                    <span className="text-sm sm:text-base font-medium text-white group-hover:text-primary transition-colors">
-                      {wallet.name}
-                    </span>
-                  </button>
-                ))
+              wallets?.filter((w) => w.readyState === "Installed" || w.readyState === "Loadable").map((wallet) => (
+                <button
+                  key={wallet.name}
+                  onClick={async () => {
+                    try {
+                      await connect(wallet.name as WalletName)
+                      setShowWalletModal(false)
+                    } catch (error) {
+                      console.error("Failed to connect:", error)
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 p-3 bg-black/40 border border-white/10 rounded-lg hover:border-primary/50"
+                >
+                  {wallet.icon && <img src={wallet.icon} alt={wallet.name} className="w-8 h-8 rounded" />}
+                  <span className="text-sm font-medium text-white">{wallet.name}</span>
+                </button>
+              ))
             )}
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-white/10">
-            <p className="text-xs text-zinc-500 text-center">
-              By connecting, you agree to our Terms of Service
-            </p>
           </div>
         </DialogContent>
       </Dialog>

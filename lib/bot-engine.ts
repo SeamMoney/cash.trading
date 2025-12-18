@@ -1550,13 +1550,15 @@ export class VolumeBotEngine {
 
       // ═══════════════════════════════════════════════════════════════════
       // CHECK: Is there a pending TWAP that hasn't filled yet?
+      // NOTE: TWAP fallback is disabled, so this is just for legacy cleanup
+      // Reduced cooldown to 30 seconds since we're using IOC now
       // ═══════════════════════════════════════════════════════════════════
-      const TWAP_COOLDOWN_MS = 3 * 60 * 1000 // 3 minutes for TWAP to fill
+      const TWAP_COOLDOWN_MS = 30 * 1000 // 30 seconds (reduced from 3 minutes)
       if (botInstance.lastTwapOrderTime) {
         const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
         if (timeSinceTwap < TWAP_COOLDOWN_MS) {
           const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
-          console.log(`⏳ [IOC] TWAP cooldown: waiting ${waitSecs}s for previous TWAP to fill...`)
+          console.log(`⏳ [IOC] Brief cooldown: waiting ${waitSecs}s...`)
           return {
             success: true,
             txHash: 'cooldown',
@@ -1574,25 +1576,19 @@ export class VolumeBotEngine {
       const entryPrice = await this.getCurrentMarketPrice()
 
       // ═══════════════════════════════════════════════════════════════════
-      // MOMENTUM CHECK: Only enter when momentum supports trade direction
+      // MOMENTUM CHECK: Log momentum but DON'T block entries
+      // We want to trade actively, momentum is just informational
       // ═══════════════════════════════════════════════════════════════════
       const momentum = this.getMomentumSignal(entryPrice)
       const wantedDirection = isLong ? 'long' : 'short'
-      const { shouldEnter, reason } = this.shouldEnterBasedOnMomentum(wantedDirection, momentum)
 
       console.log(`\n📊 [Momentum] Signal: ${momentum.signal} (${momentum.changePercent.toFixed(4)}% change)`)
-      console.log(`   Wanted: ${wantedDirection.toUpperCase()}, ${reason}`)
+      console.log(`   Direction: ${wantedDirection.toUpperCase()}`)
 
-      if (!shouldEnter) {
-        console.log(`⏸️ [IOC] Skipping entry - momentum against us`)
-        return {
-          success: true,
-          txHash: 'momentum_skip',
-          volumeGenerated: 0,
-          direction: wantedDirection,
-          size: 0,
-        }
-      }
+      // NOTE: Momentum check disabled - we want active trading, not sitting on sidelines
+      // If you want conservative entries, re-enable the shouldEnter check below
+      // const { shouldEnter, reason } = this.shouldEnterBasedOnMomentum(wantedDirection, momentum)
+      // if (!shouldEnter) { return { success: true, txHash: 'momentum_skip', ... } }
 
       console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
       const maxLeverage = this.getMarketMaxLeverage()

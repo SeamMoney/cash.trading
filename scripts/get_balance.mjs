@@ -1,6 +1,6 @@
 // Get actual balance from Decibel DEX
 const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1";
-const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75";
+const DECIBEL_PACKAGE = "0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844";
 
 // Example addresses - replace with your own wallet and subaccount
 const mainWallet = "0x<YOUR_WALLET_ADDRESS_HERE>";
@@ -87,7 +87,7 @@ console.log("\n=== Reading from Primary Balance Table ===");
 // Try different key formats
 const keyFormats = [
   { type: "address", value: subaccount },
-  { type: "0x1::object::Object<0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75::dex_accounts::Subaccount>", value: subaccount },
+  { type: "0x1::object::Object<0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844::dex_accounts::Subaccount>", value: subaccount },
 ];
 
 for (const keyFormat of keyFormats) {

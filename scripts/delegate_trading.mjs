@@ -2,7 +2,7 @@
 
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk';
 
-const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75";
+const DECIBEL_PACKAGE = "0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844";
 // Decibel's operator address (from your transaction)
 const DECIBEL_OPERATOR = "0x596dfe6cd170290d228360c948c1db5fe3ba2142a7dc57494c87598038d3006f";
 

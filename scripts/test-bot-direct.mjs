@@ -27,7 +27,7 @@ const config = {
   volumeTargetUSDC: 10000,
   bias: 'long',
   strategy: 'high_risk',
-  market: '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
+  market: '0xdb8c5e968efa1b4dcbb4aaa7e4389358768d9b26bd126d5fe1a33e0aa076c380',
   marketName: 'BTC/USD',
 }
 

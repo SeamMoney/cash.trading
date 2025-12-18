@@ -1717,10 +1717,10 @@ export class VolumeBotEngine {
         ? entryPrice * (1 - STOP_LOSS_PCT)
         : entryPrice * (1 + STOP_LOSS_PCT)
 
-      // Convert all prices to chain units
-      const iocPriceChain = Math.floor(iocPrice * Math.pow(10, pxDecimals))
-      const tpPriceChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
-      const slPriceChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
+      // Convert all prices to chain units WITH ticker size rounding
+      const iocPriceChain = this.roundPriceToTickerSize(iocPrice)
+      const tpPriceChain = this.roundPriceToTickerSize(tpPrice)
+      const slPriceChain = this.roundPriceToTickerSize(slPrice)
 
       console.log(`   Market: ${this.config.marketName}, Leverage: ${maxLeverage}x`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Notional: $${notionalUSD.toFixed(2)}`)
@@ -1881,7 +1881,6 @@ export class VolumeBotEngine {
       const { prisma } = await import('./prisma')
 
       const currentPrice = await this.getCurrentMarketPrice()
-      const pxDecimals = this.getMarketConfig().pxDecimals
       const sizeDecimals = this.getMarketSizeDecimals()
 
       // Close direction is opposite of position
@@ -1891,7 +1890,7 @@ export class VolumeBotEngine {
       const closePrice = closeIsLong
         ? currentPrice * (1 + IOC_SLIPPAGE_PCT)
         : currentPrice * (1 - IOC_SLIPPAGE_PCT)
-      const closePriceChain = Math.floor(closePrice * Math.pow(10, pxDecimals))
+      const closePriceChain = this.roundPriceToTickerSize(closePrice)
 
       console.log(`\n📝 [IOC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)

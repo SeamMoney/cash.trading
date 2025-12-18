@@ -12,8 +12,7 @@
  */
 
 import { DecibelReadDex, DecibelWriteDex, TESTNET_CONFIG, type DecibelConfig } from "@decibeltrade/sdk";
-import { Account, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
-import { Network } from "@aptos-labs/ts-sdk";
+import { Account, Ed25519PrivateKey, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 
 // Custom config with updated contract addresses (Dec 17, 2025)
 // Override SDK's TESTNET_CONFIG with new package/orderbook addresses
@@ -147,6 +146,26 @@ export async function getAllMarketAddresses(): Promise<
     return [];
   }
 }
+
+/**
+ * Create an authenticated Aptos client with API key
+ * Use this instead of new Aptos(new AptosConfig({...})) to avoid 429 rate limits
+ */
+export function createAuthenticatedAptos(): Aptos {
+  const nodeApiKey = getNodeApiKey();
+
+  const config = new AptosConfig({
+    network: Network.TESTNET,
+    clientConfig: nodeApiKey ? {
+      HEADERS: { Authorization: `Bearer ${nodeApiKey}` }
+    } : undefined
+  });
+
+  return new Aptos(config);
+}
+
+// Export getNodeApiKey for use elsewhere
+export { getNodeApiKey };
 
 // Export config and TimeInForce for reference
 export { CUSTOM_TESTNET_CONFIG as TESTNET_CONFIG };

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
+import { Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
+import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     let cancelledTwaps = false
 
     if (bot.strategy === 'high_risk') {
-      const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+      const aptos = createAuthenticatedAptos()
 
       // First, cancel ALL pending TWAP orders to prevent more position buildup
       try {

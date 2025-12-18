@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
 import { BOT_OPERATOR, DECIBEL_PACKAGE } from '@/lib/decibel-client'
+import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
 
-const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+// Use authenticated Aptos client to avoid 429 rate limits
+const aptos = createAuthenticatedAptos()
 
 /**
  * Check if the bot operator has trading permissions for a user's subaccount

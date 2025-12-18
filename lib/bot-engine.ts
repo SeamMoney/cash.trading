@@ -218,8 +218,19 @@ export class VolumeBotEngine {
       orderHistory: [],
     }
 
-    // Initialize Aptos SDK
-    const aptosConfig = new AptosConfig({ network: Network.TESTNET })
+    // Initialize Aptos SDK with API key to avoid 429 rate limits
+    // Use same key logic as decibel-sdk.ts
+    const nodeApiKey = (process.env.APTOS_NODE_API_KEY || process.env.GEOMI_API_KEY || '')
+      .replace(/\\n/g, '')
+      .replace(/\n/g, '')
+      .trim()
+
+    const aptosConfig = new AptosConfig({
+      network: Network.TESTNET,
+      clientConfig: nodeApiKey ? {
+        HEADERS: { Authorization: `Bearer ${nodeApiKey}` }
+      } : undefined
+    })
     this.aptos = new Aptos(aptosConfig)
 
     // Load bot operator wallet from environment

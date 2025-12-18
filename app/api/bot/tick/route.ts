@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
-import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
-import { getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { getAllMarketAddresses, createAuthenticatedAptos } from '@/lib/decibel-sdk'
 
 // Market configs for size/price decimals
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -73,8 +72,8 @@ export async function POST(request: NextRequest) {
       // For high_risk strategy, ALWAYS check on-chain position before stopping
       // DB might not reflect actual position state
       if (bot.strategy === 'high_risk') {
-        // Check on-chain position
-        const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+        // Check on-chain position (use authenticated client to avoid 429 rate limits)
+        const aptos = createAuthenticatedAptos()
         try {
           const resources = await aptos.getAccountResources({
             accountAddress: bot.userSubaccount
@@ -253,7 +252,7 @@ export async function POST(request: NextRequest) {
 
     // Always fetch real on-chain positions for accurate display
     try {
-      const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+      const aptos = createAuthenticatedAptos()
 
       // Fetch all positions from on-chain
       const resources = await aptos.getAccountResources({

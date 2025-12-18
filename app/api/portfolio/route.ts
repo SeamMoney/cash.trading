@@ -50,90 +50,187 @@ function getDefaultLeverage(marketName: string): number {
 
 /**
  * Fetch on-chain trade history from Decibel events
+ * Scans subaccount transactions for trade-related events
  */
 async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
   const trades: any[] = []
+  const seenTxHashes = new Set<string>()
 
   try {
-    // Fetch account transactions
-    const response = await fetch(
-      `${APTOS_NODE}/accounts/${subaccount}/events/${DECIBEL_PACKAGE}::events::PositionUpdateEvent/position_update?limit=100`
+    // Fetch recent transactions for this subaccount
+    const txResponse = await fetch(
+      `${APTOS_NODE}/accounts/${subaccount}/transactions?limit=100`
     )
 
-    if (!response.ok) {
-      // Try alternate event path
-      const txResponse = await fetch(
-        `${APTOS_NODE}/accounts/${subaccount}/transactions?limit=50`
-      )
+    if (!txResponse.ok) {
+      console.warn('Failed to fetch subaccount transactions:', txResponse.status)
+      return trades
+    }
 
-      if (txResponse.ok) {
-        const transactions = await txResponse.json()
+    const transactions = await txResponse.json()
+    console.log(`📊 Scanning ${transactions.length} transactions for trades...`)
 
-        for (const tx of transactions) {
-          if (!tx.success) continue
+    for (const tx of transactions) {
+      if (!tx.success || seenTxHashes.has(tx.hash)) continue
+      seenTxHashes.add(tx.hash)
 
-          // Look for Decibel trading functions
-          const func = tx.payload?.function || ''
-          if (func.includes('place_twap_order') ||
-              func.includes('place_order') ||
-              func.includes('place_market_order')) {
+      const events = tx.events || []
+      const func = tx.payload?.function || ''
 
-            // Extract market from arguments
-            const marketArg = tx.payload?.arguments?.[1]?.inner || tx.payload?.arguments?.[1]
-            const market = MARKET_NAMES[marketArg] || 'Unknown'
+      // Look for trade-related events
+      for (const event of events) {
+        const eventType = event.type || ''
 
-            // Determine direction from arguments
-            const isLong = tx.payload?.arguments?.[3] === true || tx.payload?.arguments?.[3] === 'true'
+        // TradeEvent - actual fill happened
+        if (eventType.includes('TradeEvent')) {
+          const data = event.data
+          const marketAddr = data.market?.inner || data.market
+          const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
+          const pxDecimals = getPriceDecimals(market)
 
+          trades.push({
+            id: `${tx.hash}_trade`,
+            timestamp: new Date(Number(tx.timestamp) / 1000),
+            txHash: tx.hash,
+            direction: data.is_long ? 'long' : 'short',
+            strategy: func.includes('twap') ? 'twap' : 'market',
+            market,
+            size: Number(data.size || 0),
+            volumeGenerated: Number(data.notional || data.value || 0) / 1e6,
+            success: true,
+            entryPrice: Number(data.price || data.fill_price || 0) / Math.pow(10, pxDecimals),
+            exitPrice: null,
+            pnl: Number(data.realized_pnl || 0) / 1e6,
+            leverage: getDefaultLeverage(market),
+          })
+          break // One trade per transaction
+        }
+
+        // BulkOrderFilledEvent - order was filled
+        if (eventType.includes('BulkOrderFilledEvent')) {
+          const data = event.data
+          if (data.user !== subaccount) continue
+
+          const marketAddr = data.market?.inner || data.market
+          const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
+          const pxDecimals = getPriceDecimals(market)
+
+          const filledSize = Number(data.filled_size || data.size || 0)
+          const avgPrice = Number(data.avg_fill_price || data.price || 0) / Math.pow(10, pxDecimals)
+          const notional = filledSize * avgPrice / Math.pow(10, getSizeDecimals(market))
+
+          if (filledSize > 0) {
             trades.push({
-              id: tx.hash,
+              id: `${tx.hash}_fill`,
               timestamp: new Date(Number(tx.timestamp) / 1000),
               txHash: tx.hash,
-              direction: isLong ? 'long' : 'short',
+              direction: data.is_buy ? 'long' : 'short',
               strategy: func.includes('twap') ? 'twap' : 'market',
               market,
-              size: 0,
-              volumeGenerated: 0,
+              size: filledSize,
+              volumeGenerated: notional,
               success: true,
-              entryPrice: null,
+              entryPrice: avgPrice,
               exitPrice: null,
-              pnl: 0,
+              pnl: Number(data.realized_pnl || 0) / 1e6,
               leverage: getDefaultLeverage(market),
             })
+            break
           }
         }
+
+        // PositionOpenedEvent / PositionClosedEvent
+        if (eventType.includes('PositionOpenedEvent') || eventType.includes('PositionClosedEvent')) {
+          const data = event.data
+          const marketAddr = data.market?.inner || data.market
+          const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
+          const pxDecimals = getPriceDecimals(market)
+          const isClose = eventType.includes('Closed')
+
+          trades.push({
+            id: `${tx.hash}_pos`,
+            timestamp: new Date(Number(tx.timestamp) / 1000),
+            txHash: tx.hash,
+            direction: data.is_long ? 'long' : 'short',
+            strategy: func.includes('twap') ? 'twap' : 'market',
+            market,
+            size: Number(data.size || 0),
+            volumeGenerated: Number(data.notional || 0) / 1e6,
+            success: true,
+            entryPrice: Number(data.entry_price || data.price || 0) / Math.pow(10, pxDecimals),
+            exitPrice: isClose ? Number(data.exit_price || data.close_price || 0) / Math.pow(10, pxDecimals) : null,
+            pnl: Number(data.realized_pnl || data.pnl || 0) / 1e6,
+            leverage: getDefaultLeverage(market),
+          })
+          break
+        }
       }
-    } else {
-      const events = await response.json()
 
-      for (const event of events) {
-        const data = event.data
-        const market = MARKET_NAMES[data.market?.inner] || 'Unknown'
-        const pxDecimals = getPriceDecimals(market)
-        const priceDivisor = Math.pow(10, pxDecimals)
+      // If no events found, check if this is a Decibel order placement
+      if (trades.filter(t => t.txHash === tx.hash).length === 0) {
+        if (func.includes('place_twap_order') ||
+            func.includes('place_order') ||
+            func.includes('place_market_order') ||
+            func.includes('close_position')) {
 
-        trades.push({
-          id: event.sequence_number,
-          timestamp: new Date(Number(event.timestamp) / 1000),
-          txHash: event.transaction_hash || `event_${event.sequence_number}`,
-          direction: data.is_long ? 'long' : 'short',
-          strategy: 'manual',
-          market,
-          size: Number(data.size || 0),
-          volumeGenerated: Number(data.notional || 0) / 1e6,
-          success: true,
-          entryPrice: Number(data.entry_price || 0) / priceDivisor,
-          exitPrice: data.exit_price ? Number(data.exit_price) / priceDivisor : null,
-          pnl: Number(data.realized_pnl || 0) / 1e6,
-          leverage: getDefaultLeverage(market),
-        })
+          // Extract market from arguments (usually arg 1 or 2)
+          let marketAddr = tx.payload?.arguments?.[1]?.inner ||
+                          tx.payload?.arguments?.[1] ||
+                          tx.payload?.arguments?.[0]?.inner ||
+                          tx.payload?.arguments?.[0]
+          const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
+
+          // Determine direction from arguments
+          const args = tx.payload?.arguments || []
+          let isLong = false
+          for (const arg of args) {
+            if (arg === true || arg === 'true') {
+              isLong = true
+              break
+            }
+            if (arg === false || arg === 'false') {
+              isLong = false
+              break
+            }
+          }
+
+          trades.push({
+            id: tx.hash,
+            timestamp: new Date(Number(tx.timestamp) / 1000),
+            txHash: tx.hash,
+            direction: func.includes('close') ? (isLong ? 'short' : 'long') : (isLong ? 'long' : 'short'),
+            strategy: func.includes('twap') ? 'twap' : 'market',
+            market,
+            size: 0,
+            volumeGenerated: 0,
+            success: true,
+            entryPrice: null,
+            exitPrice: null,
+            pnl: 0,
+            leverage: getDefaultLeverage(market),
+          })
+        }
       }
     }
+
+    console.log(`📊 Found ${trades.length} on-chain trades`)
   } catch (err) {
     console.error('Error fetching on-chain trades:', err)
   }
 
   return trades
+}
+
+// Size decimals for each market
+function getSizeDecimals(marketName: string): number {
+  const SIZE_DECIMALS: Record<string, number> = {
+    'BTC/USD': 8,
+    'ETH/USD': 7,
+    'SOL/USD': 6,
+    'APT/USD': 4,
+    'WLFI/USD': 3,
+  }
+  return SIZE_DECIMALS[marketName] || 6
 }
 
 /**

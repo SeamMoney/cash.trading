@@ -122,8 +122,8 @@ export function WalletButton() {
                             ${sub.balance?.toFixed(2) || '0.00'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs sm:text-sm font-mono text-white flex-1 break-all truncate">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="text-xs font-mono text-white min-w-0 truncate">
                             {sub.address}
                           </span>
                           <button

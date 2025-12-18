@@ -25,6 +25,39 @@ export interface WalletBalanceState {
 
 const COMPETITION_SUBACCOUNT_KEY = 'decibrrr_competition_subaccount'
 
+// Auto-detect competition subaccount by scanning transaction history
+async function findCompetitionSubaccountFromHistory(walletAddress: string): Promise<string | null> {
+  const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+  try {
+    // Get recent transactions
+    const response = await fetch(`${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=50`)
+    if (!response.ok) return null
+
+    const transactions = await response.json()
+
+    // Look for SubaccountCreatedEvent with is_primary: false
+    for (const tx of transactions) {
+      if (!tx.events) continue
+
+      for (const event of tx.events) {
+        if (event.type?.includes('SubaccountCreatedEvent')) {
+          const data = event.data
+          // Check if this is a non-primary subaccount (competition)
+          if (data?.is_primary === false && data?.subaccount) {
+            console.log('🔍 Auto-detected competition subaccount from tx history:', data.subaccount.slice(0, 20) + '...')
+            return data.subaccount
+          }
+        }
+      }
+    }
+
+    return null
+  } catch (err) {
+    console.warn('Failed to scan transaction history:', err)
+    return null
+  }
+}
+
 export function useWalletBalance(): WalletBalanceState {
   const { account, connected } = useWallet()
   const [balance, setBalance] = useState<number | null>(null)
@@ -36,16 +69,30 @@ export function useWalletBalance(): WalletBalanceState {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load competition subaccount from localStorage on mount
+  // Load competition subaccount from localStorage or auto-detect from tx history
   useEffect(() => {
-    if (typeof window !== 'undefined' && account) {
+    async function loadCompetitionSubaccount() {
+      if (typeof window === 'undefined' || !account) return
+
       const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
       const saved = localStorage.getItem(key)
+
       if (saved) {
         setCompetitionSubaccountAddr(saved)
         console.log('📦 Loaded competition subaccount from localStorage:', saved.slice(0, 20) + '...')
+        return
+      }
+
+      // Try to auto-detect from transaction history
+      const detected = await findCompetitionSubaccountFromHistory(account.address.toString())
+      if (detected) {
+        localStorage.setItem(key, detected)
+        setCompetitionSubaccountAddr(detected)
+        console.log('✅ Auto-saved competition subaccount:', detected.slice(0, 20) + '...')
       }
     }
+
+    loadCompetitionSubaccount()
   }, [account])
 
   // Function to set and persist competition subaccount

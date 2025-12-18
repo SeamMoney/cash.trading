@@ -2763,8 +2763,9 @@ export class VolumeBotEngine {
         break
 
       case 'high_risk':
-        // Use new SDK IOC-based strategy for fast entry/exit
-        result = await this.placeHighRiskOrderWithIOC(isLong)
+        // Use legacy TWAP-based strategy - SDK IOC is broken (ERESOURCE_DOES_NOT_EXIST)
+        // TWAP actually works on testnet, IOC doesn't have liquidity
+        result = await this.placeHighRiskOrder(orderSize, isLong)
         break
 
       case 'tx_spammer':

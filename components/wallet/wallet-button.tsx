@@ -10,7 +10,7 @@ import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
 export function WalletButton() {
   const { connected, account, disconnect, wallets, connect, signAndSubmitTransaction } = useWallet()
-  const { balance, aptBalance, allSubaccounts, selectedSubaccountType, setSelectedSubaccountType, setCompetitionSubaccount, loading, refetch } = useWalletBalance()
+  const { balance, aptBalance, allSubaccounts, selectedSubaccountType, setSelectedSubaccountType, setCompetitionSubaccount, competitionChecked, loading, refetch } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showAddCompetition, setShowAddCompetition] = useState(false)
@@ -138,8 +138,14 @@ export function WalletButton() {
                 </div>
               )}
 
-              {/* Enter Competition */}
-              {!allSubaccounts.find(s => s.type === 'competition') && (
+              {/* Enter Competition - only show after we've checked for existing competition subaccount */}
+              {!competitionChecked && (
+                <div className="p-3 bg-zinc-500/10 border border-zinc-500/30 rounded flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
+                  <span className="text-xs text-zinc-400">Checking competition status...</span>
+                </div>
+              )}
+              {competitionChecked && !allSubaccounts.find(s => s.type === 'competition') && (
                 <div className="space-y-2">
                   <button
                     onClick={handleEnterCompetition}

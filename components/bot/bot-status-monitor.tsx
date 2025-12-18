@@ -119,6 +119,12 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
             market: data.manualPositionMarket || data.market
           })
         }
+      } else if (data.status === 'executed' && !data.positionSize) {
+        // Position was closed (TP/SL triggered or manually closed) - clear monitoring info
+        setMonitoringInfo(null)
+      } else if (!data.positionSize && !data.isManualPosition && monitoringInfo) {
+        // No position exists - clear monitoring info
+        setMonitoringInfo(null)
       } else if (data.success && data.volumeGenerated) {
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
@@ -417,7 +423,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                 )}
                 {!monitoringInfo?.isManual && (
                   <div className="mt-2 text-[10px] text-zinc-500">
-                    Target: +0.03% (+1.2% w/ 40x) · Stop: -0.02% (-0.8% w/ 40x)
+                    Target: +0.5% (+20% w/ 40x) · Stop: -0.3% (-12% w/ 40x)
                   </div>
                 )}
                 {monitoringInfo?.isManual && (

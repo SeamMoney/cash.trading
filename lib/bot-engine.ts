@@ -188,6 +188,12 @@ const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSi
   'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
 }
 
+// Price history for momentum detection
+interface PricePoint {
+  price: number
+  timestamp: number
+}
+
 export class VolumeBotEngine {
   private config: BotConfig
   private status: BotStatus
@@ -196,6 +202,9 @@ export class VolumeBotEngine {
   private isActive: boolean = false
   private loopInterval: NodeJS.Timeout | null = null
   private pendingTwapOrderTime: number | null = null // Track when we placed a TWAP that's still filling
+  private priceHistory: PricePoint[] = [] // Track recent prices for momentum
+  private static readonly MOMENTUM_WINDOW_MS = 30000 // 30 second window for momentum calc
+  private static readonly MOMENTUM_MIN_SAMPLES = 2 // Minimum samples needed
 
   constructor(config: BotConfig) {
     this.config = config
@@ -249,6 +258,99 @@ export class VolumeBotEngine {
    */
   getLastTwapOrderTime(): Date | null {
     return this.pendingTwapOrderTime ? new Date(this.pendingTwapOrderTime) : null
+  }
+
+  /**
+   * Track current price for momentum calculation
+   */
+  private trackPrice(price: number): void {
+    const now = Date.now()
+    this.priceHistory.push({ price, timestamp: now })
+
+    // Remove prices older than momentum window
+    const cutoff = now - VolumeBotEngine.MOMENTUM_WINDOW_MS
+    this.priceHistory = this.priceHistory.filter(p => p.timestamp >= cutoff)
+  }
+
+  /**
+   * Calculate momentum signal from recent price history
+   * Returns: 'bullish' | 'bearish' | 'neutral'
+   *
+   * Momentum is calculated as:
+   * - Price change % over the window period
+   * - If change > threshold: bullish
+   * - If change < -threshold: bearish
+   * - Otherwise: neutral
+   */
+  private getMomentumSignal(currentPrice: number): {
+    signal: 'bullish' | 'bearish' | 'neutral'
+    changePercent: number
+    confidence: number
+  } {
+    // Track current price
+    this.trackPrice(currentPrice)
+
+    // Need minimum samples for momentum calculation
+    if (this.priceHistory.length < VolumeBotEngine.MOMENTUM_MIN_SAMPLES) {
+      return { signal: 'neutral', changePercent: 0, confidence: 0 }
+    }
+
+    // Get oldest price in window
+    const oldestPrice = this.priceHistory[0].price
+    const changePercent = (currentPrice - oldestPrice) / oldestPrice * 100
+
+    // Momentum thresholds (in %)
+    const BULLISH_THRESHOLD = 0.02  // +0.02% in 30s = bullish
+    const BEARISH_THRESHOLD = -0.02 // -0.02% in 30s = bearish
+
+    // Confidence based on number of samples and consistency
+    const sampleRatio = Math.min(this.priceHistory.length / 10, 1) // Up to 10 samples
+    const confidence = sampleRatio * Math.min(Math.abs(changePercent) / 0.1, 1) // Scale by change magnitude
+
+    if (changePercent >= BULLISH_THRESHOLD) {
+      return { signal: 'bullish', changePercent, confidence }
+    } else if (changePercent <= BEARISH_THRESHOLD) {
+      return { signal: 'bearish', changePercent, confidence }
+    }
+
+    return { signal: 'neutral', changePercent, confidence }
+  }
+
+  /**
+   * Determine if we should enter a trade based on momentum
+   * Returns true if momentum supports the trade direction
+   */
+  private shouldEnterBasedOnMomentum(
+    wantedDirection: 'long' | 'short',
+    momentum: { signal: 'bullish' | 'bearish' | 'neutral'; changePercent: number; confidence: number }
+  ): { shouldEnter: boolean; reason: string } {
+    // For scalping, we want to enter WITH momentum
+    // Long positions: enter on bullish momentum
+    // Short positions: enter on bearish momentum
+
+    // Always allow neutral bias trades if momentum is neutral (market ranging)
+    if (this.config.bias === 'neutral' && momentum.signal === 'neutral') {
+      return { shouldEnter: true, reason: 'Neutral market, neutral bias - ok to scalp' }
+    }
+
+    // Check if momentum aligns with our desired direction
+    if (wantedDirection === 'long') {
+      if (momentum.signal === 'bullish') {
+        return { shouldEnter: true, reason: `Bullish momentum (${momentum.changePercent.toFixed(4)}%) supports long entry` }
+      } else if (momentum.signal === 'bearish') {
+        return { shouldEnter: false, reason: `Bearish momentum (${momentum.changePercent.toFixed(4)}%) - skip long entry` }
+      }
+      // Neutral momentum - ok for scalps but lower confidence
+      return { shouldEnter: true, reason: 'Neutral momentum - cautious long entry' }
+    } else {
+      if (momentum.signal === 'bearish') {
+        return { shouldEnter: true, reason: `Bearish momentum (${momentum.changePercent.toFixed(4)}%) supports short entry` }
+      } else if (momentum.signal === 'bullish') {
+        return { shouldEnter: false, reason: `Bullish momentum (${momentum.changePercent.toFixed(4)}%) - skip short entry` }
+      }
+      // Neutral momentum - ok for scalps but lower confidence
+      return { shouldEnter: true, reason: 'Neutral momentum - cautious short entry' }
+    }
   }
 
   /**
@@ -964,11 +1066,11 @@ export class VolumeBotEngine {
       const { getWriteDex } = await import('./decibel-sdk')
       const writeDex = getWriteDex()
 
-      // Risk parameters matching the high_risk strategy
-      // Updated after backtest analysis - previous values were too tight
-      // These are PRICE CHANGE targets, not leveraged PnL
-      const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move = +1.2% leveraged profit at 40x
-      const STOP_LOSS_PCT = 0.0002       // 0.02% price move = -0.8% leveraged loss at 40x
+      // MOMENTUM SCALPING - Risk parameters matching placeHighRiskOrderWithIOC
+      // Wider targets to actually cover trading costs and be profitable
+      // At 40x leverage: TP = 20% gain, SL = 12% loss
+      const PROFIT_TARGET_PCT = 0.005    // 0.5% price move = +20% leveraged profit at 40x
+      const STOP_LOSS_PCT = 0.003        // 0.3% price move = -12% leveraged loss at 40x
 
       const tpPrice = isLong
         ? entryPrice * (1 + PROFIT_TARGET_PCT)
@@ -981,36 +1083,59 @@ export class VolumeBotEngine {
       // SDK requires prices in CHAIN UNITS (not human-readable!)
       // See: docs/OFFICIAL_SDK_REFERENCE.md - "All prices and sizes must be in chain units (u64)"
       const pxDecimals = this.getMarketConfig().pxDecimals
-      const tpPriceChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
-      const slPriceChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
+
+      // Limit prices should allow for slippage to ensure fills:
+      // - For LONG TP: we're selling, limit should be slightly below trigger
+      // - For LONG SL: we're selling, limit should be slightly below trigger
+      // - For SHORT TP: we're buying, limit should be slightly above trigger
+      // - For SHORT SL: we're buying, limit should be slightly above trigger
+      const LIMIT_SLIPPAGE = 0.002 // 0.2% slippage allowance for guaranteed fills
+      const tpLimitPrice = isLong
+        ? tpPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
+        : tpPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
+      const slLimitPrice = isLong
+        ? slPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
+        : slPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
+
+      const tpTriggerChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
+      const tpLimitChain = Math.floor(tpLimitPrice * Math.pow(10, pxDecimals))
+      const slTriggerChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
+      const slLimitChain = Math.floor(slLimitPrice * Math.pow(10, pxDecimals))
 
       console.log(`📊 [SDK] Placing TP/SL orders...`)
-      console.log(`   Entry: $${entryPrice.toFixed(2)}`)
-      console.log(`   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%) → ${tpPriceChain} chain units`)
-      console.log(`   SL: $${slPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%) → ${slPriceChain} chain units`)
+      console.log(`   Entry: $${entryPrice.toFixed(2)}, Position: ${isLong ? 'LONG' : 'SHORT'}`)
+      console.log(`   TP: trigger $${tpPrice.toFixed(2)} → limit $${tpLimitPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`)
+      console.log(`   SL: trigger $${slPrice.toFixed(2)} → limit $${slLimitPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
+      console.log(`   Size: ${size}, Market: ${this.config.market.slice(0, 20)}...`)
 
       const result = await writeDex.placeTpSlOrderForPosition({
         marketAddr: this.config.market,
-        tpTriggerPrice: tpPriceChain,
-        tpLimitPrice: tpPriceChain,
+        tpTriggerPrice: tpTriggerChain,
+        tpLimitPrice: tpLimitChain,
         tpSize: size,
-        slTriggerPrice: slPriceChain,
-        slLimitPrice: slPriceChain,
+        slTriggerPrice: slTriggerChain,
+        slLimitPrice: slLimitChain,
         slSize: size,
         subaccountAddr: this.config.userSubaccount,
       })
 
-      console.log(`✅ [SDK] TP/SL placed! TX: ${result?.hash?.slice(0, 20) || 'unknown'}...`)
+      console.log(`✅ [SDK] TP/SL placed successfully!`)
+      console.log(`   Result:`, JSON.stringify(result).slice(0, 300))
       return {
         success: true,
-        txHash: result?.hash || 'unknown'
+        txHash: result?.hash || result?.transactionHash || 'unknown'
       }
     } catch (error) {
-      // TP/SL failure is not critical - position still works, just no auto-exit
-      console.error('⚠️ [SDK] TP/SL placement failed (non-critical):', error)
+      // Log FULL error for debugging - TP/SL is critical for risk management!
+      console.error('❌ [SDK] TP/SL placement FAILED!')
+      console.error('   Error:', error)
+      if (error instanceof Error) {
+        console.error('   Message:', error.message)
+        if (error.stack) console.error('   Stack:', error.stack.slice(0, 500))
+      }
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : String(error)
       }
     }
   }
@@ -1202,31 +1327,31 @@ export class VolumeBotEngine {
     isLong: boolean
   ): Promise<OrderResult> {
     // ═══════════════════════════════════════════════════════════════════
-    // CONFIGURATION - Updated after backtest analysis
+    // MOMENTUM SCALPING STRATEGY
     //
-    // Previous values (0.03% TP, 0.02% SL) were LOSING because:
-    // - Trading costs (~0.12%) exceeded profit targets
-    // - No statistical edge with random entry
+    // Goals:
+    // - Actually try to be PROFITABLE, not just generate volume
+    // - Use momentum to improve entry timing
+    // - Wider TP/SL to cover trading costs
+    // - Risk management: limit losses, let winners run
     //
-    // New values designed to:
-    // - Give room for costs (TP must be > total costs)
-    // - Asymmetric risk/reward (TP:SL = 2:1)
-    // - Still generate reasonable volume
+    // Trading costs (round trip):
+    // - Entry slippage: ~0.05% (market/IOC)
+    // - Exit slippage: ~0.05% (TP/SL trigger)
+    // - Fees: 0.034% taker x 2 = ~0.07%
+    // - Total: ~0.17%
+    //
+    // Strategy parameters:
+    // - TP: 0.5% price move → 20% at 40x (net ~0.33% after costs)
+    // - SL: 0.3% price move → 12% at 40x (net ~0.47% loss)
+    // - Risk/Reward: 1.4:1 (need ~60% win rate to profit)
+    // - Momentum entry should push win rate above 55%
     // ═══════════════════════════════════════════════════════════════════
-    const IOC_SLIPPAGE_PCT = 0.005     // 0.5% slippage (IOC should be lower than TWAP)
-    const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move → 1.2% at 40x leverage
-    const STOP_LOSS_PCT = 0.0002       // 0.02% price move → 0.8% at 40x leverage
-    const CAPITAL_USAGE_PCT = 0.50     // Use 50% of capital (less aggressive)
+    const IOC_SLIPPAGE_PCT = 0.01      // 1% slippage for IOC fills
+    const PROFIT_TARGET_PCT = 0.005    // 0.5% price move → 20% at 40x leverage
+    const STOP_LOSS_PCT = 0.003        // 0.3% price move → 12% at 40x leverage
+    const CAPITAL_USAGE_PCT = 0.25     // Use 25% of capital (conservative)
     const USE_TWAP_FALLBACK = true     // Fallback to TWAP if IOC fails
-
-    // Cost breakdown:
-    // Entry slippage: ~0.01% (IOC)
-    // Exit slippage: ~0.01% (IOC)
-    // Fees: 0.05% x 2 = 0.1%
-    // Total: ~0.12%
-    // Net on TP: 0.3% - 0.12% = +0.18% profit
-    // Net on SL: -0.15% - 0.12% = -0.27% loss
-    // Break-even win rate: 0.27 / (0.18 + 0.27) = 60%
 
     try {
       const { prisma } = await import('./prisma')
@@ -1389,9 +1514,31 @@ export class VolumeBotEngine {
       // ═══════════════════════════════════════════════════════════════════
       // SCENARIO: No position - open new position with IOC + TP/SL
       // ═══════════════════════════════════════════════════════════════════
-      console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
+
+      // ═══════════════════════════════════════════════════════════════════
+      // MOMENTUM CHECK: Only enter when momentum supports trade direction
+      // ═══════════════════════════════════════════════════════════════════
+      const momentum = this.getMomentumSignal(entryPrice)
+      const wantedDirection = isLong ? 'long' : 'short'
+      const { shouldEnter, reason } = this.shouldEnterBasedOnMomentum(wantedDirection, momentum)
+
+      console.log(`\n📊 [Momentum] Signal: ${momentum.signal} (${momentum.changePercent.toFixed(4)}% change)`)
+      console.log(`   Wanted: ${wantedDirection.toUpperCase()}, ${reason}`)
+
+      if (!shouldEnter) {
+        console.log(`⏸️ [IOC] Skipping entry - momentum against us`)
+        return {
+          success: true,
+          txHash: 'momentum_skip',
+          volumeGenerated: 0,
+          direction: wantedDirection,
+          size: 0,
+        }
+      }
+
+      console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
       const maxLeverage = this.getMarketMaxLeverage()
       const pxDecimals = this.getMarketConfig().pxDecimals
       const sizeDecimals = this.getMarketSizeDecimals()

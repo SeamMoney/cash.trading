@@ -778,24 +778,31 @@ export function ServerBotConfig() {
 
           {/* Start Button - only show when not running (Stop button is in BotStatusMonitor) */}
           {!isRunning && connected && (
-            <Button
-              onClick={handleStart}
-              disabled={loading}
-              className="w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50 bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)]"
-            >
-              <span className="relative z-10 flex items-center justify-center gap-2">
-                {loading ? (
-                  "PROCESSING..."
-                ) : (
-                  <>
-                    <Play className="w-5 h-5" />
-                    START BOT
-                  </>
-                )}
-              </span>
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-              <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
-            </Button>
+            <div className="space-y-2">
+              <Button
+                onClick={handleStart}
+                disabled={loading || !hasDelegation || checkingDelegation}
+                className="w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50 bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)] disabled:shadow-none disabled:hover:bg-primary/90"
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  {loading ? (
+                    "PROCESSING..."
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5" />
+                      START BOT
+                    </>
+                  )}
+                </span>
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
+              </Button>
+              {!hasDelegation && !checkingDelegation && (
+                <p className="text-xs text-zinc-500 font-mono text-center">
+                  ↑ Delegate permissions above to enable
+                </p>
+              )}
+            </div>
           )}
 
           {/* Connect Wallet prompt when not connected */}

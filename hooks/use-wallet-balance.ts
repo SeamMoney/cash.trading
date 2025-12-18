@@ -18,6 +18,7 @@ export interface WalletBalanceState {
   selectedSubaccountType: 'primary' | 'competition'
   setSelectedSubaccountType: (type: 'primary' | 'competition') => void
   setCompetitionSubaccount: (address: string) => void
+  competitionChecked: boolean
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
@@ -78,19 +79,26 @@ export function useWalletBalance(): WalletBalanceState {
   const [allSubaccounts, setAllSubaccounts] = useState<SubaccountInfo[]>([])
   const [selectedSubaccountType, setSelectedSubaccountType] = useState<'primary' | 'competition'>('competition')
   const [competitionSubaccountAddr, setCompetitionSubaccountAddr] = useState<string | null>(null)
+  const [competitionChecked, setCompetitionChecked] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Load competition subaccount from localStorage or auto-detect from tx history
   useEffect(() => {
+    setCompetitionChecked(false) // Reset on account change
+
     async function loadCompetitionSubaccount() {
-      if (typeof window === 'undefined' || !account) return
+      if (typeof window === 'undefined' || !account) {
+        setCompetitionChecked(true)
+        return
+      }
 
       const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
       const saved = localStorage.getItem(key)
 
       if (saved) {
         setCompetitionSubaccountAddr(saved)
+        setCompetitionChecked(true)
         console.log('📦 Loaded competition subaccount from localStorage:', saved.slice(0, 20) + '...')
         return
       }
@@ -102,6 +110,7 @@ export function useWalletBalance(): WalletBalanceState {
         setCompetitionSubaccountAddr(detected)
         console.log('✅ Auto-saved competition subaccount:', detected.slice(0, 20) + '...')
       }
+      setCompetitionChecked(true)
     }
 
     loadCompetitionSubaccount()
@@ -275,6 +284,7 @@ export function useWalletBalance(): WalletBalanceState {
     selectedSubaccountType,
     setSelectedSubaccountType,
     setCompetitionSubaccount,
+    competitionChecked,
     loading,
     error,
     refetch: fetchBalance,

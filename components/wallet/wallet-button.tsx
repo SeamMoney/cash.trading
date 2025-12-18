@@ -63,24 +63,24 @@ export function WalletButton() {
               {/* Main Wallet Address */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Wallet Address</label>
-                <div className="flex items-center gap-2 p-3 sm:p-3.5 bg-black/40 border border-white/10 rounded-lg hover:border-white/20 transition-colors">
-                  <span className="text-xs sm:text-sm font-mono text-white flex-1 break-all">{account.address.toString()}</span>
+                <div className="flex items-center gap-2 p-2.5 sm:p-3 bg-black/40 border border-white/10 rounded-lg hover:border-white/20 transition-colors overflow-hidden">
+                  <span className="text-[10px] sm:text-xs font-mono text-white min-w-0 truncate">{account.address.toString()}</span>
                   <div className="flex gap-1 flex-shrink-0">
                     <button
                       onClick={() => copyAddress(account.address.toString())}
-                      className="p-2 hover:bg-white/5 active:bg-white/10 rounded-lg transition-all focus:outline-none"
+                      className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none"
                       aria-label="Copy address"
                     >
-                      <Copy className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+                      <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
                     </button>
                     <a
                       href={`https://explorer.aptoslabs.com/account/${account.address.toString()}?network=testnet`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-2 hover:bg-white/5 active:bg-white/10 rounded-lg transition-all focus:outline-none"
+                      className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none"
                       aria-label="View on explorer"
                     >
-                      <ExternalLink className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
                     </a>
                   </div>
                 </div>
@@ -96,7 +96,7 @@ export function WalletButton() {
                     {allSubaccounts.map((sub) => (
                       <div
                         key={sub.address}
-                        className={`p-3 sm:p-3.5 bg-black/40 border rounded-lg transition-colors ${
+                        className={`p-2.5 sm:p-3 bg-black/40 border rounded-lg transition-colors ${
                           sub.type === selectedSubaccountType
                             ? sub.type === 'competition'
                               ? 'border-yellow-500/50 bg-yellow-500/5'
@@ -104,36 +104,36 @@ export function WalletButton() {
                             : 'border-white/10 hover:border-white/20'
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 mb-1.5">
                           {sub.type === 'competition' ? (
-                            <Trophy className="w-4 h-4 text-yellow-500" />
+                            <Trophy className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
                           ) : (
-                            <User className="w-4 h-4 text-primary" />
+                            <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                           )}
-                          <span className={`text-xs font-bold uppercase tracking-wide ${
+                          <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-wide ${
                             sub.type === 'competition' ? 'text-yellow-500' : 'text-primary'
                           }`}>
                             {sub.type === 'competition' ? 'Competition' : 'Primary'}
                           </span>
                           {sub.type === selectedSubaccountType && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-white/10 text-zinc-400 rounded">
+                            <span className="text-[8px] sm:text-[10px] px-1 py-0.5 bg-white/10 text-zinc-400 rounded">
                               ACTIVE
                             </span>
                           )}
-                          <span className="ml-auto text-xs text-zinc-400">
+                          <span className="ml-auto text-[10px] sm:text-xs text-zinc-400">
                             ${sub.balance?.toFixed(2) || '0.00'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className="text-xs font-mono text-white min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <span className="text-[10px] sm:text-xs font-mono text-white/70 min-w-0 truncate">
                             {sub.address}
                           </span>
                           <button
                             onClick={() => copyAddress(sub.address)}
-                            className="p-2 hover:bg-white/5 active:bg-white/10 rounded-lg transition-all focus:outline-none flex-shrink-0"
+                            className="p-1.5 hover:bg-white/5 active:bg-white/10 rounded transition-all focus:outline-none flex-shrink-0"
                             aria-label="Copy subaccount address"
                           >
-                            <Copy className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+                            <Copy className="w-3.5 h-3.5 text-zinc-400 hover:text-white transition-colors" />
                           </button>
                         </div>
                       </div>

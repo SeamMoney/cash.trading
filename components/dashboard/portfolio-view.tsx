@@ -37,7 +37,7 @@ interface PortfolioData {
 
 export function PortfolioView() {
   const { account, connected } = useWallet()
-  const { subaccount, selectedSubaccountType } = useWalletBalance()
+  const { subaccount, selectedSubaccountType, balance: walletBalance, loading: walletLoading } = useWalletBalance()
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +83,8 @@ export function PortfolioView() {
   }, [account?.address, subaccount])
 
   const stats = portfolio?.stats
-  const balance = portfolio?.balance?.usdc || 0
+  // Use wallet hook's balance for consistency with the balance button
+  const balance = walletBalance ?? portfolio?.balance?.usdc ?? 0
   const dailyStats = portfolio?.dailyStats || []
   const pnlIsPositive = (stats?.totalPnl || 0) >= 0
 
@@ -143,12 +144,12 @@ export function PortfolioView() {
           </div>
           <div className="flex items-baseline gap-2 mb-2">
             <span className="text-4xl font-mono font-bold text-white tracking-tighter">
-              {loading ? '...' : balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(loading || walletLoading) ? '...' : balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="text-zinc-600 text-sm font-mono">USDC</span>
           </div>
           <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-            Testnet Balance
+            {selectedSubaccountType === 'competition' ? 'Competition Balance' : 'Primary Balance'}
           </div>
         </div>
 

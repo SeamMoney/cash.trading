@@ -1260,15 +1260,22 @@ export class VolumeBotEngine {
               activePositionEntry: onChainPosition.entryPrice,
             }
           })
+        }
 
-          // Place TP/SL for existing position if not already set
-          console.log(`📊 [IOC] Placing TP/SL for synced position...`)
-          await this.cancelTpSlForPosition()
+        // ALWAYS check and place TP/SL if position exists
+        // (TWAP fallback doesn't set TP/SL, so we need to do it here)
+        try {
+          console.log(`📊 [IOC] Ensuring TP/SL orders exist for position...`)
+          await this.cancelTpSlForPosition() // Cancel any stale TP/SL first
           await this.placeTpSlForPosition(
             onChainPosition.entryPrice,
             onChainPosition.size,
             onChainPosition.isLong
           )
+          console.log(`✅ [IOC] TP/SL orders placed/updated`)
+        } catch (tpslError) {
+          console.warn(`⚠️ [IOC] Failed to place TP/SL:`, tpslError)
+          // Continue monitoring - we'll try again next tick
         }
 
         // Check if volume target reached - force close

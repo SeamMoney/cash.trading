@@ -1173,10 +1173,11 @@ export class VolumeBotEngine {
         ? slPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
         : slPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
 
-      const tpTriggerChain = Math.floor(tpPrice * Math.pow(10, pxDecimals))
-      const tpLimitChain = Math.floor(tpLimitPrice * Math.pow(10, pxDecimals))
-      const slTriggerChain = Math.floor(slPrice * Math.pow(10, pxDecimals))
-      const slLimitChain = Math.floor(slLimitPrice * Math.pow(10, pxDecimals))
+      // CRITICAL: Round to ticker size to avoid EPRICE_NOT_RESPECTING_TICKER_SIZE errors
+      const tpTriggerChain = Number(this.roundPriceToTickerSize(tpPrice))
+      const tpLimitChain = Number(this.roundPriceToTickerSize(tpLimitPrice))
+      const slTriggerChain = Number(this.roundPriceToTickerSize(slPrice))
+      const slLimitChain = Number(this.roundPriceToTickerSize(slLimitPrice))
 
       console.log(`📊 [SDK] Placing TP/SL orders...`)
       console.log(`   Entry: $${entryPrice.toFixed(2)}, Position: ${isLong ? 'LONG' : 'SHORT'}`)
@@ -1933,7 +1934,7 @@ export class VolumeBotEngine {
             undefined,                      // trigger_price
             undefined,                      // take_profit_px
             undefined,                      // stop_loss_px
-            true,                           // reduce_only
+            undefined,                      // reduce_only (omit - Move doesn't accept boolean)
             undefined,                      // builder_address
             undefined,                      // max_builder_fee
           ],

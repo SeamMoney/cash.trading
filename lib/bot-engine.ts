@@ -272,6 +272,61 @@ export class VolumeBotEngine {
   }
 
   /**
+   * Check if subaccount is compatible with the current package
+   * After testnet resets, subaccounts from old packages become incompatible
+   * Returns true if subaccount package matches DECIBEL_PACKAGE
+   */
+  private async checkSubaccountCompatibility(): Promise<{
+    compatible: boolean
+    subaccountPackage: string
+    expectedPackage: string
+    error?: string
+  }> {
+    try {
+      const resources = await this.aptos.getAccountResources({
+        accountAddress: this.config.userSubaccount,
+      })
+
+      const subaccountResource = resources.find((r) =>
+        r.type.includes('::dex_accounts::Subaccount')
+      )
+
+      if (!subaccountResource) {
+        return {
+          compatible: false,
+          subaccountPackage: 'unknown',
+          expectedPackage: DECIBEL_PACKAGE,
+          error: 'Subaccount resource not found',
+        }
+      }
+
+      // Extract package address from type (format: "0x...::dex_accounts::Subaccount")
+      const subaccountPackage = subaccountResource.type.split('::')[0]
+      const compatible = subaccountPackage.toLowerCase() === DECIBEL_PACKAGE.toLowerCase()
+
+      if (!compatible) {
+        console.log(`⚠️ [PACKAGE] Subaccount from old package - IOC orders will fail!`)
+        console.log(`   Subaccount package: ${subaccountPackage.slice(0, 20)}...`)
+        console.log(`   Current package: ${DECIBEL_PACKAGE.slice(0, 20)}...`)
+        console.log(`   Solution: User needs to create new subaccount via Decibel UI`)
+      }
+
+      return {
+        compatible,
+        subaccountPackage,
+        expectedPackage: DECIBEL_PACKAGE,
+      }
+    } catch (error) {
+      return {
+        compatible: false,
+        subaccountPackage: 'error',
+        expectedPackage: DECIBEL_PACKAGE,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  /**
    * Track current price for momentum calculation
    */
   private trackPrice(price: number): void {
@@ -1384,6 +1439,26 @@ export class VolumeBotEngine {
       })
       if (!botInstance) {
         throw new Error('Bot instance not found in database')
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // PACKAGE COMPATIBILITY CHECK
+      // After testnet resets, subaccounts from old packages become incompatible
+      // IOC orders will fail with ERESOURCE_DOES_NOT_EXIST if packages don't match
+      // ═══════════════════════════════════════════════════════════════════
+      const compat = await this.checkSubaccountCompatibility()
+      if (!compat.compatible) {
+        console.log(`❌ [IOC] Subaccount incompatible with current package!`)
+        console.log(`   This subaccount was created before the testnet reset.`)
+        console.log(`   User must create a new subaccount via Decibel UI and re-delegate.`)
+        return {
+          success: false,
+          txHash: 'incompatible_package',
+          volumeGenerated: 0,
+          direction: isLong ? 'long' : 'short',
+          size: 0,
+          error: 'Subaccount from old package - please recreate via Decibel UI',
+        }
       }
 
       // Check on-chain position first
@@ -2763,9 +2838,10 @@ export class VolumeBotEngine {
         break
 
       case 'high_risk':
-        // Use legacy TWAP-based strategy - SDK IOC is broken (ERESOURCE_DOES_NOT_EXIST)
-        // TWAP actually works on testnet, IOC doesn't have liquidity
-        result = await this.placeHighRiskOrder(orderSize, isLong)
+        // Use IOC-based strategy with package compatibility check
+        // IOC works when subaccount is from current package (after testnet reset)
+        // Falls back to error if subaccount is from old package
+        result = await this.placeHighRiskOrderWithIOC(isLong)
         break
 
       case 'tx_spammer':

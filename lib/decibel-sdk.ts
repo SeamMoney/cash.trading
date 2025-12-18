@@ -31,7 +31,11 @@ let readDex: DecibelReadDex | null = null;
 let writeDex: DecibelWriteDex | null = null;
 
 // Get API key - try APTOS_NODE_API_KEY first, fall back to GEOMI_API_KEY
-const getNodeApiKey = () => process.env.APTOS_NODE_API_KEY || process.env.GEOMI_API_KEY;
+// Clean the key to remove any newlines or whitespace that could cause header errors
+const getNodeApiKey = () => {
+  const key = process.env.APTOS_NODE_API_KEY || process.env.GEOMI_API_KEY;
+  return key?.replace(/\\n/g, '').replace(/\n/g, '').trim();
+};
 
 /**
  * Get the DecibelReadDex singleton instance

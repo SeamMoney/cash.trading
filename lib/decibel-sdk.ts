@@ -11,8 +11,20 @@
  * @see https://docs.decibel.trade/typescript-sdk/overview
  */
 
-import { DecibelReadDex, DecibelWriteDex, TESTNET_CONFIG } from "@decibeltrade/sdk";
+import { DecibelReadDex, DecibelWriteDex, TESTNET_CONFIG, type DecibelConfig } from "@decibeltrade/sdk";
 import { Account, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
+import { Network } from "@aptos-labs/ts-sdk";
+
+// Custom config with updated contract addresses (Dec 17, 2025)
+// Override SDK's TESTNET_CONFIG with new package/orderbook addresses
+const CUSTOM_TESTNET_CONFIG: DecibelConfig = {
+  ...TESTNET_CONFIG,
+  deployment: {
+    ...TESTNET_CONFIG.deployment,
+    package: "0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844",
+    orderbook: "0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7",
+  },
+};
 
 // Singleton instances
 let readDex: DecibelReadDex | null = null;
@@ -27,7 +39,7 @@ const getNodeApiKey = () => process.env.APTOS_NODE_API_KEY || process.env.GEOMI_
  */
 export function getReadDex(): DecibelReadDex {
   if (!readDex) {
-    readDex = new DecibelReadDex(TESTNET_CONFIG, {
+    readDex = new DecibelReadDex(CUSTOM_TESTNET_CONFIG, {
       nodeApiKey: getNodeApiKey(),
       onWsError: (error) => {
         console.error("[SDK] WebSocket error:", error);
@@ -63,7 +75,7 @@ export function getWriteDex(): DecibelWriteDex {
     // Use working config from dev chat
     // noFeePayer: true because fee payer service had issues
     // skipSimulate: true for faster transactions
-    writeDex = new DecibelWriteDex(TESTNET_CONFIG, account, {
+    writeDex = new DecibelWriteDex(CUSTOM_TESTNET_CONFIG, account, {
       nodeApiKey: getNodeApiKey(),
       skipSimulate: true,
       noFeePayer: true,
@@ -86,7 +98,7 @@ export function getWriteDexForAccount(privateKeyHex: string): DecibelWriteDex {
   const privateKey = new Ed25519PrivateKey(cleanKey);
   const account = Account.fromPrivateKey({ privateKey });
 
-  return new DecibelWriteDex(TESTNET_CONFIG, account, {
+  return new DecibelWriteDex(CUSTOM_TESTNET_CONFIG, account, {
     nodeApiKey: getNodeApiKey(),
     skipSimulate: true,
     noFeePayer: true,
@@ -133,4 +145,5 @@ export async function getAllMarketAddresses(): Promise<
 }
 
 // Export config and TimeInForce for reference
-export { TESTNET_CONFIG, TimeInForce } from "@decibeltrade/sdk";
+export { CUSTOM_TESTNET_CONFIG as TESTNET_CONFIG };
+export { TimeInForce } from "@decibeltrade/sdk";

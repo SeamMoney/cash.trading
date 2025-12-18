@@ -309,14 +309,130 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch on-chain trade history from Decibel (only post-reset)
+    // Scan BOTH subaccount AND main wallet for trades
+    // - Bot trades: sent by bot operator, targeting subaccount
+    // - Manual trades: sent by main wallet, targeting subaccount
     let onChainTrades: any[] = []
+    const seenTxHashes = new Set<string>()
+
+    // Scan subaccount transactions (bot operator trades)
     if (activeSubaccount) {
       try {
-        const allTrades = await fetchOnChainTrades(activeSubaccount)
-        // Filter out pre-reset data
-        onChainTrades = allTrades.filter(t => new Date(t.timestamp) >= TESTNET_RESET_DATE)
+        const subaccountTrades = await fetchOnChainTrades(activeSubaccount)
+        for (const t of subaccountTrades) {
+          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
+            seenTxHashes.add(t.txHash)
+            onChainTrades.push(t)
+          }
+        }
       } catch (err) {
-        console.warn('Could not fetch on-chain trades:', err)
+        console.warn('Could not fetch subaccount trades:', err)
+      }
+    }
+
+    // Scan main wallet transactions (manual trades via Decibel UI)
+    try {
+      const mainWalletTrades = await fetchOnChainTrades(userWalletAddress)
+      for (const t of mainWalletTrades) {
+        if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
+          seenTxHashes.add(t.txHash)
+          onChainTrades.push(t)
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch main wallet trades:', err)
+    }
+
+    // Detect current positions and create synthetic trades for untracked ones
+    // This ensures manual positions opened on Decibel UI show up in trade history
+    if (activeSubaccount) {
+      try {
+        const posResponse = await fetch(`${APTOS_NODE}/accounts/${activeSubaccount}/resources`)
+        if (posResponse.ok) {
+          const resources = await posResponse.json()
+          const positionsResource = resources.find((r: any) =>
+            r.type.includes('perp_positions::UserPositions')
+          )
+
+          if (positionsResource) {
+            const entries = positionsResource.data?.positions?.root?.children?.entries || []
+
+            for (const entry of entries) {
+              const pos = entry.value?.value
+              const size = parseInt(pos?.size || '0')
+              if (!pos || size === 0) continue
+
+              const marketAddr = entry.key?.inner
+
+              // Look up market name
+              let marketName = 'Unknown'
+              let pxDecimals = 6
+              try {
+                const marketRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`)
+                const marketResources = await marketRes.json()
+                const configResource = marketResources.find((r: any) =>
+                  r.type.includes('perp_market_config::PerpMarketConfig')
+                )
+                if (configResource?.data?.name) {
+                  marketName = configResource.data.name
+                  pxDecimals = MARKET_PRICE_DECIMALS[marketName] || 6
+                }
+              } catch (e) {
+                console.warn(`Could not fetch market info for ${marketAddr}`)
+              }
+
+              const entryPrice = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, pxDecimals)
+              const leverage = pos.user_leverage || 1
+              const direction = pos.is_long ? 'long' : 'short'
+
+              // Check if this position is already tracked in trades
+              const positionKey = `${marketAddr}_${direction}`
+              const isTracked = [...botOrders, ...onChainTrades].some(t =>
+                t.market === marketName && t.direction === direction && t.size > 0
+              )
+
+              if (!isTracked) {
+                // Create synthetic trade entry for this untracked position
+                console.log(`📊 Adding synthetic trade for untracked ${direction} ${marketName} position`)
+
+                // Get current price for PnL calculation
+                let currentPrice = entryPrice
+                try {
+                  const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`)
+                  const priceResources = await priceRes.json()
+                  const priceResource = priceResources.find((r: any) =>
+                    r.type.includes('price_management::Price')
+                  )
+                  if (priceResource) {
+                    currentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, pxDecimals)
+                  }
+                } catch (e) {}
+
+                const szDecimals = getSizeDecimals(marketName)
+                const notionalValue = size * entryPrice / Math.pow(10, szDecimals)
+
+                onChainTrades.push({
+                  id: `manual_${marketAddr}_${Date.now()}`,
+                  timestamp: new Date(), // Use current time since we don't know when it was opened
+                  txHash: `manual_position_${marketAddr.slice(0, 10)}`,
+                  direction,
+                  strategy: 'manual',
+                  market: marketName,
+                  size,
+                  volumeGenerated: notionalValue,
+                  success: true,
+                  entryPrice,
+                  exitPrice: null,
+                  pnl: 0,
+                  leverage,
+                  isOpenPosition: true, // Flag to indicate this is a current open position
+                })
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch positions for synthetic trades:', err)
       }
     }
 

@@ -1431,7 +1431,6 @@ export class VolumeBotEngine {
 
     try {
       const { prisma } = await import('./prisma')
-      const { getWriteDex, getReadDex } = await import('./decibel-sdk')
 
       // Get bot instance from DB
       const botInstance = await prisma.botInstance.findUnique({
@@ -1730,9 +1729,6 @@ export class VolumeBotEngine {
       console.log(`   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`)
       console.log(`   SL: $${slPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
 
-      // Place IOC order with attached TP/SL using SDK
-      const writeDex = getWriteDex()
-
       // CRITICAL: Update lastOrderTime BEFORE placing order to prevent race conditions
       // This ensures any concurrent tick will see we just placed an order
       await prisma.botInstance.update({
@@ -1740,25 +1736,49 @@ export class VolumeBotEngine {
         data: { lastOrderTime: new Date() }
       })
 
+      // Place IOC order with direct Aptos call (SDK placeOrder is broken!)
+      // Use place_order_to_subaccount with time_in_force=1 (IOC)
       try {
-        const result = await writeDex.placeOrder({
-          marketName: this.config.marketName,
-          price: iocPriceChain,
-          size: positionSize,
-          isBuy: isLong,
-          timeInForce: TimeInForce.ImmediateOrCancel,
-          isReduceOnly: false,
-          // Attach TP/SL directly to the order!
-          tpTriggerPrice: tpPriceChain,
-          tpLimitPrice: tpPriceChain,
-          slTriggerPrice: slPriceChain,
-          slLimitPrice: slPriceChain,
-          subaccountAddr: this.config.userSubaccount,
+        console.log(`📝 [IOC] Placing direct Aptos order...`)
+
+        const transaction = await this.aptos.transaction.build.simple({
+          sender: this.botAccount.accountAddress,
+          data: {
+            function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+            typeArguments: [],
+            functionArguments: [
+              this.config.userSubaccount,
+              this.config.market,
+              iocPriceChain.toString(),      // price
+              positionSize.toString(),        // size
+              isLong,                         // is_long
+              1,                              // time_in_force: 1 = IOC
+              false,                          // post_only
+              undefined,                      // client_order_id
+              undefined,                      // conditional_order
+              undefined,                      // trigger_price
+              tpPriceChain.toString(),        // take_profit_px
+              slPriceChain.toString(),        // stop_loss_px
+              undefined,                      // reduce_only
+              undefined,                      // builder_address
+              undefined,                      // max_builder_fee
+            ],
+          },
         })
 
-        if (result.success) {
-          console.log(`✅ [IOC] Order placed! TX: ${result.transactionHash.slice(0, 20)}...`)
-          console.log(`   Order ID: ${result.orderId || 'pending'}`)
+        const committedTxn = await this.aptos.signAndSubmitTransaction({
+          signer: this.botAccount,
+          transaction,
+        })
+
+        console.log(`📤 [IOC] TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+
+        const executedTxn = await this.aptos.waitForTransaction({
+          transactionHash: committedTxn.hash,
+        })
+
+        if (executedTxn.success) {
+          console.log(`✅ [IOC] Order executed successfully!`)
 
           // Wait a moment then check if order filled
           await new Promise(r => setTimeout(r, 2000))
@@ -1776,14 +1796,14 @@ export class VolumeBotEngine {
                 activePositionSize: newPosition.size,
                 activePositionIsLong: isLong,
                 activePositionEntry: newPosition.entryPrice,
-                activePositionTxHash: result.transactionHash,
+                activePositionTxHash: committedTxn.hash,
               }
             })
 
             // Position opened - don't count volume yet (count on close)
             return {
               success: true,
-              txHash: result.transactionHash,
+              txHash: committedTxn.hash,
               volumeGenerated: 0, // Count on close only
               direction: isLong ? 'long' : 'short',
               size: newPosition.size,
@@ -1800,7 +1820,7 @@ export class VolumeBotEngine {
 
             return {
               success: false,
-              txHash: result.transactionHash,
+              txHash: committedTxn.hash,
               volumeGenerated: 0,
               direction: isLong ? 'long' : 'short',
               size: 0,
@@ -1808,8 +1828,8 @@ export class VolumeBotEngine {
             }
           }
         } else {
-          // SDK returned error
-          console.error(`❌ [IOC] Order failed:`, result.error)
+          // Transaction failed
+          console.error(`❌ [IOC] TX failed:`, executedTxn.vm_status)
 
           if (USE_TWAP_FALLBACK) {
             console.log(`📊 [IOC] Falling back to TWAP...`)
@@ -1818,15 +1838,15 @@ export class VolumeBotEngine {
 
           return {
             success: false,
-            txHash: '',
+            txHash: committedTxn.hash,
             volumeGenerated: 0,
             direction: isLong ? 'long' : 'short',
             size: 0,
-            error: result.error,
+            error: executedTxn.vm_status || 'Transaction failed',
           }
         }
-      } catch (sdkError) {
-        console.error(`❌ [IOC] SDK error:`, sdkError)
+      } catch (txError) {
+        console.error(`❌ [IOC] Transaction error:`, txError)
 
         if (USE_TWAP_FALLBACK) {
           console.log(`📊 [IOC] Falling back to TWAP after error...`)
@@ -1858,7 +1878,6 @@ export class VolumeBotEngine {
     const IOC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
 
     try {
-      const { getWriteDex } = await import('./decibel-sdk')
       const { prisma } = await import('./prisma')
 
       const currentPrice = await this.getCurrentMarketPrice()
@@ -1877,24 +1896,48 @@ export class VolumeBotEngine {
       console.log(`\n📝 [IOC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
 
-      const writeDex = getWriteDex()
-
       // Cancel existing TP/SL first
       await this.cancelTpSlForPosition()
 
-      // Place IOC close order
-      const result = await writeDex.placeOrder({
-        marketName: this.config.marketName,
-        price: closePriceChain,
-        size: position.size,
-        isBuy: closeIsLong,
-        timeInForce: TimeInForce.ImmediateOrCancel,
-        isReduceOnly: true, // Important: reduce only for closing
-        subaccountAddr: this.config.userSubaccount,
+      // Place IOC close order with direct Aptos call
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,
+            this.config.market,
+            closePriceChain.toString(),    // price
+            position.size.toString(),       // size
+            closeIsLong,                    // is_long (opposite of position)
+            1,                              // time_in_force: 1 = IOC
+            false,                          // post_only
+            undefined,                      // client_order_id
+            undefined,                      // conditional_order
+            undefined,                      // trigger_price
+            undefined,                      // take_profit_px
+            undefined,                      // stop_loss_px
+            true,                           // reduce_only
+            undefined,                      // builder_address
+            undefined,                      // max_builder_fee
+          ],
+        },
       })
 
-      if (result.success) {
-        console.log(`✅ [IOC] Close order placed! TX: ${result.transactionHash.slice(0, 20)}...`)
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      console.log(`📤 [IOC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+
+      const executedTxn = await this.aptos.waitForTransaction({
+        transactionHash: committedTxn.hash,
+      })
+
+      if (executedTxn.success) {
+        console.log(`✅ [IOC] Close order executed!`)
 
         // Wait and check if closed
         await new Promise(r => setTimeout(r, 2000))
@@ -1932,7 +1975,7 @@ export class VolumeBotEngine {
 
           return {
             success: true,
-            txHash: result.transactionHash,
+            txHash: committedTxn.hash,
             volumeGenerated: positionValueUSD,
             direction: closeIsLong ? 'long' : 'short',
             size: position.size,
@@ -1946,7 +1989,7 @@ export class VolumeBotEngine {
           return await this.closePositionWithTwap(position)
         }
       } else {
-        console.error(`❌ [IOC] Close failed:`, result.error)
+        console.error(`❌ [IOC] Close TX failed:`, executedTxn.vm_status)
         return await this.closePositionWithTwap(position)
       }
     } catch (error) {

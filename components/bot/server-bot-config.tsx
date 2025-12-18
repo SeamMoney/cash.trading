@@ -336,11 +336,14 @@ export function ServerBotConfig() {
       })
 
       const data = await response.json()
+      console.log('Bot start response:', response.status, data)
 
       if (!response.ok) {
+        console.error('Bot start failed:', response.status, data)
         throw new Error(data.error || "Failed to start bot")
       }
 
+      console.log('Bot started successfully:', data)
       setIsRunning(true)
       toast.success('Bot Started', {
         description: `Trading ${market} with $${capitalNum.toFixed(0)} toward $${volumeTarget} volume`,

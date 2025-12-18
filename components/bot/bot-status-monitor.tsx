@@ -83,7 +83,21 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
       })
 
       const data = await response.json()
-      console.log('Bot tick result:', data)
+      console.log('Bot tick result:', response.status, data)
+
+      // Handle HTTP errors first
+      if (!response.ok && response.status !== 429) {
+        console.error('Bot tick failed:', response.status, data)
+        toast.error('Bot Error', {
+          description: data.error || `HTTP ${response.status}`,
+          duration: 5000,
+        })
+        // If bot not found, stop showing as running
+        if (response.status === 404 && onStatusChange) {
+          onStatusChange(false)
+        }
+        return
+      }
 
       // Handle different responses
       if (response.status === 429 || data.isRateLimit) {

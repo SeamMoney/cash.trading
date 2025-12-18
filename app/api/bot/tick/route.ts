@@ -228,21 +228,34 @@ export async function POST(request: NextRequest) {
       ? (updatedBot.cumulativeVolume / updatedBot.volumeTargetUSDC) * 100
       : 0
 
-    // Calculate current PnL for monitoring status - fetch REAL on-chain position
+    // Fetch ALL open positions across all markets
+    interface OpenPosition {
+      market: string
+      marketAddress: string
+      direction: 'long' | 'short'
+      size: number
+      entryPrice: number
+      currentPrice?: number
+      pnlPercent?: number
+      leverage: number
+      isManual: boolean  // true if not tracked by bot
+    }
+    const allPositions: OpenPosition[] = []
+
+    // Legacy single-position fields for backwards compatibility
     let currentPnl: number | undefined
     let positionDirection: string | undefined
     let positionSize: number | undefined
     let positionEntry: number | undefined
     let currentPrice: number | undefined
-    let isManualPosition = false  // Track if position was opened manually (not by bot)
+    let isManualPosition = false
     let manualPositionMarket: string | undefined
 
-    // Always fetch real on-chain position for accurate display
+    // Always fetch real on-chain positions for accurate display
     try {
       const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
-      const marketConfig = MARKET_CONFIG[bot.marketName] || MARKET_CONFIG['BTC/USD']
 
-      // Fetch position from on-chain
+      // Fetch all positions from on-chain
       const resources = await aptos.getAccountResources({
         accountAddress: bot.userSubaccount
       })
@@ -255,79 +268,121 @@ export async function POST(request: NextRequest) {
         const data = positionsResource.data as any
         const entries = data.positions?.root?.children?.entries || []
 
-        // First, check for position in the bot's configured market
-        const marketPosition = entries.find((e: any) =>
-          e.key.inner.toLowerCase() === bot.market.toLowerCase()
-        )
+        // Process ALL positions with non-zero size
+        for (const entry of entries) {
+          const pos = entry.value?.value
+          const size = parseInt(pos?.size || '0')
+          if (!pos || size === 0) continue
 
-        if (marketPosition && parseInt(marketPosition.value.value.size) > 0) {
-          const pos = marketPosition.value.value
-          positionSize = parseInt(pos.size)
-          positionDirection = pos.is_long ? 'long' : 'short'
-          positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, marketConfig.pxDecimals)
+          const marketAddr = entry.key?.inner
 
-          // Check if this is a manual position (not tracked by bot)
-          const botTrackedSize = updatedBot?.activePositionSize || 0
-          if (botTrackedSize === 0 && positionSize > 0) {
-            isManualPosition = true
-            manualPositionMarket = bot.marketName
-            console.log(`📊 Detected manual position: ${positionDirection} ${positionSize} on ${bot.marketName}`)
+          // Look up market name by fetching market config from chain
+          let marketName = 'Unknown'
+          let pxDecimals = 6  // default
+          let szDecimals = 6  // default
+
+          try {
+            const marketRes = await fetch(
+              `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+            )
+            const marketResources = await marketRes.json()
+            const configResource = marketResources.find((r: any) =>
+              r.type.includes('perp_market_config::PerpMarketConfig')
+            )
+            if (configResource?.data?.name) {
+              marketName = configResource.data.name
+              // Use correct decimals based on market
+              const mktConfig = MARKET_CONFIG[marketName]
+              if (mktConfig) {
+                pxDecimals = mktConfig.pxDecimals
+                szDecimals = mktConfig.szDecimals
+              }
+            }
+          } catch (e) {
+            console.warn(`Could not fetch market info for ${marketAddr}`)
           }
 
-          // Fetch mark price from WebSocket (more accurate for PnL)
-          const priceData = await getMarkPrice(bot.market, 'testnet', 3000)
-          if (priceData) {
-            currentPrice = priceData.markPx
-            currentPnl = pos.is_long
-              ? ((currentPrice - positionEntry) / positionEntry) * 100
-              : ((positionEntry - currentPrice) / positionEntry) * 100
-          } else {
-            // Fallback to on-chain oracle price
-            const priceRes = await fetch(
-              `https://api.testnet.aptoslabs.com/v1/accounts/${bot.market}/resources`
-            )
-            const priceResources = await priceRes.json()
-            const priceResource = priceResources.find((r: any) => r.type.includes('price_management::Price'))
-            if (priceResource) {
-              currentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, marketConfig.pxDecimals)
-              currentPnl = pos.is_long
-                ? ((currentPrice - positionEntry) / positionEntry) * 100
-                : ((positionEntry - currentPrice) / positionEntry) * 100
+          const entryPrice = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, pxDecimals)
+          const leverage = pos.user_leverage || 1
+          const direction = pos.is_long ? 'long' : 'short'
+
+          // Check if this is bot's tracked position
+          const isBotMarket = marketAddr.toLowerCase() === bot.market.toLowerCase()
+          const botTrackedSize = updatedBot?.activePositionSize || 0
+          const isManual = !isBotMarket || (isBotMarket && botTrackedSize === 0)
+
+          // Fetch current price for this market
+          let mktCurrentPrice: number | undefined
+          let mktPnlPercent: number | undefined
+          try {
+            const priceData = await getMarkPrice(marketAddr, 'testnet', 2000)
+            if (priceData) {
+              mktCurrentPrice = priceData.markPx
+            } else {
+              // Fallback to on-chain oracle
+              const priceRes = await fetch(
+                `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+              )
+              const priceResources = await priceRes.json()
+              const priceResource = priceResources.find((r: any) =>
+                r.type.includes('price_management::Price')
+              )
+              if (priceResource) {
+                mktCurrentPrice = Number(priceResource.data.oracle_px) / Math.pow(10, pxDecimals)
+              }
+            }
+
+            if (mktCurrentPrice && entryPrice) {
+              mktPnlPercent = pos.is_long
+                ? ((mktCurrentPrice - entryPrice) / entryPrice) * 100
+                : ((entryPrice - mktCurrentPrice) / entryPrice) * 100
+            }
+          } catch (e) {
+            console.warn(`Could not fetch price for ${marketName}`)
+          }
+
+          allPositions.push({
+            market: marketName,
+            marketAddress: marketAddr,
+            direction: direction as 'long' | 'short',
+            size,
+            entryPrice,
+            currentPrice: mktCurrentPrice,
+            pnlPercent: mktPnlPercent,
+            leverage,
+            isManual,
+          })
+
+          console.log(`📊 Position: ${direction.toUpperCase()} ${marketName} | Entry: $${entryPrice.toFixed(6)} | PnL: ${mktPnlPercent?.toFixed(2) || '?'}%`)
+
+          // Set legacy fields for the bot's configured market (backwards compat)
+          if (isBotMarket) {
+            positionSize = size
+            positionDirection = direction
+            positionEntry = entryPrice
+            currentPrice = mktCurrentPrice
+            currentPnl = mktPnlPercent
+            if (isManual) {
+              isManualPosition = true
+              manualPositionMarket = marketName
             }
           }
         }
 
-        // Also check ALL markets for any positions (to detect positions in different markets)
-        if (!positionSize) {
-          for (const entry of entries) {
-            const pos = entry.value?.value
-            if (pos && parseInt(pos.size) > 0) {
-              // Found a position in a different market
-              const marketAddr = entry.key?.inner
-              positionSize = parseInt(pos.size)
-              positionDirection = pos.is_long ? 'long' : 'short'
-
-              // Determine market name from address
-              const marketNames = Object.entries(MARKET_CONFIG)
-              const foundMarket = marketNames.find(([name, _]) => {
-                // Check against known markets
-                return name === bot.marketName // Fallback to bot's market
-              })
-
-              // Use the market's price decimals
-              const mktConfig = MARKET_CONFIG[bot.marketName] || MARKET_CONFIG['BTC/USD']
-              positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, mktConfig.pxDecimals)
-
-              isManualPosition = true
-              manualPositionMarket = bot.marketName
-              console.log(`📊 Detected manual position in different market: ${positionDirection} ${positionSize}`)
-              break
-            }
-          }
+        // If no position in bot's market but positions exist elsewhere, set manual flag
+        if (!positionSize && allPositions.length > 0) {
+          const firstPos = allPositions[0]
+          positionSize = firstPos.size
+          positionDirection = firstPos.direction
+          positionEntry = firstPos.entryPrice
+          currentPrice = firstPos.currentPrice
+          currentPnl = firstPos.pnlPercent
+          isManualPosition = true
+          manualPositionMarket = firstPos.market
         }
       }
     } catch (e) {
-      console.error('Failed to fetch on-chain position:', e)
+      console.error('Failed to fetch on-chain positions:', e)
       // Fallback to database if on-chain fetch fails
       if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
         positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
@@ -351,7 +406,9 @@ export async function POST(request: NextRequest) {
       volumeGenerated: latestOrder?.volumeGenerated,
       txHash: latestOrder?.txHash,
       market: bot.marketName,
-      // Monitoring info - full position details
+      // ALL open positions across all markets
+      allPositions,
+      // Legacy single-position fields (backwards compat)
       currentPnl,
       positionDirection,
       positionSize,

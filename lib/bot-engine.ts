@@ -1347,11 +1347,11 @@ export class VolumeBotEngine {
     // - Risk/Reward: 1.4:1 (need ~60% win rate to profit)
     // - Momentum entry should push win rate above 55%
     // ═══════════════════════════════════════════════════════════════════
-    const IOC_SLIPPAGE_PCT = 0.01      // 1% slippage for IOC fills
+    const IOC_SLIPPAGE_PCT = 0.05      // 5% slippage for guaranteed IOC fills on testnet
     const PROFIT_TARGET_PCT = 0.005    // 0.5% price move → 20% at 40x leverage
     const STOP_LOSS_PCT = 0.003        // 0.3% price move → 12% at 40x leverage
     const CAPITAL_USAGE_PCT = 0.25     // Use 25% of capital (conservative)
-    const USE_TWAP_FALLBACK = true     // Fallback to TWAP if IOC fails
+    const USE_TWAP_FALLBACK = false    // NO TWAP fallback - we want instant execution only
 
     try {
       const { prisma } = await import('./prisma')

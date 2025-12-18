@@ -1,0 +1,18 @@
+{
+  "name": "decibrrr-bot-runner",
+  "version": "1.0.0",
+  "description": "Persistent bot execution service for Decibrrr",
+  "main": "runner.js",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-specifier-resolution=node runner.js",
+    "dev": "node --watch runner.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

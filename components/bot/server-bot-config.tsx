@@ -31,7 +31,9 @@ export function ServerBotConfig() {
   const [hasDelegation, setHasDelegation] = useState(false)
   const [checkingDelegation, setCheckingDelegation] = useState(false)
   const [marketDropdownOpen, setMarketDropdownOpen] = useState(false)
+  const [strategyDropdownOpen, setStrategyDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const strategyDropdownRef = useRef<HTMLDivElement>(null)
 
   // Check delegation status when subaccount is available
   useEffect(() => {
@@ -61,22 +63,25 @@ export function ServerBotConfig() {
     checkDelegation()
   }, [subaccount])
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setMarketDropdownOpen(false)
       }
+      if (strategyDropdownRef.current && !strategyDropdownRef.current.contains(event.target as Node)) {
+        setStrategyDropdownOpen(false)
+      }
     }
 
-    if (marketDropdownOpen) {
+    if (marketDropdownOpen || strategyDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside)
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [marketDropdownOpen])
+  }, [marketDropdownOpen, strategyDropdownOpen])
 
   // All Decibel TESTNET markets (updated Dec 16, 2025 after reset)
   const MARKETS: Record<string, { address: string; logo: string; leverage: number }> = {
@@ -131,6 +136,46 @@ export function ServerBotConfig() {
       leverage: 3,
     },
   }
+
+  const STRATEGIES: Record<Strategy, { name: string; shortDesc: string; fullDesc: string; icon: string; color: string }> = {
+    twap: {
+      name: "TWAP",
+      shortDesc: "Passive volume",
+      fullDesc: "Passive limit orders for volume generation. Low PNL impact.",
+      icon: "chart",
+      color: "blue",
+    },
+    market_maker: {
+      name: "Market Maker",
+      shortDesc: "Active PNL",
+      fullDesc: "Market orders with tight spreads. Active PNL movement.",
+      icon: "bolt",
+      color: "purple",
+    },
+    delta_neutral: {
+      name: "Delta Neutral",
+      shortDesc: "Hedged positions",
+      fullDesc: "Opens positions and immediately hedges them. Minimal risk.",
+      icon: "shield",
+      color: "cyan",
+    },
+    high_risk: {
+      name: "High Risk",
+      shortDesc: "Max PNL swings",
+      fullDesc: "Max leverage, fast TWAPs. Targets +0.15% / -0.1% for quick trades. Real PNL.",
+      icon: "flame",
+      color: "orange",
+    },
+    tx_spammer: {
+      name: "TX Spammer",
+      shortDesc: "Rapid-fire tiny TWAPs",
+      fullDesc: "Spam tiny TWAP orders as fast as possible. Maximum transaction count. Each order is ~$10-50.",
+      icon: "zap",
+      color: "pink",
+    },
+  }
+
+  const selectedStrategy = STRATEGIES[strategy]
 
   const selectedMarket = MARKETS[market]
 
@@ -614,81 +659,90 @@ export function ServerBotConfig() {
             </p>
           </div>
 
-          {/* Strategy Selector */}
-          <div className="space-y-3">
+          {/* Strategy Selector Dropdown */}
+          <div className="space-y-3 relative" ref={strategyDropdownRef}>
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Strategy</h3>
-            <div className="grid grid-cols-2 gap-1 bg-black/40 border border-white/10 p-1 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)]">
-              <button
-                onClick={() => setStrategy("twap")}
-                disabled={isRunning || loading}
-                className={cn(
-                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
-                  strategy === "twap"
-                    ? "bg-blue-500/10 text-blue-400 border border-blue-500/50"
-                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                )}
-              >
-                <span className="font-bold text-sm tracking-wider">TWAP</span>
-                <span className="text-[10px] opacity-70">Passive volume</span>
-              </button>
-              <button
-                onClick={() => setStrategy("market_maker")}
-                disabled={isRunning || loading}
-                className={cn(
-                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
-                  strategy === "market_maker"
-                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/50"
-                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                )}
-              >
-                <span className="font-bold text-sm tracking-wider">Market Maker</span>
-                <span className="text-[10px] opacity-70">Active PNL</span>
-              </button>
-              <button
-                onClick={() => setStrategy("delta_neutral")}
-                disabled={isRunning || loading}
-                className={cn(
-                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
-                  strategy === "delta_neutral"
-                    ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/50"
-                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                )}
-              >
-                <span className="font-bold text-sm tracking-wider">Delta Neutral</span>
-                <span className="text-[10px] opacity-70">Hedged positions</span>
-              </button>
-              <button
-                onClick={() => setStrategy("high_risk")}
-                disabled={isRunning || loading}
-                className={cn(
-                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50",
-                  strategy === "high_risk"
-                    ? "bg-orange-500/10 text-orange-400 border border-orange-500/50"
-                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                )}
-              >
-                {strategy === "high_risk" && <div className="absolute inset-0 bg-orange-500/5 animate-pulse" />}
-                <span className="font-bold text-sm tracking-wider relative z-10">High Risk</span>
-                <span className="text-[10px] opacity-70 relative z-10">Max PNL swings</span>
-              </button>
-              <button
-                onClick={() => setStrategy("tx_spammer")}
-                disabled={isRunning || loading}
-                className={cn(
-                  "flex flex-col items-start p-3 transition-all relative overflow-hidden disabled:opacity-50 col-span-2",
-                  strategy === "tx_spammer"
-                    ? "bg-pink-500/10 text-pink-400 border border-pink-500/50"
-                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
-                )}
-              >
-                {strategy === "tx_spammer" && <div className="absolute inset-0 bg-pink-500/5 animate-pulse" />}
-                <div className="flex items-center gap-2 relative z-10">
-                  <Zap className="w-4 h-4" />
-                  <span className="font-bold text-sm tracking-wider">TX Spammer</span>
+            <button
+              onClick={() => !isRunning && !loading && setStrategyDropdownOpen(!strategyDropdownOpen)}
+              disabled={isRunning || loading}
+              className={cn(
+                "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
+                strategyDropdownOpen && "border-primary/50"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                {strategy === "twap" && <BarChart3 className="w-5 h-5 text-blue-400" />}
+                {strategy === "market_maker" && <Bolt className="w-5 h-5 text-purple-400" />}
+                {strategy === "delta_neutral" && <Shield className="w-5 h-5 text-cyan-400" />}
+                {strategy === "high_risk" && <Flame className="w-5 h-5 text-orange-400" />}
+                {strategy === "tx_spammer" && <Zap className="w-5 h-5 text-pink-400" />}
+                <div className="flex flex-col items-start">
+                  <span className="text-white font-bold tracking-wider">{selectedStrategy.name}</span>
+                  <span className="text-[10px] text-zinc-500">{selectedStrategy.shortDesc}</span>
                 </div>
-                <span className="text-[10px] opacity-70 relative z-10">Rapid-fire tiny TWAPs</span>
-              </button>
-            </div>
+              </div>
+              <ChevronDown className={cn(
+                "w-4 h-4 text-zinc-400 transition-transform",
+                strategyDropdownOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {strategyDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-black/95 border border-white/10 backdrop-blur-sm max-h-[300px] overflow-y-auto scrollbar-thin">
+                {(Object.entries(STRATEGIES) as [Strategy, typeof STRATEGIES[Strategy]][]).map(([strategyKey, strategyData]) => (
+                  <button
+                    key={strategyKey}
+                    onClick={() => {
+                      setStrategy(strategyKey)
+                      setStrategyDropdownOpen(false)
+                    }}
+                    className={cn(
+                      "w-full p-3 flex items-center gap-3 transition-all hover:bg-white/5 border-b border-white/5 last:border-b-0",
+                      strategyKey === "twap" && strategy === strategyKey && "bg-blue-500/10",
+                      strategyKey === "market_maker" && strategy === strategyKey && "bg-purple-500/10",
+                      strategyKey === "delta_neutral" && strategy === strategyKey && "bg-cyan-500/10",
+                      strategyKey === "high_risk" && strategy === strategyKey && "bg-orange-500/10",
+                      strategyKey === "tx_spammer" && strategy === strategyKey && "bg-pink-500/10"
+                    )}
+                  >
+                    {strategyKey === "twap" && <BarChart3 className={cn("w-5 h-5", strategy === strategyKey ? "text-blue-400" : "text-zinc-500")} />}
+                    {strategyKey === "market_maker" && <Bolt className={cn("w-5 h-5", strategy === strategyKey ? "text-purple-400" : "text-zinc-500")} />}
+                    {strategyKey === "delta_neutral" && <Shield className={cn("w-5 h-5", strategy === strategyKey ? "text-cyan-400" : "text-zinc-500")} />}
+                    {strategyKey === "high_risk" && <Flame className={cn("w-5 h-5", strategy === strategyKey ? "text-orange-400" : "text-zinc-500")} />}
+                    {strategyKey === "tx_spammer" && <Zap className={cn("w-5 h-5", strategy === strategyKey ? "text-pink-400" : "text-zinc-500")} />}
+                    <div className="flex flex-col items-start flex-1">
+                      <span className={cn(
+                        "font-bold tracking-wider",
+                        strategyKey === "twap" && strategy === strategyKey && "text-blue-400",
+                        strategyKey === "market_maker" && strategy === strategyKey && "text-purple-400",
+                        strategyKey === "delta_neutral" && strategy === strategyKey && "text-cyan-400",
+                        strategyKey === "high_risk" && strategy === strategyKey && "text-orange-400",
+                        strategyKey === "tx_spammer" && strategy === strategyKey && "text-pink-400",
+                        strategy !== strategyKey && "text-white"
+                      )}>
+                        {strategyData.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        {strategyData.shortDesc}
+                      </span>
+                    </div>
+                    {strategy === strategyKey && (
+                      <div className={cn(
+                        "w-2 h-2",
+                        strategyKey === "twap" && "bg-blue-400",
+                        strategyKey === "market_maker" && "bg-purple-400",
+                        strategyKey === "delta_neutral" && "bg-cyan-400",
+                        strategyKey === "high_risk" && "bg-orange-400",
+                        strategyKey === "tx_spammer" && "bg-pink-400"
+                      )} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Strategy Description */}
             <div className={cn(
               "p-2 border relative flex items-center gap-2",
               strategy === "twap" && "bg-blue-500/5 border-blue-500/30",
@@ -710,11 +764,7 @@ export function ServerBotConfig() {
                 strategy === "high_risk" && "text-orange-400",
                 strategy === "tx_spammer" && "text-pink-400"
               )}>
-                {strategy === "twap" && "Passive limit orders for volume generation. Low PNL impact."}
-                {strategy === "market_maker" && "Market orders with tight spreads. Active PNL movement."}
-                {strategy === "delta_neutral" && "Opens positions and immediately hedges them. Minimal risk."}
-                {strategy === "high_risk" && "Max leverage, fast TWAPs. Targets +0.15% / -0.1% for quick trades. Real PNL."}
-                {strategy === "tx_spammer" && "Spam tiny TWAP orders as fast as possible. Maximum transaction count. Each order is ~$10-50."}
+                {selectedStrategy.fullDesc}
               </p>
             </div>
           </div>

@@ -2602,7 +2602,7 @@ export class VolumeBotEngine {
       console.log(`\n⚡ [TX SPAMMER] Placing fast TWAP order...`)
 
       // Check package compatibility - subaccounts from old package won't work
-      const compat = await this.getSubaccountPackageCompatibility()
+      const compat = await this.checkSubaccountCompatibility()
       if (!compat.compatible) {
         console.log(`❌ [TX SPAMMER] Subaccount incompatible with current package!`)
         console.log(`   This subaccount was created before the testnet reset.`)

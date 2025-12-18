@@ -4,19 +4,46 @@ import { useState } from "react"
 import { useWallet, WalletName } from "@aptos-labs/wallet-adapter-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User, Plus, Check } from "lucide-react"
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User, Plus, Check, Loader2 } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
+import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
 export function WalletButton() {
-  const { connected, account, disconnect, wallets, connect } = useWallet()
+  const { connected, account, disconnect, wallets, connect, signAndSubmitTransaction } = useWallet()
   const { balance, aptBalance, subaccount, allSubaccounts, selectedSubaccountType, setCompetitionSubaccount, loading, refetch } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showAddCompetition, setShowAddCompetition] = useState(false)
   const [competitionInput, setCompetitionInput] = useState('')
+  const [enteringCompetition, setEnteringCompetition] = useState(false)
 
   const copyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr)
+  }
+
+  const handleEnterCompetition = async () => {
+    if (!signAndSubmitTransaction) return
+
+    setEnteringCompetition(true)
+    try {
+      const response = await signAndSubmitTransaction({
+        data: {
+          function: `${DECIBEL_PACKAGE}::usdc::enter_trading_competition`,
+          typeArguments: [],
+          functionArguments: [],
+        },
+      })
+      console.log('✅ Entered trading competition:', response.hash)
+
+      // Wait a moment for the tx to be indexed, then refetch
+      setTimeout(() => {
+        refetch()
+      }, 3000)
+    } catch (err) {
+      console.error('Failed to enter competition:', err)
+    } finally {
+      setEnteringCompetition(false)
+    }
   }
 
   const formatAddress = (addr: string | { toString(): string }) => {
@@ -142,34 +169,46 @@ export function WalletButton() {
                 </div>
               )}
 
-              {/* Add Competition Subaccount */}
+              {/* Enter Trading Competition */}
               {!allSubaccounts.find(s => s.type === 'competition') && (
                 <div className="space-y-2">
+                  <button
+                    onClick={handleEnterCompetition}
+                    disabled={enteringCompetition}
+                    className="w-full p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded-lg hover:border-yellow-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {enteringCompetition ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
+                        <span className="text-sm text-yellow-500 font-medium">Entering...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trophy className="w-4 h-4 text-yellow-500" />
+                        <span className="text-sm text-yellow-500 font-medium">Enter Trading Competition</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-zinc-500 text-center">
+                    Get $10,000 virtual USDC to compete
+                  </p>
+                  {/* Manual entry fallback */}
                   {!showAddCompetition ? (
                     <button
                       onClick={() => setShowAddCompetition(true)}
-                      className="w-full p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg hover:border-yellow-500/50 transition-colors flex items-center justify-center gap-2"
+                      className="w-full text-[10px] text-zinc-500 hover:text-zinc-400 transition-colors"
                     >
-                      <Trophy className="w-4 h-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-500 font-medium">Add Competition Subaccount</span>
-                      <Plus className="w-4 h-4 text-yellow-500" />
+                      Already entered? Add address manually
                     </button>
                   ) : (
-                    <div className="p-3 bg-black/40 border border-yellow-500/30 rounded-lg space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Trophy className="w-4 h-4 text-yellow-500" />
-                        <span className="text-xs text-yellow-500 font-medium uppercase tracking-wide">Competition Subaccount Address</span>
-                      </div>
+                    <div className="p-2 bg-black/40 border border-white/10 rounded-lg space-y-2">
                       <input
                         type="text"
                         value={competitionInput}
                         onChange={(e) => setCompetitionInput(e.target.value)}
-                        placeholder="0x..."
-                        className="w-full p-2 bg-black/60 border border-white/10 rounded text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-yellow-500/50"
+                        placeholder="0x... (competition subaccount)"
+                        className="w-full p-2 bg-black/60 border border-white/10 rounded text-[10px] font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-yellow-500/50"
                       />
-                      <p className="text-xs text-zinc-500">
-                        Get this from Decibel&apos;s trading competition page (your competition subaccount address)
-                      </p>
                       <div className="flex gap-2">
                         <Button
                           onClick={() => {
@@ -181,10 +220,9 @@ export function WalletButton() {
                             }
                           }}
                           disabled={!competitionInput.startsWith('0x') || competitionInput.length < 60}
-                          className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-medium"
+                          className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black text-xs"
                           size="sm"
                         >
-                          <Check className="w-4 h-4 mr-1" />
                           Save
                         </Button>
                         <Button
@@ -193,7 +231,7 @@ export function WalletButton() {
                             setCompetitionInput('')
                           }}
                           variant="outline"
-                          className="border-white/10"
+                          className="border-white/10 text-xs"
                           size="sm"
                         >
                           Cancel

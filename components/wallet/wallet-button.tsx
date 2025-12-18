@@ -4,12 +4,12 @@ import { useState } from "react"
 import { useWallet, WalletName } from "@aptos-labs/wallet-adapter-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut } from "lucide-react"
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, Trophy, User } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 export function WalletButton() {
   const { connected, account, disconnect, wallets, connect } = useWallet()
-  const { balance, aptBalance, subaccount, loading } = useWalletBalance()
+  const { balance, aptBalance, subaccount, allSubaccounts, selectedSubaccountType, loading } = useWalletBalance()
   const [showWalletModal, setShowWalletModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
 
@@ -27,12 +27,25 @@ export function WalletButton() {
       <>
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-2 sm:gap-3 px-3 py-2 border border-white/10 rounded-lg hover:border-primary/50 transition-colors" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          className={`flex items-center gap-2 sm:gap-3 px-3 py-2 border rounded-lg transition-colors ${
+            selectedSubaccountType === 'competition'
+              ? 'border-yellow-500/30 hover:border-yellow-500/50'
+              : 'border-white/10 hover:border-primary/50'
+          }`}
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
         >
-          <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
+          {selectedSubaccountType === 'competition' ? (
+            <Trophy className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+          ) : (
+            <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
+          )}
           <span className="hidden sm:inline text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>
           {!loading && balance !== null && (
-            <span className="text-lg sm:text-xl font-bold text-primary drop-shadow-[0_0_8px_rgba(255,246,0,0.5)]">${balance.toFixed(2)}</span>
+            <span className={`text-lg sm:text-xl font-bold drop-shadow-[0_0_8px_rgba(255,246,0,0.5)] ${
+              selectedSubaccountType === 'competition' ? 'text-yellow-500' : 'text-primary'
+            }`}>
+              ${balance.toFixed(2)}
+            </span>
           )}
           <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
         </button>
@@ -71,19 +84,58 @@ export function WalletButton() {
                 </div>
               </div>
 
-              {/* Subaccount */}
-              {subaccount && (
+              {/* Subaccounts */}
+              {allSubaccounts.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Decibel Subaccount</label>
-                  <div className="flex items-center gap-2 p-3 sm:p-3.5 bg-black/40 border border-white/10 rounded-lg hover:border-white/20 transition-colors">
-                    <span className="text-xs sm:text-sm font-mono text-white flex-1 break-all">{subaccount}</span>
-                    <button
-                      onClick={() => copyAddress(subaccount)}
-                      className="p-2 hover:bg-white/5 active:bg-white/10 rounded-lg transition-all focus:outline-none flex-shrink-0"
-                      aria-label="Copy subaccount address"
-                    >
-                      <Copy className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
-                    </button>
+                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                    Decibel Subaccounts ({allSubaccounts.length})
+                  </label>
+                  <div className="space-y-2">
+                    {allSubaccounts.map((sub) => (
+                      <div
+                        key={sub.address}
+                        className={`p-3 sm:p-3.5 bg-black/40 border rounded-lg transition-colors ${
+                          sub.type === selectedSubaccountType
+                            ? sub.type === 'competition'
+                              ? 'border-yellow-500/50 bg-yellow-500/5'
+                              : 'border-primary/50 bg-primary/5'
+                            : 'border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          {sub.type === 'competition' ? (
+                            <Trophy className="w-4 h-4 text-yellow-500" />
+                          ) : (
+                            <User className="w-4 h-4 text-primary" />
+                          )}
+                          <span className={`text-xs font-bold uppercase tracking-wide ${
+                            sub.type === 'competition' ? 'text-yellow-500' : 'text-primary'
+                          }`}>
+                            {sub.type === 'competition' ? 'Competition' : 'Primary'}
+                          </span>
+                          {sub.type === selectedSubaccountType && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-white/10 text-zinc-400 rounded">
+                              ACTIVE
+                            </span>
+                          )}
+                          <span className="ml-auto text-xs text-zinc-400">
+                            ${sub.balance?.toFixed(2) || '0.00'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs sm:text-sm font-mono text-white flex-1 break-all truncate">
+                            {sub.address}
+                          </span>
+                          <button
+                            onClick={() => copyAddress(sub.address)}
+                            className="p-2 hover:bg-white/5 active:bg-white/10 rounded-lg transition-all focus:outline-none flex-shrink-0"
+                            aria-label="Copy subaccount address"
+                          >
+                            <Copy className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

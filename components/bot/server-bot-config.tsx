@@ -6,7 +6,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info, Trophy, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 import { CloudStatusIndicator } from "./cloud-status-indicator"
@@ -16,7 +16,7 @@ type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_sp
 
 export function ServerBotConfig() {
   const { account, connected, signAndSubmitTransaction } = useWallet()
-  const { balance, subaccount } = useWalletBalance()
+  const { balance, subaccount, allSubaccounts, selectedSubaccountType, setSelectedSubaccountType } = useWalletBalance()
 
   const [capital, setCapital] = useState<string>("")
   const [volumeTarget, setVolumeTarget] = useState<number>(10000)
@@ -314,6 +314,55 @@ export function ServerBotConfig() {
           isRunning={isRunning}
           onStatusChange={setIsRunning}
         />
+      )}
+
+      {/* Subaccount Selector - shows when user has multiple subaccounts */}
+      {connected && allSubaccounts.length > 1 && (
+        <div className="border border-white/10 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-yellow-500" />
+            <h3 className="text-yellow-500 font-mono text-sm uppercase tracking-widest font-bold">Select Account</h3>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-2 gap-2">
+              {allSubaccounts.map((sub) => (
+                <button
+                  key={sub.address}
+                  onClick={() => setSelectedSubaccountType(sub.type as 'primary' | 'competition')}
+                  disabled={isRunning}
+                  className={cn(
+                    "p-3 border transition-all disabled:opacity-50 flex flex-col items-center gap-2",
+                    selectedSubaccountType === sub.type
+                      ? sub.type === 'competition'
+                        ? "bg-yellow-500/10 border-yellow-500/50 text-yellow-500"
+                        : "bg-primary/10 border-primary/50 text-primary"
+                      : "border-white/10 text-zinc-400 hover:border-white/20 hover:bg-white/5"
+                  )}
+                >
+                  {sub.type === 'competition' ? (
+                    <Trophy className="w-5 h-5" />
+                  ) : (
+                    <User className="w-5 h-5" />
+                  )}
+                  <span className="font-bold text-sm uppercase tracking-wider">
+                    {sub.type === 'competition' ? 'Competition' : 'Primary'}
+                  </span>
+                  <span className="text-xs opacity-70">
+                    ${sub.balance?.toFixed(2) || '0.00'} USDC
+                  </span>
+                </button>
+              ))}
+            </div>
+            {selectedSubaccountType === 'competition' && (
+              <div className="mt-3 p-2 bg-yellow-500/5 border border-yellow-500/30 flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                <p className="text-xs text-yellow-400">
+                  Trading Competition mode - $10K virtual balance
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Main Configuration Panel */}

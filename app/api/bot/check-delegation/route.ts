@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
-
-const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da'
-const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+import { BOT_OPERATOR, DECIBEL_PACKAGE } from '@/lib/decibel-client'
 
 const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
 

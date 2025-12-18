@@ -23,7 +23,9 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     direction: string,
     size?: number,
     entry?: number,
-    currentPrice?: number
+    currentPrice?: number,
+    isManual?: boolean,
+    market?: string
   } | null>(null)
   const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
   const [isStopping, setIsStopping] = useState(false)
@@ -104,15 +106,17 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
         if (onStatusChange) {
           onStatusChange(false)
         }
-      } else if (data.status === 'monitoring') {
-        // Bot is monitoring position - update state for persistent UI display
+      } else if (data.status === 'monitoring' || data.isManualPosition) {
+        // Bot is monitoring position OR detected manual position - update state for persistent UI display
         if (data.currentPnl !== undefined && data.positionDirection) {
           setMonitoringInfo({
             pnl: data.currentPnl,
             direction: data.positionDirection,
             size: data.positionSize,
             entry: data.positionEntry,
-            currentPrice: data.currentPrice
+            currentPrice: data.currentPrice,
+            isManual: data.isManualPosition,
+            market: data.manualPositionMarket || data.market
           })
         }
       } else if (data.success && data.volumeGenerated) {
@@ -303,30 +307,30 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
             {/* Next Trade Countdown */}
             <div className={cn(
-              "p-3 border relative",
+              "p-3 border relative transition-colors duration-200",
               rateLimitBackoff > 0
                 ? "bg-orange-500/5 border-orange-500/20"
                 : "bg-primary/5 border-primary/20"
             )}>
               <div className={cn(
-                "absolute -left-[1px] top-1/2 -translate-y-1/2 h-6 w-[3px]",
+                "absolute -left-[1px] top-1/2 -translate-y-1/2 h-6 w-[3px] transition-colors duration-200",
                 rateLimitBackoff > 0 ? "bg-orange-500/50" : "bg-primary/50"
               )} />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Zap className={cn(
-                    "w-4 h-4",
+                    "w-4 h-4 transition-colors duration-200",
                     isExecuting ? "text-yellow-400 animate-pulse" :
                     rateLimitBackoff > 0 ? "text-orange-400" : "text-primary"
                   )} />
-                  <span className="text-xs text-zinc-300 uppercase tracking-wider">
+                  <span className="text-xs text-zinc-300 uppercase tracking-wider w-24">
                     {isExecuting ? 'Checking...' :
                      rateLimitBackoff > 0 ? 'Cooling down' :
                      (monitoringInfo ? 'Next check' : 'Next trade')}
                   </span>
                 </div>
                 <span className={cn(
-                  "text-lg font-bold flex items-center gap-1",
+                  "text-lg font-bold flex items-center justify-end gap-1 w-12 transition-colors duration-200",
                   rateLimitBackoff > 0 ? "text-orange-400" : "text-primary"
                 )}>
                   {isExecuting ? <Timer className="w-4 h-4 animate-spin" /> :
@@ -349,31 +353,47 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
               <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
             </button>
 
-            {/* Monitoring Info - shows when watching an open position */}
-            {monitoringInfo && config?.strategy === 'high_risk' && (
-              <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
-                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
+            {/* Monitoring Info - shows when watching an open position (bot or manual) */}
+            {(config?.strategy === 'high_risk' || monitoringInfo?.isManual) && (
+              <div className={cn(
+                "p-3 relative transition-all duration-200",
+                monitoringInfo?.isManual
+                  ? "bg-purple-500/10 border border-purple-500/30"
+                  : "bg-blue-500/10 border border-blue-500/30",
+                monitoringInfo ? "opacity-100" : "opacity-0 h-0 p-0 overflow-hidden border-0"
+              )}>
+                <div className={cn(
+                  "absolute top-0 left-0 w-2 h-2 border-t border-l",
+                  monitoringInfo?.isManual ? "border-purple-500" : "border-blue-500"
+                )} />
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-blue-300 uppercase tracking-wider">
-                    Monitoring {monitoringInfo.direction.toUpperCase()} Position
+                  <span className={cn(
+                    "text-xs uppercase tracking-wider",
+                    monitoringInfo?.isManual ? "text-purple-300" : "text-blue-300"
+                  )}>
+                    {monitoringInfo?.isManual ? '📊 Manual ' : 'Monitoring '}
+                    {monitoringInfo?.direction?.toUpperCase() || ''} Position
+                    {monitoringInfo?.isManual && monitoringInfo?.market && (
+                      <span className="ml-1 text-[9px] opacity-70">({monitoringInfo.market})</span>
+                    )}
                   </span>
                   <div className="text-right">
                     <span className={cn(
                       "text-sm font-bold",
-                      monitoringInfo.pnl >= 0 ? "text-green-400" : "text-red-400"
+                      (monitoringInfo?.pnl ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                     )}>
-                      {monitoringInfo.pnl >= 0 ? '+' : ''}{monitoringInfo.pnl.toFixed(3)}%
+                      {(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{(monitoringInfo?.pnl ?? 0).toFixed(3)}%
                     </span>
                     <span className={cn(
                       "text-[10px] ml-1",
-                      monitoringInfo.pnl >= 0 ? "text-green-400/70" : "text-red-400/70"
+                      (monitoringInfo?.pnl ?? 0) >= 0 ? "text-green-400/70" : "text-red-400/70"
                     )}>
-                      ({monitoringInfo.pnl >= 0 ? '+' : ''}{(monitoringInfo.pnl * 40).toFixed(1)}% w/ 40x)
+                      ({(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{((monitoringInfo?.pnl ?? 0) * 40).toFixed(1)}% w/ 40x)
                     </span>
                   </div>
                 </div>
                 {/* Position Details */}
-                {monitoringInfo.size && monitoringInfo.entry && (
+                {monitoringInfo?.size && monitoringInfo?.entry && (
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
                     <div>
                       <span className="text-zinc-500">Size</span>
@@ -395,9 +415,16 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
                     </div>
                   </div>
                 )}
-                <div className="mt-2 text-[10px] text-zinc-500">
-                  Target: +0.03% (+1.2% w/ 40x) · Stop: -0.02% (-0.8% w/ 40x)
-                </div>
+                {!monitoringInfo?.isManual && (
+                  <div className="mt-2 text-[10px] text-zinc-500">
+                    Target: +0.03% (+1.2% w/ 40x) · Stop: -0.02% (-0.8% w/ 40x)
+                  </div>
+                )}
+                {monitoringInfo?.isManual && (
+                  <div className="mt-2 text-[10px] text-purple-400/70">
+                    Opened via Decibel UI · Bot will not manage this position
+                  </div>
+                )}
               </div>
             )}
 

@@ -967,8 +967,8 @@ export class VolumeBotEngine {
       // Risk parameters matching the high_risk strategy
       // Updated after backtest analysis - previous values were too tight
       // These are PRICE CHANGE targets, not leveraged PnL
-      const PROFIT_TARGET_PCT = 0.003   // 0.3% price move = +12% leveraged profit at 40x
-      const STOP_LOSS_PCT = 0.0015      // 0.15% price move = -6% leveraged loss at 40x
+      const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move = +1.2% leveraged profit at 40x
+      const STOP_LOSS_PCT = 0.0002       // 0.02% price move = -0.8% leveraged loss at 40x
 
       const tpPrice = isLong
         ? entryPrice * (1 + PROFIT_TARGET_PCT)
@@ -1214,8 +1214,8 @@ export class VolumeBotEngine {
     // - Still generate reasonable volume
     // ═══════════════════════════════════════════════════════════════════
     const IOC_SLIPPAGE_PCT = 0.005     // 0.5% slippage (IOC should be lower than TWAP)
-    const PROFIT_TARGET_PCT = 0.003    // 0.3% price move → 12% at 40x leverage
-    const STOP_LOSS_PCT = 0.0015       // 0.15% price move → 6% at 40x leverage
+    const PROFIT_TARGET_PCT = 0.0003   // 0.03% price move → 1.2% at 40x leverage
+    const STOP_LOSS_PCT = 0.0002       // 0.02% price move → 0.8% at 40x leverage
     const CAPITAL_USAGE_PCT = 0.50     // Use 50% of capital (less aggressive)
     const USE_TWAP_FALLBACK = true     // Fallback to TWAP if IOC fails
 

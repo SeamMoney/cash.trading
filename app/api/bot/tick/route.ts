@@ -234,6 +234,8 @@ export async function POST(request: NextRequest) {
     let positionSize: number | undefined
     let positionEntry: number | undefined
     let currentPrice: number | undefined
+    let isManualPosition = false  // Track if position was opened manually (not by bot)
+    let manualPositionMarket: string | undefined
 
     // Always fetch real on-chain position for accurate display
     try {
@@ -252,6 +254,8 @@ export async function POST(request: NextRequest) {
       if (positionsResource) {
         const data = positionsResource.data as any
         const entries = data.positions?.root?.children?.entries || []
+
+        // First, check for position in the bot's configured market
         const marketPosition = entries.find((e: any) =>
           e.key.inner.toLowerCase() === bot.market.toLowerCase()
         )
@@ -261,6 +265,14 @@ export async function POST(request: NextRequest) {
           positionSize = parseInt(pos.size)
           positionDirection = pos.is_long ? 'long' : 'short'
           positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, marketConfig.pxDecimals)
+
+          // Check if this is a manual position (not tracked by bot)
+          const botTrackedSize = updatedBot?.activePositionSize || 0
+          if (botTrackedSize === 0 && positionSize > 0) {
+            isManualPosition = true
+            manualPositionMarket = bot.marketName
+            console.log(`📊 Detected manual position: ${positionDirection} ${positionSize} on ${bot.marketName}`)
+          }
 
           // Fetch mark price from WebSocket (more accurate for PnL)
           const priceData = await getMarkPrice(bot.market, 'testnet', 3000)
@@ -281,6 +293,35 @@ export async function POST(request: NextRequest) {
               currentPnl = pos.is_long
                 ? ((currentPrice - positionEntry) / positionEntry) * 100
                 : ((positionEntry - currentPrice) / positionEntry) * 100
+            }
+          }
+        }
+
+        // Also check ALL markets for any positions (to detect positions in different markets)
+        if (!positionSize) {
+          for (const entry of entries) {
+            const pos = entry.value?.value
+            if (pos && parseInt(pos.size) > 0) {
+              // Found a position in a different market
+              const marketAddr = entry.key?.inner
+              positionSize = parseInt(pos.size)
+              positionDirection = pos.is_long ? 'long' : 'short'
+
+              // Determine market name from address
+              const marketNames = Object.entries(MARKET_CONFIG)
+              const foundMarket = marketNames.find(([name, _]) => {
+                // Check against known markets
+                return name === bot.marketName // Fallback to bot's market
+              })
+
+              // Use the market's price decimals
+              const mktConfig = MARKET_CONFIG[bot.marketName] || MARKET_CONFIG['BTC/USD']
+              positionEntry = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, mktConfig.pxDecimals)
+
+              isManualPosition = true
+              manualPositionMarket = bot.marketName
+              console.log(`📊 Detected manual position in different market: ${positionDirection} ${positionSize}`)
+              break
             }
           }
         }
@@ -316,6 +357,9 @@ export async function POST(request: NextRequest) {
       positionSize,
       positionEntry,
       currentPrice,
+      // Manual position detection (opened via Decibel UI, not by bot)
+      isManualPosition,
+      manualPositionMarket,
     })
   } catch (error) {
     console.error('Manual tick error:', error)

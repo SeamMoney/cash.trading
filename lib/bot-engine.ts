@@ -1560,16 +1560,33 @@ export class VolumeBotEngine {
       }
 
       // ═══════════════════════════════════════════════════════════════════
-      // CHECK: Is there a pending TWAP that hasn't filled yet?
-      // NOTE: TWAP fallback is disabled, so this is just for legacy cleanup
-      // Reduced cooldown to 30 seconds since we're using IOC now
+      // CHECK: Did we recently place an order? (Prevents rapid order spam)
+      // CRITICAL: This prevents multiple IOC orders being placed before
+      // the first one fills and is detected by getOnChainPosition()
       // ═══════════════════════════════════════════════════════════════════
-      const TWAP_COOLDOWN_MS = 30 * 1000 // 30 seconds (reduced from 3 minutes)
+      const ORDER_COOLDOWN_MS = 10 * 1000 // 10 seconds between orders
+      if (botInstance.lastOrderTime) {
+        const timeSinceOrder = Date.now() - new Date(botInstance.lastOrderTime).getTime()
+        if (timeSinceOrder < ORDER_COOLDOWN_MS) {
+          const waitSecs = Math.ceil((ORDER_COOLDOWN_MS - timeSinceOrder) / 1000)
+          console.log(`⏳ [IOC] Order cooldown: waiting ${waitSecs}s for previous order to settle...`)
+          return {
+            success: true,
+            txHash: 'cooldown',
+            volumeGenerated: 0,
+            direction: isLong ? 'long' : 'short',
+            size: 0,
+          }
+        }
+      }
+
+      // Also check TWAP cooldown (legacy, for pending TWAPs)
+      const TWAP_COOLDOWN_MS = 30 * 1000 // 30 seconds
       if (botInstance.lastTwapOrderTime) {
         const timeSinceTwap = Date.now() - new Date(botInstance.lastTwapOrderTime).getTime()
         if (timeSinceTwap < TWAP_COOLDOWN_MS) {
           const waitSecs = Math.ceil((TWAP_COOLDOWN_MS - timeSinceTwap) / 1000)
-          console.log(`⏳ [IOC] Brief cooldown: waiting ${waitSecs}s...`)
+          console.log(`⏳ [IOC] TWAP cooldown: waiting ${waitSecs}s...`)
           return {
             success: true,
             txHash: 'cooldown',
@@ -1640,6 +1657,13 @@ export class VolumeBotEngine {
 
       // Place IOC order with attached TP/SL using SDK
       const writeDex = getWriteDex()
+
+      // CRITICAL: Update lastOrderTime BEFORE placing order to prevent race conditions
+      // This ensures any concurrent tick will see we just placed an order
+      await prisma.botInstance.update({
+        where: { id: botInstance.id },
+        data: { lastOrderTime: new Date() }
+      })
 
       try {
         const result = await writeDex.placeOrder({

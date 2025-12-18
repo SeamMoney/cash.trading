@@ -2601,6 +2601,22 @@ export class VolumeBotEngine {
     try {
       console.log(`\n⚡ [TX SPAMMER] Placing fast TWAP order...`)
 
+      // Check package compatibility - subaccounts from old package won't work
+      const compat = await this.getSubaccountPackageCompatibility()
+      if (!compat.compatible) {
+        console.log(`❌ [TX SPAMMER] Subaccount incompatible with current package!`)
+        console.log(`   This subaccount was created before the testnet reset.`)
+        console.log(`   User must create a new subaccount via Decibel UI and re-delegate.`)
+        return {
+          success: false,
+          txHash: 'incompatible_package',
+          volumeGenerated: 0,
+          direction: isLong ? 'long' : 'short',
+          size: 0,
+          error: 'Subaccount from old package - please recreate via Decibel UI',
+        }
+      }
+
       const currentPrice = await this.getCurrentMarketPrice()
       const sizeDecimals = this.getMarketSizeDecimals()
       const marketConfig = this.getMarketConfig()

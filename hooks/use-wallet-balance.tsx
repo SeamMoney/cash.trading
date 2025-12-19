@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
@@ -25,6 +25,9 @@ export interface WalletBalanceState {
 }
 
 const COMPETITION_SUBACCOUNT_KEY = 'decibrrr_competition_subaccount'
+
+// Create context with default values
+const WalletBalanceContext = createContext<WalletBalanceState | null>(null)
 
 // Auto-detect competition subaccount by scanning transaction history
 async function findCompetitionSubaccountFromHistory(walletAddress: string): Promise<string | null> {
@@ -71,7 +74,8 @@ async function findCompetitionSubaccountFromHistory(walletAddress: string): Prom
   }
 }
 
-export function useWalletBalance(): WalletBalanceState {
+// Provider component that holds the shared state
+export function WalletBalanceProvider({ children }: { children: ReactNode }) {
   const { account, connected } = useWallet()
   const [balance, setBalance] = useState<number | null>(null)
   const [aptBalance, setAptBalance] = useState<number | null>(null)
@@ -151,7 +155,7 @@ export function useWalletBalance(): WalletBalanceState {
     }
   }
 
-  const fetchBalance = async () => {
+  const fetchBalance = useCallback(async () => {
     if (!connected || !account) {
       setBalance(null)
       setAptBalance(null)
@@ -258,7 +262,7 @@ export function useWalletBalance(): WalletBalanceState {
     } finally {
       setLoading(false)
     }
-  }
+  }, [connected, account, competitionSubaccountAddr, selectedSubaccountType])
 
   // Re-fetch when subaccount type changes
   useEffect(() => {
@@ -276,7 +280,7 @@ export function useWalletBalance(): WalletBalanceState {
     fetchBalance()
   }, [connected, account, competitionSubaccountAddr])
 
-  return {
+  const value: WalletBalanceState = {
     balance,
     aptBalance,
     subaccount,
@@ -289,4 +293,19 @@ export function useWalletBalance(): WalletBalanceState {
     error,
     refetch: fetchBalance,
   }
+
+  return (
+    <WalletBalanceContext.Provider value={value}>
+      {children}
+    </WalletBalanceContext.Provider>
+  )
+}
+
+// Hook to consume the context
+export function useWalletBalance(): WalletBalanceState {
+  const context = useContext(WalletBalanceContext)
+  if (!context) {
+    throw new Error('useWalletBalance must be used within a WalletBalanceProvider')
+  }
+  return context
 }

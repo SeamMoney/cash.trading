@@ -206,6 +206,12 @@ export class VolumeBotEngine {
   private static readonly MOMENTUM_WINDOW_MS = 30000 // 30 second window for momentum calc
   private static readonly MOMENTUM_MIN_SAMPLES = 2 // Minimum samples needed
 
+  // RAPID POSITION MONITORING - Check PnL every 1.5 seconds when position is open
+  private positionMonitorInterval: NodeJS.Timeout | null = null
+  private isMonitoringPosition: boolean = false
+  private static readonly RAPID_MONITOR_INTERVAL_MS = 1500 // 1.5 seconds for fast PnL checks
+  private lastRapidCheckTime: number = 0
+
   constructor(config: BotConfig) {
     this.config = config
     this.status = {
@@ -1571,7 +1577,14 @@ export class VolumeBotEngine {
           return await this.forceClosePositionWithIOC(onChainPosition)
         }
 
-        // Position still within range, TP/SL active - just monitoring
+        // Position still within range, TP/SL active - start RAPID monitoring
+        // This polls PnL every 1.5 seconds for much faster TP/SL detection
+        this.startRapidPositionMonitor({
+          size: onChainPosition.size,
+          isLong: onChainPosition.isLong,
+          entryPrice: onChainPosition.entryPrice,
+        })
+
         return {
           success: true,
           txHash: 'monitoring',
@@ -1783,8 +1796,8 @@ export class VolumeBotEngine {
         if (executedTxn.success) {
           console.log(`✅ [IOC] Order executed successfully!`)
 
-          // Wait a moment then check if order filled
-          await new Promise(r => setTimeout(r, 2000))
+          // Wait briefly then check if order filled (reduced from 2000ms for faster execution)
+          await new Promise(r => setTimeout(r, 500))
 
           // Check on-chain position to verify fill
           const newPosition = await this.getOnChainPosition()
@@ -1816,6 +1829,14 @@ export class VolumeBotEngine {
               console.warn(`⚠️ [IOC] Failed to place TP/SL:`, tpslError)
               // Continue - TP/SL will be placed on next tick
             }
+
+            // START RAPID MONITORING for this new position
+            // This dramatically improves close latency from 10+ seconds to 1.5 seconds
+            this.startRapidPositionMonitor({
+              size: newPosition.size,
+              isLong: isLong,
+              entryPrice: newPosition.entryPrice,
+            })
 
             // Position opened - don't count volume yet (count on close)
             return {
@@ -1894,6 +1915,9 @@ export class VolumeBotEngine {
   ): Promise<OrderResult> {
     const IOC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
 
+    // Stop rapid monitoring since we're force closing
+    this.stopRapidPositionMonitor()
+
     try {
       const { prisma } = await import('./prisma')
 
@@ -1955,8 +1979,8 @@ export class VolumeBotEngine {
       if (executedTxn.success) {
         console.log(`✅ [IOC] Close order executed!`)
 
-        // Wait and check if closed
-        await new Promise(r => setTimeout(r, 2000))
+        // Wait briefly and check if closed (reduced from 2000ms for faster execution)
+        await new Promise(r => setTimeout(r, 500))
         const newPosition = await this.getOnChainPosition()
 
         if (!newPosition || newPosition.size === 0) {
@@ -2011,6 +2035,111 @@ export class VolumeBotEngine {
     } catch (error) {
       console.error('❌ [IOC] Force close failed:', error)
       return await this.closePositionWithTwap(position)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RAPID POSITION MONITORING - Check PnL every 1.5 seconds when position open
+  // This dramatically improves close latency from 10+ seconds to ~1.5 seconds
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Start rapid position monitoring for fast TP/SL detection
+   * Polls PnL every 1.5 seconds instead of waiting for main loop (10+ seconds)
+   */
+  private startRapidPositionMonitor(position: { size: number; isLong: boolean; entryPrice: number }): void {
+    if (this.isMonitoringPosition) {
+      return // Already monitoring
+    }
+
+    console.log(`\n⚡ [RAPID] Starting rapid position monitor (every ${VolumeBotEngine.RAPID_MONITOR_INTERVAL_MS}ms)`)
+    this.isMonitoringPosition = true
+    this.lastRapidCheckTime = Date.now()
+
+    this.positionMonitorInterval = setInterval(async () => {
+      try {
+        await this.rapidCheckPosition(position)
+      } catch (error) {
+        console.error('⚠️ [RAPID] Monitor error:', error)
+      }
+    }, VolumeBotEngine.RAPID_MONITOR_INTERVAL_MS)
+  }
+
+  /**
+   * Stop rapid position monitoring
+   */
+  private stopRapidPositionMonitor(): void {
+    if (this.positionMonitorInterval) {
+      clearInterval(this.positionMonitorInterval)
+      this.positionMonitorInterval = null
+    }
+    this.isMonitoringPosition = false
+    console.log(`⏹️ [RAPID] Stopped position monitor`)
+  }
+
+  /**
+   * Rapid position check - called every 1.5 seconds
+   * Minimal logging to reduce noise, fast execution
+   */
+  private async rapidCheckPosition(trackedPosition: { size: number; isLong: boolean; entryPrice: number }): Promise<void> {
+    const startTime = Date.now()
+
+    // Fast price fetch only (skip position fetch to reduce latency)
+    const currentPrice = await this.getCurrentMarketPrice()
+    if (!currentPrice || currentPrice === 0) {
+      return // Skip this check if price unavailable
+    }
+
+    // Calculate PnL
+    const pnlPct = trackedPosition.isLong
+      ? (currentPrice - trackedPosition.entryPrice) / trackedPosition.entryPrice
+      : (trackedPosition.entryPrice - currentPrice) / trackedPosition.entryPrice
+
+    const elapsedMs = Date.now() - startTime
+
+    // Use same thresholds as main monitoring
+    const PROFIT_TARGET_PCT = 0.005  // 0.5%
+    const STOP_LOSS_PCT = 0.003      // 0.3%
+    const EMERGENCY_SL_PCT = STOP_LOSS_PCT * 0.8 // 0.24%
+
+    // Log every check with timing (compact format)
+    console.log(`⚡ [${elapsedMs}ms] PnL: ${(pnlPct * 100).toFixed(3)}% | $${currentPrice.toFixed(0)} | TP:+${(PROFIT_TARGET_PCT*100).toFixed(2)}% SL:-${(EMERGENCY_SL_PCT*100).toFixed(2)}%`)
+
+    // TAKE PROFIT
+    if (pnlPct >= PROFIT_TARGET_PCT) {
+      console.log(`\n🎯🎯🎯 [RAPID] TAKE PROFIT HIT! ${(pnlPct * 100).toFixed(3)}% >= ${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`)
+      this.stopRapidPositionMonitor()
+
+      // Get fresh position from chain and force close
+      const position = await this.getOnChainPosition()
+      if (position && position.size > 0) {
+        await this.forceClosePositionWithIOC(position)
+      }
+      return
+    }
+
+    // STOP LOSS
+    if (pnlPct <= -EMERGENCY_SL_PCT) {
+      console.log(`\n🛑🛑🛑 [RAPID] STOP LOSS HIT! ${(pnlPct * 100).toFixed(3)}% <= -${(EMERGENCY_SL_PCT * 100).toFixed(3)}%`)
+      this.stopRapidPositionMonitor()
+
+      // Get fresh position from chain and force close
+      const position = await this.getOnChainPosition()
+      if (position && position.size > 0) {
+        await this.forceClosePositionWithIOC(position)
+      }
+      return
+    }
+
+    // Check if position was closed externally (by on-chain TP/SL)
+    // Only check every 5th rapid poll to reduce API calls
+    if ((Date.now() - this.lastRapidCheckTime) > 7500) { // Every ~5 checks
+      this.lastRapidCheckTime = Date.now()
+      const onChainPos = await this.getOnChainPosition()
+      if (!onChainPos || onChainPos.size === 0) {
+        console.log(`\n🎯 [RAPID] Position closed externally (on-chain TP/SL triggered)`)
+        this.stopRapidPositionMonitor()
+      }
     }
   }
 

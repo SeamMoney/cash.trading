@@ -5,6 +5,22 @@ import { toast } from "sonner"
 import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+// Size decimals for each market (for proper display)
+const SIZE_DECIMALS: Record<string, number> = {
+  'BTC/USD': 8,
+  'ETH/USD': 7,
+  'SOL/USD': 6,
+  'APT/USD': 4,
+  'WLFI/USD': 3,
+  'XRP/USD': 4,
+  'LINK/USD': 4,
+}
+
+// Get symbol from market name
+const getMarketSymbol = (market: string): string => {
+  return market?.split('/')[0] || 'BTC'
+}
+
 interface BotStatusMonitorProps {
   userWalletAddress: string
   userSubaccount: string
@@ -26,7 +42,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     entry?: number,
     currentPrice?: number,
     isManual?: boolean,
-    market?: string
+    market?: string,
+    leverage?: number
   } | null>(null)
   const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
   const [isStopping, setIsStopping] = useState(false)
@@ -124,6 +141,10 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       } else if (data.status === 'monitoring' || data.isManualPosition) {
         // Bot is monitoring position OR detected manual position - update state for persistent UI display
         if (data.currentPnl !== undefined && data.positionDirection) {
+          // Get the correct market from position or bot config
+          const posMarket = data.manualPositionMarket || data.market
+          // Get leverage from allPositions if available
+          const posLeverage = data.allPositions?.[0]?.leverage || 40
           setMonitoringInfo({
             pnl: data.currentPnl,
             direction: data.positionDirection,
@@ -131,7 +152,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             entry: data.positionEntry,
             currentPrice: data.currentPrice,
             isManual: data.isManualPosition,
-            market: data.manualPositionMarket || data.market
+            market: posMarket,
+            leverage: posLeverage
           })
         }
       } else if (data.status === 'executed' && !data.positionSize) {
@@ -421,7 +443,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       "text-[10px] ml-1",
                       (monitoringInfo?.pnl ?? 0) >= 0 ? "text-green-400/70" : "text-red-400/70"
                     )}>
-                      ({(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{((monitoringInfo?.pnl ?? 0) * 40).toFixed(1)}% w/ 40x)
+                      ({(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{((monitoringInfo?.pnl ?? 0) * (monitoringInfo?.leverage || 40)).toFixed(1)}% w/ {monitoringInfo?.leverage || 40}x)
                     </span>
                   </div>
                 </div>
@@ -431,7 +453,13 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     <div>
                       <span className="text-zinc-500">Size</span>
                       <p className="text-white font-medium">
-                        {(monitoringInfo.size / 1e8).toFixed(4)} BTC
+                        {(() => {
+                          const market = monitoringInfo.market || 'BTC/USD'
+                          const decimals = SIZE_DECIMALS[market] || 8
+                          const symbol = getMarketSymbol(market)
+                          const displaySize = monitoringInfo.size / Math.pow(10, decimals)
+                          return `${displaySize.toFixed(4)} ${symbol}`
+                        })()}
                       </p>
                     </div>
                     <div>

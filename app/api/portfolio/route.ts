@@ -286,6 +286,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get trade history for this user (only after testnet reset)
+    // Filter by subaccount if provided to show only trades for the selected account
     let botOrders: any[] = []
     if (botInstance) {
       const rawOrders = await prisma.orderHistory.findMany({
@@ -293,6 +294,8 @@ export async function GET(request: NextRequest) {
           botId: botInstance.id,
           // Filter out pre-reset data
           timestamp: { gte: TESTNET_RESET_DATE },
+          // Filter by subaccount if one is specified
+          ...(querySubaccount ? { userSubaccount: querySubaccount } : {}),
         },
         orderBy: { timestamp: 'desc' },
       })
@@ -306,18 +309,18 @@ export async function GET(request: NextRequest) {
         market: order.market || botInstance.marketName,
         leverage: order.leverage || getDefaultLeverage(botInstance.marketName),
       }))
+      console.log(`📊 Found ${botOrders.length} bot orders for subaccount: ${querySubaccount?.slice(0, 20) || 'all'}...`)
     }
 
     // Fetch on-chain trade history from Decibel (only post-reset)
-    // Scan BOTH subaccount AND main wallet for trades
-    // - Bot trades: sent by bot operator, targeting subaccount
-    // - Manual trades: sent by main wallet, targeting subaccount
+    // Only scan the active subaccount for trades (not main wallet when subaccount is specified)
     let onChainTrades: any[] = []
     const seenTxHashes = new Set<string>()
 
-    // Scan subaccount transactions (bot operator trades)
+    // Scan the active subaccount for trades
     if (activeSubaccount) {
       try {
+        console.log(`📊 Scanning on-chain trades for subaccount: ${activeSubaccount.slice(0, 20)}...`)
         const subaccountTrades = await fetchOnChainTrades(activeSubaccount)
         for (const t of subaccountTrades) {
           if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
@@ -325,22 +328,24 @@ export async function GET(request: NextRequest) {
             onChainTrades.push(t)
           }
         }
+        console.log(`📊 Found ${onChainTrades.length} on-chain trades for this subaccount`)
       } catch (err) {
         console.warn('Could not fetch subaccount trades:', err)
       }
-    }
-
-    // Scan main wallet transactions (manual trades via Decibel UI)
-    try {
-      const mainWalletTrades = await fetchOnChainTrades(userWalletAddress)
-      for (const t of mainWalletTrades) {
-        if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
-          seenTxHashes.add(t.txHash)
-          onChainTrades.push(t)
+    } else {
+      // Only scan main wallet if no subaccount is specified (fallback)
+      try {
+        console.log(`📊 No subaccount specified, scanning main wallet trades`)
+        const mainWalletTrades = await fetchOnChainTrades(userWalletAddress)
+        for (const t of mainWalletTrades) {
+          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
+            seenTxHashes.add(t.txHash)
+            onChainTrades.push(t)
+          }
         }
+      } catch (err) {
+        console.warn('Could not fetch main wallet trades:', err)
       }
-    } catch (err) {
-      console.warn('Could not fetch main wallet trades:', err)
     }
 
     // Detect current positions and create synthetic trades for untracked ones

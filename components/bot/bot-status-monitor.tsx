@@ -581,7 +581,11 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       <div>
                         <span className="text-zinc-500 block">Size</span>
                         <span className="text-white font-medium">
-                          {order.size ? (Number(order.size) / 1e8).toFixed(4) : '-'}
+                          {order.size ? (() => {
+                            const market = order.market || config?.marketName || 'BTC/USD'
+                            const decimals = SIZE_DECIMALS[market] || 8
+                            return (Number(order.size) / Math.pow(10, decimals)).toFixed(4)
+                          })() : '-'}
                         </span>
                       </div>
                     )}

@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ArrowUp, ArrowDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 interface Trade {
   id: string
@@ -26,6 +27,7 @@ interface Trade {
 
 export function HistoryTable() {
   const { account, connected } = useWallet()
+  const { subaccount } = useWalletBalance()
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'history' | 'positions'>('history')
@@ -35,7 +37,14 @@ export function HistoryTable() {
 
     setLoading(true)
     try {
-      const res = await fetch(`/api/portfolio?userWalletAddress=${account.address}`)
+      const params = new URLSearchParams({
+        userWalletAddress: account.address.toString(),
+      })
+      if (subaccount) {
+        params.set('userSubaccount', subaccount)
+      }
+
+      const res = await fetch(`/api/portfolio?${params}`)
       const data = await res.json()
 
       if (data.recentTrades) {
@@ -50,13 +59,13 @@ export function HistoryTable() {
 
   useEffect(() => {
     fetchTrades()
-  }, [account?.address])
+  }, [account?.address, subaccount])
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(fetchTrades, 30000)
     return () => clearInterval(interval)
-  }, [account?.address])
+  }, [account?.address, subaccount])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)

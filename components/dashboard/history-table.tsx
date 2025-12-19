@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ArrowUp, ArrowDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -32,9 +32,10 @@ export function HistoryTable() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'history' | 'positions'>('history')
 
-  const fetchTrades = async () => {
+  const fetchTrades = useCallback(async () => {
     if (!account?.address) return
 
+    console.log('📜 Fetching trades for subaccount:', subaccount?.slice(0, 20) + '...')
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -48,6 +49,7 @@ export function HistoryTable() {
       const data = await res.json()
 
       if (data.recentTrades) {
+        console.log('📜 Received', data.recentTrades.length, 'trades')
         setTrades(data.recentTrades)
       }
     } catch (err) {
@@ -55,17 +57,17 @@ export function HistoryTable() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [account?.address, subaccount])
 
   useEffect(() => {
     fetchTrades()
-  }, [account?.address, subaccount])
+  }, [fetchTrades])
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(fetchTrades, 30000)
     return () => clearInterval(interval)
-  }, [account?.address, subaccount])
+  }, [fetchTrades])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)

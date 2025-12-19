@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { TrendingDown, TrendingUp, RefreshCw, Loader2 } from "lucide-react"
 import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, BarChart, Bar } from "recharts"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
@@ -42,10 +42,11 @@ export function PortfolioView() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch portfolio data
-  const fetchPortfolio = async () => {
+  // Fetch portfolio data - use useCallback to ensure stable reference
+  const fetchPortfolio = useCallback(async () => {
     if (!account?.address) return
 
+    console.log('📊 Fetching portfolio for subaccount:', subaccount?.slice(0, 20) + '...')
     setLoading(true)
     setError(null)
 
@@ -64,23 +65,24 @@ export function PortfolioView() {
         throw new Error(data.error || 'Failed to fetch portfolio')
       }
 
+      console.log('📊 Portfolio data received for:', data.balance?.accountAddress?.slice(0, 20) + '...')
       setPortfolio(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch portfolio')
     } finally {
       setLoading(false)
     }
-  }
+  }, [account?.address, subaccount])
 
   useEffect(() => {
     fetchPortfolio()
-  }, [account?.address, subaccount])
+  }, [fetchPortfolio])
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(fetchPortfolio, 30000)
     return () => clearInterval(interval)
-  }, [account?.address, subaccount])
+  }, [fetchPortfolio])
 
   const stats = portfolio?.stats
   // Use wallet hook's balance for consistency with the balance button

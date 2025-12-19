@@ -50,16 +50,18 @@ function getDefaultLeverage(marketName: string): number {
 
 /**
  * Fetch on-chain trade history from Decibel events
- * Scans subaccount transactions for trade-related events
+ * Scans wallet transactions for trade-related events that reference the given subaccount
+ * @param walletAddress - The main wallet address (sender of transactions)
+ * @param subaccount - The subaccount to filter trades for (optional, if provided filters events by subaccount)
  */
-async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
+async function fetchOnChainTrades(walletAddress: string, subaccount?: string): Promise<any[]> {
   const trades: any[] = []
   const seenTxHashes = new Set<string>()
 
   try {
-    // Fetch recent transactions for this subaccount
+    // Fetch recent transactions for this wallet
     const txResponse = await fetch(
-      `${APTOS_NODE}/accounts/${subaccount}/transactions?limit=100`
+      `${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=100`
     )
 
     if (!txResponse.ok) {
@@ -84,6 +86,10 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
         // TradeEvent - actual fill happened
         if (eventType.includes('TradeEvent')) {
           const data = event.data
+          // Filter by subaccount if specified
+          const eventSubaccount = data.user || data.subaccount || data.account
+          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
           const pxDecimals = getPriceDecimals(market)
@@ -109,7 +115,8 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
         // BulkOrderFilledEvent - order was filled
         if (eventType.includes('BulkOrderFilledEvent')) {
           const data = event.data
-          if (data.user !== subaccount) continue
+          // Filter by subaccount if specified
+          if (subaccount && data.user !== subaccount) continue
 
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
@@ -142,6 +149,10 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
         // PositionOpenedEvent / PositionClosedEvent
         if (eventType.includes('PositionOpenedEvent') || eventType.includes('PositionClosedEvent')) {
           const data = event.data
+          // Filter by subaccount if specified
+          const eventSubaccount = data.user || data.subaccount || data.account
+          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
           const pxDecimals = getPriceDecimals(market)
@@ -173,6 +184,13 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
             func.includes('place_market_order') ||
             func.includes('close_position')) {
 
+          // Extract subaccount from arguments (usually arg 0 for most Decibel functions)
+          const args = tx.payload?.arguments || []
+          const txSubaccount = args[0]?.inner || args[0]
+
+          // Filter by subaccount if specified
+          if (subaccount && txSubaccount && txSubaccount !== subaccount) continue
+
           // Extract market from arguments (usually arg 1 or 2)
           let marketAddr = tx.payload?.arguments?.[1]?.inner ||
                           tx.payload?.arguments?.[1] ||
@@ -181,7 +199,6 @@ async function fetchOnChainTrades(subaccount: string): Promise<any[]> {
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
 
           // Determine direction from arguments
-          const args = tx.payload?.arguments || []
           let isLong = false
           for (const arg of args) {
             if (arg === true || arg === 'true') {
@@ -313,39 +330,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch on-chain trade history from Decibel (only post-reset)
-    // Only scan the active subaccount for trades (not main wallet when subaccount is specified)
+    // Scan the main wallet for transactions and filter by subaccount in the events
+    // (Subaccounts are resource accounts that don't send transactions - the main wallet does)
     let onChainTrades: any[] = []
     const seenTxHashes = new Set<string>()
 
-    // Scan the active subaccount for trades
-    if (activeSubaccount) {
-      try {
-        console.log(`📊 Scanning on-chain trades for subaccount: ${activeSubaccount.slice(0, 20)}...`)
-        const subaccountTrades = await fetchOnChainTrades(activeSubaccount)
-        for (const t of subaccountTrades) {
-          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
-            seenTxHashes.add(t.txHash)
-            onChainTrades.push(t)
-          }
+    try {
+      console.log(`📊 Scanning main wallet trades for subaccount: ${activeSubaccount?.slice(0, 20) || 'all'}...`)
+      const walletTrades = await fetchOnChainTrades(userWalletAddress, activeSubaccount || undefined)
+      for (const t of walletTrades) {
+        if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
+          seenTxHashes.add(t.txHash)
+          onChainTrades.push(t)
         }
-        console.log(`📊 Found ${onChainTrades.length} on-chain trades for this subaccount`)
-      } catch (err) {
-        console.warn('Could not fetch subaccount trades:', err)
       }
-    } else {
-      // Only scan main wallet if no subaccount is specified (fallback)
-      try {
-        console.log(`📊 No subaccount specified, scanning main wallet trades`)
-        const mainWalletTrades = await fetchOnChainTrades(userWalletAddress)
-        for (const t of mainWalletTrades) {
-          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
-            seenTxHashes.add(t.txHash)
-            onChainTrades.push(t)
-          }
-        }
-      } catch (err) {
-        console.warn('Could not fetch main wallet trades:', err)
-      }
+      console.log(`📊 Found ${onChainTrades.length} on-chain trades`)
+    } catch (err) {
+      console.warn('Could not fetch wallet trades:', err)
     }
 
     // Detect current positions and create synthetic trades for untracked ones

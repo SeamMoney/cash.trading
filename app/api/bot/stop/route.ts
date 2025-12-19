@@ -203,6 +203,10 @@ export async function POST(request: NextRequest) {
                 pnl: estimatedPnl,
                 txHash: closeCommittedTxn.hash,
                 timestamp: new Date(),
+                success: true,
+                strategy: bot.strategy,
+                market: bot.marketName,
+                userSubaccount: bot.userSubaccount,
               }
             })
 

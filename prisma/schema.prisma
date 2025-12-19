@@ -52,8 +52,10 @@ model OrderHistory {
   sessionId       String?
   market          String?     // Market name (e.g., "BTC/USD")
   leverage        Int?        // Leverage used for this trade
+  userSubaccount  String?     // Subaccount address this trade was executed on
   bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@index([botId])
   @@index([sessionId])
+  @@index([userSubaccount])
 }

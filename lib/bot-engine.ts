@@ -2997,6 +2997,7 @@ export class VolumeBotEngine {
               positionHeldMs: result.positionHeldMs || 0,
               market: this.config.marketName,  // Save market name
               leverage: this.getMarketMaxLeverage(),  // Save leverage used
+              userSubaccount: this.config.userSubaccount,  // Track which subaccount this trade was on
             }
           })
 
@@ -3058,6 +3059,7 @@ export class VolumeBotEngine {
                 positionHeldMs: result.positionHeldMs || 0,
                 market: this.config.marketName,
                 leverage: this.getMarketMaxLeverage(),
+                userSubaccount: this.config.userSubaccount,
               }
             })
 

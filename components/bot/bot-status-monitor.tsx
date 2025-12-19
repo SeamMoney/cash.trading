@@ -7,11 +7,12 @@ import { cn } from "@/lib/utils"
 
 interface BotStatusMonitorProps {
   userWalletAddress: string
+  userSubaccount: string
   isRunning: boolean
   onStatusChange?: (isRunning: boolean) => void
 }
 
-export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange }: BotStatusMonitorProps) {
+export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning, onStatusChange }: BotStatusMonitorProps) {
   const [status, setStatus] = useState<any>(null)
   const [config, setConfig] = useState<any>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -190,13 +191,25 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
 
         const data = await response.json()
 
-        setStatus(data.status)
-        setConfig(data.config)
-        setSessionId(data.sessionId || null)
+        // Only show status if the bot is running for the currently selected subaccount
+        const botSubaccount = data.config?.userSubaccount
+        const isForThisSubaccount = botSubaccount === userSubaccount
 
-        if (data.isRunning && !isRunning && onStatusChange) {
+        if (isForThisSubaccount) {
+          setStatus(data.status)
+          setConfig(data.config)
+          setSessionId(data.sessionId || null)
+        } else {
+          // Bot is running on a different subaccount, clear status
+          setStatus(null)
+          setConfig(null)
+          setSessionId(null)
+        }
+
+        const isRunningForThisSubaccount = data.isRunning && isForThisSubaccount
+        if (isRunningForThisSubaccount && !isRunning && onStatusChange) {
           onStatusChange(true)
-        } else if (!data.isRunning && isRunning && onStatusChange) {
+        } else if (!isRunningForThisSubaccount && isRunning && onStatusChange) {
           onStatusChange(false)
         }
 
@@ -210,7 +223,7 @@ export function BotStatusMonitor({ userWalletAddress, isRunning, onStatusChange 
     fetchStatus()
     const interval = setInterval(fetchStatus, 5000)
     return () => clearInterval(interval)
-  }, [userWalletAddress, isRunning])
+  }, [userWalletAddress, userSubaccount, isRunning])
 
   // Get tick interval based on strategy
   // TX Spammer: 5 seconds (rapid fire)

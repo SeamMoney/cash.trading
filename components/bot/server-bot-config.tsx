@@ -216,11 +216,14 @@ export function ServerBotConfig() {
 
   useEffect(() => {
     const checkActiveTWAPs = async () => {
-      if (!account) return
+      if (!account || !subaccount) return
       try {
         const response = await fetch(`/api/bot/status?userWalletAddress=${account.address.toString()}`)
         const data = await response.json()
-        if (data.isRunning) {
+        // Only show bot as running if it's for the currently selected subaccount
+        const botSubaccount = data.config?.userSubaccount
+        const isRunningForThisSubaccount = data.isRunning && botSubaccount === subaccount
+        if (isRunningForThisSubaccount) {
           setIsRunning(true)
           setError(null)
         } else {
@@ -232,7 +235,7 @@ export function ServerBotConfig() {
       }
     }
     checkActiveTWAPs()
-  }, [account])
+  }, [account, subaccount])
 
   const handleSetMax = () => {
     if (balance !== null) {
@@ -398,9 +401,10 @@ export function ServerBotConfig() {
       <CloudStatusIndicator />
 
       {/* Bot Status Monitor */}
-      {connected && account && (
+      {connected && account && subaccount && (
         <BotStatusMonitor
           userWalletAddress={account.address.toString()}
+          userSubaccount={subaccount}
           isRunning={isRunning}
           onStatusChange={setIsRunning}
         />

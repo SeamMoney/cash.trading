@@ -21,9 +21,9 @@ const MARKET_CONFIG: Record<string, { szDecimals: number }> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userWalletAddress } = body
+    const { userWalletAddress, userSubaccount } = body
 
-    console.log('🛑 Stop request for wallet:', userWalletAddress)
+    console.log('🛑 Stop request for wallet:', userWalletAddress, 'subaccount:', userSubaccount?.slice(0, 20))
 
     if (!userWalletAddress) {
       return NextResponse.json(
@@ -32,10 +32,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find the bot in the database
-    const bot = await prisma.botInstance.findFirst({
-      where: { userWalletAddress },
-    })
+    // Find the bot in the database - use composite key if subaccount provided
+    let bot
+    if (userSubaccount) {
+      bot = await prisma.botInstance.findUnique({
+        where: {
+          userWalletAddress_userSubaccount: {
+            userWalletAddress,
+            userSubaccount,
+          }
+        },
+      })
+    } else {
+      // Fallback: find first running bot for this wallet
+      bot = await prisma.botInstance.findFirst({
+        where: { userWalletAddress, isRunning: true },
+      })
+    }
 
     if (!bot) {
       console.log('❌ Bot not found in database for:', userWalletAddress)

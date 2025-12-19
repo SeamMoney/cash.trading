@@ -218,12 +218,10 @@ export function ServerBotConfig() {
     const checkActiveTWAPs = async () => {
       if (!account || !subaccount) return
       try {
-        const response = await fetch(`/api/bot/status?userWalletAddress=${account.address.toString()}`)
+        const response = await fetch(`/api/bot/status?userWalletAddress=${account.address.toString()}&userSubaccount=${encodeURIComponent(subaccount)}`)
         const data = await response.json()
-        // Only show bot as running if it's for the currently selected subaccount
-        const botSubaccount = data.config?.userSubaccount
-        const isRunningForThisSubaccount = data.isRunning && botSubaccount === subaccount
-        if (isRunningForThisSubaccount) {
+        // Show bot as running if it exists and is running for this subaccount
+        if (data.isRunning) {
           setIsRunning(true)
           setError(null)
         } else {

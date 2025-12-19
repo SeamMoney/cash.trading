@@ -9,7 +9,7 @@ datasource db {
 
 model BotInstance {
   id                 String         @id @default(cuid())
-  userWalletAddress  String         @unique
+  userWalletAddress  String
   userSubaccount     String
   capitalUSDC        Float
   volumeTargetUSDC   Float
@@ -33,6 +33,9 @@ model BotInstance {
   activePositionEntry   Float?     // Entry price of bot's position
   activePositionTxHash  String?    // Tx hash that opened the position
   orders             OrderHistory[]
+
+  @@unique([userWalletAddress, userSubaccount])
+  @@index([userWalletAddress])
 }
 
 model OrderHistory {

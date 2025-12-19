@@ -39,7 +39,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       const response = await fetch('/api/bot/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userWalletAddress }),
+        body: JSON.stringify({ userWalletAddress, userSubaccount }),
       })
 
       const data = await response.json()
@@ -69,7 +69,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     } finally {
       setIsStopping(false)
     }
-  }, [userWalletAddress, onStatusChange])
+  }, [userWalletAddress, userSubaccount, onStatusChange])
 
   // Trigger a trade tick
   const triggerTick = useCallback(async () => {
@@ -80,7 +80,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       const response = await fetch('/api/bot/tick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userWalletAddress }),
+        body: JSON.stringify({ userWalletAddress, userSubaccount }),
       })
 
       const data = await response.json()
@@ -160,7 +160,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
 
       // Immediately fetch updated status
       const statusResponse = await fetch(
-        `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}`
+        `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}&userSubaccount=${encodeURIComponent(userSubaccount)}`
       )
       const statusData = await statusResponse.json()
       if (statusData.status) {
@@ -176,13 +176,13 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     } finally {
       setIsExecuting(false)
     }
-  }, [userWalletAddress, isRunning, isExecuting, onStatusChange])
+  }, [userWalletAddress, userSubaccount, isRunning, isExecuting, onStatusChange])
 
   useEffect(() => {
     const fetchStatus = async () => {
       try {
         const response = await fetch(
-          `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}`
+          `/api/bot/status?userWalletAddress=${encodeURIComponent(userWalletAddress)}&userSubaccount=${encodeURIComponent(userSubaccount)}`
         )
 
         if (!response.ok) {

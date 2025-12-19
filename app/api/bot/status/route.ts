@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')
+    const userSubaccount = searchParams.get('userSubaccount')
 
     if (!userWalletAddress) {
       return NextResponse.json(
@@ -15,10 +16,24 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get bot from database
-    const botInstance = await prisma.botInstance.findUnique({
-      where: { userWalletAddress },
-    })
+    // Get bot from database - if subaccount provided, look for exact match
+    // Otherwise, find any bot for this wallet (backwards compatibility)
+    let botInstance
+    if (userSubaccount) {
+      botInstance = await prisma.botInstance.findUnique({
+        where: {
+          userWalletAddress_userSubaccount: {
+            userWalletAddress,
+            userSubaccount,
+          }
+        },
+      })
+    } else {
+      // Fallback: find first bot for this wallet
+      botInstance = await prisma.botInstance.findFirst({
+        where: { userWalletAddress },
+      })
+    }
 
     if (!botInstance) {
       return NextResponse.json({

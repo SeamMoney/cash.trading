@@ -69,22 +69,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if bot already running for this user - trust database as source of truth
+    // Check if bot already running for this subaccount - trust database as source of truth
     const existingBot = await prisma.botInstance.findUnique({
-      where: { userWalletAddress },
+      where: {
+        userWalletAddress_userSubaccount: {
+          userWalletAddress,
+          userSubaccount,
+        }
+      },
     })
 
     if (existingBot?.isRunning) {
       return NextResponse.json(
-        { error: 'Bot already running for this wallet. Stop it first.' },
+        { error: 'Bot already running for this subaccount. Stop it first.' },
         { status: 409 }
       )
     }
 
+    // Bot manager key includes subaccount for multi-bot support
+    const botKey = `${userWalletAddress}_${userSubaccount}`
+
     // Clean up stale in-memory bot if database says it's not running
-    if (botManager.hasBot(userWalletAddress) && !existingBot?.isRunning) {
-      console.log('🧹 Cleaning up stale in-memory bot for', userWalletAddress)
-      botManager.deleteBot(userWalletAddress)
+    if (botManager.hasBot(botKey) && !existingBot?.isRunning) {
+      console.log('🧹 Cleaning up stale in-memory bot for', botKey)
+      botManager.deleteBot(botKey)
     }
 
     // CRITICAL: Resolve market address from SDK (survives testnet resets!)
@@ -95,7 +103,12 @@ export async function POST(request: NextRequest) {
 
     // Create or update bot in database (with resolved market address)
     const botInstance = await prisma.botInstance.upsert({
-      where: { userWalletAddress },
+      where: {
+        userWalletAddress_userSubaccount: {
+          userWalletAddress,
+          userSubaccount,
+        }
+      },
       create: {
         userWalletAddress,
         userSubaccount,
@@ -109,7 +122,6 @@ export async function POST(request: NextRequest) {
         sessionId,
       },
       update: {
-        userSubaccount,
         capitalUSDC,
         volumeTargetUSDC,
         bias,
@@ -141,8 +153,8 @@ export async function POST(request: NextRequest) {
     const bot = new VolumeBotEngine(config)
     await bot.start()
 
-    // Store bot instance in memory
-    botManager.setBot(userWalletAddress, bot)
+    // Store bot instance in memory (using combined key for multi-bot support)
+    botManager.setBot(botKey, bot)
 
     console.log('✅ Bot started and persisted to database:', botInstance.id)
 

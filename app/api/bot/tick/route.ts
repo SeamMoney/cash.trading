@@ -26,7 +26,7 @@ export const maxDuration = 300 // 5 minutes - need time to wait for TWAP fills
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userWalletAddress } = body
+    const { userWalletAddress, userSubaccount } = body
 
     if (!userWalletAddress) {
       return NextResponse.json(
@@ -35,12 +35,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`⏰ Manual tick for ${userWalletAddress}`)
+    console.log(`⏰ Manual tick for ${userWalletAddress} subaccount: ${userSubaccount?.slice(0, 20) || 'any'}`)
 
-    // Get bot from database
-    const bot = await prisma.botInstance.findFirst({
-      where: { userWalletAddress, isRunning: true },
-    })
+    // Get bot from database - use composite key if subaccount provided
+    let bot
+    if (userSubaccount) {
+      bot = await prisma.botInstance.findUnique({
+        where: {
+          userWalletAddress_userSubaccount: {
+            userWalletAddress,
+            userSubaccount,
+          }
+        },
+      })
+      // Verify it's running
+      if (bot && !bot.isRunning) {
+        bot = null
+      }
+    } else {
+      // Fallback: find first running bot for this wallet
+      bot = await prisma.botInstance.findFirst({
+        where: { userWalletAddress, isRunning: true },
+      })
+    }
 
     if (!bot) {
       return NextResponse.json(

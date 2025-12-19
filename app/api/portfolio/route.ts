@@ -268,10 +268,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get bot instance for this user
-    const botInstance = await prisma.botInstance.findUnique({
-      where: { userWalletAddress },
-    })
+    // Get bot instance for this user - use composite key if subaccount provided
+    let botInstance
+    if (querySubaccount) {
+      botInstance = await prisma.botInstance.findUnique({
+        where: {
+          userWalletAddress_userSubaccount: {
+            userWalletAddress,
+            userSubaccount: querySubaccount,
+          }
+        },
+      })
+    } else {
+      // Fallback: find first bot for this wallet
+      botInstance = await prisma.botInstance.findFirst({
+        where: { userWalletAddress },
+      })
+    }
 
     // Use the subaccount from query param if provided, otherwise fall back to bot instance
     const activeSubaccount = querySubaccount || botInstance?.userSubaccount

@@ -1441,7 +1441,7 @@ export class VolumeBotEngine {
 
       // Get bot instance from DB
       const botInstance = await prisma.botInstance.findUnique({
-        where: { userWalletAddress: this.config.userWalletAddress }
+        where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
       })
       if (!botInstance) {
         throw new Error('Bot instance not found in database')
@@ -1999,7 +1999,7 @@ export class VolumeBotEngine {
 
           // Clear DB position
           const botInstance = await prisma.botInstance.findUnique({
-            where: { userWalletAddress: this.config.userWalletAddress }
+            where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
           })
           if (botInstance) {
             await prisma.botInstance.update({
@@ -2186,7 +2186,7 @@ export class VolumeBotEngine {
     // Track TWAP time for cooldown
     const { prisma } = await import('./prisma')
     const botInstance = await prisma.botInstance.findUnique({
-      where: { userWalletAddress: this.config.userWalletAddress }
+      where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
     })
     if (botInstance) {
       await prisma.botInstance.update({
@@ -2249,7 +2249,7 @@ export class VolumeBotEngine {
     // Update DB with TWAP tracking
     const { prisma } = await import('./prisma')
     const botInstance = await prisma.botInstance.findUnique({
-      where: { userWalletAddress: this.config.userWalletAddress }
+      where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
     })
     if (botInstance) {
       await prisma.botInstance.update({
@@ -2306,7 +2306,7 @@ export class VolumeBotEngine {
       // This ensures we don't interfere with user's manual trades
       const { prisma } = await import('./prisma')
       const botInstance = await prisma.botInstance.findUnique({
-        where: { userWalletAddress: this.config.userWalletAddress }
+        where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
       })
 
       if (!botInstance) {
@@ -2981,7 +2981,7 @@ export class VolumeBotEngine {
     if (this.config.strategy === 'high_risk') {
       const { prisma } = await import('./prisma')
       const botInstance = await prisma.botInstance.findUnique({
-        where: { userWalletAddress: this.config.userWalletAddress }
+        where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
       })
 
       if (botInstance?.activePositionSize && botInstance.activePositionSize > 0) {
@@ -3102,7 +3102,7 @@ export class VolumeBotEngine {
 
         // Find bot instance
         const botInstance = await prisma.botInstance.findUnique({
-          where: { userWalletAddress: this.config.userWalletAddress }
+          where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
         })
 
         console.log(`💾 Bot instance found: ${botInstance ? 'yes' : 'no'}, id: ${botInstance?.id}`)
@@ -3168,7 +3168,7 @@ export class VolumeBotEngine {
           const { prisma } = await import('./prisma')
 
           const botInstance = await prisma.botInstance.findUnique({
-            where: { userWalletAddress: this.config.userWalletAddress }
+            where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
           })
 
           if (botInstance) {
@@ -3223,7 +3223,7 @@ export class VolumeBotEngine {
       try {
         const { prisma } = await import('./prisma')
         await prisma.botInstance.update({
-          where: { userWalletAddress: this.config.userWalletAddress },
+          where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } },
           data: { error: this.status.error }
         })
       } catch (dbError) {
@@ -3318,7 +3318,7 @@ export class VolumeBotEngine {
     try {
       const { prisma } = await import('./prisma')
       await prisma.botInstance.update({
-        where: { userWalletAddress: this.config.userWalletAddress },
+        where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } },
         data: { isRunning: false }
       })
       console.log('💾 Database updated: bot marked as stopped')

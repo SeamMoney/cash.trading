@@ -22,8 +22,8 @@ async function main() {
 
   console.log(`\n🔍 Auditing position for wallet: ${userWallet}\n`)
 
-  // 1. Get database state
-  const bot = await prisma.botInstance.findUnique({
+  // 1. Get database state (find first bot for this wallet - use subaccount arg if needed)
+  const bot = await prisma.botInstance.findFirst({
     where: { userWalletAddress: userWallet }
   })
 

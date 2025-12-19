@@ -101,7 +101,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userWalletAddress, marketName } = body;
+    const { userWalletAddress, userSubaccount, marketName } = body;
 
     if (!userWalletAddress || !marketName) {
       return NextResponse.json(
@@ -121,11 +121,34 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update bot instance
-    const updated = await prisma.botInstance.update({
-      where: { userWalletAddress },
-      data: { market: market.address },
-    });
+    // Update bot instance - use composite key if subaccount provided, otherwise find by id
+    let updated;
+    if (userSubaccount) {
+      updated = await prisma.botInstance.update({
+        where: {
+          userWalletAddress_userSubaccount: {
+            userWalletAddress,
+            userSubaccount,
+          }
+        },
+        data: { market: market.address },
+      });
+    } else {
+      // Fallback: find first bot for this wallet and update
+      const bot = await prisma.botInstance.findFirst({
+        where: { userWalletAddress },
+      });
+      if (!bot) {
+        return NextResponse.json(
+          { error: 'No bot found for this wallet' },
+          { status: 404 }
+        );
+      }
+      updated = await prisma.botInstance.update({
+        where: { id: bot.id },
+        data: { market: market.address },
+      });
+    }
 
     return NextResponse.json({
       success: true,

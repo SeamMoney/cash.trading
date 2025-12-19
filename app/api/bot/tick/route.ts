@@ -287,8 +287,8 @@ export async function POST(request: NextRequest) {
         // Process ALL positions with non-zero size
         for (const entry of entries) {
           const pos = entry.value?.value
-          const size = parseInt(pos?.size || '0')
-          if (!pos || size === 0) continue
+          const sizeRaw = parseInt(pos?.size || '0')
+          if (!pos || sizeRaw === 0) continue
 
           const marketAddr = entry.key?.inner
 
@@ -318,6 +318,8 @@ export async function POST(request: NextRequest) {
             console.warn(`Could not fetch market info for ${marketAddr}`)
           }
 
+          // Convert size from chain units to human-readable
+          const size = sizeRaw / Math.pow(10, szDecimals)
           const entryPrice = parseInt(pos.avg_acquire_entry_px) / Math.pow(10, pxDecimals)
           const leverage = pos.user_leverage || 1
           const direction = pos.is_long ? 'long' : 'short'
@@ -402,7 +404,10 @@ export async function POST(request: NextRequest) {
       // Fallback to database if on-chain fetch fails
       if (updatedBot?.activePositionSize && updatedBot?.activePositionEntry) {
         positionDirection = updatedBot.activePositionIsLong ? 'long' : 'short'
-        positionSize = Number(updatedBot.activePositionSize)
+        // Convert from chain units using market's size decimals
+        const mktConfig = MARKET_CONFIG[bot.marketName]
+        const szDec = mktConfig?.szDecimals || 6
+        positionSize = Number(updatedBot.activePositionSize) / Math.pow(10, szDec)
         positionEntry = updatedBot.activePositionEntry
       }
     }

@@ -137,6 +137,14 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
   }, [userSubaccount])
 
   // Close a position
+  // Track closing progress: { posKey: { initialSize, currentSize, startTime } }
+  const [closingProgress, setClosingProgress] = useState<Record<string, {
+    initialSize: number,
+    market: string,
+    direction: string,
+    startTime: number
+  }>>({})
+
   const handleClosePosition = useCallback(async (position: {
     market: string,
     marketAddress: string,
@@ -145,6 +153,17 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
   }) => {
     const posKey = `${position.marketAddress}-${position.direction}`
     setClosingPositions(prev => new Set(prev).add(posKey))
+
+    // Track initial size for progress
+    setClosingProgress(prev => ({
+      ...prev,
+      [posKey]: {
+        initialSize: position.sizeRaw,
+        market: position.market,
+        direction: position.direction,
+        startTime: Date.now()
+      }
+    }))
 
     try {
       const response = await fetch('/api/bot/close-position', {
@@ -168,30 +187,90 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             description: 'Please click "Delegate Permissions" below to allow the bot to close positions.',
             duration: 8000,
           })
+          setClosingPositions(prev => {
+            const next = new Set(prev)
+            next.delete(posKey)
+            return next
+          })
+          setClosingProgress(prev => {
+            const next = { ...prev }
+            delete next[posKey]
+            return next
+          })
           return
         }
         throw new Error(data.details || data.error || 'Failed to close position')
       }
 
       toast.success('Closing Position', {
-        description: `TWAP close for ${position.direction.toUpperCase()} ${position.market} submitted. Will fill in ~1 minute.`,
+        description: `TWAP close for ${position.direction.toUpperCase()} ${position.market} submitted. Monitoring progress...`,
         duration: 5000,
       })
 
-      // Refresh positions after a delay
-      setTimeout(fetchLivePositions, 3000)
+      // Poll for close completion (every 5 seconds for up to 2 minutes)
+      let pollCount = 0
+      const maxPolls = 24 // 2 minutes
+      const pollInterval = setInterval(async () => {
+        pollCount++
+        await fetchLivePositions()
+
+        // Check if position is gone or size reduced
+        const currentPos = livePositions.find(p =>
+          p.marketAddress === position.marketAddress && p.direction === position.direction
+        )
+
+        if (!currentPos || currentPos.sizeRaw === 0) {
+          // Position fully closed
+          clearInterval(pollInterval)
+          setClosingPositions(prev => {
+            const next = new Set(prev)
+            next.delete(posKey)
+            return next
+          })
+          setClosingProgress(prev => {
+            const next = { ...prev }
+            delete next[posKey]
+            return next
+          })
+          toast.success('Position Closed', {
+            description: `${position.direction.toUpperCase()} ${position.market} fully closed!`,
+            duration: 5000,
+          })
+        } else if (pollCount >= maxPolls) {
+          // Timeout
+          clearInterval(pollInterval)
+          setClosingPositions(prev => {
+            const next = new Set(prev)
+            next.delete(posKey)
+            return next
+          })
+          setClosingProgress(prev => {
+            const next = { ...prev }
+            delete next[posKey]
+            return next
+          })
+          toast.info('Close in progress', {
+            description: 'Position may still be closing. Refresh to check status.',
+          })
+        }
+      }, 5000)
+
     } catch (err: any) {
       toast.error('Failed to close position', {
         description: err.message,
       })
-    } finally {
       setClosingPositions(prev => {
         const next = new Set(prev)
         next.delete(posKey)
         return next
       })
+      setClosingProgress(prev => {
+        const next = { ...prev }
+        delete next[posKey]
+        return next
+      })
     }
-  }, [userSubaccount, fetchLivePositions])
+  }, [userSubaccount, fetchLivePositions, livePositions])
 
   // Trigger a trade tick
   const triggerTick = useCallback(async () => {
@@ -456,7 +535,18 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             {livePositions.map((pos, idx) => {
               const posKey = `${pos.marketAddress}-${pos.direction}`
               const isClosing = closingPositions.has(posKey)
+              const closeInfo = closingProgress[posKey]
               const symbol = pos.market.split('/')[0]
+
+              // Calculate close progress
+              let closePercent = 0
+              let elapsedSeconds = 0
+              if (isClosing && closeInfo) {
+                closePercent = Math.round((1 - (pos.sizeRaw / closeInfo.initialSize)) * 100)
+                if (closePercent < 0) closePercent = 0
+                if (closePercent > 100) closePercent = 100
+                elapsedSeconds = Math.floor((Date.now() - closeInfo.startTime) / 1000)
+              }
 
               return (
                 <div
@@ -533,15 +623,24 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     disabled={isClosing}
                     className={cn(
                       "w-full h-8 text-xs font-bold font-mono tracking-wider border relative overflow-hidden group transition-all duration-300",
-                      "bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/50",
-                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                      isClosing
+                        ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/50"
+                        : "bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/50",
+                      "disabled:cursor-not-allowed"
                     )}
                   >
+                    {/* Progress bar background */}
+                    {isClosing && closePercent > 0 && (
+                      <div
+                        className="absolute inset-0 bg-yellow-500/30 transition-all duration-500"
+                        style={{ width: `${closePercent}%` }}
+                      />
+                    )}
                     <span className="relative z-10 flex items-center justify-center gap-2">
                       {isClosing ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          CLOSING...
+                          CLOSING {closePercent > 0 ? `${closePercent}%` : '...'} {elapsedSeconds > 0 && `(${elapsedSeconds}s)`}
                         </>
                       ) : (
                         <>

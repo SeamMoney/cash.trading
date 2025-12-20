@@ -1151,8 +1151,8 @@ export class VolumeBotEngine {
       // MOMENTUM SCALPING - Risk parameters matching placeHighRiskOrderWithIOC
       // Wider targets to actually cover trading costs and be profitable
       // At 40x leverage: TP = 20% gain, SL = 12% loss
-      const PROFIT_TARGET_PCT = 0.005    // 0.5% price move = +20% leveraged profit at 40x
-      const STOP_LOSS_PCT = 0.003        // 0.3% price move = -12% leveraged loss at 40x
+      const PROFIT_TARGET_PCT = 0.002    // 0.2% price move = +8% leveraged profit at 40x
+      const STOP_LOSS_PCT = 0.0005       // 0.05% price move = -2% leveraged loss at 40x (tight!)
 
       const tpPrice = isLong
         ? entryPrice * (1 + PROFIT_TARGET_PCT)
@@ -1431,8 +1431,8 @@ export class VolumeBotEngine {
     // - Momentum entry should push win rate above 55%
     // ═══════════════════════════════════════════════════════════════════
     const IOC_SLIPPAGE_PCT = 0.05      // 5% slippage for guaranteed IOC fills on testnet
-    const PROFIT_TARGET_PCT = 0.005    // 0.5% price move → 20% at 40x leverage
-    const STOP_LOSS_PCT = 0.003        // 0.3% price move → 12% at 40x leverage
+    const PROFIT_TARGET_PCT = 0.002    // 0.2% price move → 8% at 40x leverage (tight TP for quick exits)
+    const STOP_LOSS_PCT = 0.0005       // 0.05% price move → 2% at 40x leverage (TIGHT stop to cut losses fast!)
     const CAPITAL_USAGE_PCT = 0.90     // Use 90% of capital (aggressive - maximize volume)
     const USE_TWAP_FALLBACK = true     // Enable TWAP fallback when IOC doesn't fill (testnet has no liquidity)
 
@@ -2098,8 +2098,8 @@ export class VolumeBotEngine {
     const elapsedMs = Date.now() - startTime
 
     // Use same thresholds as main monitoring
-    const PROFIT_TARGET_PCT = 0.005  // 0.5%
-    const STOP_LOSS_PCT = 0.003      // 0.3%
+    const PROFIT_TARGET_PCT = 0.002  // 0.2% → 8% at 40x
+    const STOP_LOSS_PCT = 0.0005     // 0.05% → 2% at 40x (tight!)
     const EMERGENCY_SL_PCT = STOP_LOSS_PCT * 0.8 // 0.24%
 
     // Log every check with timing (compact format)

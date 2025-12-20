@@ -844,7 +844,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                 )}
                 {!monitoringInfo?.isManual && (
                   <div className="mt-2 text-[10px] text-zinc-500">
-                    Target: +0.5% (+20% w/ 40x) · Stop: -0.3% (-12% w/ 40x)
+                    Target: +0.2% (+8% w/ 40x) · Stop: -0.05% (-2% w/ 40x)
                   </div>
                 )}
                 {monitoringInfo?.isManual && (

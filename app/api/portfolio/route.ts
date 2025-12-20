@@ -396,41 +396,11 @@ export async function GET(request: NextRequest) {
       console.log(`📊 Found ${botOrders.length} bot orders for subaccount: ${querySubaccount?.slice(0, 20) || 'all'}...`)
     }
 
-    // Fetch on-chain trade history from Decibel (only post-reset)
-    // Scan the main wallet for transactions and filter by subaccount in the events
-    // (Subaccounts are resource accounts that don't send transactions - the main wallet does)
+    // SIMPLIFIED: Don't scan on-chain trades - they count TWAP partial fills as separate trades
+    // Instead, only use database orders which represent actual ORDER PLACEMENTS (not fills)
+    // This gives accurate trade counts without inflating numbers
     let onChainTrades: any[] = []
-    const seenTxHashes = new Set<string>()
-
-    try {
-      console.log(`📊 Scanning main wallet trades for subaccount: ${activeSubaccount?.slice(0, 20) || 'all'}...`)
-      const walletTrades = await fetchOnChainTrades(userWalletAddress, activeSubaccount || undefined)
-      for (const t of walletTrades) {
-        if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
-          seenTxHashes.add(t.txHash)
-          onChainTrades.push(t)
-        }
-      }
-      console.log(`📊 Found ${onChainTrades.length} on-chain trades from user wallet`)
-
-      // Also scan bot operator transactions for trades on this subaccount
-      // (Close-position and bot trades are signed by the bot operator)
-      if (activeSubaccount) {
-        console.log(`📊 Scanning bot operator trades for subaccount: ${activeSubaccount?.slice(0, 20)}...`)
-        const botTrades = await fetchOnChainTrades(BOT_OPERATOR, activeSubaccount)
-        let botTradeCount = 0
-        for (const t of botTrades) {
-          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
-            seenTxHashes.add(t.txHash)
-            onChainTrades.push(t)
-            botTradeCount++
-          }
-        }
-        console.log(`📊 Found ${botTradeCount} additional trades from bot operator`)
-      }
-    } catch (err) {
-      console.warn('Could not fetch wallet trades:', err)
-    }
+    console.log(`📊 Using database orders only (skipping on-chain scan to avoid counting TWAP partial fills)`)
 
     // Calculate realized PnL from deposits vs current balance
     // This is the most reliable way since TWAP fills don't emit trackable events

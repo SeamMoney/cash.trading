@@ -170,6 +170,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userWalletAddress,
           userSubaccount,
           marketAddress: position.marketAddress,
           marketName: position.market,

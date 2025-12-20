@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
 import { DECIBEL_PACKAGE } from '@/lib/decibel-client'
+import { prisma } from '@/lib/prisma'
 
 // Market configs for size/price decimals and ticker sizes
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number; tickerSize: bigint }> = {
@@ -32,7 +33,7 @@ function roundPriceToTickerSize(priceUSD: number, tickerSize: bigint): bigint {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userSubaccount, marketAddress, marketName, sizeRaw, isLong } = body
+    const { userWalletAddress, userSubaccount, marketAddress, marketName, sizeRaw, isLong } = body
 
     if (!userSubaccount || !marketAddress || sizeRaw === undefined || isLong === undefined) {
       return NextResponse.json(
@@ -165,6 +166,56 @@ export async function POST(request: NextRequest) {
 
     if (executedTxn.success) {
       console.log(`✅ [CLOSE] TWAP close order placed successfully!`)
+
+      // Record the close trade to orderHistory if we have a bot instance
+      try {
+        if (userWalletAddress) {
+          const botInstance = await prisma.botInstance.findUnique({
+            where: {
+              userWalletAddress_userSubaccount: {
+                userWalletAddress,
+                userSubaccount,
+              }
+            }
+          })
+
+          if (botInstance) {
+            // Calculate notional value
+            const szDecimals = mktConfig.szDecimals
+            const sizeInBaseAsset = Number(sizeRaw) / Math.pow(10, szDecimals)
+            const notionalValue = sizeInBaseAsset * currentPrice
+
+            // Record the close order
+            await prisma.orderHistory.create({
+              data: {
+                botId: botInstance.id,
+                userSubaccount,
+                txHash: committedTxn.hash,
+                direction: closeIsLong ? 'long' : 'short', // Close direction (opposite of position)
+                strategy: 'manual_close',
+                size: BigInt(sizeRaw),
+                volumeGenerated: notionalValue,
+                success: true,
+                entryPrice: currentPrice, // Use current price as approximate close price
+                market: marketName,
+                leverage: 10, // Default leverage for display
+              }
+            })
+            console.log(`📝 [CLOSE] Recorded trade to orderHistory`)
+
+            // Update cumulative volume
+            await prisma.botInstance.update({
+              where: { id: botInstance.id },
+              data: {
+                cumulativeVolume: { increment: notionalValue }
+              }
+            })
+          }
+        }
+      } catch (dbError) {
+        console.warn('Could not record close trade to database:', dbError)
+      }
+
       return NextResponse.json({
         success: true,
         txHash: committedTxn.hash,

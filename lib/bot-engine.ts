@@ -1433,7 +1433,7 @@ export class VolumeBotEngine {
     const IOC_SLIPPAGE_PCT = 0.05      // 5% slippage for guaranteed IOC fills on testnet
     const PROFIT_TARGET_PCT = 0.005    // 0.5% price move → 20% at 40x leverage
     const STOP_LOSS_PCT = 0.003        // 0.3% price move → 12% at 40x leverage
-    const CAPITAL_USAGE_PCT = 0.25     // Use 25% of capital (conservative)
+    const CAPITAL_USAGE_PCT = 0.90     // Use 90% of capital (aggressive - maximize volume)
     const USE_TWAP_FALLBACK = true     // Enable TWAP fallback when IOC doesn't fill (testnet has no liquidity)
 
     try {
@@ -2627,8 +2627,8 @@ export class VolumeBotEngine {
       const entryPrice = await this.getCurrentMarketPrice()
       const maxLeverage = this.getMarketMaxLeverage()
 
-      // Use 80% of capital for YOLO
-      const capitalToUse = this.config.capitalUSDC * 0.8
+      // Use 90% of capital (maximize volume)
+      const capitalToUse = this.config.capitalUSDC * 0.90
 
       // Calculate size properly
       const sizeDecimals = this.getMarketSizeDecimals()

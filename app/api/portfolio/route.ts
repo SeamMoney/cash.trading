@@ -88,7 +88,10 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
           const data = event.data
           // Filter by subaccount if specified
           const eventSubaccount = data.user || data.subaccount || data.account
-          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+          // IMPORTANT: If we're filtering by subaccount but can't find one in the event, skip it
+          if (subaccount) {
+            if (!eventSubaccount || eventSubaccount.toLowerCase() !== subaccount.toLowerCase()) continue
+          }
 
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
@@ -116,7 +119,9 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
         if (eventType.includes('BulkOrderFilledEvent')) {
           const data = event.data
           // Filter by subaccount if specified
-          if (subaccount && data.user !== subaccount) continue
+          if (subaccount) {
+            if (!data.user || data.user.toLowerCase() !== subaccount.toLowerCase()) continue
+          }
 
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
@@ -151,7 +156,9 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
           const data = event.data
           // Filter by subaccount if specified
           const eventSubaccount = data.user || data.subaccount || data.account
-          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+          if (subaccount) {
+            if (!eventSubaccount || eventSubaccount.toLowerCase() !== subaccount.toLowerCase()) continue
+          }
 
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
@@ -181,7 +188,9 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
           const data = event.data
           // Filter by subaccount if specified (TwapEvent uses 'account' field)
           const eventSubaccount = data.account
-          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+          if (subaccount) {
+            if (!eventSubaccount || eventSubaccount.toLowerCase() !== subaccount.toLowerCase()) continue
+          }
 
           const marketAddr = data.market?.inner || data.market
           const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
@@ -232,7 +241,9 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
           const txSubaccount = args[0]?.inner || args[0]
 
           // Filter by subaccount if specified
-          if (subaccount && txSubaccount && txSubaccount !== subaccount) continue
+          if (subaccount) {
+            if (!txSubaccount || txSubaccount.toLowerCase() !== subaccount.toLowerCase()) continue
+          }
 
           // Extract market from arguments (usually arg 1 or 2)
           let marketAddr = tx.payload?.arguments?.[1]?.inner ||

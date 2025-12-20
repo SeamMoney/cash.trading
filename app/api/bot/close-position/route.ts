@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     console.log(`   TWAP Limit: $${(Number(limitPriceChain) / 1e6).toFixed(2)}`)
 
     // Build TWAP close transaction
+    // Function signature: subaccount, market, size, is_long, reduce_only, min_duration, max_duration, builder_address, max_builder_fee
     const transaction = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
@@ -119,14 +120,13 @@ export async function POST(request: NextRequest) {
         functionArguments: [
           userSubaccount,
           marketAddress,
-          limitPriceChain.toString(),
-          sizeRaw.toString(),
-          closeIsLong,
-          60,    // duration_seconds (1 minute TWAP)
-          10,    // num_intervals
-          true,  // reduce_only (closing position)
-          undefined, undefined, undefined,
-          undefined, undefined, undefined, undefined, undefined,
+          sizeRaw.toString(),    // size
+          closeIsLong,           // is_long (opposite of position direction to close)
+          true,                  // reduce_only (closing position)
+          60,                    // min_duration seconds
+          120,                   // max_duration seconds
+          undefined,             // builder_address
+          undefined,             // max_builder_fee
         ],
       },
     })

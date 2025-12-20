@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
-import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square } from "lucide-react"
+import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Size decimals for each market (for proper display)
@@ -45,9 +45,35 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     market?: string,
     leverage?: number
   } | null>(null)
+  const [allPositions, setAllPositions] = useState<Array<{
+    market: string,
+    direction: 'long' | 'short',
+    size: number,
+    entryPrice: number,
+    currentPrice?: number,
+    pnlPercent?: number,
+    leverage?: number,
+    isManual?: boolean
+  }>>([])  // Track ALL positions including manual ones
   const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
   const [isStopping, setIsStopping] = useState(false)
   const lastTickTimeRef = useRef<number>(0)
+
+  // Live positions state (for when bot is not running)
+  const [livePositions, setLivePositions] = useState<Array<{
+    market: string,
+    marketAddress: string,
+    direction: 'long' | 'short',
+    size: number,
+    sizeRaw: number,
+    entryPrice: number,
+    currentPrice?: number,
+    pnlPercent?: number,
+    pnlUsd?: number,
+    leverage?: number,
+    notionalValue?: number
+  }>>([])
+  const [closingPositions, setClosingPositions] = useState<Set<string>>(new Set()) // Track which positions are being closed
 
   // Stop bot handler
   const handleStop = useCallback(async () => {
@@ -87,6 +113,75 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       setIsStopping(false)
     }
   }, [userWalletAddress, userSubaccount, onStatusChange])
+
+  // Fetch live positions from chain (works even when bot is not running)
+  const fetchLivePositions = useCallback(async () => {
+    if (!userSubaccount) {
+      console.log('[Positions] No subaccount, skipping fetch')
+      return
+    }
+    try {
+      const response = await fetch(`/api/positions?userSubaccount=${encodeURIComponent(userSubaccount)}`)
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[Positions] Fetched:', data.positions?.length || 0, 'positions', data.positions?.map((p: any) => p.market))
+        setLivePositions(data.positions || [])
+      } else {
+        console.error('[Positions] API error:', response.status)
+      }
+    } catch (e) {
+      console.error('[Positions] Fetch error:', e)
+    }
+  }, [userSubaccount])
+
+  // Close a position
+  const handleClosePosition = useCallback(async (position: {
+    market: string,
+    marketAddress: string,
+    direction: 'long' | 'short',
+    sizeRaw: number
+  }) => {
+    const posKey = `${position.marketAddress}-${position.direction}`
+    setClosingPositions(prev => new Set(prev).add(posKey))
+
+    try {
+      const response = await fetch('/api/bot/close-position', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userSubaccount,
+          marketAddress: position.marketAddress,
+          marketName: position.market,
+          sizeRaw: position.sizeRaw,
+          isLong: position.direction === 'long',
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to close position')
+      }
+
+      toast.success('Closing Position', {
+        description: `TWAP close for ${position.direction.toUpperCase()} ${position.market} submitted. Will fill in ~1 minute.`,
+        duration: 5000,
+      })
+
+      // Refresh positions after a delay
+      setTimeout(fetchLivePositions, 3000)
+    } catch (err: any) {
+      toast.error('Failed to close position', {
+        description: err.message,
+      })
+    } finally {
+      setClosingPositions(prev => {
+        const next = new Set(prev)
+        next.delete(posKey)
+        return next
+      })
+    }
+  }, [userSubaccount, fetchLivePositions])
 
   // Trigger a trade tick
   const triggerTick = useCallback(async () => {
@@ -156,13 +251,33 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             leverage: posLeverage
           })
         }
+        // Store ALL positions for display
+        if (data.allPositions && data.allPositions.length > 0) {
+          setAllPositions(data.allPositions)
+        }
       } else if (data.status === 'executed' && !data.positionSize) {
         // Position was closed (TP/SL triggered or manually closed) - clear monitoring info
         setMonitoringInfo(null)
+        // Update allPositions from response (may still have manual positions)
+        if (data.allPositions) {
+          setAllPositions(data.allPositions)
+        } else {
+          setAllPositions([])
+        }
       } else if (!data.positionSize && !data.isManualPosition && monitoringInfo) {
         // No position exists - clear monitoring info
         setMonitoringInfo(null)
+        // But check if there are still other positions
+        if (data.allPositions) {
+          setAllPositions(data.allPositions)
+        } else {
+          setAllPositions([])
+        }
       } else if (data.success && data.volumeGenerated) {
+        // Trade executed - also update allPositions
+        if (data.allPositions) {
+          setAllPositions(data.allPositions)
+        }
         const dir = data.direction === 'long' ? 'LONG' : 'SHORT'
         const vol = data.volumeGenerated?.toFixed(0) || '0'
         const cumVol = data.cumulativeVolume?.toFixed(0) || '0'
@@ -247,6 +362,16 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     return () => clearInterval(interval)
   }, [userWalletAddress, userSubaccount, isRunning])
 
+  // Poll for live positions (especially important when bot is NOT running)
+  useEffect(() => {
+    // Fetch immediately
+    fetchLivePositions()
+
+    // Poll every 10 seconds
+    const interval = setInterval(fetchLivePositions, 10000)
+    return () => clearInterval(interval)
+  }, [fetchLivePositions])
+
   // Get tick interval based on strategy
   // TX Spammer: 5 seconds (rapid fire)
   // High risk: 8 seconds (very fast for quick TP/SL monitoring)
@@ -286,16 +411,149 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     return () => clearInterval(countdownInterval)
   }, [isRunning, triggerTick, tickInterval, rateLimitBackoff])
 
-  if (!status || !config) {
+  // Calculate volume progress if we have status
+  const volumeProgress = status && config
+    ? (status.cumulativeVolume / config.volumeTargetUSDC) * 100
+    : 0
+
+  // Show component if we have positions OR if bot is running
+  const hasContent = (status && config) || livePositions.length > 0
+
+  if (!hasContent) {
     return null
   }
 
-  const volumeProgress = (status.cumulativeVolume / config.volumeTargetUSDC) * 100
-
   return (
     <div className="space-y-4 font-mono">
+      {/* Live Positions Panel - Show when NOT running but have positions */}
+      {!isRunning && livePositions.length > 0 && (
+        <div className="border border-purple-500/30 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-purple-500" />
+          <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-purple-500" />
+
+          {/* Header */}
+          <div className="px-4 py-3 bg-purple-500/5 border-b border-purple-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-purple-400" />
+              <h3 className="text-purple-400 text-sm uppercase tracking-widest font-bold">Live Positions</h3>
+            </div>
+            <span className="text-[10px] text-purple-400 uppercase tracking-wider">
+              {livePositions.length} open
+            </span>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {livePositions.map((pos, idx) => {
+              const posKey = `${pos.marketAddress}-${pos.direction}`
+              const isClosing = closingPositions.has(posKey)
+              const symbol = pos.market.split('/')[0]
+
+              return (
+                <div
+                  key={`${pos.market}-${idx}`}
+                  className={cn(
+                    "p-3 relative border",
+                    pos.direction === 'long'
+                      ? "bg-green-500/5 border-green-500/30"
+                      : "bg-red-500/5 border-red-500/30"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold uppercase",
+                        pos.direction === 'long'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      )}>
+                        {pos.direction === 'long' ? '↑ LONG' : '↓ SHORT'}
+                      </span>
+                      <span className="text-sm text-white font-medium">{pos.market}</span>
+                      <span className="text-[9px] px-1 py-0.5 bg-zinc-800 text-zinc-400">
+                        {pos.leverage || 1}x
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-sm font-bold",
+                        (pos.pnlPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                      )}>
+                        {(pos.pnlPercent ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercent ?? 0).toFixed(2)}%
+                      </span>
+                      {pos.pnlUsd !== undefined && (
+                        <span className={cn(
+                          "text-xs",
+                          pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70"
+                        )}>
+                          ({pos.pnlUsd >= 0 ? '+' : ''}${pos.pnlUsd.toFixed(2)})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-[10px] mb-3">
+                    <div>
+                      <span className="text-zinc-500 block">Size</span>
+                      <span className="text-white font-medium">
+                        {pos.size.toFixed(4)} {symbol}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Entry</span>
+                      <span className="text-white font-medium">${pos.entryPrice.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Current</span>
+                      <span className="text-white font-medium">${pos.currentPrice?.toFixed(2) || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Notional</span>
+                      <span className="text-white font-medium">${pos.notionalValue?.toFixed(0) || '-'}</span>
+                    </div>
+                  </div>
+
+                  {/* Close Position Button */}
+                  <button
+                    onClick={() => handleClosePosition({
+                      market: pos.market,
+                      marketAddress: pos.marketAddress,
+                      direction: pos.direction,
+                      sizeRaw: pos.sizeRaw,
+                    })}
+                    disabled={isClosing}
+                    className={cn(
+                      "w-full h-8 text-xs font-bold font-mono tracking-wider border relative overflow-hidden group transition-all duration-300",
+                      "bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/50",
+                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      {isClosing ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          CLOSING...
+                        </>
+                      ) : (
+                        <>
+                          <X className="w-3 h-3" />
+                          CLOSE POSITION
+                        </>
+                      )}
+                    </span>
+                  </button>
+                </div>
+              )
+            })}
+
+            <p className="text-[10px] text-zinc-500 text-center pt-2">
+              Positions opened via Decibel UI · Close uses 1-minute TWAP
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Status Panel - ALWAYS SHOW FIRST when running */}
-      {isRunning && (
+      {isRunning && status && config && (
         <div className="border border-primary/30 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
           <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary" />
           <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary" />
@@ -488,6 +746,106 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                 )}
               </div>
             )}
+
+            {/* All Open Positions - Show when multiple positions OR any manual positions exist */}
+            {(() => {
+              // Check if there are any positions in markets different from bot's market (manual positions)
+              const hasManualPositions = livePositions.some(p => p.market !== config?.marketName)
+              const shouldShow = livePositions.length > 1 || hasManualPositions
+
+              if (!shouldShow) return null
+
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider">
+                      {hasManualPositions ? 'All Open Positions' : 'Open Positions'}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">{livePositions.length} position{livePositions.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  {livePositions.map((pos, idx) => {
+                    const posKey = `${pos.marketAddress}-${pos.direction}`
+                    const isClosing = closingPositions.has(posKey)
+                    const symbol = pos.market.split('/')[0]
+                    // Check if this is the bot's configured market (not manual)
+                    const isBotPosition = pos.market === config?.marketName
+
+                    return (
+                      <div
+                        key={`${pos.market}-${idx}`}
+                        className={cn(
+                          "p-2 relative border",
+                          !isBotPosition
+                            ? "bg-purple-500/10 border-purple-500/30"
+                          : "bg-blue-500/10 border-blue-500/30"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                            pos.direction === 'long'
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          )}>
+                            {pos.direction === 'long' ? '↑' : '↓'} {pos.direction.toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-white font-medium">{pos.market}</span>
+                          <span className="text-[9px] px-1 py-0.5 bg-zinc-800 text-zinc-400">
+                            {pos.leverage || 10}x
+                          </span>
+                          {!isBotPosition && (
+                            <span className="text-[8px] px-1 py-0.5 bg-purple-500/20 text-purple-400">
+                              MANUAL
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-xs font-bold",
+                            (pos.pnlPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                          )}>
+                            {(pos.pnlPercent ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercent ?? 0).toFixed(2)}%
+                          </span>
+                          {/* Close button for manual positions */}
+                          {!isBotPosition && (
+                            <button
+                              onClick={() => handleClosePosition({
+                                market: pos.market,
+                                marketAddress: pos.marketAddress,
+                                direction: pos.direction,
+                                sizeRaw: pos.sizeRaw,
+                              })}
+                              disabled={isClosing}
+                              className="px-2 py-0.5 text-[8px] font-bold bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/30 disabled:opacity-50"
+                            >
+                              {isClosing ? <Loader2 className="w-2 h-2 animate-spin" /> : <X className="w-2 h-2" />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1 grid grid-cols-3 gap-2 text-[9px]">
+                        <div>
+                          <span className="text-zinc-500">Size</span>
+                          <p className="text-white">
+                            {pos.size.toFixed(4)} {symbol}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Entry</span>
+                          <p className="text-white">${pos.entryPrice.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Current</span>
+                          <p className="text-white">${pos.currentPrice?.toFixed(2) || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
             {/* Error Display - don't show rate limit errors as they auto-recover */}
             {status.error && !status.error.includes('429') && !status.error.includes('rate limit') && (

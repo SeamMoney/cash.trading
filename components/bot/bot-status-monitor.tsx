@@ -68,10 +68,12 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     sizeRaw: number,
     entryPrice: number,
     currentPrice?: number,
-    pnlPercent?: number,
-    pnlUsd?: number,
+    pnlPercent?: number,           // Raw price change %
+    pnlPercentLeveraged?: number,  // With leverage (what Decibel shows)
+    pnlUsd?: number,               // Actual USD profit/loss
     leverage?: number,
-    notionalValue?: number
+    notionalValue?: number,
+    marginUsed?: number,
   }>>([])
   const [closingPositions, setClosingPositions] = useState<Set<string>>(new Set()) // Track which positions are being closed
 
@@ -476,9 +478,9 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         "text-sm font-bold",
-                        (pos.pnlPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                        (pos.pnlPercentLeveraged ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                       )}>
-                        {(pos.pnlPercent ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercent ?? 0).toFixed(2)}%
+                        {(pos.pnlPercentLeveraged ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercentLeveraged ?? 0).toFixed(2)}%
                       </span>
                       {pos.pnlUsd !== undefined && (
                         <span className={cn(
@@ -507,8 +509,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       <span className="text-white font-medium">${pos.currentPrice?.toFixed(2) || '-'}</span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block">Notional</span>
-                      <span className="text-white font-medium">${pos.notionalValue?.toFixed(0) || '-'}</span>
+                      <span className="text-zinc-500 block">Margin</span>
+                      <span className="text-white font-medium">${pos.marginUsed?.toFixed(0) || '-'}</span>
                     </div>
                   </div>
 
@@ -803,10 +805,18 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                         <div className="flex items-center gap-2">
                           <span className={cn(
                             "text-xs font-bold",
-                            (pos.pnlPercent ?? 0) >= 0 ? "text-green-400" : "text-red-400"
+                            (pos.pnlPercentLeveraged ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                           )}>
-                            {(pos.pnlPercent ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercent ?? 0).toFixed(2)}%
+                            {(pos.pnlPercentLeveraged ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercentLeveraged ?? 0).toFixed(2)}%
                           </span>
+                          {pos.pnlUsd !== undefined && (
+                            <span className={cn(
+                              "text-[9px]",
+                              pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70"
+                            )}>
+                              (${pos.pnlUsd >= 0 ? '+' : ''}{pos.pnlUsd.toFixed(0)})
+                            </span>
+                          )}
                           {/* Close button for manual positions */}
                           {!isBotPosition && (
                             <button
@@ -824,7 +834,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                           )}
                         </div>
                       </div>
-                      <div className="mt-1 grid grid-cols-3 gap-2 text-[9px]">
+                      <div className="mt-1 grid grid-cols-4 gap-2 text-[9px]">
                         <div>
                           <span className="text-zinc-500">Size</span>
                           <p className="text-white">
@@ -838,6 +848,10 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                         <div>
                           <span className="text-zinc-500">Current</span>
                           <p className="text-white">${pos.currentPrice?.toFixed(2) || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Margin</span>
+                          <p className="text-white">${pos.marginUsed?.toFixed(0) || '-'}</p>
                         </div>
                       </div>
                     </div>

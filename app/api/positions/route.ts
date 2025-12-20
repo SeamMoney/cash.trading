@@ -106,9 +106,11 @@ export async function GET(request: NextRequest) {
 
       // Fetch current price
       let currentPrice: number | undefined
-      let pnlPercent: number | undefined
-      let pnlUsd: number | undefined
-      let notionalValue: number | undefined
+      let pnlPercent: number | undefined      // Raw price change %
+      let pnlPercentLeveraged: number | undefined  // With leverage applied (what Decibel shows)
+      let pnlUsd: number | undefined         // Actual USD profit/loss
+      let notionalValue: number | undefined  // Position value
+      let marginUsed: number | undefined     // Margin used
 
       try {
         const priceData = await getMarkPrice(marketAddr, 'testnet', 2000)
@@ -129,12 +131,22 @@ export async function GET(request: NextRequest) {
         }
 
         if (currentPrice && entryPrice) {
+          // Raw price change percentage
           pnlPercent = pos.is_long
             ? ((currentPrice - entryPrice) / entryPrice) * 100
             : ((entryPrice - currentPrice) / entryPrice) * 100
 
-          notionalValue = size * entryPrice
-          pnlUsd = (pnlPercent / 100) * notionalValue
+          // Leveraged PnL % (this is what Decibel shows as the main PnL %)
+          pnlPercentLeveraged = pnlPercent * leverage
+
+          // Actual USD PnL = size * price difference
+          pnlUsd = pos.is_long
+            ? size * (currentPrice - entryPrice)
+            : size * (entryPrice - currentPrice)
+
+          // Position value and margin
+          notionalValue = size * currentPrice
+          marginUsed = notionalValue / leverage
         }
       } catch (e) {
         console.warn(`Could not fetch price for ${marketName}`)
@@ -148,10 +160,12 @@ export async function GET(request: NextRequest) {
         sizeRaw,
         entryPrice,
         currentPrice,
-        pnlPercent,
-        pnlUsd,
+        pnlPercent,           // Raw price change %
+        pnlPercentLeveraged,  // With leverage (what Decibel shows)
+        pnlUsd,               // Actual USD profit/loss
         leverage,
         notionalValue,
+        marginUsed,
       })
     }
 

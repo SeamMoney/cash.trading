@@ -61,8 +61,9 @@ export async function POST(request: NextRequest) {
     })
     const aptos = new Aptos(config)
 
-    // Create bot account
-    const privateKey = new Ed25519PrivateKey(botPrivateKey)
+    // Create bot account - strip prefix if present
+    const keyHex = botPrivateKey.replace('ed25519-priv-', '').trim()
+    const privateKey = new Ed25519PrivateKey(keyHex)
     const botAccount = new Ed25519Account({ privateKey })
 
     // Get market config

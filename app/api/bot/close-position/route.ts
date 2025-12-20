@@ -181,8 +181,19 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error closing position:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Check for delegation error
+    if (errorMessage.includes('LACKS_PERP_TRADING_PERMISSIONS') || errorMessage.includes('lacks trading permissions')) {
+      return NextResponse.json({
+        error: 'Delegation required',
+        details: 'You need to delegate trading permissions to the bot operator before closing positions. Click "Delegate Permissions" in the app.',
+        needsDelegation: true,
+      }, { status: 403 })
+    }
+
     return NextResponse.json(
-      { error: 'Failed to close position', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to close position', details: errorMessage },
       { status: 500 }
     )
   }

@@ -162,7 +162,15 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to close position')
+        // Check for delegation error
+        if (data.needsDelegation) {
+          toast.error('Delegation Required', {
+            description: 'Please click "Delegate Permissions" below to allow the bot to close positions.',
+            duration: 8000,
+          })
+          return
+        }
+        throw new Error(data.details || data.error || 'Failed to close position')
       }
 
       toast.success('Closing Position', {

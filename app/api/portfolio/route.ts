@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { DECIBEL_PACKAGE, MARKETS } from '@/lib/decibel-client'
+import { DECIBEL_PACKAGE, MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
 
 export const runtime = 'nodejs'
 
@@ -357,7 +357,23 @@ export async function GET(request: NextRequest) {
           onChainTrades.push(t)
         }
       }
-      console.log(`📊 Found ${onChainTrades.length} on-chain trades`)
+      console.log(`📊 Found ${onChainTrades.length} on-chain trades from user wallet`)
+
+      // Also scan bot operator transactions for trades on this subaccount
+      // (Close-position and bot trades are signed by the bot operator)
+      if (activeSubaccount) {
+        console.log(`📊 Scanning bot operator trades for subaccount: ${activeSubaccount?.slice(0, 20)}...`)
+        const botTrades = await fetchOnChainTrades(BOT_OPERATOR, activeSubaccount)
+        let botTradeCount = 0
+        for (const t of botTrades) {
+          if (new Date(t.timestamp) >= TESTNET_RESET_DATE && !seenTxHashes.has(t.txHash)) {
+            seenTxHashes.add(t.txHash)
+            onChainTrades.push(t)
+            botTradeCount++
+          }
+        }
+        console.log(`📊 Found ${botTradeCount} additional trades from bot operator`)
+      }
     } catch (err) {
       console.warn('Could not fetch wallet trades:', err)
     }

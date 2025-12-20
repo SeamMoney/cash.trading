@@ -175,6 +175,49 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
           })
           break
         }
+
+        // TwapEvent - TWAP order placed (used for bot-initiated trades)
+        if (eventType.includes('TwapEvent')) {
+          const data = event.data
+          // Filter by subaccount if specified (TwapEvent uses 'account' field)
+          const eventSubaccount = data.account
+          if (subaccount && eventSubaccount && eventSubaccount !== subaccount) continue
+
+          const marketAddr = data.market?.inner || data.market
+          const market = MARKET_NAMES[marketAddr?.toLowerCase()] || 'Unknown'
+          const szDecimals = getSizeDecimals(market)
+
+          // Calculate approximate notional value
+          // We don't have fill price yet, so estimate based on order size
+          const origSize = Number(data.orig_size || 0)
+          const remainSize = Number(data.remain_size || 0)
+          const filledSize = origSize - remainSize
+
+          // For TWAP orders, we track the order placement
+          // Volume is estimated (actual fill price may differ)
+          // is_buy = true means long, is_buy = false means short
+          const isBuy = data.is_buy === true || data.is_buy === 'true'
+
+          trades.push({
+            id: `${tx.hash}_twap`,
+            timestamp: new Date(Number(tx.timestamp) / 1000),
+            txHash: tx.hash,
+            direction: isBuy ? 'long' : 'short',
+            strategy: 'twap',
+            market,
+            size: origSize,
+            // Estimate volume - will be refined when we can fetch fill prices
+            volumeGenerated: 0, // Set to 0 since we don't know fill price yet
+            success: true,
+            entryPrice: null, // TWAP doesn't have entry price at order time
+            exitPrice: null,
+            pnl: 0,
+            leverage: getDefaultLeverage(market),
+            isTwapOrder: true,
+            isReduceOnly: data.is_reduce_only === true || data.is_reduce_only === 'true',
+          })
+          break
+        }
       }
 
       // If no events found, check if this is a Decibel order placement
@@ -478,8 +521,54 @@ export async function GET(request: NextRequest) {
       .filter(t => !botTxHashes.has(t.txHash))
       .map(t => ({ ...t, source: 'manual' as const }))
 
-    const allOrders = [...botOrders, ...manualTrades]
+    let allOrders = [...botOrders, ...manualTrades]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+    // Enrich TWAP orders with estimated volume (use current price * size)
+    // This is approximate but better than showing 0 volume
+    const marketsToFetchPrices = new Set(
+      allOrders
+        .filter(o => o.size > 0 && (o.volumeGenerated === 0 || o.volumeGenerated === null))
+        .map(o => o.market)
+        .filter(m => m !== 'Unknown')
+    )
+
+    const marketPrices: Record<string, number> = {}
+    for (const marketName of marketsToFetchPrices) {
+      try {
+        const marketConfig = Object.values(MARKETS).find(m =>
+          MARKET_NAMES[m.address.toLowerCase()] === marketName
+        )
+        if (marketConfig) {
+          const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketConfig.address}/resources`)
+          if (priceRes.ok) {
+            const priceResources = await priceRes.json()
+            const priceResource = priceResources.find((r: any) =>
+              r.type.includes('price_management::Price')
+            )
+            if (priceResource) {
+              const pxDecimals = getPriceDecimals(marketName)
+              marketPrices[marketName] = Number(priceResource.data.oracle_px) / Math.pow(10, pxDecimals)
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`Could not fetch price for ${marketName}`)
+      }
+    }
+
+    // Apply estimated volume to orders with size but no volume
+    allOrders = allOrders.map(order => {
+      if (order.size > 0 && (order.volumeGenerated === 0 || order.volumeGenerated === null)) {
+        const price = marketPrices[order.market]
+        if (price) {
+          const szDecimals = getSizeDecimals(order.market)
+          const estimatedVolume = (order.size * price) / Math.pow(10, szDecimals)
+          return { ...order, volumeGenerated: estimatedVolume }
+        }
+      }
+      return order
+    })
 
     // Calculate statistics from all orders
     const stats = calculateStats(allOrders)

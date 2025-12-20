@@ -581,7 +581,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                   <span className="text-zinc-400 uppercase tracking-wider">Volume Progress</span>
                 </div>
                 <span className="text-white font-bold">
-                  ${status.cumulativeVolume.toFixed(0)} / ${config.volumeTargetUSDC.toFixed(0)}
+                  ${status?.cumulativeVolume?.toFixed(0) || '0'} / ${config?.volumeTargetUSDC?.toFixed(0) || '0'}
                 </span>
               </div>
               <div className="h-2 w-full bg-black/40 border border-white/10 overflow-hidden">
@@ -1001,7 +1001,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       )}
 
       {/* Session Complete Summary */}
-      {!isRunning && status.orderHistory && status.orderHistory.length > 0 && (() => {
+      {!isRunning && status && status.orderHistory && status.orderHistory.length > 0 && (() => {
         // Calculate total PnL from all orders
         const totalPnl = status.orderHistory.reduce((sum: number, order: any) => sum + (order.pnl || 0), 0)
         const wins = status.orderHistory.filter((o: any) => o.pnl > 0).length

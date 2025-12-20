@@ -79,7 +79,7 @@ export function VolumeBotConfig() {
   return (
     <div className="space-y-6">
       {/* Order History Table */}
-      {bot.isRunning && bot.orderHistory.length > 0 && (
+      {bot.isRunning && bot.orderHistory && bot.orderHistory.length > 0 && (
         <OrderHistoryTable orders={bot.orderHistory} />
       )}
 

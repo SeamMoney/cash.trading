@@ -575,19 +575,18 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={cn(
-                        "text-sm font-bold",
+                        "text-sm font-bold tabular-nums min-w-[60px] text-right transition-colors duration-200",
                         (pos.pnlPercentLeveraged ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                       )}>
                         {(pos.pnlPercentLeveraged ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercentLeveraged ?? 0).toFixed(2)}%
                       </span>
-                      {pos.pnlUsd !== undefined && (
-                        <span className={cn(
-                          "text-xs",
-                          pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70"
-                        )}>
-                          ({pos.pnlUsd >= 0 ? '+' : ''}${pos.pnlUsd.toFixed(2)})
-                        </span>
-                      )}
+                      <span className={cn(
+                        "text-xs tabular-nums min-w-[70px] transition-colors duration-200",
+                        pos.pnlUsd !== undefined && pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70",
+                        pos.pnlUsd === undefined && "opacity-0"
+                      )}>
+                        ({(pos.pnlUsd ?? 0) >= 0 ? '+' : ''}${(pos.pnlUsd ?? 0).toFixed(2)})
+                      </span>
                     </div>
                   </div>
 
@@ -801,13 +800,13 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                   </span>
                   <div className="text-right">
                     <span className={cn(
-                      "text-sm font-bold",
+                      "text-sm font-bold tabular-nums transition-colors duration-200",
                       (monitoringInfo?.pnl ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                     )}>
                       {(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{(monitoringInfo?.pnl ?? 0).toFixed(3)}%
                     </span>
                     <span className={cn(
-                      "text-[10px] ml-1",
+                      "text-[10px] ml-1 tabular-nums transition-colors duration-200",
                       (monitoringInfo?.pnl ?? 0) >= 0 ? "text-green-400/70" : "text-red-400/70"
                     )}>
                       ({(monitoringInfo?.pnl ?? 0) >= 0 ? '+' : ''}{((monitoringInfo?.pnl ?? 0) * (monitoringInfo?.leverage || 40)).toFixed(1)}% w/ {monitoringInfo?.leverage || 40}x)
@@ -911,19 +910,18 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={cn(
-                            "text-xs font-bold",
+                            "text-xs font-bold tabular-nums min-w-[50px] text-right transition-colors duration-200",
                             (pos.pnlPercentLeveraged ?? 0) >= 0 ? "text-green-400" : "text-red-400"
                           )}>
                             {(pos.pnlPercentLeveraged ?? 0) >= 0 ? '+' : ''}{(pos.pnlPercentLeveraged ?? 0).toFixed(2)}%
                           </span>
-                          {pos.pnlUsd !== undefined && (
-                            <span className={cn(
-                              "text-[9px]",
-                              pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70"
-                            )}>
-                              (${pos.pnlUsd >= 0 ? '+' : ''}{pos.pnlUsd.toFixed(0)})
-                            </span>
-                          )}
+                          <span className={cn(
+                            "text-[9px] tabular-nums min-w-[50px] transition-colors duration-200",
+                            pos.pnlUsd !== undefined && pos.pnlUsd >= 0 ? "text-green-400/70" : "text-red-400/70",
+                            pos.pnlUsd === undefined && "opacity-0"
+                          )}>
+                            (${(pos.pnlUsd ?? 0) >= 0 ? '+' : ''}{(pos.pnlUsd ?? 0).toFixed(0)})
+                          </span>
                           {/* Close button for manual positions */}
                           {!isBotPosition && (
                             <button

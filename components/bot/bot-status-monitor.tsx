@@ -875,7 +875,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       )}
 
       {/* Recent Trades */}
-      {status.orderHistory && status.orderHistory.length > 0 && (
+      {status && status.orderHistory && status.orderHistory.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs text-zinc-400 uppercase tracking-widest">Trade History</h3>

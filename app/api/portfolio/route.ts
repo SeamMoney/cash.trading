@@ -421,6 +421,56 @@ export async function GET(request: NextRequest) {
       console.warn('Could not fetch wallet trades:', err)
     }
 
+    // Calculate realized PnL from deposits vs current balance
+    // This is the most reliable way since TWAP fills don't emit trackable events
+    let totalDeposits = 0
+    let totalWithdrawals = 0
+    try {
+      // Scan user wallet transactions for deposit events
+      const txResponse = await fetch(
+        `${APTOS_NODE}/accounts/${userWalletAddress}/transactions?limit=100`
+      )
+      if (txResponse.ok) {
+        const transactions = await txResponse.json()
+        for (const tx of transactions) {
+          if (!tx.success) continue
+          // Filter by date
+          const txDate = new Date(Number(tx.timestamp) / 1000)
+          if (txDate < TESTNET_RESET_DATE) continue
+
+          for (const event of (tx.events || [])) {
+            // Look for deposit/withdraw to our subaccount
+            if (event.type.includes('CollateralBalanceChangeEvent')) {
+              const data = event.data
+              // Check if this is for our subaccount
+              const balanceAccount = data.balance_type?.Cross?.account || data.balance_type?.account
+              if (activeSubaccount && balanceAccount &&
+                  balanceAccount.toLowerCase() !== activeSubaccount.toLowerCase()) continue
+
+              const delta = Number(data.delta || 0) / 1e6
+              const changeType = data.change_type?.__variant__
+
+              if (changeType === 'UserMovement') {
+                // User deposit or withdrawal
+                if (delta > 0) {
+                  totalDeposits += delta
+                } else {
+                  totalWithdrawals += Math.abs(delta)
+                }
+              }
+            }
+          }
+        }
+      }
+      console.log(`📊 Total deposits: $${totalDeposits.toFixed(2)}, withdrawals: $${totalWithdrawals.toFixed(2)}`)
+    } catch (err) {
+      console.warn('Could not calculate deposits:', err)
+    }
+
+    // Calculate realized PnL from balance difference
+    const netDeposits = totalDeposits - totalWithdrawals
+    const realizedPnlFromBalance = netDeposits > 0 ? usdcBalance - netDeposits : 0
+
     // Detect current positions and create synthetic trades for untracked ones
     // This ensures manual positions opened on Decibel UI show up in trade history
     if (activeSubaccount) {
@@ -573,6 +623,9 @@ export async function GET(request: NextRequest) {
     // Calculate statistics from all orders
     const stats = calculateStats(allOrders)
 
+    // Use balance-based PnL if per-trade PnL is 0 (TWAP orders don't have fill data)
+    const effectivePnl = stats.totalPnl !== 0 ? stats.totalPnl : realizedPnlFromBalance
+
     // Group orders by date for chart data
     const dailyStats = calculateDailyStats(allOrders)
 
@@ -581,15 +634,17 @@ export async function GET(request: NextRequest) {
       balance: {
         usdc: usdcBalance,
         accountAddress: activeSubaccount || userWalletAddress,
+        totalDeposits: netDeposits,  // Include for transparency
       },
       stats: {
         totalVolume: stats.totalVolume,
-        totalPnl: stats.totalPnl,
+        totalPnl: effectivePnl,
         totalTrades: stats.totalTrades,
         winRate: stats.winRate,
         avgTradeSize: stats.avgTradeSize,
         bestTrade: stats.bestTrade,
         worstTrade: stats.worstTrade,
+        pnlSource: stats.totalPnl !== 0 ? 'trades' : 'balance', // Indicate how PnL was calculated
       },
       recentTrades: allOrders.slice(0, 50).map(order => ({
         id: order.id,

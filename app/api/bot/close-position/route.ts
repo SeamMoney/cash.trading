@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
-
-const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+import { DECIBEL_PACKAGE } from '@/lib/decibel-client'
 
 // Market configs for size/price decimals and ticker sizes
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number; tickerSize: bigint }> = {

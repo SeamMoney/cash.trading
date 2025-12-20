@@ -130,29 +130,41 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     }
   }, [account])
 
-  const fetchMarginForSubaccount = async (subaccountAddr: string): Promise<number | null> => {
+  const fetchMarginForSubaccount = async (subaccountAddr: string, retries = 2): Promise<number | null> => {
     const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
-    try {
-      const marginResponse = await fetch(`${APTOS_NODE}/view`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
-          type_arguments: [],
-          arguments: [subaccountAddr],
-        }),
-      })
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const marginResponse = await fetch(`${APTOS_NODE}/view`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
+            type_arguments: [],
+            arguments: [subaccountAddr],
+          }),
+        })
 
-      if (!marginResponse.ok) {
-        return 0
+        if (!marginResponse.ok) {
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+            continue
+          }
+          return 0
+        }
+
+        const marginData = await marginResponse.json()
+        const marginRaw = marginData[0] as string
+        return Number(marginRaw) / 1_000_000
+      } catch (e) {
+        console.warn(`[Balance] Attempt ${attempt + 1} failed for ${subaccountAddr.slice(0, 10)}:`, e)
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+          continue
+        }
+        return null
       }
-
-      const marginData = await marginResponse.json()
-      const marginRaw = marginData[0] as string
-      return Number(marginRaw) / 1_000_000
-    } catch {
-      return null
     }
+    return null
   }
 
   const fetchBalance = useCallback(async () => {
@@ -276,9 +288,12 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedSubaccountType, allSubaccounts])
 
+  // Only fetch balance after competition subaccount check is complete
   useEffect(() => {
-    fetchBalance()
-  }, [connected, account, competitionSubaccountAddr])
+    if (competitionChecked) {
+      fetchBalance()
+    }
+  }, [connected, account, competitionSubaccountAddr, competitionChecked])
 
   const value: WalletBalanceState = {
     balance,

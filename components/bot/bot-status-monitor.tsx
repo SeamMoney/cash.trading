@@ -822,10 +822,9 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       <p className="text-white font-medium">
                         {(() => {
                           const market = monitoringInfo.market || 'BTC/USD'
-                          const decimals = SIZE_DECIMALS[market] || 8
                           const symbol = getMarketSymbol(market)
-                          const displaySize = monitoringInfo.size / Math.pow(10, decimals)
-                          return `${displaySize.toFixed(4)} ${symbol}`
+                          // Size is already converted to human-readable by the API
+                          return `${monitoringInfo.size.toFixed(4)} ${symbol}`
                         })()}
                       </p>
                     </div>

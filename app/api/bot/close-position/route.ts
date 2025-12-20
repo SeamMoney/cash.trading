@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
 
     // Build TWAP close transaction
     // Function signature: subaccount, market, size, is_long, reduce_only, min_duration, max_duration, builder_address, max_builder_fee
+    // Using faster TWAP: 30-60 seconds (minimum the protocol allows)
     const transaction = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
@@ -142,8 +143,8 @@ export async function POST(request: NextRequest) {
           sizeRaw.toString(),    // size
           closeIsLong,           // is_long (opposite of position direction to close)
           true,                  // reduce_only (closing position)
-          60,                    // min_duration seconds
-          120,                   // max_duration seconds
+          30,                    // min_duration seconds (faster!)
+          60,                    // max_duration seconds (faster!)
           undefined,             // builder_address
           undefined,             // max_builder_fee
         ],

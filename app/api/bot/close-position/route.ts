@@ -143,8 +143,8 @@ export async function POST(request: NextRequest) {
           sizeRaw.toString(),    // size
           closeIsLong,           // is_long (opposite of position direction to close)
           true,                  // reduce_only (closing position)
-          30,                    // min_duration seconds (faster!)
-          60,                    // max_duration seconds (faster!)
+          60,                    // min_duration seconds (protocol minimum)
+          120,                   // max_duration seconds
           undefined,             // builder_address
           undefined,             // max_builder_fee
         ],

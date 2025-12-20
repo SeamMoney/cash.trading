@@ -657,8 +657,8 @@ export class VolumeBotEngine {
             size.toString(),               // size
             closeDirection,                // is_long (opposite to close)
             true,                          // reduce_only: TRUE for closing
-            30,                            // min duration: 30 seconds (faster!)
-            60,                            // max duration: 1 minute (faster!)
+            60,                            // min duration: 1 minute (protocol minimum)
+            120,                           // max duration: 2 minutes
             undefined,                     // builder_address
             undefined,                     // max_builder_fee
           ],
@@ -2166,8 +2166,8 @@ export class VolumeBotEngine {
           position.size.toString(),
           closeDirection,
           true,  // reduce_only
-          30,    // min duration (faster!)
-          60,    // max duration (faster!)
+          60,    // min duration (protocol minimum)
+          120,   // max duration
           undefined,
           undefined,
         ],
@@ -2229,8 +2229,8 @@ export class VolumeBotEngine {
           size.toString(),
           isLong,
           false, // reduce_only
-          30,    // min duration (faster!)
-          60,    // max duration (faster!)
+          60,    // min duration (protocol minimum)
+          120,   // max duration
           undefined,
           undefined,
         ],
@@ -2402,8 +2402,8 @@ export class VolumeBotEngine {
                 positionSize.toString(),  // size
                 closeDirection,           // is_long
                 true,                     // reduce_only: TRUE for closing
-                30,                       // min duration: 30 seconds (faster!)
-                60,                       // max duration: 1 minute (faster!)
+                60,                       // min duration: 1 minute (protocol minimum)
+                120,                      // max duration: 2 minutes
                 undefined,                // builder_address
                 undefined,                // max_builder_fee
               ],
@@ -2508,8 +2508,8 @@ export class VolumeBotEngine {
                 positionSize.toString(),       // size
                 closeDirection,                // is_long (opposite to close)
                 true,                          // reduce_only: TRUE for closing positions
-                30,                            // min duration: 30 seconds (faster!)
-                60,                            // max duration: 1 minute (faster!)
+                60,                            // min duration: 1 minute (protocol minimum)
+                120,                           // max duration: 2 minutes
                 undefined,                     // builder_address
                 undefined,                     // max_builder_fee
               ],
@@ -2655,8 +2655,8 @@ export class VolumeBotEngine {
             contractSize.toString(),      // size
             isLong,                        // is_long
             false,                         // reduce_only: false for opening
-            30,                            // min duration: 30 seconds (faster!)
-            60,                            // max duration: 1 minute (faster!)
+            60,                            // min duration: 1 minute (protocol minimum)
+            120,                           // max duration: 2 minutes
             undefined,                     // builder_address
             undefined,                     // max_builder_fee
           ],
@@ -2782,8 +2782,8 @@ export class VolumeBotEngine {
             contractSize.toString(),
             isLong,
             false,     // reduce_only
-            30,        // min duration: 30 seconds (faster!)
-            60,        // max duration: 1 minute (faster!)
+            60,        // min duration: 1 minute (protocol minimum)
+            120,       // max duration: 2 minutes
             undefined, // builder_address
             undefined, // max_builder_fee
           ],
@@ -2860,8 +2860,8 @@ export class VolumeBotEngine {
             size.toString(),           // size
             closeDirection,            // is_long (opposite to close)
             true,                      // reduce_only: TRUE for closing
-            30,                        // min duration: 30 seconds (faster!)
-            60,                        // max duration: 1 minute (faster!)
+            60,                        // min duration: 1 minute (protocol minimum)
+            120,                       // max duration: 2 minutes
             undefined,                 // builder_address
             undefined,                 // max_builder_fee
           ],

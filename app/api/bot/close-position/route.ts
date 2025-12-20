@@ -61,6 +61,26 @@ export async function POST(request: NextRequest) {
     })
     const aptos = new Aptos(config)
 
+    // Check if subaccount is compatible with current package
+    try {
+      const resources = await aptos.getAccountResources({ accountAddress: userSubaccount })
+      const subaccountResource = resources.find((r: any) => r.type.includes('::dex_accounts::Subaccount'))
+      if (subaccountResource) {
+        const packageAddr = subaccountResource.type.split('::')[0]
+        if (packageAddr.toLowerCase() !== DECIBEL_PACKAGE.toLowerCase()) {
+          console.log(`⚠️ Subaccount package mismatch: ${packageAddr} vs ${DECIBEL_PACKAGE}`)
+          return NextResponse.json({
+            error: 'Subaccount incompatible',
+            details: 'This position was created before the Dec 16 testnet reset. Please close it manually on the Decibel UI or create a new subaccount.',
+            subaccountPackage: packageAddr,
+            expectedPackage: DECIBEL_PACKAGE,
+          }, { status: 400 })
+        }
+      }
+    } catch (e) {
+      console.warn('Could not verify subaccount compatibility:', e)
+    }
+
     // Create bot account - strip prefix if present
     const keyHex = botPrivateKey.replace('ed25519-priv-', '').trim()
     const privateKey = new Ed25519PrivateKey(keyHex)

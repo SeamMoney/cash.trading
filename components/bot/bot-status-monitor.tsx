@@ -752,7 +752,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                   </span>
                 </div>
                 <span className={cn(
-                  "text-lg font-bold flex items-center justify-end gap-1 w-12 transition-colors duration-200",
+                  "text-lg font-bold flex items-center justify-end gap-1 w-14 tabular-nums transition-colors duration-200",
                   rateLimitBackoff > 0 ? "text-orange-400" : "text-primary"
                 )}>
                   {isExecuting ? <Timer className="w-4 h-4 animate-spin" /> :

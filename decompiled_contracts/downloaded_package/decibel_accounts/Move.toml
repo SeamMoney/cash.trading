@@ -1,0 +1,18 @@
+[package]
+name = "decibel_accounts"
+version = "1.0.0"
+authors = []
+
+[addresses]
+decibel_dex = "_"
+orderbook_dep = "_"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+# follow fixed order book from aptos-core version that we depend on,
+# and update together with appropriate changes to new version.
+rev = "6967d4683efe0d518198e8dbfb9a48bf414fb2e3"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies]
+decibel_perp_dex = { local = "../perp" }

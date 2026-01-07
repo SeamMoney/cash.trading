@@ -1,0 +1,15 @@
+[package]
+name = "decibel_usdc"
+version = "1.0.0"
+authors = []
+
+[addresses]
+decibel_dex = "_"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "testnet"
+subdir = "aptos-framework"
+
+[dependencies]
+decibel_accounts = { local = "../accounts" }

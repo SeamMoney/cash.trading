@@ -1,0 +1,26 @@
+[package]
+name = "decibel_perp_dex"
+version = "1.0.0"
+authors = []
+
+[addresses]
+decibel_dex = "_"
+pyth_dep = "_"
+chainlink_dep = "_"
+orderbook_dep = "_"
+aptos_experimental = "_"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+# follow fixed order book from aptos-core version that we depend on,
+# and update together with appropriate changes to new version.
+rev = "a98bd8c1989296bb1e07df96d838432a9993e0a3"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies]
+AptosExperimental = { local = "../../aptos-core/aptos-move/framework/aptos-experimental"}
+Pyth = { local = "../dummy_pyth" }
+data-streams = { local = "../dummy_chainlink" }
+
+#[dev-dependencies]
+#decibel_dex_spot = { local = "../spot" }

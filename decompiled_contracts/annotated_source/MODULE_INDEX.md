@@ -2,6 +2,8 @@
 
 This directory contains fully annotated Move source code for the Decibel perpetual DEX protocol, decompiled from contract `0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844` on Aptos testnet.
 
+> **See also:** [ARCHITECTURE.md](./ARCHITECTURE.md) - Full architecture documentation with Mermaid diagrams showing how Decibel integrates with Econia's order book.
+
 ## Directory Structure
 
 ```

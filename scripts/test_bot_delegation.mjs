@@ -58,7 +58,7 @@ async function main() {
   console.log('📍 Step 1: Getting user subaccount...');
   const subaccountResult = await aptos.view({
     payload: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
       typeArguments: [],
       functionArguments: [userAccount.accountAddress.toString()],
     },

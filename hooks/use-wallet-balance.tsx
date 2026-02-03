@@ -212,27 +212,40 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
 
       const subaccounts: SubaccountInfo[] = []
 
-      // Get primary subaccount
+      // Get primary subaccount - NOTE: primary_subaccount is in dex_accounts module, NOT dex_accounts_entry
+      console.log("🔍 Fetching primary subaccount for:", walletAddress)
+      console.log("🔍 Using package:", DECIBEL_PACKAGE)
+
       const primaryResponse = await fetch(`${APTOS_NODE}/view`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
           type_arguments: [],
           arguments: [walletAddress],
         }),
       })
 
+      console.log("🔍 Primary subaccount response status:", primaryResponse.status)
+
       if (primaryResponse.ok) {
         const primaryData = await primaryResponse.json()
+        console.log("🔍 Primary subaccount raw response:", primaryData)
         const primaryAddr = primaryData[0] as string
-        const primaryBalance = await fetchMarginForSubaccount(primaryAddr)
-        subaccounts.push({
-          address: primaryAddr,
-          type: 'primary',
-          balance: primaryBalance,
-        })
-        console.log("📦 Primary subaccount:", primaryAddr, `($${primaryBalance?.toFixed(2) || '0'})`)
+        if (primaryAddr) {
+          const primaryBalance = await fetchMarginForSubaccount(primaryAddr)
+          subaccounts.push({
+            address: primaryAddr,
+            type: 'primary',
+            balance: primaryBalance,
+          })
+          console.log("📦 Primary subaccount:", primaryAddr, `($${primaryBalance?.toFixed(2) || '0'})`)
+        } else {
+          console.log("⚠️ No primary subaccount found - user may not have one yet")
+        }
+      } else {
+        const errorText = await primaryResponse.text()
+        console.error("❌ Failed to fetch primary subaccount:", errorText)
       }
 
       // Get competition subaccount from localStorage (if saved)

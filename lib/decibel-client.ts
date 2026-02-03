@@ -9,6 +9,10 @@
 export const DECIBEL_PACKAGE = '0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88';
 export const ORDERBOOK_ADDR = '0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7';
 export const USDC_DECIMALS = 6;
+
+// Predeposit constants (Season 0)
+export const PREDEPOSIT_MIN_AMOUNT = 50; // $50 minimum deposit
+export const PREDEPOSIT_MAX_AMOUNT = 1_000_000; // $1M maximum per wallet
 export const PRICE_DECIMALS = 6;
 
 // Bot operator address - users delegate trading permissions to this wallet

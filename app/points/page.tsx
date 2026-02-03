@@ -8,6 +8,7 @@ import { WalletWatcher } from "@/components/points/wallet-watcher"
 import { DepositHistory } from "@/components/points/deposit-history"
 import { PointsCalculator } from "@/components/points/points-calculator"
 import { FarmingTips } from "@/components/points/farming-tips"
+import { DepositWidget } from "@/components/points/deposit-widget"
 import { Trophy, Eye, TrendingUp } from "lucide-react"
 
 export default function PointsPage() {
@@ -38,8 +39,9 @@ export default function PointsPage() {
             <DepositHistory />
           </div>
 
-          {/* Farming Tips Sidebar */}
-          <div className="lg:col-span-1">
+          {/* Sidebar: Deposit Widget + Farming Tips */}
+          <div className="lg:col-span-1 space-y-6">
+            <DepositWidget />
             <FarmingTips />
           </div>
         </div>

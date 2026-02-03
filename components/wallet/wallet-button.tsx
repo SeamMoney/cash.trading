@@ -53,14 +53,20 @@ export function WalletButton() {
         {/* Balance Button - always primary/yellow color */}
         <button
           onClick={() => setShowAccountModal(true)}
-          className="flex items-center gap-2 px-3 py-2 border border-primary/30 hover:border-primary/50 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 border border-primary/30 hover:border-primary/50 rounded-lg transition-colors"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
         >
           <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
-          <span className="hidden sm:inline text-xs font-mono text-zinc-400">{formatAddress(account.address)}</span>
-          {!loading && balance !== null && (
-            <span className="text-lg font-bold text-primary">${balance.toFixed(2)}</span>
-          )}
+          <div className="flex flex-col items-end sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-[10px] sm:text-xs font-mono text-zinc-500">{formatAddress(account.address)}</span>
+            {loading ? (
+              <Loader2 className="w-4 h-4 text-primary animate-spin" />
+            ) : (
+              <span className="text-sm sm:text-lg font-bold text-primary tabular-nums">
+                ${(balance ?? 0).toFixed(2)}
+              </span>
+            )}
+          </div>
           <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
         </button>
 
@@ -76,15 +82,30 @@ export function WalletButton() {
             </div>
 
             <div className="p-4 space-y-4">
+              {/* Balance Summary */}
+              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="text-center">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide font-mono mb-1">
+                    Available Balance
+                  </div>
+                  <div className="text-3xl font-bold text-primary tabular-nums">
+                    ${(balance ?? 0).toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-zinc-500 mt-1">
+                    {selectedSubaccountType === 'competition' ? '🏆 Competition Account' : '👤 Primary Account'}
+                  </div>
+                </div>
+              </div>
+
               {/* Wallet Address */}
               <div>
                 <label className="text-[10px] text-zinc-500 uppercase tracking-wide font-mono">Wallet</label>
                 <div className="mt-1 flex items-center gap-2 p-2 bg-black/40 border border-white/10 rounded">
                   <code className="flex-1 text-[11px] text-white/80">{formatAddress(account.address)}</code>
-                  <button onClick={() => copyAddress(account.address.toString())} className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                  <button onClick={() => copyAddress(account.address.toString())} className="p-1 hover:bg-white/10 rounded flex-shrink-0" aria-label="Copy address">
                     <Copy className="w-3 h-3 text-zinc-400" />
                   </button>
-                  <a href={`https://explorer.aptoslabs.com/account/${account.address}?network=testnet`} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-white/10 rounded flex-shrink-0">
+                  <a href={`https://explorer.aptoslabs.com/account/${account.address}?network=testnet`} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-white/10 rounded flex-shrink-0" aria-label="View on explorer">
                     <ExternalLink className="w-3 h-3 text-zinc-400" />
                   </a>
                 </div>

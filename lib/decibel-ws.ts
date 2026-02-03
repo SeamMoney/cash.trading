@@ -3,9 +3,13 @@
  *
  * Provides methods to fetch data from Decibel's WebSocket API.
  * WebSocket is used because REST API requires authentication.
+ *
+ * Updated Feb 3, 2026:
+ * - API responses may now use { items: [], total: x } format
  */
 
 import WebSocket from 'ws'
+import { normalizeArrayResponse } from './api-helpers'
 
 const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
 const MAINNET_WS_URL = 'wss://api.aptoslabs.com/decibel/ws'
@@ -153,7 +157,9 @@ export async function getRecentTrades(
         const message = JSON.parse(data.toString())
 
         if (message.trades) {
-          trades.push(...message.trades)
+          // Handle both array and { items: [], total: x } formats
+          const tradeArray = normalizeArrayResponse<Trade>(message.trades)
+          trades.push(...tradeArray)
 
           // Wait a bit for any additional messages, then resolve
           setTimeout(() => {

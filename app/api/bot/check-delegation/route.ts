@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Find the Subaccount resource which contains delegated_permissions
     const subaccountResource = resources.find(
-      (r) => r.type.includes('dex_accounts::Subaccount')
+      (r) => r.type.includes('dex_accounts_entry::Subaccount')
     )
 
     if (!subaccountResource) {

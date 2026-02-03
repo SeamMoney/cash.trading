@@ -6,10 +6,20 @@ This document describes how the Decibel perpetual DEX protocol interacts with th
 
 | Contract | Address | Network | Deployed |
 |----------|---------|---------|----------|
-| **Decibel Protocol** | `0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844` | Aptos Testnet | Dec 2025 |
+| **Decibel Protocol** (Current) | `0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88` | Aptos Testnet | Jan 21, 2026 |
+| **Decibel Protocol** (Previous) | `0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844` | Aptos Testnet | Dec 2025 |
 | **Econia Order Book** (Decibel's fork) | `0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7` | Aptos Testnet | Dec 16, 2025 |
 
 > **Note:** The Econia contract at `0x1b3f...` is a redeployment of Econia's open-source order book code by Aptos Labs specifically for Decibel. It is NOT the original Econia testnet deployment.
+
+## Recent Changes (Jan 21, 2026 Testnet Reset)
+
+- **New Contract Address:** `0xd0b2...` replaces `0x9f83...`
+- **New Module:** `dex_accounts_entry` added as wrapper with entry functions for trading
+- **New Modules:** `vault_api`, `order_apis`, `account_management_apis`, `predeposit`, `slippage_math`, `work_unit_utils`, `position_view_types`, `perp_order`
+- **Primary Subaccount Derivation:** Now uses `GlobalSubaccountManager` + BCS-encoded seed
+- **API Changes:** List endpoints now return `{items: [], total: x}` format
+- **SDK Version:** Updated to 0.2.9
 
 ## High-Level Architecture
 
@@ -42,7 +52,7 @@ flowchart TB
         end
 
         subgraph Accounts["Account Management"]
-            DexAccounts[dex_accounts.move]
+            DexAccounts[dex_accounts_entry.move]
             Collateral[accounts_collateral.move]
             BalanceSheet[collateral_balance_sheet.move]
         end

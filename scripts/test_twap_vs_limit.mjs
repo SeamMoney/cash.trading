@@ -42,7 +42,7 @@ async function main() {
     const twapTx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           USER_SUBACCOUNT,
@@ -79,7 +79,7 @@ async function main() {
     const limitTx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           USER_SUBACCOUNT,

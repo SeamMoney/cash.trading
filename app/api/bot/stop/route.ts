@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         const cancelTransaction = await aptos.transaction.build.simple({
           sender: botAccount.accountAddress,
           data: {
-            function: `${DECIBEL_PACKAGE}::dex_accounts::cancel_twap_orders_to_subaccount`,
+            function: `${DECIBEL_PACKAGE}::dex_accounts_entry::cancel_twap_orders_to_subaccount`,
             typeArguments: [],
             functionArguments: [
               bot.userSubaccount,
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
             const closeTransaction = await aptos.transaction.build.simple({
               sender: botAccount.accountAddress,
               data: {
-                function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+                function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
                 typeArguments: [],
                 functionArguments: [
                   bot.userSubaccount,

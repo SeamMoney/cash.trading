@@ -1,8 +1,12 @@
 /**
  * Price feed helper to get mark prices from Decibel WebSocket
+ *
+ * Updated Feb 3, 2026:
+ * - API responses may now use { items: [], total: x } format
  */
 
 import WebSocket from 'ws'
+import { normalizeArrayResponse } from './api-helpers'
 
 const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
 const MAINNET_WS_URL = 'wss://api.netna.aptoslabs.com/decibel/ws'
@@ -52,7 +56,9 @@ export async function getMarkPrice(
       try {
         const msg = JSON.parse(data.toString())
         if (msg.topic === 'all_market_prices' && msg.prices) {
-          const marketPrice = msg.prices.find(
+          // Handle both array and { items: [], total: x } formats
+          const pricesArray = normalizeArrayResponse<MarketPrice>(msg.prices)
+          const marketPrice = pricesArray.find(
             (p: MarketPrice) => p.market.toLowerCase() === marketAddress.toLowerCase()
           )
           if (marketPrice) {

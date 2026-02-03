@@ -1,0 +1,296 @@
+module 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::backstop_liquidator_profit_tracker {
+    use 0x1::table;
+    use 0x1::object;
+    use 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::perp_market;
+    use 0x1::signer;
+    use 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::perp_market_config;
+    use 0x1::option;
+    use 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::price_management;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::fee_distribution;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::accounts_collateral;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::clearinghouse_perp;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::liquidation;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::async_matching_engine;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::perp_engine;
+    friend 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88::admin_apis;
+    enum BackstopLiquidatorProfitTracker has key {
+        V1 {
+            market_data: table::Table<object::Object<perp_market::PerpMarket>, MarketTrackingData>,
+            blp_margin_as_profit_percentage: u64,
+        }
+    }
+    struct MarketTrackingData has copy, drop, store {
+        realized_pnl: i64,
+        realized_pnl_watermark: i64,
+        entry_px_times_size_sum: u128,
+        liquidation_size: u64,
+        is_long: bool,
+    }
+    friend fun initialize(p0: &signer) {
+        assert!(signer::address_of(p0) == @0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88, 1);
+        let _v0 = BackstopLiquidatorProfitTracker::V1{market_data: table::new<object::Object<perp_market::PerpMarket>,MarketTrackingData>(), blp_margin_as_profit_percentage: 5000};
+        move_to<BackstopLiquidatorProfitTracker>(p0, _v0);
+    }
+    fun calculate_pnl(p0: object::Object<perp_market::PerpMarket>, p1: u128, p2: u64, p3: u64, p4: bool): i64 {
+        let _v0 = p2 as u128;
+        let _v1 = p3 as u128;
+        let _v2 = (_v0 * _v1) as i128;
+        let _v3 = p1 as i128;
+        let _v4 = _v2 - _v3;
+        let _v5 = perp_market_config::get_size_multiplier(p0) as i128;
+        let _v6 = (_v4 / _v5) as i64;
+        if (p4) return _v6;
+        -_v6
+    }
+    friend fun get_realized_pnl(p0: object::Object<perp_market::PerpMarket>): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v0 = borrow_global<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+        if (!table::contains<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v0.market_data, p0)) return 0i64;
+        *&table::borrow<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v0.market_data, p0).realized_pnl
+    }
+    friend fun get_total_pnl(p0: object::Object<perp_market::PerpMarket>, p1: u64): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0 = get_realized_pnl(p0);
+        let _v1 = get_unrealized_pnl(p0, p1);
+        _v0 + _v1
+    }
+    friend fun get_unrealized_pnl(p0: object::Object<perp_market::PerpMarket>, p1: u64): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0;
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v1 = borrow_global<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+        let _v2 = table::contains<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v1.market_data, p0);
+        loop {
+            if (_v2) {
+                _v0 = table::borrow<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v1.market_data, p0);
+                if (!(*&_v0.liquidation_size == 0)) break
+            } else return 0i64;
+            return 0i64
+        };
+        let _v3 = *&_v0.entry_px_times_size_sum;
+        let _v4 = *&_v0.liquidation_size;
+        let _v5 = *&_v0.is_long;
+        calculate_pnl(p0, _v3, p1, _v4, _v5)
+    }
+    fun handle_position_netting(p0: object::Object<perp_market::PerpMarket>, p1: &mut MarketTrackingData, p2: u64, p3: u64) {
+        let _v0 = *&p1.entry_px_times_size_sum;
+        let _v1 = p3 as u128;
+        let _v2 = _v0 * _v1;
+        let _v3 = (*&p1.liquidation_size) as u128;
+        let _v4 = _v2 / _v3;
+        let _v5 = *&p1.is_long;
+        let _v6 = calculate_pnl(p0, _v4, p2, p3, _v5);
+        let _v7 = &mut p1.realized_pnl;
+        *_v7 = *_v7 + _v6;
+    }
+    friend fun initialize_market(p0: object::Object<perp_market::PerpMarket>)
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v0 = &mut borrow_global_mut<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88).market_data;
+        let _v1 = MarketTrackingData{realized_pnl: 0i64, realized_pnl_watermark: 0i64, entry_px_times_size_sum: 0u128, liquidation_size: 0, is_long: false};
+        table::add<object::Object<perp_market::PerpMarket>,MarketTrackingData>(_v0, p0, _v1);
+    }
+    friend fun set_blp_margin_as_profit_percentage(p0: u64)
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(p0 < 10000, 3);
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v0 = &mut borrow_global_mut<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88).blp_margin_as_profit_percentage;
+        *_v0 = p0;
+    }
+    friend fun set_realized_pnl_watermark(p0: object::Object<perp_market::PerpMarket>, p1: i64)
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v0 = &mut table::borrow_mut<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&mut borrow_global_mut<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88).market_data, p0).realized_pnl_watermark;
+        *_v0 = p1;
+    }
+    friend fun should_trigger_adl(p0: object::Object<perp_market::PerpMarket>, p1: u64, p2: u64): option::Option<u64>
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0;
+        let _v1;
+        'l2: loop {
+            'l1: loop {
+                'l0: loop {
+                    loop {
+                        if (!(p2 == 0)) {
+                            let _v2;
+                            let _v3;
+                            let _v4;
+                            assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+                            let _v5 = borrow_global<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+                            if (!table::contains<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v5.market_data, p0)) break;
+                            _v1 = table::borrow<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v5.market_data, p0);
+                            if (*&_v1.liquidation_size == 0) break 'l0;
+                            let _v6 = *&_v1.realized_pnl;
+                            let _v7 = *&_v1.realized_pnl_watermark;
+                            let _v8 = *&_v1.entry_px_times_size_sum;
+                            let _v9 = *&_v1.liquidation_size;
+                            let _v10 = *&_v1.is_long;
+                            let _v11 = calculate_pnl(p0, _v8, p1, _v9, _v10);
+                            let _v12 = _v6 - _v7;
+                            let _v13 = _v12 + _v11;
+                            if (_v13 > 0i64) _v3 = true else _v3 = ((-_v13) as u64) < p2;
+                            if (_v3) break 'l1;
+                            let _v14 = perp_market_config::get_size_multiplier(p0);
+                            if (*&_v1.is_long) _v4 = -1i128 else _v4 = 1i128;
+                            let _v15 = p2 as i64;
+                            let _v16 = ((_v12 + _v15) as i128) * _v4;
+                            let _v17 = _v14 as i128;
+                            let _v18 = _v16 * _v17;
+                            let _v19 = (*&_v1.entry_px_times_size_sum) as i128;
+                            let _v20 = _v18 + _v19;
+                            let _v21 = (*&_v1.liquidation_size) as i128;
+                            _v11 = (_v20 / _v21) as i64;
+                            if (_v11 > 1i64) _v2 = _v11 else _v2 = 1i64;
+                            let _v22 = _v2 as u64;
+                            if (*&_v1.is_long) {
+                                if (p1 > _v22) {
+                                    _v0 = p1;
+                                    break 'l2
+                                };
+                                _v0 = _v22;
+                                break 'l2
+                            };
+                            if (p1 < _v22) {
+                                _v0 = p1;
+                                break 'l2
+                            };
+                            _v0 = _v22;
+                            break 'l2
+                        };
+                        return option::none<u64>()
+                    };
+                    return option::none<u64>()
+                };
+                return option::none<u64>()
+            };
+            return option::none<u64>()
+        };
+        let _v23 = *&_v1.is_long;
+        option::some<u64>(perp_market_config::round_price_to_ticker(p0, _v0, _v23))
+    }
+    friend fun track_position_update(p0: object::Object<perp_market::PerpMarket>, p1: u64, p2: u64, p3: bool, p4: bool)
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0;
+        let _v1;
+        let _v2;
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v3 = borrow_global_mut<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+        let _v4 = p1 as u128;
+        let _v5 = p2 as u128;
+        let _v6 = _v4 * _v5;
+        let _v7 = table::borrow_mut<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&mut _v3.market_data, p0);
+        if (*&_v7.is_long == p3) _v1 = true else _v1 = *&_v7.liquidation_size == 0;
+        'l1: loop {
+            let _v8;
+            'l0: loop {
+                loop {
+                    if (_v1) if (!p4) break else {
+                        let _v9 = *&_v7.liquidation_size;
+                        if (p2 > _v9) break 'l0 else break 'l1
+                    };
+                    return ()
+                };
+                let _v10 = &mut _v7.entry_px_times_size_sum;
+                *_v10 = *_v10 + _v6;
+                _v0 = &mut _v7.liquidation_size;
+                *_v0 = *_v0 + p2;
+                _v8 = &mut _v7.is_long;
+                *_v8 = p3;
+                return ()
+            };
+            _v2 = *&_v7.liquidation_size;
+            let _v11 = p2 - _v2;
+            handle_position_netting(p0, _v7, p1, _v2);
+            let _v12 = p1 as u128;
+            let _v13 = _v11 as u128;
+            let _v14 = _v12 * _v13;
+            let _v15 = &mut _v7.entry_px_times_size_sum;
+            *_v15 = _v14;
+            _v0 = &mut _v7.liquidation_size;
+            *_v0 = _v11;
+            _v8 = &mut _v7.is_long;
+            *_v8 = p3;
+            return ()
+        };
+        _v2 = *&_v7.liquidation_size - p2;
+        handle_position_netting(p0, _v7, p1, p2);
+        let _v16 = *&_v7.entry_px_times_size_sum;
+        let _v17 = _v2 as u128;
+        let _v18 = _v16 * _v17;
+        let _v19 = (*&_v7.liquidation_size) as u128;
+        let _v20 = _v18 / _v19;
+        let _v21 = &mut _v7.entry_px_times_size_sum;
+        *_v21 = _v20;
+        _v0 = &mut _v7.liquidation_size;
+        *_v0 = _v2;
+    }
+    friend fun track_profit(p0: object::Object<perp_market::PerpMarket>, p1: i64)
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0;
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v1 = borrow_global_mut<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+        let _v2 = table::borrow_mut<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&mut _v1.market_data, p0);
+        if (p1 > 0i64) {
+            let _v3 = *&_v1.blp_margin_as_profit_percentage;
+            let _v4 = p1 as i128;
+            let _v5 = _v3 as i128;
+            let _v6 = (_v4 * _v5 / 10000i128) as i64;
+            _v0 = &mut _v2.realized_pnl;
+            *_v0 = *_v0 + _v6;
+            return ()
+        };
+        _v0 = &mut _v2.realized_pnl;
+        *_v0 = *_v0 + p1;
+    }
+    public fun view_blp_margin_as_profit_pct(): u64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        *&borrow_global<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88).blp_margin_as_profit_percentage
+    }
+    public fun view_market_tracking_data(p0: object::Object<perp_market::PerpMarket>): option::Option<MarketTrackingData>
+        acquires BackstopLiquidatorProfitTracker
+    {
+        assert!(exists<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88), 2);
+        let _v0 = borrow_global<BackstopLiquidatorProfitTracker>(@0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88);
+        if (!table::contains<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v0.market_data, p0)) return option::none<MarketTrackingData>();
+        option::some<MarketTrackingData>(*table::borrow<object::Object<perp_market::PerpMarket>,MarketTrackingData>(&_v0.market_data, p0))
+    }
+    public fun view_realized_pnl(p0: object::Object<perp_market::PerpMarket>): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        get_realized_pnl(p0)
+    }
+    public fun view_total_pnl(p0: object::Object<perp_market::PerpMarket>): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0 = price_management::get_mark_price(p0);
+        get_total_pnl(p0, _v0)
+    }
+    public fun view_total_pnl_at_price(p0: object::Object<perp_market::PerpMarket>, p1: u64): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        get_total_pnl(p0, p1)
+    }
+    public fun view_unrealized_pnl(p0: object::Object<perp_market::PerpMarket>): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        let _v0 = price_management::get_mark_price(p0);
+        get_unrealized_pnl(p0, _v0)
+    }
+    public fun view_unrealized_pnl_at_price(p0: object::Object<perp_market::PerpMarket>, p1: u64): i64
+        acquires BackstopLiquidatorProfitTracker
+    {
+        get_unrealized_pnl(p0, p1)
+    }
+}

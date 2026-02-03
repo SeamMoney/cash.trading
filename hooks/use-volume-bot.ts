@@ -51,7 +51,7 @@ export function useVolumeBot() {
       // Match the exact format that works in the delegation hook
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         type_arguments: [],
         arguments: [
           currentConfig.subaccount,

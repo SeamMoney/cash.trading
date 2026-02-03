@@ -23,7 +23,7 @@ async function main() {
   // Try using primary_subaccount_object instead
   const result = await aptos.view({
     payload: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount_object`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount_object`,
       typeArguments: [],
       functionArguments: [account.accountAddress.toString()],
     },

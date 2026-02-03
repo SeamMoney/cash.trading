@@ -294,7 +294,7 @@ export class VolumeBotEngine {
       })
 
       const subaccountResource = resources.find((r) =>
-        r.type.includes('::dex_accounts::Subaccount')
+        r.type.includes('::dex_accounts_entry::Subaccount')
       )
 
       if (!subaccountResource) {
@@ -306,7 +306,7 @@ export class VolumeBotEngine {
         }
       }
 
-      // Extract package address from type (format: "0x...::dex_accounts::Subaccount")
+      // Extract package address from type (format: "0x...::dex_accounts_entry::Subaccount")
       const subaccountPackage = subaccountResource.type.split('::')[0]
       const compatible = subaccountPackage.toLowerCase() === DECIBEL_PACKAGE.toLowerCase()
 
@@ -649,7 +649,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -802,7 +802,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -878,7 +878,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_market_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_market_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,  // subaccount
@@ -959,7 +959,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -1037,7 +1037,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -1760,7 +1760,7 @@ export class VolumeBotEngine {
         const transaction = await this.aptos.transaction.build.simple({
           sender: this.botAccount.accountAddress,
           data: {
-            function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+            function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
             typeArguments: [],
             functionArguments: [
               this.config.userSubaccount,
@@ -1943,7 +1943,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -2158,7 +2158,7 @@ export class VolumeBotEngine {
     const transaction = await this.aptos.transaction.build.simple({
       sender: this.botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           this.config.userSubaccount,
@@ -2221,7 +2221,7 @@ export class VolumeBotEngine {
     const transaction = await this.aptos.transaction.build.simple({
       sender: this.botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           this.config.userSubaccount,
@@ -2394,7 +2394,7 @@ export class VolumeBotEngine {
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
@@ -2500,7 +2500,7 @@ export class VolumeBotEngine {
           const closeTransaction = await this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+              function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
               typeArguments: [],
               functionArguments: [
                 this.config.userSubaccount,
@@ -2647,7 +2647,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -2774,7 +2774,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,
@@ -2852,7 +2852,7 @@ export class VolumeBotEngine {
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
           typeArguments: [],
           functionArguments: [
             this.config.userSubaccount,

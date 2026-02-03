@@ -97,7 +97,7 @@ async function main() {
     const transaction = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           USER_SUBACCOUNT,

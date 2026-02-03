@@ -217,7 +217,7 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
           type_arguments: [],
           arguments: [walletAddress],
         }),

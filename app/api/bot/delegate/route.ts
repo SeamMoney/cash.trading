@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       payload: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::delegate_trading_to_for_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
         typeArguments: [],
         functionArguments: [
           userSubaccount,

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Check if subaccount is compatible with current package
     try {
       const resources = await aptos.getAccountResources({ accountAddress: userSubaccount })
-      const subaccountResource = resources.find((r: any) => r.type.includes('::dex_accounts::Subaccount'))
+      const subaccountResource = resources.find((r: any) => r.type.includes('::dex_accounts_entry::Subaccount'))
       if (subaccountResource) {
         const packageAddr = subaccountResource.type.split('::')[0]
         if (packageAddr.toLowerCase() !== DECIBEL_PACKAGE.toLowerCase()) {
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     const transaction = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           userSubaccount,

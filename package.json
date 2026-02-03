@@ -17,7 +17,7 @@
     "@aptos-labs/wallet-adapter-ant-design": "^5.3.2",
     "@aptos-labs/wallet-adapter-react": "^7.2.2",
     "@blocto/aptos-wallet-adapter-plugin": "^0.2.11",
-    "@decibeltrade/sdk": "^0.2.1",
+    "@decibeltrade/sdk": "^0.2.9",
     "@flipperplatform/wallet-adapter-plugin": "^0.2.0",
     "@keyv/etcd": "^2.1.1",
     "@keyv/mongo": "^3.0.5",

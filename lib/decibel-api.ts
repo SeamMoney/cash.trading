@@ -3,7 +3,13 @@
  *
  * Provides authenticated access to Decibel's REST API endpoints.
  * Requires GEOMI_API_KEY environment variable.
+ *
+ * Updated Feb 3, 2026:
+ * - API responses now use { items: [], total: x } format for list endpoints
+ * - Rate limit: 200 req/30s via Geomi API key
  */
+
+import { normalizeArrayResponse } from './api-helpers'
 
 const TESTNET_API_URL = 'https://api.testnet.aptoslabs.com/decibel/api/v1'
 const MAINNET_API_URL = 'https://api.mainnet.aptoslabs.com/decibel/api/v1'
@@ -172,7 +178,9 @@ export async function getDecibelTradeHistory(
       return []
     }
 
-    return await response.json()
+    // Handle both array (legacy) and paginated (new) response formats
+    const data = await response.json()
+    return normalizeArrayResponse<DecibelTrade>(data)
   } catch (error) {
     console.error('Error fetching Decibel trade history:', error)
     return []

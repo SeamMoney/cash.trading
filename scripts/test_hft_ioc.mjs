@@ -106,7 +106,7 @@ async function placeIOCOrder(aptos, botAccount, userSubaccount, marketConfig, is
   const transaction = await aptos.transaction.build.simple({
     sender: botAccount.accountAddress,
     data: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
       typeArguments: [],
       functionArguments: [
         userSubaccount,
@@ -217,7 +217,7 @@ async function main() {
   // Get user's subaccount
   const subaccountResult = await aptos.view({
     payload: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
       typeArguments: [],
       functionArguments: [userWalletAddress],
     },

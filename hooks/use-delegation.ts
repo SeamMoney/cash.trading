@@ -40,7 +40,7 @@ export function useDelegation(): DelegationState {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts::is_delegated_trader`,
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::is_delegated_trader`,
           type_arguments: [],
           arguments: [subaccount, BOT_OPERATOR],
         }),
@@ -74,7 +74,7 @@ export function useDelegation(): DelegationState {
     try {
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts::delegate_trading_to_for_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
         type_arguments: [],
         arguments: [
           subaccount,
@@ -137,7 +137,7 @@ export function useDelegation(): DelegationState {
     try {
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts::revoke_trading_delegation_for_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::revoke_trading_delegation_for_subaccount`,
         type_arguments: [],
         arguments: [subaccount, BOT_OPERATOR],
       }

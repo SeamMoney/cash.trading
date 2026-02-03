@@ -5,8 +5,8 @@
  * The DecibelClient class (for server-side trading) is in a separate file.
  */
 
-// Decibel constants (updated Dec 17, 2025)
-export const DECIBEL_PACKAGE = '0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844';
+// Decibel constants (updated Feb 3, 2026 - testnet contract reset Jan 21, 2026)
+export const DECIBEL_PACKAGE = '0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88';
 export const ORDERBOOK_ADDR = '0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7';
 export const USDC_DECIMALS = 6;
 export const PRICE_DECIMALS = 6;

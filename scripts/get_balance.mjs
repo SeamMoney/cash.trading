@@ -87,7 +87,7 @@ console.log("\n=== Reading from Primary Balance Table ===");
 // Try different key formats
 const keyFormats = [
   { type: "address", value: subaccount },
-  { type: "0x1::object::Object<0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844::dex_accounts::Subaccount>", value: subaccount },
+  { type: "0x1::object::Object<0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844::dex_accounts_entry::Subaccount>", value: subaccount },
 ];
 
 for (const keyFormat of keyFormats) {

@@ -1,6 +1,12 @@
 # Decibel Protocol - Annotated Source Code Index
 
-This directory contains fully annotated Move source code for the Decibel perpetual DEX protocol, decompiled from contract `0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844` on Aptos testnet.
+This directory contains fully annotated Move source code for the Decibel perpetual DEX protocol.
+
+**Contract Addresses:**
+- Current (Jan 21, 2026): `0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88`
+- Previous (Dec 2025): `0x9f830083a19fb8b87395983ca9edaea2b0379c97be6dfe234bb914e6c6672844`
+
+> **Note:** A new `dex_accounts_entry` module was added in the Jan 21, 2026 reset. It wraps the `dex_accounts` module and provides entry functions for trading.
 
 > **See also:** [ARCHITECTURE.md](./ARCHITECTURE.md) - Full architecture documentation with Mermaid diagrams showing how Decibel integrates with Econia's order book.
 

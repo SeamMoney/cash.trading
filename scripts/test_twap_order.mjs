@@ -79,7 +79,7 @@ async function main() {
   try {
     const subaccountResult = await aptos.view({
       payload: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
         typeArguments: [],
         functionArguments: [account.accountAddress.toString()],
       },
@@ -134,7 +134,7 @@ async function main() {
     const transaction = await aptos.transaction.build.simple({
       sender: account.accountAddress,
       data: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           subaccountAddr,                  // subaccount: Object<Subaccount> - SDK handles Object wrapper

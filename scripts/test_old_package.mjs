@@ -61,7 +61,7 @@ async function main() {
     const tx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${OLD_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${OLD_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           USER_SUBACCOUNT, BTC_MARKET, contractSize.toString(), isLong, false, 60, 120, undefined, undefined
@@ -81,7 +81,7 @@ async function main() {
     const tx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${NEW_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${NEW_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           USER_SUBACCOUNT, BTC_MARKET, contractSize.toString(), isLong, false, 60, 120, undefined, undefined

@@ -54,7 +54,7 @@ async function main() {
     const tx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${NEW_PACKAGE}::dex_accounts::place_twap_order_to_subaccount`,
+        function: `${NEW_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           NEW_PKG_SUBACCOUNT,
@@ -84,7 +84,7 @@ async function main() {
     const tx = await aptos.transaction.build.simple({
       sender: botAccount.accountAddress,
       data: {
-        function: `${NEW_PACKAGE}::dex_accounts::place_order_to_subaccount`,
+        function: `${NEW_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
           NEW_PKG_SUBACCOUNT,

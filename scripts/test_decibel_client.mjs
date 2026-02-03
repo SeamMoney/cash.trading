@@ -23,7 +23,7 @@ console.log('=== Decibel Client Test Script ===\n');
 console.log('1. Querying primary subaccount...');
 const subaccount = await aptos.view({
   payload: {
-    function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+    function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
     typeArguments: [],
     functionArguments: [WALLET_ADDRESS],
   },

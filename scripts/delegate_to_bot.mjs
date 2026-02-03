@@ -42,7 +42,7 @@ async function main() {
   console.log('\n📦 Getting your subaccount...')
   const subaccountResult = await aptos.view({
     payload: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::primary_subaccount`,
       typeArguments: [],
       functionArguments: [userAccount.accountAddress.toString()],
     },
@@ -56,7 +56,7 @@ async function main() {
   const transaction = await aptos.transaction.build.simple({
     sender: userAccount.accountAddress,
     data: {
-      function: `${DECIBEL_PACKAGE}::dex_accounts::delegate_trading_to_for_subaccount`,
+      function: `${DECIBEL_PACKAGE}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
       typeArguments: [],
       functionArguments: [
         subaccount,

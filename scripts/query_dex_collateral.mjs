@@ -90,7 +90,7 @@ const viewFunctions = [
   `${DECIBEL_PACKAGE}::collateral_balance_sheet::get_balance`,
   `${DECIBEL_PACKAGE}::collateral_balance_sheet::get_cross_balance`,
   `${DECIBEL_PACKAGE}::collateral_balance_sheet::get_account_balance`,
-  `${DECIBEL_PACKAGE}::dex_accounts::get_subaccount_balance`,
+  `${DECIBEL_PACKAGE}::dex_accounts_entry::get_subaccount_balance`,
   `${DECIBEL_PACKAGE}::perp_positions::get_account_equity`,
 ];
 

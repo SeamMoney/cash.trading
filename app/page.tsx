@@ -14,27 +14,29 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <DashboardLayout>
-      <Tabs defaultValue="volume" className="space-y-4">
-        <TabsList className="w-full bg-zinc-900/50 border border-white/10 p-1 grid grid-cols-3">
-          <TabsTrigger
-            value="portfolio"
-            className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium text-xs sm:text-sm"
-          >
-            Portfolio
-          </TabsTrigger>
-          <TabsTrigger
-            value="volume"
-            className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium text-xs sm:text-sm"
-          >
-            Bot
-          </TabsTrigger>
-          <TabsTrigger
-            value="points"
-            className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium text-xs sm:text-sm"
-          >
-            Points
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="volume" className="space-y-6">
+        <div className="flex items-center gap-4">
+          <TabsList className="bg-zinc-900/50 border border-white/10 p-1">
+            <TabsTrigger
+              value="portfolio"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium"
+            >
+              Portfolio
+            </TabsTrigger>
+            <TabsTrigger
+              value="volume"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium"
+            >
+              Volume
+            </TabsTrigger>
+            <TabsTrigger
+              value="points"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-primary font-medium"
+            >
+              Points
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="portfolio" className="space-y-4 outline-none">
           <PortfolioView />

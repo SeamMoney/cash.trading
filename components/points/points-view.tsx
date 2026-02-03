@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Trophy, TrendingUp, Users, Wallet, RefreshCw, Loader2, Clock, Eye, ChevronDown, ChevronUp } from "lucide-react"
+import { Trophy, TrendingUp, Users, Wallet, RefreshCw, Loader2, Clock, Eye, ChevronDown, ChevronUp, Sparkles, Zap } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { Leaderboard } from "./leaderboard"
 import { WalletWatcher } from "./wallet-watcher"
@@ -28,7 +28,7 @@ export function PointsView() {
   const [pointsData, setPointsData] = useState<PointsData | null>(null)
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(false)
-  const [countdown, setCountdown] = useState<string>('')
+  const [countdown, setCountdown] = useState<{ days: number; hours: number; mins: number; secs: number } | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showWatcher, setShowWatcher] = useState(false)
 
@@ -77,19 +77,20 @@ export function PointsView() {
       const diff = launchDate.getTime() - now.getTime()
 
       if (diff <= 0) {
-        setCountdown('LIVE')
+        setCountdown(null)
         return
       }
 
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-      setCountdown(`${days}d ${hours}h ${minutes}m`)
+      setCountdown({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        mins: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        secs: Math.floor((diff % (1000 * 60)) / 1000),
+      })
     }
 
     updateCountdown()
-    const interval = setInterval(updateCountdown, 60000)
+    const interval = setInterval(updateCountdown, 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -104,125 +105,229 @@ export function PointsView() {
 
   return (
     <div className="space-y-4">
-      {/* Countdown Banner - Compact for mobile */}
-      {isPreLaunch && (
-        <div className="bg-primary/10 border border-primary/30 p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="size-4 text-primary" />
-            <span className="text-xs font-mono text-zinc-400">Season 0 Opens</span>
+      {/* Hero Countdown Section */}
+      {isPreLaunch && countdown && (
+        <div className="relative overflow-hidden rounded-lg border border-primary/30 bg-black">
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-purple-500/10 via-transparent to-transparent" />
+
+          {/* Glow effect */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+
+          <div className="relative p-4 sm:p-6">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Sparkles className="size-4 text-primary animate-pulse" />
+              <span className="text-xs font-mono uppercase tracking-widest text-primary">Season 0 Launches In</span>
+              <Sparkles className="size-4 text-primary animate-pulse" />
+            </div>
+
+            {/* Countdown boxes */}
+            <div className="flex justify-center gap-2 sm:gap-3">
+              {[
+                { value: countdown.days, label: 'Days' },
+                { value: countdown.hours, label: 'Hrs' },
+                { value: countdown.mins, label: 'Min' },
+                { value: countdown.secs, label: 'Sec' },
+              ].map((item, i) => (
+                <div key={item.label} className="relative">
+                  <div className="w-14 sm:w-16 h-16 sm:h-20 bg-zinc-900/80 border border-white/10 flex flex-col items-center justify-center">
+                    <span className="text-2xl sm:text-3xl font-mono font-bold text-white tabular-nums">
+                      {String(item.value).padStart(2, '0')}
+                    </span>
+                    <span className="text-[9px] font-mono uppercase text-zinc-500">{item.label}</span>
+                  </div>
+                  {i < 3 && (
+                    <span className="absolute -right-1.5 sm:-right-2 top-1/2 -translate-y-1/2 text-primary font-bold">:</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-center text-[10px] font-mono text-zinc-500 mt-3">
+              February 7, 2026 • Pre-deposits open
+            </p>
           </div>
-          <span className="text-lg font-mono font-bold text-primary tabular-nums">{countdown}</span>
         </div>
       )}
 
-      {/* Stats Grid - 2x2 on mobile */}
+      {/* Stats Cards - Bento Grid Style */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Total Deposited</div>
-          <div className="text-lg font-mono font-bold text-white tabular-nums">
-            {formatNumber(globalStats?.total_deposited || 0)}
+        {/* Total Deposited - Featured */}
+        <div className="col-span-2 relative overflow-hidden rounded-lg border border-white/10 bg-zinc-900/50 p-4">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full" />
+          <div className="relative flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet className="size-4 text-zinc-500" />
+                <span className="text-[10px] font-mono uppercase text-zinc-500">Total Value Locked</span>
+              </div>
+              <div className="text-3xl sm:text-4xl font-mono font-bold text-white tabular-nums">
+                {formatNumber(globalStats?.total_deposited || 0)}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">Depositors</div>
+              <div className="text-xl font-mono font-bold text-green-400 tabular-nums flex items-center gap-1">
+                <Users className="size-4" />
+                {(globalStats?.depositor_count || 0).toLocaleString()}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Depositors</div>
-          <div className="text-lg font-mono font-bold text-green-500 tabular-nums">
-            {(globalStats?.depositor_count || 0).toLocaleString()}
+
+        {/* Points */}
+        <div className="relative overflow-hidden rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-purple-500/20 rounded-full blur-xl" />
+          <div className="relative">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Trophy className="size-3.5 text-purple-400" />
+              <span className="text-[10px] font-mono uppercase text-purple-400/70">Total Points</span>
+            </div>
+            <div className="text-xl font-mono font-bold text-purple-400 tabular-nums">
+              {(globalStats?.total_points || 0).toLocaleString()}
+            </div>
           </div>
         </div>
-        <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Total Points</div>
-          <div className="text-lg font-mono font-bold text-purple-500 tabular-nums">
-            {(globalStats?.total_points || 0).toLocaleString()}
-          </div>
-        </div>
-        <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">DLP Allocated</div>
-          <div className="text-lg font-mono font-bold text-blue-500 tabular-nums">
-            {formatNumber(globalStats?.total_dlp || 0)}
+
+        {/* DLP */}
+        <div className="relative overflow-hidden rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-blue-500/20 rounded-full blur-xl" />
+          <div className="relative">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Zap className="size-3.5 text-blue-400" />
+              <span className="text-[10px] font-mono uppercase text-blue-400/70">DLP Allocated</span>
+            </div>
+            <div className="text-xl font-mono font-bold text-blue-400 tabular-nums">
+              {formatNumber(globalStats?.total_dlp || 0)}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Your Stats - Only if connected */}
+      {/* Your Stats Card */}
       {connected && (
-        <div className="bg-primary/5 border border-primary/20 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-mono text-zinc-500 uppercase">Your Stats</span>
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="p-1"
-              aria-label="Refresh stats"
-            >
-              <RefreshCw className={`size-3.5 text-zinc-500 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-[10px] font-mono text-zinc-600 truncate">Points</div>
-              <div className="text-2xl font-mono font-bold text-primary tabular-nums">
-                {(pointsData?.points || 0).toLocaleString()}
+        <div className="relative overflow-hidden rounded-lg border border-primary/30 bg-black">
+          {/* Subtle glow */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-purple-500/5" />
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+
+          <div className="relative p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Trophy className="size-4 text-primary" />
+                </div>
+                <span className="text-sm font-mono font-bold text-white">Your Stats</span>
               </div>
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-1.5 rounded bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                aria-label="Refresh stats"
+              >
+                <RefreshCw className={`size-3.5 text-zinc-400 ${loading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-            <div>
-              <div className="text-[10px] font-mono text-zinc-600 truncate">Deposited</div>
-              <div className="text-xl font-mono font-bold text-white tabular-nums">
-                {formatNumber(pointsData?.total_deposited || '0')}
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Points - Large */}
+              <div className="col-span-2 sm:col-span-1 bg-zinc-900/50 rounded-lg p-3 border border-white/5">
+                <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">Your Points</div>
+                <div className="text-3xl font-mono font-bold text-primary tabular-nums">
+                  {(pointsData?.points || 0).toLocaleString()}
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-[10px] font-mono text-zinc-600 truncate">DLP</div>
-              <div className="text-lg font-mono text-blue-500 tabular-nums">
-                {formatNumber(pointsData?.dlp_balance || '0')}
+
+              {/* Deposited */}
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
+                <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">Deposited</div>
+                <div className="text-xl font-mono font-bold text-white tabular-nums">
+                  {formatNumber(pointsData?.total_deposited || '0')}
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-[10px] font-mono text-zinc-600 truncate">Unallocated</div>
-              <div className="text-lg font-mono text-orange-500 tabular-nums">
-                {formatNumber(pointsData?.ua_balance || '0')}
+
+              {/* DLP */}
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
+                <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">DLP Balance</div>
+                <div className="text-lg font-mono font-bold text-blue-400 tabular-nums">
+                  {formatNumber(pointsData?.dlp_balance || '0')}
+                </div>
+              </div>
+
+              {/* UA */}
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-white/5">
+                <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">Unallocated</div>
+                <div className="text-lg font-mono font-bold text-orange-400 tabular-nums">
+                  {formatNumber(pointsData?.ua_balance || '0')}
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Collapsible Sections */}
-      <div className="space-y-2">
-        {/* Leaderboard Toggle */}
-        <button
-          onClick={() => setShowLeaderboard(!showLeaderboard)}
-          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20"
-          aria-expanded={showLeaderboard}
-        >
-          <div className="flex items-center gap-2">
-            <TrendingUp className="size-4 text-zinc-500" />
-            <span className="text-sm font-mono text-white">Leaderboard</span>
-          </div>
-          {showLeaderboard ? (
-            <ChevronUp className="size-4 text-zinc-500" />
-          ) : (
-            <ChevronDown className="size-4 text-zinc-500" />
-          )}
-        </button>
-        {showLeaderboard && <Leaderboard />}
+      {/* Connect Wallet CTA */}
+      {!connected && (
+        <div className="relative overflow-hidden rounded-lg border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+          <Wallet className="size-8 text-primary/50 mx-auto mb-2" />
+          <p className="text-sm font-mono text-primary">Connect wallet to track your points</p>
+        </div>
+      )}
 
-        {/* Wallet Watcher Toggle */}
-        <button
-          onClick={() => setShowWatcher(!showWatcher)}
-          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20"
-          aria-expanded={showWatcher}
-        >
-          <div className="flex items-center gap-2">
-            <Eye className="size-4 text-zinc-500" />
-            <span className="text-sm font-mono text-white">Watch Wallets</span>
-          </div>
-          {showWatcher ? (
-            <ChevronUp className="size-4 text-zinc-500" />
-          ) : (
-            <ChevronDown className="size-4 text-zinc-500" />
+      {/* Expandable Sections */}
+      <div className="space-y-2">
+        {/* Leaderboard */}
+        <div className="rounded-lg border border-white/10 overflow-hidden">
+          <button
+            onClick={() => setShowLeaderboard(!showLeaderboard)}
+            className="w-full flex items-center justify-between p-3 bg-zinc-900/50 hover:bg-zinc-900/70"
+            aria-expanded={showLeaderboard}
+          >
+            <div className="flex items-center gap-2">
+              <div className="size-6 rounded bg-purple-500/20 flex items-center justify-center">
+                <TrendingUp className="size-3.5 text-purple-400" />
+              </div>
+              <span className="text-sm font-mono text-white">Leaderboard</span>
+            </div>
+            {showLeaderboard ? (
+              <ChevronUp className="size-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="size-4 text-zinc-500" />
+            )}
+          </button>
+          {showLeaderboard && (
+            <div className="border-t border-white/10 p-3 bg-black/50">
+              <Leaderboard />
+            </div>
           )}
-        </button>
-        {showWatcher && <WalletWatcher />}
+        </div>
+
+        {/* Wallet Watcher */}
+        <div className="rounded-lg border border-white/10 overflow-hidden">
+          <button
+            onClick={() => setShowWatcher(!showWatcher)}
+            className="w-full flex items-center justify-between p-3 bg-zinc-900/50 hover:bg-zinc-900/70"
+            aria-expanded={showWatcher}
+          >
+            <div className="flex items-center gap-2">
+              <div className="size-6 rounded bg-blue-500/20 flex items-center justify-center">
+                <Eye className="size-3.5 text-blue-400" />
+              </div>
+              <span className="text-sm font-mono text-white">Watch Wallets</span>
+            </div>
+            {showWatcher ? (
+              <ChevronUp className="size-4 text-zinc-500" />
+            ) : (
+              <ChevronDown className="size-4 text-zinc-500" />
+            )}
+          </button>
+          {showWatcher && (
+            <div className="border-t border-white/10 p-3 bg-black/50">
+              <WalletWatcher />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Deposit CTA */}
@@ -230,9 +335,12 @@ export function PointsView() {
         href="https://app.decibel.trade/predeposit"
         target="_blank"
         rel="noopener noreferrer"
-        className="block w-full p-3 bg-primary text-black text-center font-mono font-bold text-sm uppercase tracking-wider hover:bg-primary/90 transition-colors"
+        className="relative block w-full overflow-hidden rounded-lg bg-primary p-3 text-center group"
       >
-        Make Predeposit on Decibel
+        <div className="absolute inset-0 bg-gradient-to-r from-primary via-yellow-400 to-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+        <span className="relative font-mono font-bold text-black text-sm uppercase tracking-wider">
+          Make Predeposit on Decibel →
+        </span>
       </a>
     </div>
   )

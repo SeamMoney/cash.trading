@@ -221,3 +221,213 @@ export function formatVolume(volume: number): string {
     return `$${volume.toFixed(2)}`
   }
 }
+
+// ============================================
+// PREDEPOSIT API ENDPOINTS
+// ============================================
+
+export interface PredepositPoints {
+  account: string
+  points: number
+}
+
+export interface PredepositDlpBalance {
+  account: string
+  balance: string // Decimal string
+}
+
+export interface PredepositUaPosition {
+  position_id: string
+  balance: string
+  timestamp: number
+}
+
+export interface PredepositBalanceEvent {
+  event_kind: 'deposit' | 'withdraw' | 'promote' | 'transition'
+  fund_type: 'ua' | 'dlp'
+  amount: string
+  balance_after: string
+  timestamp: number
+  transaction_version: number
+}
+
+export interface PredepositTotal {
+  total_points: number
+  total_deposited: number
+  total_dlp: number
+  total_ua: number
+  depositor_count: number
+}
+
+export interface LeaderboardEntry {
+  rank: number
+  account: string
+  points: number
+  dlp_balance: string
+  ua_balance: string
+  total_deposited: string
+}
+
+/**
+ * Get predeposit points for a user
+ */
+export async function getPredepositPoints(
+  userAddr: string,
+  network: 'testnet' | 'mainnet' = 'testnet'
+): Promise<PredepositPoints | null> {
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const response = await fetch(`${baseUrl}/predeposits/points?account=${userAddr}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return null
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching predeposit points:', error)
+    return null
+  }
+}
+
+/**
+ * Get DLP balance for a user
+ */
+export async function getPredepositDlpBalance(
+  userAddr: string,
+  network: 'testnet' | 'mainnet' = 'testnet'
+): Promise<PredepositDlpBalance | null> {
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const response = await fetch(`${baseUrl}/predeposits/positions/dlp?account=${userAddr}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return null
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching DLP balance:', error)
+    return null
+  }
+}
+
+/**
+ * Get UA positions for a user
+ */
+export async function getPredepositUaPositions(
+  userAddr: string,
+  network: 'testnet' | 'mainnet' = 'testnet'
+): Promise<PredepositUaPosition[]> {
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const response = await fetch(`${baseUrl}/predeposits/positions/ua?account=${userAddr}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return []
+    const data = await response.json()
+    return normalizeArrayResponse<PredepositUaPosition>(data)
+  } catch (error) {
+    console.error('Error fetching UA positions:', error)
+    return []
+  }
+}
+
+/**
+ * Get predeposit balance event history for a user
+ */
+export async function getPredepositBalanceEvents(
+  userAddr: string,
+  options: {
+    network?: 'testnet' | 'mainnet'
+    eventKind?: 'deposit' | 'withdraw' | 'promote' | 'transition'
+    fundType?: 'ua' | 'dlp'
+    limit?: number
+  } = {}
+): Promise<PredepositBalanceEvent[]> {
+  const { network = 'testnet', eventKind, fundType, limit = 100 } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({
+      account: userAddr,
+      limit: limit.toString(),
+    })
+    if (eventKind) params.set('event_kind', eventKind)
+    if (fundType) params.set('fund_type', fundType)
+
+    const response = await fetch(`${baseUrl}/predeposits/balance_events?${params}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return []
+    const data = await response.json()
+    return normalizeArrayResponse<PredepositBalanceEvent>(data)
+  } catch (error) {
+    console.error('Error fetching balance events:', error)
+    return []
+  }
+}
+
+/**
+ * Get total predeposit stats (Season 0)
+ */
+export async function getPredepositTotal(
+  network: 'testnet' | 'mainnet' = 'testnet'
+): Promise<PredepositTotal | null> {
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const response = await fetch(`${baseUrl}/predeposits/total`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return null
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching predeposit total:', error)
+    return null
+  }
+}
+
+/**
+ * Get predeposit leaderboard
+ */
+export async function getPredepositLeaderboard(
+  options: {
+    network?: 'testnet' | 'mainnet'
+    limit?: number
+    offset?: number
+  } = {}
+): Promise<LeaderboardEntry[]> {
+  const { network = 'testnet', limit = 100, offset = 0 } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
+
+    const response = await fetch(`${baseUrl}/leaderboard?${params}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) return []
+    const data = await response.json()
+    return normalizeArrayResponse<LeaderboardEntry>(data)
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error)
+    return []
+  }
+}

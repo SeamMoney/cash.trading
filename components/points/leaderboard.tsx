@@ -213,7 +213,7 @@ export function Leaderboard() {
                       </td>
                       <td className="p-4 text-right">
                         <span className="font-mono font-bold text-purple-500">
-                          {entry.points.toLocaleString()}
+                          {(entry.points ?? 0).toLocaleString()}
                         </span>
                       </td>
                       <td className="p-4 text-right hidden md:table-cell">

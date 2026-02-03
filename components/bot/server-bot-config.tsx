@@ -9,7 +9,6 @@ import { Slider } from "@/components/ui/slider"
 import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info, Trophy, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
-import { CloudStatusIndicator } from "./cloud-status-indicator"
 
 type Bias = "long" | "short" | "neutral"
 type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer"
@@ -395,9 +394,6 @@ export function ServerBotConfig() {
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
-      {/* Cloud Status Indicator */}
-      <CloudStatusIndicator />
-
       {/* Bot Status Monitor */}
       {connected && account && subaccount && (
         <BotStatusMonitor

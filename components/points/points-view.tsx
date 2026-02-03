@@ -108,36 +108,36 @@ export function PointsView() {
       {isPreLaunch && (
         <div className="bg-primary/10 border border-primary/30 p-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-primary" />
+            <Clock className="size-4 text-primary" />
             <span className="text-xs font-mono text-zinc-400">Season 0 Opens</span>
           </div>
-          <span className="text-lg font-mono font-bold text-primary">{countdown}</span>
+          <span className="text-lg font-mono font-bold text-primary tabular-nums">{countdown}</span>
         </div>
       )}
 
       {/* Stats Grid - 2x2 on mobile */}
       <div className="grid grid-cols-2 gap-2">
         <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase">Total Deposited</div>
-          <div className="text-lg font-mono font-bold text-white">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Total Deposited</div>
+          <div className="text-lg font-mono font-bold text-white tabular-nums">
             {formatNumber(globalStats?.total_deposited || 0)}
           </div>
         </div>
         <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase">Depositors</div>
-          <div className="text-lg font-mono font-bold text-green-500">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Depositors</div>
+          <div className="text-lg font-mono font-bold text-green-500 tabular-nums">
             {(globalStats?.depositor_count || 0).toLocaleString()}
           </div>
         </div>
         <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase">Total Points</div>
-          <div className="text-lg font-mono font-bold text-purple-500">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">Total Points</div>
+          <div className="text-lg font-mono font-bold text-purple-500 tabular-nums">
             {(globalStats?.total_points || 0).toLocaleString()}
           </div>
         </div>
         <div className="bg-black/40 border border-white/10 p-3">
-          <div className="text-[10px] font-mono text-zinc-500 uppercase">DLP Allocated</div>
-          <div className="text-lg font-mono font-bold text-blue-500">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase truncate">DLP Allocated</div>
+          <div className="text-lg font-mono font-bold text-blue-500 tabular-nums">
             {formatNumber(globalStats?.total_dlp || 0)}
           </div>
         </div>
@@ -148,32 +148,37 @@ export function PointsView() {
         <div className="bg-primary/5 border border-primary/20 p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-mono text-zinc-500 uppercase">Your Stats</span>
-            <button onClick={fetchData} disabled={loading} className="p-1">
-              <RefreshCw className={`w-3.5 h-3.5 text-zinc-500 ${loading ? 'animate-spin' : ''}`} />
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="p-1"
+              aria-label="Refresh stats"
+            >
+              <RefreshCw className={`size-3.5 text-zinc-500 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-[10px] font-mono text-zinc-600">Points</div>
-              <div className="text-2xl font-mono font-bold text-primary">
+              <div className="text-[10px] font-mono text-zinc-600 truncate">Points</div>
+              <div className="text-2xl font-mono font-bold text-primary tabular-nums">
                 {(pointsData?.points || 0).toLocaleString()}
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-mono text-zinc-600">Deposited</div>
-              <div className="text-xl font-mono font-bold text-white">
+              <div className="text-[10px] font-mono text-zinc-600 truncate">Deposited</div>
+              <div className="text-xl font-mono font-bold text-white tabular-nums">
                 {formatNumber(pointsData?.total_deposited || '0')}
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-mono text-zinc-600">DLP</div>
-              <div className="text-lg font-mono text-blue-500">
+              <div className="text-[10px] font-mono text-zinc-600 truncate">DLP</div>
+              <div className="text-lg font-mono text-blue-500 tabular-nums">
                 {formatNumber(pointsData?.dlp_balance || '0')}
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-mono text-zinc-600">Unallocated</div>
-              <div className="text-lg font-mono text-orange-500">
+              <div className="text-[10px] font-mono text-zinc-600 truncate">Unallocated</div>
+              <div className="text-lg font-mono text-orange-500 tabular-nums">
                 {formatNumber(pointsData?.ua_balance || '0')}
               </div>
             </div>
@@ -186,16 +191,17 @@ export function PointsView() {
         {/* Leaderboard Toggle */}
         <button
           onClick={() => setShowLeaderboard(!showLeaderboard)}
-          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20 transition-colors"
+          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20"
+          aria-expanded={showLeaderboard}
         >
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-zinc-500" />
+            <TrendingUp className="size-4 text-zinc-500" />
             <span className="text-sm font-mono text-white">Leaderboard</span>
           </div>
           {showLeaderboard ? (
-            <ChevronUp className="w-4 h-4 text-zinc-500" />
+            <ChevronUp className="size-4 text-zinc-500" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-zinc-500" />
+            <ChevronDown className="size-4 text-zinc-500" />
           )}
         </button>
         {showLeaderboard && <Leaderboard />}
@@ -203,16 +209,17 @@ export function PointsView() {
         {/* Wallet Watcher Toggle */}
         <button
           onClick={() => setShowWatcher(!showWatcher)}
-          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20 transition-colors"
+          className="w-full flex items-center justify-between p-3 bg-black/40 border border-white/10 hover:border-white/20"
+          aria-expanded={showWatcher}
         >
           <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-zinc-500" />
+            <Eye className="size-4 text-zinc-500" />
             <span className="text-sm font-mono text-white">Watch Wallets</span>
           </div>
           {showWatcher ? (
-            <ChevronUp className="w-4 h-4 text-zinc-500" />
+            <ChevronUp className="size-4 text-zinc-500" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-zinc-500" />
+            <ChevronDown className="size-4 text-zinc-500" />
           )}
         </button>
         {showWatcher && <WalletWatcher />}

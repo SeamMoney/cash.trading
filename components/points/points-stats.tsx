@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { Trophy, TrendingUp, Users, Wallet, RefreshCw, Loader2, Clock } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { ShareCard } from "./share-card"
 
 interface PointsData {
   points: number
@@ -195,8 +196,16 @@ export function PointsStats() {
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 p-6 relative">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-          <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-4">
-            Your Season 0 Stats
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
+              Your Season 0 Stats
+            </div>
+            <ShareCard
+              points={pointsData?.points || 0}
+              rank={pointsData?.rank}
+              totalDeposited={pointsData?.total_deposited || '0'}
+              dlpBalance={pointsData?.dlp_balance || '0'}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

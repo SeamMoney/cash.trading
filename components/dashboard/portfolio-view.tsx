@@ -37,7 +37,7 @@ interface PortfolioData {
 
 export function PortfolioView() {
   const { account, connected } = useWallet()
-  const { subaccount, selectedSubaccountType, balance: walletBalance, loading: walletLoading } = useWalletBalance()
+  const { subaccount, balance: walletBalance, loading: walletLoading } = useWalletBalance()
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -151,7 +151,7 @@ export function PortfolioView() {
             <span className="text-zinc-600 text-sm font-mono">USDC</span>
           </div>
           <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-            {selectedSubaccountType === 'competition' ? 'Competition Balance' : 'Primary Balance'}
+            Available Balance
           </div>
         </div>
 

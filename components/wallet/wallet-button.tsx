@@ -3,8 +3,7 @@
 import { useState } from "react"
 import { useWallet, WalletName } from "@aptos-labs/wallet-adapter-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, User, Loader2, AlertTriangle } from "lucide-react"
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 
 export function WalletButton() {
@@ -45,127 +44,57 @@ export function WalletButton() {
           <ChevronDown className="size-3 text-zinc-500 group-hover:text-zinc-400 transition-colors" />
         </button>
 
-        {/* Account Modal - Clean dark design with scroll */}
+        {/* Account Modal - Compact mobile-friendly design */}
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
-          <DialogContent className="bg-black border border-white/10 w-[calc(100vw-2rem)] max-w-sm max-h-[85vh] p-0 overflow-hidden rounded-xl flex flex-col">
-            {/* Header with glow */}
-            <div className="relative px-5 py-4 border-b border-white/10 flex-shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
-              <DialogHeader className="relative">
-                <DialogTitle className="text-white font-semibold text-base">Account</DialogTitle>
-                <DialogDescription className="text-zinc-500 text-xs">Decibel Trading Account</DialogDescription>
-              </DialogHeader>
+          <DialogContent className="bg-zinc-950 border border-white/10 w-[calc(100vw-2rem)] max-w-xs p-4 rounded-xl">
+            <DialogHeader className="pb-3 border-b border-white/10">
+              <DialogTitle className="text-white text-sm font-medium">Account</DialogTitle>
+              <DialogDescription className="sr-only">Your wallet details</DialogDescription>
+            </DialogHeader>
+
+            {/* Balance */}
+            <div className="py-4 text-center">
+              <div className="text-3xl font-bold text-primary tabular-nums">
+                ${loading ? '---' : (balance ?? 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] text-zinc-500 uppercase tracking-wide mt-1">USDC Balance</div>
             </div>
 
-            <div className="p-4 space-y-4 overflow-y-auto flex-1">
-              {/* Balance Hero */}
-              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-zinc-900 to-black border border-white/10 p-5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <div className="relative">
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-zinc-800 rounded-full w-fit mb-2">
-                    <User className="size-3 text-zinc-400" />
-                    <span className="text-[10px] font-mono uppercase text-zinc-400">Primary</span>
-                  </div>
-                  <div className="text-4xl font-bold text-white tabular-nums tracking-tight">
-                    ${loading ? '---' : (balance ?? 0).toFixed(2)}
-                  </div>
-                  <div className="text-xs text-zinc-500 mt-1">Available Margin (USDC)</div>
+            {/* Addresses */}
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2 bg-black/50 rounded">
+                <span className="text-zinc-500">Wallet</span>
+                <div className="flex items-center gap-1">
+                  <code className="text-zinc-300 font-mono">{formatAddress(account.address)}</code>
+                  <button onClick={() => copyAddress(account.address.toString())} className="p-1 hover:bg-white/10 rounded" aria-label="Copy">
+                    <Copy className={`size-3 ${copied === account.address.toString() ? 'text-green-400' : 'text-zinc-500'}`} />
+                  </button>
                 </div>
               </div>
-
-              {/* Warning if balance fetch failed */}
-              {!loading && balance === 0 && subaccount && (
-                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-start gap-2">
-                  <AlertTriangle className="size-4 text-yellow-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-yellow-500/80">
-                    <p className="font-semibold mb-1">No balance found</p>
-                    <p>Your subaccount may not be initialized yet. Try trading on <a href="https://app.decibel.trade" target="_blank" rel="noopener noreferrer" className="underline">app.decibel.trade</a> first to create your account.</p>
+              {subaccount && (
+                <div className="flex items-center justify-between p-2 bg-black/50 rounded">
+                  <span className="text-zinc-500">Subaccount</span>
+                  <div className="flex items-center gap-1">
+                    <code className="text-zinc-300 font-mono">{formatAddress(subaccount)}</code>
+                    <button onClick={() => copyAddress(subaccount)} className="p-1 hover:bg-white/10 rounded" aria-label="Copy">
+                      <Copy className={`size-3 ${copied === subaccount ? 'text-green-400' : 'text-zinc-500'}`} />
+                    </button>
                   </div>
                 </div>
               )}
-
-              {/* Wallet Info Card */}
-              <div className="space-y-3">
-                {/* Connected Wallet */}
-                <div className="p-3 bg-zinc-900/50 border border-white/5 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono uppercase text-zinc-500">Connected Wallet</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => copyAddress(account.address.toString())}
-                        className="p-1 hover:bg-white/5 rounded transition-colors"
-                        aria-label="Copy wallet address"
-                      >
-                        <Copy className={`size-3 transition-colors ${copied === account.address.toString() ? 'text-green-400' : 'text-zinc-500 hover:text-zinc-400'}`} />
-                      </button>
-                      <a
-                        href={`https://explorer.aptoslabs.com/account/${account.address}?network=testnet`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1 hover:bg-white/5 rounded transition-colors"
-                        aria-label="View on explorer"
-                      >
-                        <ExternalLink className="size-3 text-zinc-500 hover:text-zinc-400" />
-                      </a>
-                    </div>
-                  </div>
-                  <code className="text-xs text-white font-mono break-all">{account.address.toString()}</code>
-                </div>
-
-                {/* Trading Subaccount */}
-                {subaccount && (
-                  <div className="p-3 bg-zinc-900/50 border border-white/5 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-mono uppercase text-zinc-500">Trading Subaccount</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => copyAddress(subaccount)}
-                          className="p-1 hover:bg-white/5 rounded transition-colors"
-                          aria-label="Copy subaccount address"
-                        >
-                          <Copy className={`size-3 transition-colors ${copied === subaccount ? 'text-green-400' : 'text-zinc-500 hover:text-zinc-400'}`} />
-                        </button>
-                        <a
-                          href={`https://explorer.aptoslabs.com/account/${subaccount}?network=testnet`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 hover:bg-white/5 rounded transition-colors"
-                          aria-label="View subaccount on explorer"
-                        >
-                          <ExternalLink className="size-3 text-zinc-500 hover:text-zinc-400" />
-                        </a>
-                      </div>
-                    </div>
-                    <code className="text-xs text-white font-mono break-all">{subaccount}</code>
-                  </div>
-                )}
+              <div className="flex items-center justify-between p-2 bg-black/50 rounded">
+                <span className="text-zinc-500">APT</span>
+                <span className="text-white font-mono tabular-nums">{loading ? '...' : (aptBalance?.toFixed(2) ?? '0')}</span>
               </div>
-
-              {/* Balance Breakdown */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-3 bg-zinc-900/50 border border-white/5 rounded-lg">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">Testnet APT</div>
-                  <div className="text-lg font-bold text-white tabular-nums">
-                    {loading ? '...' : (aptBalance?.toFixed(2) ?? '0')}
-                  </div>
-                </div>
-                <div className="p-3 bg-zinc-900/50 border border-white/5 rounded-lg">
-                  <div className="text-[10px] font-mono uppercase text-zinc-500 mb-1">USDC Balance</div>
-                  <div className="text-lg font-bold text-primary tabular-nums">
-                    ${loading ? '...' : (balance ?? 0).toFixed(2)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Disconnect Button */}
-              <button
-                onClick={() => { disconnect(); setShowAccountModal(false) }}
-                className="w-full p-2.5 bg-zinc-900/50 border border-white/5 hover:border-red-500/30 rounded-lg flex items-center justify-center gap-2 text-zinc-400 hover:text-red-400 transition-all"
-              >
-                <LogOut className="size-4" />
-                <span className="text-sm">Disconnect</span>
-              </button>
             </div>
+
+            {/* Disconnect */}
+            <button
+              onClick={() => { disconnect(); setShowAccountModal(false) }}
+              className="w-full mt-4 p-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+            >
+              Disconnect
+            </button>
           </DialogContent>
         </Dialog>
       </>
@@ -174,13 +103,13 @@ export function WalletButton() {
 
   return (
     <>
-      <Button
+      <button
         onClick={() => setShowWalletModal(true)}
-        className="bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_20px_rgba(255,246,0,0.3)]"
+        className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-black font-bold rounded-lg shadow-[0_0_20px_rgba(255,246,0,0.3)] transition-colors"
       >
-        <Wallet className="w-4 h-4 mr-2" />
-        Connect Wallet
-      </Button>
+        <Wallet className="size-4" />
+        Connect
+      </button>
 
       <Dialog open={showWalletModal} onOpenChange={setShowWalletModal}>
         <DialogContent className="bg-zinc-900/95 backdrop-blur border-white/10 w-[calc(100vw-2rem)] max-w-sm p-0 overflow-hidden">

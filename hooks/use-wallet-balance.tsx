@@ -4,75 +4,17 @@ import { useState, useEffect, useCallback, createContext, useContext, ReactNode 
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
 
-export interface SubaccountInfo {
-  address: string
-  type: 'primary' | 'competition' | 'other'
-  balance: number | null
-}
-
 export interface WalletBalanceState {
   balance: number | null
   aptBalance: number | null
   subaccount: string | null
-  allSubaccounts: SubaccountInfo[]
-  selectedSubaccountType: 'primary' | 'competition'
-  setSelectedSubaccountType: (type: 'primary' | 'competition') => void
-  setCompetitionSubaccount: (address: string) => void
-  competitionChecked: boolean
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
 }
 
-const COMPETITION_SUBACCOUNT_KEY = 'decibrrr_competition_subaccount'
-
 // Create context with default values
 const WalletBalanceContext = createContext<WalletBalanceState | null>(null)
-
-// Auto-detect competition subaccount by scanning transaction history
-async function findCompetitionSubaccountFromHistory(walletAddress: string): Promise<string | null> {
-  const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
-  try {
-    // Get recent transactions
-    const response = await fetch(`${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=50`)
-    if (!response.ok) {
-      console.warn('🔍 Failed to fetch tx history:', response.status)
-      return null
-    }
-
-    const transactions = await response.json()
-    console.log(`🔍 Scanning ${transactions.length} transactions for competition subaccount...`)
-
-    // Look for SubaccountCreatedEvent with is_primary: false
-    for (const tx of transactions) {
-      if (!tx.events) continue
-
-      for (const event of tx.events) {
-        if (event.type?.includes('SubaccountCreatedEvent')) {
-          const data = event.data
-          console.log('🔍 Found SubaccountCreatedEvent:', {
-            is_primary: data?.is_primary,
-            is_primary_type: typeof data?.is_primary,
-            subaccount: data?.subaccount?.slice(0, 20) + '...',
-          })
-          // Check if this is a non-primary subaccount (competition)
-          // Handle both boolean and string representations from Aptos API
-          const isPrimary = data?.is_primary === true || data?.is_primary === 'true'
-          if (!isPrimary && data?.subaccount) {
-            console.log('🔍 Auto-detected competition subaccount from tx history:', data.subaccount.slice(0, 20) + '...')
-            return data.subaccount
-          }
-        }
-      }
-    }
-
-    console.log('🔍 No competition subaccount found in transaction history')
-    return null
-  } catch (err) {
-    console.warn('Failed to scan transaction history:', err)
-    return null
-  }
-}
 
 // Provider component that holds the shared state
 export function WalletBalanceProvider({ children }: { children: ReactNode }) {
@@ -80,55 +22,8 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
   const [balance, setBalance] = useState<number | null>(null)
   const [aptBalance, setAptBalance] = useState<number | null>(null)
   const [subaccount, setSubaccount] = useState<string | null>(null)
-  const [allSubaccounts, setAllSubaccounts] = useState<SubaccountInfo[]>([])
-  const [selectedSubaccountType, setSelectedSubaccountType] = useState<'primary' | 'competition'>('competition')
-  const [competitionSubaccountAddr, setCompetitionSubaccountAddr] = useState<string | null>(null)
-  const [competitionChecked, setCompetitionChecked] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Load competition subaccount from localStorage or auto-detect from tx history
-  useEffect(() => {
-    setCompetitionChecked(false) // Reset on account change
-
-    async function loadCompetitionSubaccount() {
-      if (typeof window === 'undefined' || !account) {
-        setCompetitionChecked(true)
-        return
-      }
-
-      const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
-      const saved = localStorage.getItem(key)
-
-      if (saved) {
-        setCompetitionSubaccountAddr(saved)
-        setCompetitionChecked(true)
-        console.log('📦 Loaded competition subaccount from localStorage:', saved.slice(0, 20) + '...')
-        return
-      }
-
-      // Try to auto-detect from transaction history
-      const detected = await findCompetitionSubaccountFromHistory(account.address.toString())
-      if (detected) {
-        localStorage.setItem(key, detected)
-        setCompetitionSubaccountAddr(detected)
-        console.log('✅ Auto-saved competition subaccount:', detected.slice(0, 20) + '...')
-      }
-      setCompetitionChecked(true)
-    }
-
-    loadCompetitionSubaccount()
-  }, [account])
-
-  // Function to set and persist competition subaccount
-  const setCompetitionSubaccount = useCallback((address: string) => {
-    if (typeof window !== 'undefined' && account) {
-      const key = `${COMPETITION_SUBACCOUNT_KEY}_${account.address.toString()}`
-      localStorage.setItem(key, address)
-      setCompetitionSubaccountAddr(address)
-      console.log('💾 Saved competition subaccount:', address.slice(0, 20) + '...')
-    }
-  }, [account])
 
   const fetchMarginForSubaccount = async (subaccountAddr: string, retries = 2): Promise<number | null> => {
     const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
@@ -145,6 +40,8 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
         })
 
         if (!marginResponse.ok) {
+          const errorText = await marginResponse.text()
+          console.warn(`[Balance] Margin fetch failed (${marginResponse.status}):`, errorText.slice(0, 200))
           if (attempt < retries) {
             await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
             continue
@@ -172,7 +69,6 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
       setBalance(null)
       setAptBalance(null)
       setSubaccount(null)
-      setAllSubaccounts([])
       setError(null)
       return
     }
@@ -210,9 +106,7 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
         setAptBalance(null)
       }
 
-      const subaccounts: SubaccountInfo[] = []
-
-      // Get primary subaccount - NOTE: primary_subaccount is in dex_accounts module, NOT dex_accounts_entry
+      // Get primary subaccount - the function is in dex_accounts module
       console.log("🔍 Fetching primary subaccount for:", walletAddress)
       console.log("🔍 Using package:", DECIBEL_PACKAGE)
 
@@ -233,48 +127,18 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
         console.log("🔍 Primary subaccount raw response:", primaryData)
         const primaryAddr = primaryData[0] as string
         if (primaryAddr) {
+          setSubaccount(primaryAddr)
           const primaryBalance = await fetchMarginForSubaccount(primaryAddr)
-          subaccounts.push({
-            address: primaryAddr,
-            type: 'primary',
-            balance: primaryBalance,
-          })
+          setBalance(primaryBalance)
           console.log("📦 Primary subaccount:", primaryAddr, `($${primaryBalance?.toFixed(2) || '0'})`)
         } else {
           console.log("⚠️ No primary subaccount found - user may not have one yet")
+          setSubaccount(null)
+          setBalance(null)
         }
       } else {
         const errorText = await primaryResponse.text()
         console.error("❌ Failed to fetch primary subaccount:", errorText)
-      }
-
-      // Get competition subaccount from localStorage (if saved)
-      if (competitionSubaccountAddr) {
-        try {
-          // Verify the competition subaccount exists on-chain
-          const competitionBalance = await fetchMarginForSubaccount(competitionSubaccountAddr)
-          if (competitionBalance !== null) {
-            subaccounts.push({
-              address: competitionSubaccountAddr,
-              type: 'competition',
-              balance: competitionBalance,
-            })
-            console.log("🏆 Competition subaccount:", competitionSubaccountAddr.slice(0, 20) + '...', `($${competitionBalance?.toFixed(2) || '0'})`)
-          }
-        } catch {
-          console.log("⚠️ Competition subaccount not found on-chain")
-        }
-      }
-
-      setAllSubaccounts(subaccounts)
-
-      // Select the appropriate subaccount based on selectedSubaccountType
-      const selectedSub = subaccounts.find(s => s.type === selectedSubaccountType) || subaccounts[0]
-      if (selectedSub) {
-        setSubaccount(selectedSub.address)
-        setBalance(selectedSub.balance)
-        console.log(`✅ Using ${selectedSub.type} subaccount:`, selectedSub.address)
-      } else {
         setSubaccount(null)
         setBalance(null)
       }
@@ -287,36 +151,17 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [connected, account, competitionSubaccountAddr, selectedSubaccountType])
+  }, [connected, account])
 
-  // Re-fetch when subaccount type changes
+  // Fetch on mount and when account changes
   useEffect(() => {
-    if (allSubaccounts.length > 0) {
-      const selectedSub = allSubaccounts.find(s => s.type === selectedSubaccountType)
-      if (selectedSub) {
-        setSubaccount(selectedSub.address)
-        setBalance(selectedSub.balance)
-        console.log(`🔄 Switched to ${selectedSub.type} subaccount:`, selectedSub.address)
-      }
-    }
-  }, [selectedSubaccountType, allSubaccounts])
-
-  // Only fetch balance after competition subaccount check is complete
-  useEffect(() => {
-    if (competitionChecked) {
-      fetchBalance()
-    }
-  }, [connected, account, competitionSubaccountAddr, competitionChecked])
+    fetchBalance()
+  }, [connected, account])
 
   const value: WalletBalanceState = {
     balance,
     aptBalance,
     subaccount,
-    allSubaccounts,
-    selectedSubaccountType,
-    setSelectedSubaccountType,
-    setCompetitionSubaccount,
-    competitionChecked,
     loading,
     error,
     refetch: fetchBalance,

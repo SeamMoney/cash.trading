@@ -6,6 +6,8 @@ import { ArrowUp, ArrowDown, ExternalLink, Loader2, RefreshCw } from "lucide-rea
 import { cn } from "@/lib/utils"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
+import { useMockData } from "@/contexts/mock-data-context"
+import { MOCK_TRADES } from "@/lib/mock-data"
 
 interface Trade {
   id: string
@@ -27,12 +29,18 @@ interface Trade {
 
 export function HistoryTable() {
   const { account, connected } = useWallet()
+  const { isMockMode } = useMockData()
   const { subaccount } = useWalletBalance()
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'history' | 'positions'>('history')
 
   const fetchTrades = useCallback(async () => {
+    if (isMockMode) {
+      setTrades(MOCK_TRADES)
+      return
+    }
+
     if (!account?.address) return
 
     console.log('📜 Fetching trades for subaccount:', subaccount?.slice(0, 20) + '...')
@@ -57,7 +65,7 @@ export function HistoryTable() {
     } finally {
       setLoading(false)
     }
-  }, [account?.address, subaccount])
+  }, [account?.address, subaccount, isMockMode])
 
   useEffect(() => {
     fetchTrades()
@@ -68,6 +76,11 @@ export function HistoryTable() {
     const interval = setInterval(fetchTrades, 30000)
     return () => clearInterval(interval)
   }, [fetchTrades])
+
+  // Refresh when mock mode changes
+  useEffect(() => {
+    fetchTrades()
+  }, [isMockMode])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
@@ -94,7 +107,7 @@ export function HistoryTable() {
     return `${hash.slice(0, 6)}...${hash.slice(-4)}`
   }
 
-  if (!connected) {
+  if (!connected && !isMockMode) {
     return (
       <div className="flex flex-col items-center justify-center py-12 space-y-4">
         <div className="text-zinc-500 font-mono text-sm uppercase tracking-widest">

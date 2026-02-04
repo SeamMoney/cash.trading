@@ -3,91 +3,194 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* =============================================================================
+   DECIBEL DESIGN SYSTEM
+   Based on bklit-ui patterns with Decibel brand colors
+   ============================================================================= */
+
 :root {
-  /* Custom Yellow Theme */
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #000000;
-  --card-foreground: #ffffff;
-  --popover: #000000;
-  --popover-foreground: #ffffff;
-  --primary: #fff600;
-  --primary-foreground: #000000;
-  --secondary: #111111;
-  --secondary-foreground: #ffffff;
-  --muted: #0a0a0a;
-  --muted-foreground: #999999;
-  --accent: #1a1a1a;
-  --accent-foreground: #ffffff;
-  --destructive: #ffffff;
-  --destructive-foreground: #000000;
-  --border: #333333;
-  --input: #000000;
-  --ring: #fff600;
+  /* ---------------------------------------------------------------------------
+     CORE COLORS
+     Using OKLch for perceptually uniform color space
+     Primary: Electric Yellow (#fff600)
+     --------------------------------------------------------------------------- */
 
-  /* Restoring standard shadcn variables to satisfy linter requirements */
-  --chart-1: #fff600;
-  --chart-2: #e6dd00;
-  --chart-3: #ccc400;
-  --chart-4: #b3ac00;
-  --chart-5: #999300;
+  /* Base */
+  --background: oklch(0 0 0);                    /* Pure black */
+  --foreground: oklch(1 0 0);                    /* Pure white */
 
-  --radius: 0rem;
+  /* Surfaces */
+  --card: oklch(0.08 0.005 285);                 /* Elevated surface */
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.1 0.005 285);
+  --popover-foreground: oklch(1 0 0);
 
-  --sidebar: #000000;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #fff600;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #1a1a1a;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #333333;
-  --sidebar-ring: #fff600;
+  /* Primary - Decibel Yellow */
+  --primary: oklch(0.95 0.2 102);                /* #fff600 equivalent */
+  --primary-foreground: oklch(0 0 0);
 
-  --font-inter: "Inter", sans-serif;
-  --font-jetbrains-mono: "JetBrains Mono", monospace;
+  /* Secondary */
+  --secondary: oklch(0.15 0.005 285);
+  --secondary-foreground: oklch(0.9 0 0);
+
+  /* Muted */
+  --muted: oklch(0.2 0.005 285);
+  --muted-foreground: oklch(0.6 0 0);
+
+  /* Accent */
+  --accent: oklch(0.18 0.01 285);
+  --accent-foreground: oklch(0.95 0 0);
+
+  /* Destructive */
+  --destructive: oklch(0.6 0.25 25);             /* Red */
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Utility */
+  --border: oklch(0.25 0.005 285);
+  --input: oklch(0.12 0.005 285);
+  --ring: oklch(0.95 0.2 102);                   /* Matches primary */
+
+  /* ---------------------------------------------------------------------------
+     SEMANTIC COLORS
+     --------------------------------------------------------------------------- */
+  --success: oklch(0.7 0.2 145);                 /* Green */
+  --success-foreground: oklch(0 0 0);
+  --warning: oklch(0.8 0.15 85);                 /* Orange */
+  --warning-foreground: oklch(0 0 0);
+  --info: oklch(0.7 0.15 250);                   /* Blue */
+  --info-foreground: oklch(1 0 0);
+
+  /* ---------------------------------------------------------------------------
+     CHART COLORS (bklit-ui compatible)
+     --------------------------------------------------------------------------- */
+  --chart-1: oklch(0.95 0.2 102);                /* Primary yellow */
+  --chart-2: oklch(0.7 0.2 300);                 /* Purple */
+  --chart-3: oklch(0.7 0.15 250);                /* Blue */
+  --chart-4: oklch(0.7 0.2 145);                 /* Green */
+  --chart-5: oklch(0.8 0.15 50);                 /* Orange */
+
+  /* Chart-specific variables (bklit-ui pattern) */
+  --chart-background: oklch(0.05 0.005 285);
+  --chart-foreground: oklch(0.6 0 0);
+  --chart-grid: oklch(0.2 0.005 285);
+  --chart-line-primary: oklch(0.95 0.2 102);
+  --chart-line-secondary: oklch(0.7 0.15 250);
+  --chart-crosshair: oklch(0.4 0 0);
+  --chart-tooltip-background: oklch(0.1 0.01 285 / 0.9);
+  --chart-tooltip-foreground: oklch(1 0 0);
+  --chart-area-fill: oklch(0.95 0.2 102 / 0.1);
+
+  /* ---------------------------------------------------------------------------
+     RADIUS TOKENS
+     --------------------------------------------------------------------------- */
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-full: 9999px;
+
+  /* ---------------------------------------------------------------------------
+     SPACING SCALE
+     --------------------------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---------------------------------------------------------------------------
+     TYPOGRAPHY
+     --------------------------------------------------------------------------- */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+  --text-6xl: 3.75rem;
+  --text-7xl: 4.5rem;
+
+  /* ---------------------------------------------------------------------------
+     SHADOWS & EFFECTS
+     --------------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.2);
+  --shadow-md: 0 4px 6px oklch(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px oklch(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px oklch(0 0 0 / 0.5);
+  --shadow-glow: 0 0 20px oklch(0.95 0.2 102 / 0.3);
+  --shadow-glow-strong: 0 0 40px oklch(0.95 0.2 102 / 0.5);
+
+  /* ---------------------------------------------------------------------------
+     ANIMATION
+     --------------------------------------------------------------------------- */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---------------------------------------------------------------------------
+     SIDEBAR
+     --------------------------------------------------------------------------- */
+  --sidebar: oklch(0.05 0.005 285);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.95 0.2 102);
+  --sidebar-primary-foreground: oklch(0 0 0);
+  --sidebar-accent: oklch(0.15 0.01 285);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.2 0.005 285);
+  --sidebar-ring: oklch(0.95 0.2 102);
 }
 
+/* Dark mode - same as root for Decibel's dark-first design */
 .dark {
-  /* Dark mode matches light mode for consistent theme */
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #000000;
-  --card-foreground: #ffffff;
-  --popover: #000000;
-  --popover-foreground: #ffffff;
-  --primary: #fff600;
-  --primary-foreground: #000000;
-  --secondary: #111111;
-  --secondary-foreground: #ffffff;
-  --muted: #0a0a0a;
-  --muted-foreground: #999999;
-  --accent: #1a1a1a;
-  --accent-foreground: #ffffff;
-  --destructive: #ffffff;
-  --destructive-foreground: #000000;
-  --border: #333333;
-  --input: #000000;
-  --ring: #fff600;
-
-  --chart-1: #fff600;
-  --chart-2: #e6dd00;
-  --chart-3: #ccc400;
-  --chart-4: #b3ac00;
-  --chart-5: #999300;
-
-  --sidebar: #000000;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #fff600;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #1a1a1a;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #333333;
-  --sidebar-ring: #fff600;
+  --background: oklch(0 0 0);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.08 0.005 285);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.1 0.005 285);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(0.95 0.2 102);
+  --primary-foreground: oklch(0 0 0);
+  --secondary: oklch(0.15 0.005 285);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: oklch(0.2 0.005 285);
+  --muted-foreground: oklch(0.6 0 0);
+  --accent: oklch(0.18 0.01 285);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.6 0.25 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.25 0.005 285);
+  --input: oklch(0.12 0.005 285);
+  --ring: oklch(0.95 0.2 102);
 }
+
+/* =============================================================================
+   TAILWIND THEME MAPPING
+   ============================================================================= */
 
 @theme inline {
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-jetbrains-mono);
+  /* Fonts */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -108,17 +211,31 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* Semantic */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Charts */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Radius */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+  --radius-full: var(--radius-full);
 
+  /* Sidebar */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -129,23 +246,58 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* =============================================================================
+   BASE STYLES
+   ============================================================================= */
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
 
-  /* Force black background on html and body to prevent flashes */
   html {
-    background-color: #000000 !important;
+    background-color: black !important;
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-background text-foreground;
-    background-color: #000000 !important;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-color: black !important;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Improve mobile touch scrolling */
+  /* Hide scrollbars on all browsers */
+  html, body {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, iOS Safari */
+    width: 0;
+    height: 0;
+  }
+
+  /* Typography defaults */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, kbd, samp {
+    font-family: var(--font-mono);
+  }
+
+  /* Tabular numbers for data */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Mobile optimizations */
   @media (max-width: 768px) {
     html, body {
       overflow-x: hidden;
@@ -153,17 +305,17 @@
     }
   }
 
-  /* Ensure shader background doesn't block touch */
+  /* Shader background isolation */
   .shader-background,
   .shader-background * {
     pointer-events: none !important;
     touch-action: none !important;
   }
 
-  /* Custom scrollbar styles */
+  /* Custom scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #3f3f46 transparent;
+    scrollbar-color: var(--border) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -175,44 +327,97 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #3f3f46;
+    background-color: var(--border);
     border-radius: 3px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: #52525b;
+    background-color: var(--muted-foreground);
   }
 
-  /* Optimize background shader rendering with containment and hardware acceleration */
-  .shader-background {
+  /* GPU acceleration for overlays */
+  .shader-background,
+  .dropdown-content,
+  .dialog-content,
+  .popover-content {
     contain: layout style paint;
     will-change: transform;
     transform: translateZ(0);
     backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-  }
-
-  /* Enhanced smooth transitions for auth state changes */
-  .smooth-transition {
-    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
-  }
-
-  /* Prevent layout shift during auth transitions */
-  .auth-persist {
-    position: relative;
-    z-index: 1;
-  }
-
-  /* Optimize rendering performance for dropdowns and overlays */
-  .dropdown-content,
-  .dialog-content,
-  .popover-content {
-    transform: translateZ(0);
-    will-change: transform, opacity;
   }
 }
 
-/* Add CSS for preventing content jump during state changes */
+/* =============================================================================
+   COMPONENT PATTERNS
+   ============================================================================= */
+
+@layer components {
+  /* ---------------------------------------------------------------------------
+     STAT DISPLAY - For numbers and metrics
+     --------------------------------------------------------------------------- */
+  .stat-value {
+    @apply text-4xl font-mono font-bold tabular-nums;
+    text-shadow: 0 0 30px var(--primary);
+  }
+
+  .stat-label {
+    @apply text-xs font-mono uppercase tracking-wider text-muted-foreground;
+  }
+
+  /* ---------------------------------------------------------------------------
+     LEVEL BAR - Progress/meter visualization
+     --------------------------------------------------------------------------- */
+  .level-bar {
+    @apply h-1 rounded-full overflow-hidden;
+    background: var(--chart-grid);
+  }
+
+  .level-bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+    background: var(--chart-line-primary);
+  }
+
+  /* ---------------------------------------------------------------------------
+     GLASS CARD - Frosted glass effect
+     --------------------------------------------------------------------------- */
+  .glass {
+    @apply backdrop-blur-md;
+    background: var(--chart-tooltip-background);
+  }
+
+  /* ---------------------------------------------------------------------------
+     DIVIDER - Section separator
+     --------------------------------------------------------------------------- */
+  .divider {
+    @apply h-px w-full;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--border),
+      transparent
+    );
+  }
+
+  /* ---------------------------------------------------------------------------
+     GLOW EFFECTS
+     --------------------------------------------------------------------------- */
+  .glow-text {
+    text-shadow: 0 0 20px var(--primary);
+  }
+
+  .glow-box {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .glow-box-strong {
+    box-shadow: var(--shadow-glow-strong);
+  }
+}
+
+/* =============================================================================
+   UTILITY CLASSES
+   ============================================================================= */
+
 @layer utilities {
   .prevent-shift {
     min-height: 100vh;
@@ -225,17 +430,48 @@
     perspective: 1000px;
   }
 
-  /* Added glow utilities */
-  .glow {
-    box-shadow: 0 0 20px -5px var(--primary);
+  /* Animation utilities */
+  .animate-in {
+    animation: animate-in var(--duration-normal) var(--ease-out);
   }
 
-  .glow-text {
-    text-shadow: 0 0 10px var(--primary);
+  .animate-out {
+    animation: animate-out var(--duration-fast) var(--ease-in);
   }
 
-  .glow-box {
-    box-shadow: 0 0 30px -10px var(--primary);
-    border: 1px solid var(--primary);
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes animate-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  /* Pulse glow animation */
+  .pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px var(--primary);
+    }
+    50% {
+      box-shadow: 0 0 40px var(--primary);
+    }
   }
 }

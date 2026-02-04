@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react"
 import { Trophy, Medal, Award, Search, RefreshCw, Loader2, ExternalLink } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { useMockData } from "@/contexts/mock-data-context"
+import { MOCK_LEADERBOARD, MOCK_POINTS_DATA } from "@/lib/mock-data"
 
 interface LeaderboardEntry {
   rank: number
@@ -15,12 +17,20 @@ interface LeaderboardEntry {
 
 export function Leaderboard() {
   const { account } = useWallet()
+  const { isMockMode } = useMockData()
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [userRank, setUserRank] = useState<LeaderboardEntry | null>(null)
 
   const fetchLeaderboard = useCallback(async () => {
+    if (isMockMode) {
+      setEntries(MOCK_LEADERBOARD)
+      // Set user as rank 12 in mock mode
+      setUserRank(MOCK_LEADERBOARD.find(e => e.rank === 12) || null)
+      return
+    }
+
     setLoading(true)
     try {
       const res = await fetch('/api/predeposit/leaderboard?limit=100')
@@ -38,13 +48,18 @@ export function Leaderboard() {
     } finally {
       setLoading(false)
     }
-  }, [account?.address])
+  }, [account?.address, isMockMode])
 
   useEffect(() => {
     fetchLeaderboard()
     const interval = setInterval(fetchLeaderboard, 60000)
     return () => clearInterval(interval)
   }, [fetchLeaderboard])
+
+  // Refresh when mock mode changes
+  useEffect(() => {
+    fetchLeaderboard()
+  }, [isMockMode])
 
   const formatNumber = (num: number | string | undefined) => {
     if (num === undefined || num === null) return '$0'

@@ -44,57 +44,74 @@ export function WalletButton() {
           <ChevronDown className="size-3 text-zinc-500 group-hover:text-zinc-400 transition-colors" />
         </button>
 
-        {/* Account Modal - Compact mobile-friendly design */}
+        {/* Account Modal - Ticket style */}
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
-          <DialogContent className="bg-zinc-950 border border-white/10 w-[calc(100vw-2rem)] max-w-xs p-4 rounded-xl">
-            <DialogHeader className="pb-3 border-b border-white/10">
-              <DialogTitle className="text-white text-sm font-medium">Account</DialogTitle>
-              <DialogDescription className="sr-only">Your wallet details</DialogDescription>
+          <DialogContent className="bg-black border border-primary/30 w-[calc(100vw-2rem)] max-w-xs p-0 rounded-xl overflow-hidden">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Account</DialogTitle>
+              <DialogDescription>Your wallet details</DialogDescription>
             </DialogHeader>
 
-            {/* Balance */}
-            <div className="py-4 text-center">
-              <div className="text-3xl font-bold text-primary tabular-nums">
-                ${loading ? '---' : (balance ?? 0).toFixed(2)}
+            {/* Gradient header */}
+            <div className="relative p-5 bg-gradient-to-br from-primary/20 via-black to-black">
+              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_50%_50%,_white_1px,_transparent_1px)] bg-[length:16px_16px]" />
+              <div className="relative text-center">
+                <div className="text-[10px] font-mono uppercase text-zinc-500 tracking-wide">Balance</div>
+                <div className="text-4xl font-mono font-bold text-primary tabular-nums mt-1">
+                  ${loading ? '---' : (balance ?? 0).toFixed(2)}
+                </div>
               </div>
-              <div className="text-[10px] text-zinc-500 uppercase tracking-wide mt-1">USDC Balance</div>
             </div>
 
-            {/* Addresses */}
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between p-2 bg-black/50 rounded">
-                <span className="text-zinc-500">Wallet</span>
-                <div className="flex items-center gap-1">
-                  <code className="text-zinc-300 font-mono">{formatAddress(account.address)}</code>
+            {/* Rip line */}
+            <div className="relative flex h-5 w-full items-center">
+              <div className="absolute -left-2.5 h-5 w-5 rounded-full bg-zinc-950" />
+              <div className="w-full border-t-2 border-dashed border-white/20" />
+              <div className="absolute -right-2.5 h-5 w-5 rounded-full bg-zinc-950" />
+            </div>
+
+            {/* Details */}
+            <div className="px-4 pb-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-500 font-mono uppercase">Wallet</span>
+                <div className="flex items-center gap-1.5">
+                  <code className="text-white font-mono">{formatAddress(account.address)}</code>
                   <button onClick={() => copyAddress(account.address.toString())} className="p-1 hover:bg-white/10 rounded" aria-label="Copy">
-                    <Copy className={`size-3 ${copied === account.address.toString() ? 'text-green-400' : 'text-zinc-500'}`} />
+                    <Copy className={`size-3 ${copied === account.address.toString() ? 'text-green-400' : 'text-zinc-600'}`} />
                   </button>
                 </div>
               </div>
               {subaccount && (
-                <div className="flex items-center justify-between p-2 bg-black/50 rounded">
-                  <span className="text-zinc-500">Subaccount</span>
-                  <div className="flex items-center gap-1">
-                    <code className="text-zinc-300 font-mono">{formatAddress(subaccount)}</code>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-500 font-mono uppercase">Subaccount</span>
+                  <div className="flex items-center gap-1.5">
+                    <code className="text-white font-mono">{formatAddress(subaccount)}</code>
                     <button onClick={() => copyAddress(subaccount)} className="p-1 hover:bg-white/10 rounded" aria-label="Copy">
-                      <Copy className={`size-3 ${copied === subaccount ? 'text-green-400' : 'text-zinc-500'}`} />
+                      <Copy className={`size-3 ${copied === subaccount ? 'text-green-400' : 'text-zinc-600'}`} />
                     </button>
                   </div>
                 </div>
               )}
-              <div className="flex items-center justify-between p-2 bg-black/50 rounded">
-                <span className="text-zinc-500">APT</span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-500 font-mono uppercase">APT</span>
                 <span className="text-white font-mono tabular-nums">{loading ? '...' : (aptBalance?.toFixed(2) ?? '0')}</span>
               </div>
-            </div>
 
-            {/* Disconnect */}
-            <button
-              onClick={() => { disconnect(); setShowAccountModal(false) }}
-              className="w-full mt-4 p-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
-            >
-              Disconnect
-            </button>
+              {/* Barcode */}
+              <div className="flex justify-center gap-0.5 pt-3">
+                {[...Array(20)].map((_, i) => (
+                  <div key={i} className={`bg-white/20 ${i % 3 === 0 ? 'w-0.5 h-5' : i % 2 === 0 ? 'w-1 h-5' : 'w-0.5 h-3'}`} />
+                ))}
+              </div>
+
+              {/* Disconnect */}
+              <button
+                onClick={() => { disconnect(); setShowAccountModal(false) }}
+                className="w-full mt-2 p-2.5 text-xs font-mono uppercase tracking-wide text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10 rounded transition-all"
+              >
+                Disconnect
+              </button>
+            </div>
           </DialogContent>
         </Dialog>
       </>

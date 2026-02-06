@@ -1787,30 +1787,23 @@ export class VolumeBotEngine {
           transaction,
         })
 
-        console.log(`📤 [GTC] TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+        console.log(`📤 [GTC] TX submitted: ${committedTxn.hash.slice(0, 30)}... Polling immediately...`)
 
-        const executedTxn = await this.aptos.waitForTransaction({
-          transactionHash: committedTxn.hash,
-        })
+        // Skip waitForTransaction — start polling right away to overlap with TX confirmation + async matching
+        const GTC_FILL_TIMEOUT_MS = 6000
+        const GTC_POLL_INTERVAL_MS = 200
+        const pollStart = Date.now()
+        let newPosition = null
 
-        if (executedTxn.success) {
-          console.log(`✅ [GTC] Order placed! Polling for async fill...`)
+        while (Date.now() - pollStart < GTC_FILL_TIMEOUT_MS) {
+          await new Promise(r => setTimeout(r, GTC_POLL_INTERVAL_MS))
+          newPosition = await this.getOnChainPosition()
+          if (newPosition && newPosition.size > 0) break
+        }
 
-          // Poll for position to appear (async engine fills in ~1-2 seconds)
-          const GTC_FILL_TIMEOUT_MS = 5000
-          const GTC_POLL_INTERVAL_MS = 500
-          const pollStart = Date.now()
-          let newPosition = null
-
-          while (Date.now() - pollStart < GTC_FILL_TIMEOUT_MS) {
-            await new Promise(r => setTimeout(r, GTC_POLL_INTERVAL_MS))
-            newPosition = await this.getOnChainPosition()
-            if (newPosition && newPosition.size > 0) break
-          }
-
-          if (newPosition && newPosition.size > 0) {
-            const fillTime = Date.now() - pollStart
-            console.log(`🎯 [GTC] FILLED in ${fillTime}ms! Position at ~$${newPosition.entryPrice.toFixed(2)}`)
+        if (newPosition && newPosition.size > 0) {
+          const fillTime = Date.now() - pollStart
+          console.log(`🎯 [GTC] FILLED in ${fillTime}ms! Position at ~$${newPosition.entryPrice.toFixed(2)}`)
 
             await prisma.botInstance.update({
               where: { id: botInstance.id },
@@ -1867,23 +1860,6 @@ export class VolumeBotEngine {
               error: 'GTC order not filled within timeout',
             }
           }
-        } else {
-          console.error(`❌ [GTC] TX failed:`, executedTxn.vm_status)
-
-          if (USE_TWAP_FALLBACK) {
-            console.log(`📊 [GTC] Falling back to TWAP...`)
-            return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
-          }
-
-          return {
-            success: false,
-            txHash: committedTxn.hash,
-            volumeGenerated: 0,
-            direction: isLong ? 'long' : 'short',
-            size: 0,
-            error: executedTxn.vm_status || 'Transaction failed',
-          }
-        }
       } catch (txError) {
         console.error(`❌ [GTC] Transaction error:`, txError)
 
@@ -1895,7 +1871,7 @@ export class VolumeBotEngine {
         throw txError
       }
     } catch (error) {
-      console.error('❌ [IOC] High risk order failed:', error)
+      console.error('❌ [GTC] High risk order failed:', error)
       return {
         success: false,
         txHash: '',
@@ -1916,8 +1892,8 @@ export class VolumeBotEngine {
     position: { size: number; isLong: boolean; entryPrice: number }
   ): Promise<OrderResult> {
     const GTC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
-    const GTC_CLOSE_TIMEOUT_MS = 5000
-    const GTC_CLOSE_POLL_MS = 500
+    const GTC_CLOSE_TIMEOUT_MS = 6000
+    const GTC_CLOSE_POLL_MS = 200
 
     // Stop rapid monitoring since we're force closing
     this.stopRapidPositionMonitor()
@@ -1940,108 +1916,97 @@ export class VolumeBotEngine {
       console.log(`\n📝 [GTC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
 
-      // Cancel existing TP/SL first
-      await this.cancelTpSlForPosition()
-
-      // Place GTC close order - async engine fills in ~1-2 seconds
-      const transaction = await this.aptos.transaction.build.simple({
-        sender: this.botAccount.accountAddress,
-        data: {
-          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
-          typeArguments: [],
-          functionArguments: [
-            this.config.userSubaccount,
-            this.config.market,
-            closePriceChain.toString(),    // price
-            position.size.toString(),       // size
-            closeIsLong,                    // is_long (opposite of position)
-            0,                              // time_in_force: 0 = GTC (async engine fills)
-            false,                          // post_only
-            undefined,                      // client_order_id
-            undefined,                      // conditional_order
-            undefined,                      // trigger_price
-            undefined,                      // take_profit_px
-            undefined,                      // stop_loss_px
-            undefined,                      // reduce_only
-            undefined,                      // builder_address
-            undefined,                      // max_builder_fee
-          ],
-        },
-      })
+      // Cancel TP/SL in parallel with building close TX (saves ~100-200ms)
+      const [, transaction] = await Promise.all([
+        this.cancelTpSlForPosition().catch(() => {}),
+        this.aptos.transaction.build.simple({
+          sender: this.botAccount.accountAddress,
+          data: {
+            function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
+            typeArguments: [],
+            functionArguments: [
+              this.config.userSubaccount,
+              this.config.market,
+              closePriceChain.toString(),    // price
+              position.size.toString(),       // size
+              closeIsLong,                    // is_long (opposite of position)
+              0,                              // time_in_force: 0 = GTC (async engine fills)
+              false,                          // post_only
+              undefined,                      // client_order_id
+              undefined,                      // conditional_order
+              undefined,                      // trigger_price
+              undefined,                      // take_profit_px
+              undefined,                      // stop_loss_px
+              undefined,                      // reduce_only
+              undefined,                      // builder_address
+              undefined,                      // max_builder_fee
+            ],
+          },
+        }),
+      ])
 
       const committedTxn = await this.aptos.signAndSubmitTransaction({
         signer: this.botAccount,
         transaction,
       })
 
-      console.log(`📤 [GTC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+      console.log(`📤 [GTC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}... Polling immediately...`)
 
-      const executedTxn = await this.aptos.waitForTransaction({
-        transactionHash: committedTxn.hash,
-      })
+      // Skip waitForTransaction — start polling right away to overlap with TX confirmation + async matching
+      const pollStart = Date.now()
+      let newPosition = null
 
-      if (executedTxn.success) {
-        console.log(`✅ [GTC] Close order placed! Polling for async fill...`)
+      while (Date.now() - pollStart < GTC_CLOSE_TIMEOUT_MS) {
+        await new Promise(r => setTimeout(r, GTC_CLOSE_POLL_MS))
+        newPosition = await this.getOnChainPosition()
+        if (!newPosition || newPosition.size === 0) break
+      }
 
-        // Poll for position to close (async engine fills in ~1-2 seconds)
-        const pollStart = Date.now()
-        let newPosition = null
+      const fillTime = Date.now() - pollStart
 
-        while (Date.now() - pollStart < GTC_CLOSE_TIMEOUT_MS) {
-          await new Promise(r => setTimeout(r, GTC_CLOSE_POLL_MS))
-          newPosition = await this.getOnChainPosition()
-          if (!newPosition || newPosition.size === 0) break
+      if (!newPosition || newPosition.size === 0) {
+        // Position closed!
+        console.log(`🎯 [GTC] Position CLOSED in ${fillTime}ms!`)
+
+        // Calculate PnL and volume
+        const positionValueUSD = (position.size / Math.pow(10, sizeDecimals)) * currentPrice
+        const pnlPct = position.isLong
+          ? (currentPrice - position.entryPrice) / position.entryPrice
+          : (position.entryPrice - currentPrice) / position.entryPrice
+        const pnlUSD = positionValueUSD * pnlPct
+
+        console.log(`   Volume: $${positionValueUSD.toFixed(2)}`)
+        console.log(`   PnL: $${pnlUSD.toFixed(2)} (${(pnlPct * 100).toFixed(3)}%)`)
+
+        // Clear DB position
+        const botInstance = await prisma.botInstance.findUnique({
+          where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
+        })
+        if (botInstance) {
+          await prisma.botInstance.update({
+            where: { id: botInstance.id },
+            data: {
+              activePositionSize: null,
+              activePositionIsLong: null,
+              activePositionEntry: null,
+              activePositionTxHash: null,
+            }
+          })
         }
 
-        const fillTime = Date.now() - pollStart
-
-        if (!newPosition || newPosition.size === 0) {
-          // Position closed!
-          console.log(`🎯 [GTC] Position CLOSED in ${fillTime}ms!`)
-
-          // Calculate PnL and volume
-          const positionValueUSD = (position.size / Math.pow(10, sizeDecimals)) * currentPrice
-          const pnlPct = position.isLong
-            ? (currentPrice - position.entryPrice) / position.entryPrice
-            : (position.entryPrice - currentPrice) / position.entryPrice
-          const pnlUSD = positionValueUSD * pnlPct
-
-          console.log(`   Volume: $${positionValueUSD.toFixed(2)}`)
-          console.log(`   PnL: $${pnlUSD.toFixed(2)} (${(pnlPct * 100).toFixed(3)}%)`)
-
-          // Clear DB position
-          const botInstance = await prisma.botInstance.findUnique({
-            where: { userWalletAddress_userSubaccount: { userWalletAddress: this.config.userWalletAddress, userSubaccount: this.config.userSubaccount } }
-          })
-          if (botInstance) {
-            await prisma.botInstance.update({
-              where: { id: botInstance.id },
-              data: {
-                activePositionSize: null,
-                activePositionIsLong: null,
-                activePositionEntry: null,
-                activePositionTxHash: null,
-              }
-            })
-          }
-
-          return {
-            success: true,
-            txHash: committedTxn.hash,
-            volumeGenerated: positionValueUSD,
-            direction: closeIsLong ? 'long' : 'short',
-            size: position.size,
-            entryPrice: position.entryPrice,
-            exitPrice: currentPrice,
-            pnl: pnlUSD,
-          }
-        } else {
-          // GTC close didn't fill within timeout - try TWAP
-          console.log(`⚠️ [GTC] Close didn't fill in ${fillTime}ms, falling back to TWAP close...`)
-          return await this.closePositionWithTwap(position)
+        return {
+          success: true,
+          txHash: committedTxn.hash,
+          volumeGenerated: positionValueUSD,
+          direction: closeIsLong ? 'long' : 'short',
+          size: position.size,
+          entryPrice: position.entryPrice,
+          exitPrice: currentPrice,
+          pnl: pnlUSD,
         }
       } else {
-        console.error(`❌ [GTC] Close TX failed:`, executedTxn.vm_status)
+        // GTC close didn't fill within timeout - try TWAP
+        console.log(`⚠️ [GTC] Close didn't fill in ${fillTime}ms, falling back to TWAP close...`)
         return await this.closePositionWithTwap(position)
       }
     } catch (error) {

@@ -155,37 +155,37 @@ async function parseTransactionFill(
   }
 }
 
-// Market addresses (from SDK - TESTNET - updated Dec 16, 2025 after reset)
+// Market addresses (from perp_engine::Global on-chain - TESTNET - updated Feb 5, 2026)
 const MARKETS: Record<string, string> = {
-  'BTC/USD': '0xdb8c5e968efa1b4dcbb4aaa7e4389358768d9b26bd126d5fe1a33e0aa076c380',
-  'ETH/USD': '0xd17355e1ac776bc91aa454c18c5dde81054a6ba6a4278d5296ec11f1cba4a274',
-  'SOL/USD': '0xc0a85e3b28244046399e74b934cc41f1eea8b315f412e985b1b26e3d6f617e97',
-  'APT/USD': '0x51657ded71c9b4edc74b2877f0fc3aa0c99f28ed12f6a18ecf9e1aeadb0f0463',
-  'XRP/USD': '0xd9973a5e626f529a4dde41ba20e76843ac508446195603184278df69702dfa28',
-  'LINK/USD': '0xbe7bace32193a55b357ed6a778813cb97879443aab7eee74f7a8924e42c15f01',
-  'AAVE/USD': '0x499a1b99be437b42a3e65838075dc0c3319b4bf4146fd8bbc5f1b441623c1a8d',
-  'ENA/USD': '0x65d5a08b4682197dd445681feb74b1c4b920d9623729089a7592ccc918b72c86',
-  'HYPE/USD': '0x7257fa2a4046358792b2cd07c386c62598806f2975ec4e02af9c0818fc66164c',
-  'WLFI/USD': '0xd7746e5f976b3e585ff382e42c9fa1dc1822b9c2b16e41e768fb30f3b1f542e4',
+  'BTC/USD': '0x274b5e1aa56156f087d2a39fc6bded92f27e2bf6bbfff97ea4b4669b8a6d6557',
+  'ETH/USD': '0x3f20be2579c669064acc135e15cda176a6418a6e26f074bfb9ba81d8a681d0bd',
+  'SOL/USD': '0x563b315ea3453cf79727de5160b32dfb960e3abbe21d9022d49b428d3c3e9981',
+  'APT/USD': '0x4fd3b7994c48c5c7a48ebd284ce11ecaa9ea9c2cf032f8aebff45735e59e79ac',
+  'XRP/USD': '0xf67a0879b80b2ece2d6d498f3cebc6c206b8de434473a79fbb840d4de3ad7eec',
+  'AAVE/USD': '0x4d2d4b80b943d1fd139bf2cc4a2e46f5b4b69cde8efd1af420d7000a1b351695',
+  'HYPE/USD': '0x33414fbda4a7247a49b26f05d6c297692de079b904fbe0a50c99985df22942db',
+  'WLFI/USD': '0x1c7b5de5ed55e89244797f1888dde0f99d086afd0c739a2897589f98f262a714',
+  'SUI/USD': '0x2c0a985573e3ef66b99735858a2bb798e80580d639db3500ff0836786c8fb70b',
+  'BNB/USD': '0x5136d1a68791f7a9caa6f6574f2c5b7bd7cf204262b770149bb7c61561e0c95b',
+  'DOGE/USD': '0x8deecfcaccfea7f4f1a2f203372aeee16d41068bb4ce955dcc4f15c3934c1ae7',
+  'ZEC/USD': '0x9a18f3b7400157c46f713d85f3d82d6c52d95b1cb45430506cf593eb39165ebf',
 }
 
-// Market configuration from SDK (TESTNET - updated Dec 16, 2025 after reset)
-// tickerSize: minimum price increment (from SDK tick_size)
-// lotSize: minimum size increment
-// minSize: minimum order size
-// pxDecimals: price decimals (all markets use 6)
-// szDecimals: size decimals (from SDK sz_decimals)
+// Market configuration (from on-chain PerpMarketConfig - TESTNET - updated Feb 5, 2026)
+// All markets now share: tickerSize=100000, lotSize=10, minSize=100000, szDecimals=8
 const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
   'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'ETH/USD': { tickerSize: 10000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 7 },
-  'SOL/USD': { tickerSize: 1000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
-  'APT/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
-  'XRP/USD': { tickerSize: 10n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
-  'LINK/USD': { tickerSize: 100n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 5 },
-  'AAVE/USD': { tickerSize: 1000n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 6 },
-  'ENA/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
-  'HYPE/USD': { tickerSize: 100n, lotSize: 10n, minSize: 10000n, pxDecimals: 6, szDecimals: 5 },
-  'WLFI/USD': { tickerSize: 1n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
+  'ETH/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'SOL/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'XRP/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'AAVE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'HYPE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'WLFI/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'SUI/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'BNB/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'DOGE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'ZEC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
 }
 
 // Price history for momentum detection
@@ -1545,7 +1545,7 @@ export class VolumeBotEngine {
         // Check if volume target reached - force close
         if (botInstance.cumulativeVolume >= botInstance.volumeTargetUSDC) {
           console.log(`🎯 [IOC] Volume target reached! Force closing position...`)
-          return await this.forceClosePositionWithIOC(onChainPosition)
+          return await this.forceClosePosition(onChainPosition)
         }
 
         // Check PnL to see if TP/SL should have triggered
@@ -1566,7 +1566,7 @@ export class VolumeBotEngine {
         if (pnlPct >= PROFIT_TARGET_PCT) {
           console.log(`🎯 [IOC] TAKE PROFIT! PnL ${(pnlPct * 100).toFixed(3)}% >= target ${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`)
           console.log(`   Force closing position NOW...`)
-          return await this.forceClosePositionWithIOC(onChainPosition)
+          return await this.forceClosePosition(onChainPosition)
         }
 
         // Emergency stop loss - close at 80% of target to account for execution lag
@@ -1574,7 +1574,7 @@ export class VolumeBotEngine {
         if (pnlPct <= -EMERGENCY_SL_PCT) {
           console.log(`🛑 [IOC] STOP LOSS! PnL ${(pnlPct * 100).toFixed(3)}% <= emergency SL -${(EMERGENCY_SL_PCT * 100).toFixed(3)}%`)
           console.log(`   Force closing position NOW to limit damage...`)
-          return await this.forceClosePositionWithIOC(onChainPosition)
+          return await this.forceClosePosition(onChainPosition)
         }
 
         // Position still within range, TP/SL active - start RAPID monitoring
@@ -1750,12 +1750,12 @@ export class VolumeBotEngine {
         data: { lastOrderTime: new Date() }
       })
 
-      // Place IOC order with direct Aptos call (SDK placeOrder is broken!)
-      // Use place_order_to_subaccount with time_in_force=1 (IOC)
-      // NOTE: Do NOT attach TP/SL here - the IOC slippage price makes TP/SL invalid
+      // Place GTC order with aggressive slippage price
+      // GTC fills via Decibel's async matching engine (~1-2 seconds)
+      // IOC never fills on testnet because matching is async, not synchronous
       // We'll add TP/SL after confirming the fill with actual entry price
       try {
-        console.log(`📝 [IOC] Placing direct Aptos order (without TP/SL)...`)
+        console.log(`📝 [GTC] Placing aggressive GTC order...`)
 
         const transaction = await this.aptos.transaction.build.simple({
           sender: this.botAccount.accountAddress,
@@ -1765,10 +1765,10 @@ export class VolumeBotEngine {
             functionArguments: [
               this.config.userSubaccount,
               this.config.market,
-              iocPriceChain.toString(),      // price
+              iocPriceChain.toString(),      // aggressive slippage price
               positionSize.toString(),        // size
               isLong,                         // is_long
-              1,                              // time_in_force: 1 = IOC
+              0,                              // time_in_force: 0 = GTC (async engine fills these)
               false,                          // post_only
               undefined,                      // client_order_id
               undefined,                      // conditional_order
@@ -1787,24 +1787,30 @@ export class VolumeBotEngine {
           transaction,
         })
 
-        console.log(`📤 [IOC] TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+        console.log(`📤 [GTC] TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
 
         const executedTxn = await this.aptos.waitForTransaction({
           transactionHash: committedTxn.hash,
         })
 
         if (executedTxn.success) {
-          console.log(`✅ [IOC] Order executed successfully!`)
+          console.log(`✅ [GTC] Order placed! Polling for async fill...`)
 
-          // Wait briefly then check if order filled (reduced from 2000ms for faster execution)
-          await new Promise(r => setTimeout(r, 500))
+          // Poll for position to appear (async engine fills in ~1-2 seconds)
+          const GTC_FILL_TIMEOUT_MS = 5000
+          const GTC_POLL_INTERVAL_MS = 500
+          const pollStart = Date.now()
+          let newPosition = null
 
-          // Check on-chain position to verify fill
-          const newPosition = await this.getOnChainPosition()
+          while (Date.now() - pollStart < GTC_FILL_TIMEOUT_MS) {
+            await new Promise(r => setTimeout(r, GTC_POLL_INTERVAL_MS))
+            newPosition = await this.getOnChainPosition()
+            if (newPosition && newPosition.size > 0) break
+          }
 
           if (newPosition && newPosition.size > 0) {
-            // IOC FILLED! Update DB
-            console.log(`🎯 [IOC] FILLED! Position opened at ~$${newPosition.entryPrice.toFixed(2)}`)
+            const fillTime = Date.now() - pollStart
+            console.log(`🎯 [GTC] FILLED in ${fillTime}ms! Position at ~$${newPosition.entryPrice.toFixed(2)}`)
 
             await prisma.botInstance.update({
               where: { id: botInstance.id },
@@ -1816,43 +1822,39 @@ export class VolumeBotEngine {
               }
             })
 
-            // NOW place TP/SL using actual entry price (not IOC slippage price)
+            // Place TP/SL using actual entry price
             try {
-              console.log(`📊 [IOC] Placing TP/SL for position at actual entry $${newPosition.entryPrice.toFixed(2)}...`)
+              console.log(`📊 [GTC] Placing TP/SL at entry $${newPosition.entryPrice.toFixed(2)}...`)
               await this.placeTpSlForPosition(
                 newPosition.entryPrice,
                 newPosition.size,
                 isLong
               )
-              console.log(`✅ [IOC] TP/SL orders placed!`)
+              console.log(`✅ [GTC] TP/SL orders placed!`)
             } catch (tpslError) {
-              console.warn(`⚠️ [IOC] Failed to place TP/SL:`, tpslError)
-              // Continue - TP/SL will be placed on next tick
+              console.warn(`⚠️ [GTC] Failed to place TP/SL:`, tpslError)
             }
 
-            // START RAPID MONITORING for this new position
-            // This dramatically improves close latency from 10+ seconds to 1.5 seconds
             this.startRapidPositionMonitor({
               size: newPosition.size,
               isLong: isLong,
               entryPrice: newPosition.entryPrice,
             })
 
-            // Position opened - don't count volume yet (count on close)
             return {
               success: true,
               txHash: committedTxn.hash,
-              volumeGenerated: 0, // Count on close only
+              volumeGenerated: 0,
               direction: isLong ? 'long' : 'short',
               size: newPosition.size,
               entryPrice: newPosition.entryPrice,
             }
           } else {
-            // IOC didn't fill - no position created
-            console.log(`⚠️ [IOC] No fill - order likely cancelled (no liquidity)`)
+            // GTC didn't fill within timeout - fall back to TWAP
+            console.log(`⚠️ [GTC] No fill within ${GTC_FILL_TIMEOUT_MS}ms`)
 
             if (USE_TWAP_FALLBACK) {
-              console.log(`📊 [IOC] Falling back to TWAP...`)
+              console.log(`📊 [GTC] Falling back to TWAP...`)
               return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
             }
 
@@ -1862,15 +1864,14 @@ export class VolumeBotEngine {
               volumeGenerated: 0,
               direction: isLong ? 'long' : 'short',
               size: 0,
-              error: 'IOC order not filled - no liquidity',
+              error: 'GTC order not filled within timeout',
             }
           }
         } else {
-          // Transaction failed
-          console.error(`❌ [IOC] TX failed:`, executedTxn.vm_status)
+          console.error(`❌ [GTC] TX failed:`, executedTxn.vm_status)
 
           if (USE_TWAP_FALLBACK) {
-            console.log(`📊 [IOC] Falling back to TWAP...`)
+            console.log(`📊 [GTC] Falling back to TWAP...`)
             return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
           }
 
@@ -1884,14 +1885,14 @@ export class VolumeBotEngine {
           }
         }
       } catch (txError) {
-        console.error(`❌ [IOC] Transaction error:`, txError)
+        console.error(`❌ [GTC] Transaction error:`, txError)
 
         if (USE_TWAP_FALLBACK) {
-          console.log(`📊 [IOC] Falling back to TWAP after error...`)
+          console.log(`📊 [GTC] Falling back to TWAP after error...`)
           return await this.placeHighRiskTwapFallback(isLong, positionSize, entryPrice)
         }
 
-        throw sdkError
+        throw txError
       }
     } catch (error) {
       console.error('❌ [IOC] High risk order failed:', error)
@@ -1907,13 +1908,16 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Force close position with IOC order
+   * Force close position with GTC order + async fill polling
    * Used when volume target reached or TP/SL should have triggered
+   * GTC fills via Decibel's async matching engine (~1-2 seconds)
    */
-  private async forceClosePositionWithIOC(
+  private async forceClosePosition(
     position: { size: number; isLong: boolean; entryPrice: number }
   ): Promise<OrderResult> {
-    const IOC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
+    const GTC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
+    const GTC_CLOSE_TIMEOUT_MS = 5000
+    const GTC_CLOSE_POLL_MS = 500
 
     // Stop rapid monitoring since we're force closing
     this.stopRapidPositionMonitor()
@@ -1929,17 +1933,17 @@ export class VolumeBotEngine {
 
       // Aggressive price to ensure fill
       const closePrice = closeIsLong
-        ? currentPrice * (1 + IOC_SLIPPAGE_PCT)
-        : currentPrice * (1 - IOC_SLIPPAGE_PCT)
+        ? currentPrice * (1 + GTC_SLIPPAGE_PCT)
+        : currentPrice * (1 - GTC_SLIPPAGE_PCT)
       const closePriceChain = this.roundPriceToTickerSize(closePrice)
 
-      console.log(`\n📝 [IOC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
+      console.log(`\n📝 [GTC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
 
       // Cancel existing TP/SL first
       await this.cancelTpSlForPosition()
 
-      // Place IOC close order with direct Aptos call
+      // Place GTC close order - async engine fills in ~1-2 seconds
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
         data: {
@@ -1951,14 +1955,14 @@ export class VolumeBotEngine {
             closePriceChain.toString(),    // price
             position.size.toString(),       // size
             closeIsLong,                    // is_long (opposite of position)
-            1,                              // time_in_force: 1 = IOC
+            0,                              // time_in_force: 0 = GTC (async engine fills)
             false,                          // post_only
             undefined,                      // client_order_id
             undefined,                      // conditional_order
             undefined,                      // trigger_price
             undefined,                      // take_profit_px
             undefined,                      // stop_loss_px
-            undefined,                      // reduce_only (omit - Move doesn't accept boolean)
+            undefined,                      // reduce_only
             undefined,                      // builder_address
             undefined,                      // max_builder_fee
           ],
@@ -1970,22 +1974,30 @@ export class VolumeBotEngine {
         transaction,
       })
 
-      console.log(`📤 [IOC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
+      console.log(`📤 [GTC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}...`)
 
       const executedTxn = await this.aptos.waitForTransaction({
         transactionHash: committedTxn.hash,
       })
 
       if (executedTxn.success) {
-        console.log(`✅ [IOC] Close order executed!`)
+        console.log(`✅ [GTC] Close order placed! Polling for async fill...`)
 
-        // Wait briefly and check if closed (reduced from 2000ms for faster execution)
-        await new Promise(r => setTimeout(r, 500))
-        const newPosition = await this.getOnChainPosition()
+        // Poll for position to close (async engine fills in ~1-2 seconds)
+        const pollStart = Date.now()
+        let newPosition = null
+
+        while (Date.now() - pollStart < GTC_CLOSE_TIMEOUT_MS) {
+          await new Promise(r => setTimeout(r, GTC_CLOSE_POLL_MS))
+          newPosition = await this.getOnChainPosition()
+          if (!newPosition || newPosition.size === 0) break
+        }
+
+        const fillTime = Date.now() - pollStart
 
         if (!newPosition || newPosition.size === 0) {
           // Position closed!
-          console.log(`🎯 [IOC] Position CLOSED!`)
+          console.log(`🎯 [GTC] Position CLOSED in ${fillTime}ms!`)
 
           // Calculate PnL and volume
           const positionValueUSD = (position.size / Math.pow(10, sizeDecimals)) * currentPrice
@@ -2024,16 +2036,16 @@ export class VolumeBotEngine {
             pnl: pnlUSD,
           }
         } else {
-          // IOC close didn't fill - try TWAP
-          console.log(`⚠️ [IOC] Close didn't fill, falling back to TWAP close...`)
+          // GTC close didn't fill within timeout - try TWAP
+          console.log(`⚠️ [GTC] Close didn't fill in ${fillTime}ms, falling back to TWAP close...`)
           return await this.closePositionWithTwap(position)
         }
       } else {
-        console.error(`❌ [IOC] Close TX failed:`, executedTxn.vm_status)
+        console.error(`❌ [GTC] Close TX failed:`, executedTxn.vm_status)
         return await this.closePositionWithTwap(position)
       }
     } catch (error) {
-      console.error('❌ [IOC] Force close failed:', error)
+      console.error('❌ [GTC] Force close failed:', error)
       return await this.closePositionWithTwap(position)
     }
   }
@@ -2113,7 +2125,7 @@ export class VolumeBotEngine {
       // Get fresh position from chain and force close
       const position = await this.getOnChainPosition()
       if (position && position.size > 0) {
-        await this.forceClosePositionWithIOC(position)
+        await this.forceClosePosition(position)
       }
       return
     }
@@ -2126,7 +2138,7 @@ export class VolumeBotEngine {
       // Get fresh position from chain and force close
       const position = await this.getOnChainPosition()
       if (position && position.size > 0) {
-        await this.forceClosePositionWithIOC(position)
+        await this.forceClosePosition(position)
       }
       return
     }
@@ -2144,7 +2156,7 @@ export class VolumeBotEngine {
   }
 
   /**
-   * Close position with TWAP (fallback when IOC doesn't work)
+   * Close position with TWAP (fallback when GTC doesn't fill within timeout)
    */
   private async closePositionWithTwap(
     position: { size: number; isLong: boolean; entryPrice: number }
@@ -2912,13 +2924,16 @@ export class VolumeBotEngine {
     const leverageMap: Record<string, number> = {
       'BTC/USD': 40,
       'ETH/USD': 20,
-      'SOL/USD': 20,
+      'SOL/USD': 10,
       'APT/USD': 10,
-      'XRP/USD': 3,
-      'LINK/USD': 3,
-      'AAVE/USD': 3,
-      'ENA/USD': 3,
+      'XRP/USD': 10,
+      'AAVE/USD': 5,
+      'DOGE/USD': 5,
+      'ZEC/USD': 5,
       'HYPE/USD': 3,
+      'WLFI/USD': 3,
+      'SUI/USD': 3,
+      'BNB/USD': 3,
     }
     return leverageMap[this.config.marketName] || 10
   }
@@ -2932,19 +2947,8 @@ export class VolumeBotEngine {
     if (config) {
       return config.szDecimals
     }
-    // Fallback for unknown markets
-    const decimalsMap: Record<string, number> = {
-      'BTC/USD': 8,
-      'ETH/USD': 7,
-      'SOL/USD': 6,
-      'APT/USD': 4,  // Corrected based on on-chain data
-      'XRP/USD': 4,
-      'LINK/USD': 6,
-      'AAVE/USD': 6,
-      'ENA/USD': 3,
-      'HYPE/USD': 6,
-    }
-    return decimalsMap[this.config.marketName] || 6
+    // Fallback: all current markets use 8 decimals
+    return 8
   }
 
   /**

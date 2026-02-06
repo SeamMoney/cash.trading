@@ -2,18 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getMarkPrice } from '@/lib/price-feed'
 import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
 
-// Market configs for size/price decimals
+// Market configs for size/price decimals (updated Feb 5, 2026 - all markets now use 8 szDecimals)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
   'BTC/USD': { pxDecimals: 6, szDecimals: 8 },
-  'APT/USD': { pxDecimals: 6, szDecimals: 4 },
-  'WLFI/USD': { pxDecimals: 6, szDecimals: 3 },
-  'SOL/USD': { pxDecimals: 6, szDecimals: 6 },
-  'ETH/USD': { pxDecimals: 6, szDecimals: 7 },
-  'XRP/USD': { pxDecimals: 6, szDecimals: 4 },
-  'LINK/USD': { pxDecimals: 6, szDecimals: 5 },
-  'AAVE/USD': { pxDecimals: 6, szDecimals: 6 },
-  'ENA/USD': { pxDecimals: 6, szDecimals: 3 },
-  'HYPE/USD': { pxDecimals: 6, szDecimals: 5 },
+  'ETH/USD': { pxDecimals: 6, szDecimals: 8 },
+  'SOL/USD': { pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { pxDecimals: 6, szDecimals: 8 },
+  'XRP/USD': { pxDecimals: 6, szDecimals: 8 },
+  'AAVE/USD': { pxDecimals: 6, szDecimals: 8 },
+  'HYPE/USD': { pxDecimals: 6, szDecimals: 8 },
+  'WLFI/USD': { pxDecimals: 6, szDecimals: 8 },
+  'SUI/USD': { pxDecimals: 6, szDecimals: 8 },
+  'BNB/USD': { pxDecimals: 6, szDecimals: 8 },
+  'DOGE/USD': { pxDecimals: 6, szDecimals: 8 },
+  'ZEC/USD': { pxDecimals: 6, szDecimals: 8 },
 }
 
 export const runtime = 'nodejs'

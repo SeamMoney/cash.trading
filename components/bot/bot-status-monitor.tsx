@@ -5,15 +5,20 @@ import { toast } from "sonner"
 import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// Size decimals for each market (for proper display)
+// Size decimals for each market (for proper display) - all markets now use 8 decimals
 const SIZE_DECIMALS: Record<string, number> = {
   'BTC/USD': 8,
-  'ETH/USD': 7,
-  'SOL/USD': 6,
-  'APT/USD': 4,
-  'WLFI/USD': 3,
-  'XRP/USD': 4,
-  'LINK/USD': 4,
+  'ETH/USD': 8,
+  'SOL/USD': 8,
+  'APT/USD': 8,
+  'XRP/USD': 8,
+  'AAVE/USD': 8,
+  'HYPE/USD': 8,
+  'WLFI/USD': 8,
+  'SUI/USD': 8,
+  'BNB/USD': 8,
+  'DOGE/USD': 8,
+  'ZEC/USD': 8,
 }
 
 // Get symbol from market name

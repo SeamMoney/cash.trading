@@ -4,18 +4,20 @@ import { getMarkPrice } from '@/lib/price-feed'
 import { DECIBEL_PACKAGE } from '@/lib/decibel-client'
 import { prisma } from '@/lib/prisma'
 
-// Market configs for size/price decimals and ticker sizes
+// Market configs for size/price decimals and ticker sizes (updated Feb 5, 2026)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number; tickerSize: bigint }> = {
   'BTC/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
-  'APT/USD': { pxDecimals: 6, szDecimals: 4, tickerSize: 10n },
-  'WLFI/USD': { pxDecimals: 6, szDecimals: 3, tickerSize: 1n },
-  'SOL/USD': { pxDecimals: 6, szDecimals: 6, tickerSize: 1000n },
-  'ETH/USD': { pxDecimals: 6, szDecimals: 7, tickerSize: 10000n },
-  'XRP/USD': { pxDecimals: 6, szDecimals: 4, tickerSize: 10n },
-  'LINK/USD': { pxDecimals: 6, szDecimals: 5, tickerSize: 100n },
-  'AAVE/USD': { pxDecimals: 6, szDecimals: 6, tickerSize: 1000n },
-  'ENA/USD': { pxDecimals: 6, szDecimals: 3, tickerSize: 1n },
-  'HYPE/USD': { pxDecimals: 6, szDecimals: 5, tickerSize: 100n },
+  'ETH/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'SOL/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'APT/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'XRP/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'AAVE/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'HYPE/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'WLFI/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'SUI/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'BNB/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'DOGE/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
+  'ZEC/USD': { pxDecimals: 6, szDecimals: 8, tickerSize: 100000n },
 }
 
 export const runtime = 'nodejs'

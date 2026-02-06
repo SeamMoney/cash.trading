@@ -1750,48 +1750,61 @@ export class VolumeBotEngine {
         data: { lastOrderTime: new Date() }
       })
 
-      // Place GTC order with aggressive slippage price
-      // GTC fills via Decibel's async matching engine (~1-2 seconds)
-      // IOC never fills on testnet because matching is async, not synchronous
-      // We'll add TP/SL after confirming the fill with actual entry price
+      // Place GTC order + trigger_matching in parallel
+      // The async matching engine only auto-triggers 33% of the time (counter % 3 == 0)
+      // By calling trigger_matching ourselves, we force immediate processing
+      // Build both TXs with seq N and N+1, submit without waiting
       try {
-        console.log(`📝 [GTC] Placing aggressive GTC order...`)
+        console.log(`📝 [GTC] Building order + trigger_matching...`)
 
-        const transaction = await this.aptos.transaction.build.simple({
-          sender: this.botAccount.accountAddress,
-          data: {
-            function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
-            typeArguments: [],
-            functionArguments: [
-              this.config.userSubaccount,
-              this.config.market,
-              iocPriceChain.toString(),      // aggressive slippage price
-              positionSize.toString(),        // size
-              isLong,                         // is_long
-              0,                              // time_in_force: 0 = GTC (async engine fills these)
-              false,                          // post_only
-              undefined,                      // client_order_id
-              undefined,                      // conditional_order
-              undefined,                      // trigger_price
-              undefined,                      // take_profit_px - ADD AFTER FILL
-              undefined,                      // stop_loss_px - ADD AFTER FILL
-              undefined,                      // reduce_only
-              undefined,                      // builder_address
-              undefined,                      // max_builder_fee
-            ],
-          },
-        })
+        const [orderTx, triggerTx] = await Promise.all([
+          this.aptos.transaction.build.simple({
+            sender: this.botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
+              typeArguments: [],
+              functionArguments: [
+                this.config.userSubaccount,
+                this.config.market,
+                iocPriceChain.toString(),      // aggressive slippage price
+                positionSize.toString(),        // size
+                isLong,                         // is_long
+                0,                              // time_in_force: 0 = GTC
+                false,                          // post_only
+                undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+              ],
+            },
+          }),
+          this.aptos.transaction.build.simple({
+            sender: this.botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::public_apis::trigger_matching`,
+              typeArguments: [],
+              functionArguments: [this.config.market, 10],
+            },
+          }),
+        ])
 
+        // Fix trigger TX sequence number to N+1 (both built with same seq N)
+        // @ts-ignore - rawTransaction.sequence_number is accessible
+        triggerTx.rawTransaction.sequence_number = orderTx.rawTransaction.sequence_number + 1n
+
+        // Submit order TX, then trigger TX immediately (no waitForTransaction)
         const committedTxn = await this.aptos.signAndSubmitTransaction({
           signer: this.botAccount,
-          transaction,
+          transaction: orderTx,
         })
+        // Fire trigger_matching right after — don't await, let it process in background
+        const triggerPromise = this.aptos.signAndSubmitTransaction({
+          signer: this.botAccount,
+          transaction: triggerTx,
+        }).catch(e => console.warn(`⚠️ trigger_matching submit failed:`, e.message?.slice(0, 100)))
 
-        console.log(`📤 [GTC] TX submitted: ${committedTxn.hash.slice(0, 30)}... Polling immediately...`)
+        console.log(`📤 [GTC] Order + trigger submitted. Polling...`)
 
-        // Skip waitForTransaction — start polling right away to overlap with TX confirmation + async matching
+        // Poll for fill at 100ms intervals
         const GTC_FILL_TIMEOUT_MS = 6000
-        const GTC_POLL_INTERVAL_MS = 200
+        const GTC_POLL_INTERVAL_MS = 100
         const pollStart = Date.now()
         let newPosition = null
 
@@ -1800,6 +1813,9 @@ export class VolumeBotEngine {
           newPosition = await this.getOnChainPosition()
           if (newPosition && newPosition.size > 0) break
         }
+
+        // Ensure trigger TX is done before next seq number usage
+        await triggerPromise
 
         if (newPosition && newPosition.size > 0) {
           const fillTime = Date.now() - pollStart
@@ -1893,7 +1909,7 @@ export class VolumeBotEngine {
   ): Promise<OrderResult> {
     const GTC_SLIPPAGE_PCT = 0.03 // 3% slippage for force close
     const GTC_CLOSE_TIMEOUT_MS = 6000
-    const GTC_CLOSE_POLL_MS = 200
+    const GTC_CLOSE_POLL_MS = 100
 
     // Stop rapid monitoring since we're force closing
     this.stopRapidPositionMonitor()
@@ -1916,8 +1932,8 @@ export class VolumeBotEngine {
       console.log(`\n📝 [GTC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
 
-      // Cancel TP/SL in parallel with building close TX (saves ~100-200ms)
-      const [, transaction] = await Promise.all([
+      // Build close order TX + trigger_matching TX + cancel TP/SL all in parallel
+      const [, orderTx, triggerTx] = await Promise.all([
         this.cancelTpSlForPosition().catch(() => {}),
         this.aptos.transaction.build.simple({
           sender: this.botAccount.accountAddress,
@@ -1930,29 +1946,39 @@ export class VolumeBotEngine {
               closePriceChain.toString(),    // price
               position.size.toString(),       // size
               closeIsLong,                    // is_long (opposite of position)
-              0,                              // time_in_force: 0 = GTC (async engine fills)
+              0,                              // time_in_force: 0 = GTC
               false,                          // post_only
-              undefined,                      // client_order_id
-              undefined,                      // conditional_order
-              undefined,                      // trigger_price
-              undefined,                      // take_profit_px
-              undefined,                      // stop_loss_px
-              undefined,                      // reduce_only
-              undefined,                      // builder_address
-              undefined,                      // max_builder_fee
+              undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
             ],
+          },
+        }),
+        this.aptos.transaction.build.simple({
+          sender: this.botAccount.accountAddress,
+          data: {
+            function: `${DECIBEL_PACKAGE}::public_apis::trigger_matching`,
+            typeArguments: [],
+            functionArguments: [this.config.market, 10],
           },
         }),
       ])
 
+      // Fix trigger TX sequence number to N+1
+      // @ts-ignore - rawTransaction.sequence_number is accessible
+      triggerTx.rawTransaction.sequence_number = orderTx.rawTransaction.sequence_number + 1n
+
+      // Submit close order, then trigger_matching immediately
       const committedTxn = await this.aptos.signAndSubmitTransaction({
         signer: this.botAccount,
-        transaction,
+        transaction: orderTx,
       })
+      const triggerPromise = this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction: triggerTx,
+      }).catch(e => console.warn(`⚠️ trigger_matching submit failed:`, e.message?.slice(0, 100)))
 
-      console.log(`📤 [GTC] Close TX submitted: ${committedTxn.hash.slice(0, 30)}... Polling immediately...`)
+      console.log(`📤 [GTC] Close + trigger submitted. Polling...`)
 
-      // Skip waitForTransaction — start polling right away to overlap with TX confirmation + async matching
+      // Poll for position close at 100ms intervals
       const pollStart = Date.now()
       let newPosition = null
 
@@ -1961,6 +1987,9 @@ export class VolumeBotEngine {
         newPosition = await this.getOnChainPosition()
         if (!newPosition || newPosition.size === 0) break
       }
+
+      // Ensure trigger TX is done before next seq number usage
+      await triggerPromise
 
       const fillTime = Date.now() - pollStart
 

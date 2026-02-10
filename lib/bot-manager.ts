@@ -68,7 +68,7 @@ class BotManager {
           capitalUSDC: bot.capitalUSDC,
           volumeTargetUSDC: bot.volumeTargetUSDC,
           bias: bot.bias as 'long' | 'short' | 'neutral',
-          strategy: (bot.strategy || 'twap') as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk',
+          strategy: (bot.strategy || 'twap') as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid',
           market: resolvedMarket,
           marketName: bot.marketName,
         }

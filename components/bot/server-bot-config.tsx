@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { BotStatusMonitor } from "./bot-status-monitor"
 
 type Bias = "long" | "short" | "neutral"
-type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer"
+type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer" | "dlp_grid"
 
 export function ServerBotConfig() {
   const { account, connected, signAndSubmitTransaction } = useWallet()
@@ -206,6 +206,13 @@ export function ServerBotConfig() {
       fullDesc: "Spam tiny TWAP orders as fast as possible. Maximum transaction count. Each order is ~$10-50.",
       icon: "zap",
       color: "pink",
+    },
+    dlp_grid: {
+      name: "DLP Grid (Clone)",
+      shortDesc: "Mirror vault MM",
+      fullDesc: "Mirrors the Decibel DLP vault's passive grid market making quotes using bulk orders (post-only). Useful for benchmarking MM PnL vs the vault. Configure markets and sizing via server env vars (DLP_GRID_*).",
+      icon: "gauge",
+      color: "emerald",
     },
   }
 
@@ -670,6 +677,7 @@ export function ServerBotConfig() {
                 {strategy === "delta_neutral" && <Shield className="w-5 h-5 text-cyan-400" />}
                 {strategy === "high_risk" && <Flame className="w-5 h-5 text-orange-400" />}
                 {strategy === "tx_spammer" && <Zap className="w-5 h-5 text-pink-400" />}
+                {strategy === "dlp_grid" && <Gauge className="w-5 h-5 text-emerald-400" />}
                 <div className="flex flex-col items-start">
                   <span className="text-white font-bold tracking-wider">{selectedStrategy.name}</span>
                   <span className="text-[10px] text-zinc-500">{selectedStrategy.shortDesc}</span>
@@ -697,7 +705,8 @@ export function ServerBotConfig() {
                       strategyKey === "market_maker" && strategy === strategyKey && "bg-purple-500/10",
                       strategyKey === "delta_neutral" && strategy === strategyKey && "bg-cyan-500/10",
                       strategyKey === "high_risk" && strategy === strategyKey && "bg-orange-500/10",
-                      strategyKey === "tx_spammer" && strategy === strategyKey && "bg-pink-500/10"
+                      strategyKey === "tx_spammer" && strategy === strategyKey && "bg-pink-500/10",
+                      strategyKey === "dlp_grid" && strategy === strategyKey && "bg-emerald-500/10"
                     )}
                   >
                     {strategyKey === "twap" && <BarChart3 className={cn("w-5 h-5", strategy === strategyKey ? "text-blue-400" : "text-zinc-500")} />}
@@ -705,6 +714,7 @@ export function ServerBotConfig() {
                     {strategyKey === "delta_neutral" && <Shield className={cn("w-5 h-5", strategy === strategyKey ? "text-cyan-400" : "text-zinc-500")} />}
                     {strategyKey === "high_risk" && <Flame className={cn("w-5 h-5", strategy === strategyKey ? "text-orange-400" : "text-zinc-500")} />}
                     {strategyKey === "tx_spammer" && <Zap className={cn("w-5 h-5", strategy === strategyKey ? "text-pink-400" : "text-zinc-500")} />}
+                    {strategyKey === "dlp_grid" && <Gauge className={cn("w-5 h-5", strategy === strategyKey ? "text-emerald-400" : "text-zinc-500")} />}
                     <div className="flex flex-col items-start flex-1">
                       <span className={cn(
                         "font-bold tracking-wider",
@@ -713,6 +723,7 @@ export function ServerBotConfig() {
                         strategyKey === "delta_neutral" && strategy === strategyKey && "text-cyan-400",
                         strategyKey === "high_risk" && strategy === strategyKey && "text-orange-400",
                         strategyKey === "tx_spammer" && strategy === strategyKey && "text-pink-400",
+                        strategyKey === "dlp_grid" && strategy === strategyKey && "text-emerald-400",
                         strategy !== strategyKey && "text-white"
                       )}>
                         {strategyData.name}

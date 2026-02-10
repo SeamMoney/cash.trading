@@ -20,6 +20,9 @@ export interface DecibelAccountOverview {
   perp_equity_balance: number
   unrealized_pnl: number
   realized_pnl: number
+  // Liquidation/backstop-specific fields (present on testnet)
+  liquidation_fees_paid?: number | null
+  liquidation_losses?: number | null
   unrealized_funding_cost: number
   cross_margin_ratio: number
   maintenance_margin: number
@@ -30,6 +33,8 @@ export interface DecibelAccountOverview {
   usdc_isolated_withdrawable_balance: number
   // Volume (requires volume_window param)
   volume?: number
+  // Net deposits (present in account overview response)
+  net_deposits?: number | null
   // Performance metrics (requires include_performance param)
   all_time_return?: number | null
   pnl_90d?: number | null
@@ -59,6 +64,32 @@ export interface DecibelTrade {
   transaction_version: number
 }
 
+export interface DecibelOpenOrder {
+  parent: string
+  market: string
+  client_order_id: string
+  order_id: string
+  status: string
+  order_type: string
+  trigger_condition: string
+  order_direction: string
+  orig_size: number
+  remaining_size: number
+  size_delta: number | null
+  price: number
+  is_buy: boolean
+  is_reduce_only: boolean
+  details: string
+  tp_order_id: string | null
+  tp_trigger_price: number | null
+  tp_limit_price: number | null
+  sl_order_id: string | null
+  sl_trigger_price: number | null
+  sl_limit_price: number | null
+  transaction_version: number
+  unix_ms: number
+}
+
 /**
  * Get the API key from environment
  */
@@ -67,7 +98,8 @@ function getApiKey(): string {
   if (!apiKey) {
     throw new Error('GEOMI_API_KEY environment variable is not set')
   }
-  return apiKey
+  // Clean key to prevent "invalid HTTP header (authorization)" errors
+  return apiKey.replace(/\r?\n/g, '').trim()
 }
 
 /**
@@ -144,6 +176,7 @@ export async function getDecibelTradeHistory(
   options: {
     network?: 'testnet' | 'mainnet'
     limit?: number
+    offset?: number
     market?: string
     orderId?: string
   } = {}
@@ -151,6 +184,7 @@ export async function getDecibelTradeHistory(
   const {
     network = 'testnet',
     limit = 100,
+    offset = 0,
     market,
     orderId
   } = options
@@ -162,6 +196,7 @@ export async function getDecibelTradeHistory(
     const params = new URLSearchParams({
       user: userAddr,
       limit: limit.toString(),
+      offset: offset.toString(),
     })
 
     if (market) params.set('market', market)
@@ -184,6 +219,63 @@ export async function getDecibelTradeHistory(
   } catch (error) {
     console.error('Error fetching Decibel trade history:', error)
     return []
+  }
+}
+
+/**
+ * Fetch open orders for a user/subaccount from Decibel REST API
+ *
+ * NOTE: API docs use `account` + `pagination[limit]`/`pagination[offset]`, but the
+ * testnet endpoint also accepts `user` + `limit`/`offset` (consistent with other endpoints).
+ */
+export async function getDecibelOpenOrders(
+  userAddr: string,
+  options: {
+    network?: 'testnet' | 'mainnet'
+    limit?: number
+    offset?: number
+    market?: string
+  } = {}
+): Promise<{ items: DecibelOpenOrder[]; total_count?: number }> {
+  const {
+    network = 'testnet',
+    limit = 100,
+    offset = 0,
+    market,
+  } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({
+      user: userAddr,
+      limit: limit.toString(),
+      offset: offset.toString(),
+    })
+
+    if (market) params.set('market', market)
+
+    const response = await fetch(`${baseUrl}/open_orders?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      console.error(`Decibel API error: ${response.status} ${response.statusText}`)
+      return { items: [], total_count: 0 }
+    }
+
+    const data = await response.json()
+    // Expected: { items: [...], total_count: N }
+    if (Array.isArray(data)) {
+      return { items: data as DecibelOpenOrder[] }
+    }
+    return { items: (data?.items || []) as DecibelOpenOrder[], total_count: data?.total_count }
+  } catch (error) {
+    console.error('Error fetching Decibel open orders:', error)
+    return { items: [], total_count: 0 }
   }
 }
 

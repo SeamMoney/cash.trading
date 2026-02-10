@@ -11,6 +11,8 @@ export const ORDERBOOK_ADDR = '0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd297
 export const USDC_DECIMALS = 6;
 
 // Predeposit constants (Season 0)
+// Object address derived from createObjectAddress(DECIBEL_PACKAGE, "predeposit")
+export const PREDEPOSIT_OBJECT = '0x67d48b77f9110c959b9f7e3141480da14798f70cf3213c7200f3699fc68abaaa';
 export const PREDEPOSIT_MIN_AMOUNT = 50; // $50 minimum deposit
 export const PREDEPOSIT_MAX_AMOUNT = 1_000_000; // $1M maximum per wallet
 export const PRICE_DECIMALS = 6;

@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       capitalUSDC,
       volumeTargetUSDC,
       bias: bias as 'long' | 'short' | 'neutral',
-      strategy: strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk',
+      strategy: strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid',
       market,
       marketName,
     }

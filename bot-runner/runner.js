@@ -18,6 +18,7 @@ const TICK_INTERVALS = {
   twap: 60000,         // 60 seconds - TWAP needs time to fill
   market_maker: 30000, // 30 seconds
   delta_neutral: 60000,// 60 seconds
+  dlp_grid: 60000,     // 60 seconds - quote refresh cadence
 };
 
 // Track last tick time per bot

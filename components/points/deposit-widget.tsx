@@ -12,7 +12,7 @@ import {
   ExternalLink,
   Info
 } from "lucide-react"
-import { DECIBEL_PACKAGE, PREDEPOSIT_MIN_AMOUNT, PREDEPOSIT_MAX_AMOUNT, USDC_DECIMALS } from "@/lib/decibel-client"
+import { DECIBEL_PACKAGE, PREDEPOSIT_OBJECT, PREDEPOSIT_MIN_AMOUNT, PREDEPOSIT_MAX_AMOUNT, USDC_DECIMALS } from "@/lib/decibel-client"
 
 interface DepositWidgetProps {
   onDepositSuccess?: () => void
@@ -50,9 +50,9 @@ export function DepositWidget({ onDepositSuccess }: DepositWidgetProps) {
         function: `${DECIBEL_PACKAGE}::predeposit::deposit`,
         typeArguments: [],
         functionArguments: [
-          DECIBEL_PACKAGE, // predeposit module address
+          PREDEPOSIT_OBJECT, // predeposit state object (derived from package + "predeposit" seed)
           amountInSmallestUnit.toString(),
-          referralCode.trim() || null, // Optional referral code
+          referralCode.trim() || undefined, // Optional referral code (undefined = Option::none)
         ],
       }
 

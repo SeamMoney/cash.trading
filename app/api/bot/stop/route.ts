@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
-import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
+import { createAuthenticatedAptos, TESTNET_CONFIG, getAllMarketAddresses } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
 
-const DECIBEL_PACKAGE = '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+const DECIBEL_PACKAGE = TESTNET_CONFIG.deployment.package ||
+  process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
+  '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
 
 // Market configs for size decimals
 const MARKET_CONFIG: Record<string, { szDecimals: number }> = {
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     let closedPosition = false
     let closeResult: any = null
     let cancelledTwaps = false
+    let cancelledBulkOrders = false
 
     if (bot.strategy === 'high_risk') {
       const aptos = createAuthenticatedAptos()
@@ -249,6 +252,72 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // For dlp_grid strategy, cancel bulk orders so the passive grid doesn't keep trading after stop.
+    if (bot.strategy === 'dlp_grid') {
+      const aptos = createAuthenticatedAptos()
+
+      try {
+        console.log('🧊 DLP Grid: cancelling bulk orders...')
+        const privateKey = new Ed25519PrivateKey(process.env.BOT_OPERATOR_PRIVATE_KEY!)
+        const botAccount = new Ed25519Account({ privateKey })
+
+        const raw = (process.env.DLP_GRID_MARKETS || '').trim()
+        let marketNames: string[] = []
+        if (!raw) {
+          marketNames = [bot.marketName]
+        } else if (raw.toUpperCase() === 'ALL') {
+          marketNames = (await getAllMarketAddresses()).map((m) => m.name)
+        } else {
+          marketNames = raw.split(',').map((s) => s.trim()).filter(Boolean)
+        }
+
+        // Resolve market addresses from SDK; fallback to stored bot.market for bot.marketName.
+        let sdkMarkets: Array<{ name: string; address: string }> = []
+        try {
+          sdkMarkets = await getAllMarketAddresses()
+        } catch {
+          // non-fatal
+        }
+        const addrByName = new Map(sdkMarkets.map((m) => [m.name, m.address]))
+
+        const addrs = marketNames
+          .map((name) => addrByName.get(name) || (name === bot.marketName ? bot.market : null))
+          .filter((x): x is string => Boolean(x))
+
+        // Dedup (case-insensitive)
+        const uniqueAddrsLower = Array.from(new Set(addrs.map((a) => a.toLowerCase())))
+        const uniqueAddrs = uniqueAddrsLower.map((a) => addrs.find((orig) => orig.toLowerCase() === a) as string)
+
+        let cancelled = 0
+        for (const marketAddr of uniqueAddrs) {
+          const cancelTransaction = await aptos.transaction.build.simple({
+            sender: botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::dex_accounts_entry::cancel_bulk_order_to_subaccount`,
+              typeArguments: [],
+              functionArguments: [
+                bot.userSubaccount,
+                marketAddr,
+              ],
+            },
+          })
+
+          const committed = await aptos.signAndSubmitTransaction({
+            signer: botAccount,
+            transaction: cancelTransaction,
+          })
+          await aptos.waitForTransaction({ transactionHash: committed.hash })
+          cancelled++
+        }
+
+        cancelledBulkOrders = true
+        console.log(`✅ DLP Grid: cancelled ${cancelled}/${uniqueAddrs.length} bulk order(s)`)
+      } catch (e: any) {
+        console.error('⚠️ DLP Grid: failed to cancel bulk orders:', e?.message || e)
+        // Continue: still mark bot stopped in DB
+      }
+    }
+
     // Update the bot to stopped in the database
     const updatedBot = await prisma.botInstance.update({
       where: { id: bot.id },
@@ -267,12 +336,15 @@ export async function POST(request: NextRequest) {
       success: true,
       message: closedPosition
         ? `Bot stopped. Closing ${closeResult.direction} position (TWAP will fill in 1-2 min)`
-        : cancelledTwaps
-          ? 'Bot stopped. All pending TWAPs cancelled.'
-          : 'Volume bot stopped successfully',
+        : cancelledBulkOrders
+          ? 'Bot stopped. Bulk orders cancelled.'
+          : cancelledTwaps
+            ? 'Bot stopped. All pending TWAPs cancelled.'
+            : 'Volume bot stopped successfully',
       closedPosition,
       closeResult,
       cancelledTwaps,
+      cancelledBulkOrders,
       status: {
         isRunning: false,
         cumulativeVolume: updatedBot.cumulativeVolume,

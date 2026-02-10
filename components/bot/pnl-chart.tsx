@@ -1,7 +1,8 @@
 "use client"
 
+import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { CurvedLineChart, DataPoint } from "@/components/charts/curved-line-chart"
 
 interface PnLChartProps {
   orders: Array<{
@@ -20,115 +21,79 @@ export function PnLChart({ orders }: PnLChartProps) {
   // Filter orders that have PNL data
   const ordersWithPnL = orders.filter(order => order.pnl !== undefined && order.pnl !== 0)
 
+  // Prepare chart data with cumulative PNL
+  const chartData = useMemo((): DataPoint[] => {
+    let cumulativePnL = 0
+    return ordersWithPnL.map((order) => {
+      cumulativePnL += order.pnl || 0
+      return {
+        date: new Date(order.timestamp),
+        value: cumulativePnL,
+      }
+    })
+  }, [ordersWithPnL])
+
   if (ordersWithPnL.length === 0) {
     return (
       <Card className="bg-black/40 border-white/10">
         <CardHeader>
-          <CardTitle className="text-white">PNL Chart</CardTitle>
-          <CardDescription>No PNL data yet. Use High Risk strategy to see real-time PNL!</CardDescription>
+          <CardTitle className="text-white font-mono">PNL Chart</CardTitle>
+          <CardDescription className="font-mono text-zinc-500">
+            No PNL data yet. Use High Risk strategy to see real-time PNL!
+          </CardDescription>
         </CardHeader>
       </Card>
     )
   }
 
-  // Calculate cumulative PNL
-  let cumulativePnL = 0
-  const chartData = ordersWithPnL.map((order, index) => {
-    cumulativePnL += order.pnl || 0
-    return {
-      index: index + 1,
-      pnl: order.pnl || 0,
-      cumulativePnL: cumulativePnL,
-      time: new Date(order.timestamp).toLocaleTimeString(),
-      direction: order.direction,
-    }
-  })
-
-  const totalPnL = cumulativePnL
+  const totalPnL = chartData.length > 0 ? chartData[chartData.length - 1].value : 0
   const isProfitable = totalPnL >= 0
+  const profitableTrades = ordersWithPnL.filter(o => (o.pnl || 0) > 0).length
+  const losingTrades = ordersWithPnL.filter(o => (o.pnl || 0) < 0).length
 
   return (
-    <Card className="bg-black/40 border-white/10">
-      <CardHeader>
+    <Card className="bg-black/40 border-white/10 overflow-hidden">
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-white">PNL Chart</CardTitle>
-            <CardDescription>Cumulative profit/loss across all trades</CardDescription>
+            <CardTitle className="text-white font-mono">PNL Chart</CardTitle>
+            <CardDescription className="font-mono text-zinc-500">
+              Cumulative profit/loss across all trades
+            </CardDescription>
           </div>
           <div className="text-right">
-            <p className="text-sm text-zinc-400">Total PNL</p>
-            <p className={`text-2xl font-bold ${isProfitable ? 'text-green-400' : 'text-red-400'}`}>
+            <p className="text-xs font-mono uppercase tracking-wider text-zinc-500">Total PNL</p>
+            <p className={`text-2xl font-mono font-bold tabular-nums ${isProfitable ? 'text-green-400' : 'text-red-400'}`}>
               {isProfitable ? '+' : ''}${totalPnL.toFixed(2)}
             </p>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis
-                dataKey="index"
-                stroke="#888"
-                tick={{ fill: '#888' }}
-                label={{ value: 'Trade #', position: 'insideBottom', offset: -5, fill: '#888' }}
-              />
-              <YAxis
-                stroke="#888"
-                tick={{ fill: '#888' }}
-                label={{ value: 'PNL ($)', angle: -90, position: 'insideLeft', fill: '#888' }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#000',
-                  border: '1px solid #333',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#fff' }}
-                itemStyle={{ color: '#888' }}
-                formatter={(value: number, name: string) => {
-                  if (name === 'cumulativePnL') {
-                    return [`$${value.toFixed(2)}`, 'Cumulative PNL']
-                  }
-                  if (name === 'pnl') {
-                    return [`$${value.toFixed(2)}`, 'Trade PNL']
-                  }
-                  return value
-                }}
-                labelFormatter={(label) => `Trade #${label}`}
-              />
-              <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" />
-              <Line
-                type="monotone"
-                dataKey="cumulativePnL"
-                stroke="#3b82f6"
-                strokeWidth={3}
-                dot={{
-                  fill: '#3b82f6',
-                  r: 4,
-                }}
-                activeDot={{
-                  r: 6,
-                  fill: '#3b82f6',
-                }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      <CardContent className="pt-0">
+        <CurvedLineChart
+          data={chartData}
+          height={280}
+          showGrid={true}
+          showAxis={true}
+          showArea={true}
+          showTooltip={true}
+          animationDuration={1200}
+          lineColor={isProfitable ? "var(--success)" : "var(--destructive)"}
+          areaColor={isProfitable ? "var(--success)" : "var(--destructive)"}
+        />
 
         {/* Trade breakdown */}
-        <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="p-3 bg-black/40 border border-green-500/20 rounded-lg">
-            <p className="text-xs text-zinc-400 mb-1">Profitable Trades</p>
-            <p className="text-xl font-bold text-green-400">
-              {chartData.filter(d => d.pnl > 0).length}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Profitable Trades</p>
+            <p className="text-xl font-mono font-bold text-green-400 tabular-nums">
+              {profitableTrades}
             </p>
           </div>
-          <div className="p-3 bg-black/40 border border-red-500/20 rounded-lg">
-            <p className="text-xs text-zinc-400 mb-1">Losing Trades</p>
-            <p className="text-xl font-bold text-red-400">
-              {chartData.filter(d => d.pnl < 0).length}
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Losing Trades</p>
+            <p className="text-xl font-mono font-bold text-red-400 tabular-nums">
+              {losingTrades}
             </p>
           </div>
         </div>

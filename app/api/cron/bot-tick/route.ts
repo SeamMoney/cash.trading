@@ -14,6 +14,7 @@ const TRADES_PER_CRON: Record<string, number> = {
   twap: 1,           // TWAP needs time to fill
   market_maker: 2,   // Moderate frequency
   delta_neutral: 1,  // Complex strategy, once per minute
+  dlp_grid: 1,       // Quote refresh (can be heavy), keep to 1 per minute
 }
 
 // Delay between trades (ms) to avoid rate limits
@@ -23,6 +24,7 @@ const TRADE_DELAY_MS: Record<string, number> = {
   twap: 0,            // Single trade, no delay
   market_maker: 20000,
   delta_neutral: 0,
+  dlp_grid: 0,
 }
 
 /**
@@ -133,7 +135,7 @@ export async function GET(request: NextRequest) {
           capitalUSDC: bot.capitalUSDC,
           volumeTargetUSDC: bot.volumeTargetUSDC,
           bias: bot.bias as 'long' | 'short' | 'neutral',
-          strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer',
+          strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid',
           market: resolvedMarket,
           marketName: bot.marketName,
         }

@@ -63,3 +63,16 @@ docs/archive/
 .crush/
 .cursor/
 .opencode/
+
+# Test scripts with hardcoded addresses/keys
+test-*.ts
+check-*.ts
+test-deposit*.ts
+analyze-vault-trades.ts
+operator-analysis.ts
+vault-analysis-capped.ts
+vault-dlp-analysis.ts
+scripts/predeposit-sniper.ts
+
+# Bot PnL data (generated at runtime)
+grid-mm-pnl-data.json

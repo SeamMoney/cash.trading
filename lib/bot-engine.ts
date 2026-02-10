@@ -15,7 +15,7 @@ export interface BotConfig {
   bias: 'long' | 'short' | 'neutral' // Directional bias
   market: string // Market address (BTC/USD, ETH/USD, etc.)
   marketName: string // Display name
-  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' // Trading strategy
+  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid' // Trading strategy
   aggressiveness?: number // 1-10 scale for order frequency (optional, defaults to 5)
 }
 
@@ -187,6 +187,10 @@ const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSi
   'DOGE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
   'ZEC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
 }
+
+// Decibel testnet DLP vault "backstop_liquidator" subaccount (observed on-chain)
+// Used for mirroring the vault's market making grid.
+const DLP_VAULT_SUBACCOUNT = '0x1aa8a40a749aacc063fd541f17ab13bd1e87f3eca8de54d73b6552263571e3d9'
 
 // Price history for momentum detection
 interface PricePoint {
@@ -777,6 +781,361 @@ export class VolumeBotEngine {
       return config.minSize
     }
     return rounded
+  }
+
+  private getMarketConfigForName(marketName: string) {
+    return MARKET_CONFIG[marketName] || MARKET_CONFIG['BTC/USD']
+  }
+
+  private getMarketSizeDecimalsForName(marketName: string): number {
+    const config = MARKET_CONFIG[marketName]
+    if (config) return config.szDecimals
+    return 8
+  }
+
+  private roundPriceToTickerSizeForMarket(marketName: string, priceUSD: number): bigint {
+    const config = this.getMarketConfigForName(marketName)
+    const priceInChainUnits = BigInt(Math.floor(priceUSD * Math.pow(10, config.pxDecimals)))
+    return (priceInChainUnits / config.tickerSize) * config.tickerSize
+  }
+
+  private roundSizeChainToLotSizeForMarket(marketName: string, sizeChainUnits: bigint): bigint {
+    const config = this.getMarketConfigForName(marketName)
+    const rounded = (sizeChainUnits / config.lotSize) * config.lotSize
+    if (rounded < config.minSize) return config.minSize
+    return rounded
+  }
+
+  private getDlpGridMarketNames(): string[] {
+    const raw = (process.env.DLP_GRID_MARKETS || '').trim()
+    if (!raw) return [this.config.marketName]
+
+    if (raw.toUpperCase() === 'ALL') {
+      return Object.keys(MARKETS)
+    }
+
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  private async getMarkPricesByName(): Promise<Record<string, number>> {
+    const out: Record<string, number> = {}
+
+    try {
+      const { getReadDex } = await import('./decibel-sdk')
+      const readDex = getReadDex()
+      const prices = await readDex.marketPrices.getAll()
+      for (const p of prices as any[]) {
+        if (p?.market_name && typeof p?.mark_px === 'number') {
+          out[p.market_name] = p.mark_px
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ [SDK] Failed to fetch mark prices:', error)
+    }
+
+    return out
+  }
+
+  private async cancelBulkOrderForMarket(marketAddr: string): Promise<boolean> {
+    try {
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::cancel_bulk_order_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,
+            marketAddr,
+          ],
+        },
+      })
+
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      await this.aptos.waitForTransaction({ transactionHash: committedTxn.hash })
+      return true
+    } catch (error) {
+      console.warn(`⚠️ Failed to cancel bulk order for market ${marketAddr.slice(0, 10)}...:`, error)
+      return false
+    }
+  }
+
+  private async placeBulkOrdersForMarket(params: {
+    marketAddr: string
+    marketName: string
+    bidPrices: string[]
+    bidSizes: string[]
+    askPrices: string[]
+    askSizes: string[]
+  }): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    const { marketAddr, bidPrices, bidSizes, askPrices, askSizes } = params
+    try {
+      // Monotonic sequence number per-market (timestamp-based)
+      const seq = Date.now().toString()
+
+      const transaction = await this.aptos.transaction.build.simple({
+        sender: this.botAccount.accountAddress,
+        data: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_bulk_orders_to_subaccount`,
+          typeArguments: [],
+          functionArguments: [
+            this.config.userSubaccount,
+            marketAddr,
+            seq,
+            bidPrices,
+            bidSizes,
+            askPrices,
+            askSizes,
+            undefined, // builder_address
+            undefined, // max_builder_fee
+          ],
+        },
+      })
+
+      const committedTxn = await this.aptos.signAndSubmitTransaction({
+        signer: this.botAccount,
+        transaction,
+      })
+
+      await this.aptos.waitForTransaction({ transactionHash: committedTxn.hash })
+
+      return { success: true, txHash: committedTxn.hash }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
+  private async maybeAppendDlpBenchmarkSnapshot(): Promise<void> {
+    const dir = (process.env.DLP_BENCHMARK_DIR || '').trim()
+    const explicitPath = (process.env.DLP_BENCHMARK_PATH || '').trim()
+    const pathToWrite = explicitPath || (dir ? `${dir.replace(/\/$/, '')}/dlp-vs-${this.config.userSubaccount}.jsonl` : '')
+    if (!pathToWrite) return
+
+    try {
+      const { getDecibelAccountOverview } = await import('./decibel-api')
+
+      const [clone, dlp] = await Promise.all([
+        getDecibelAccountOverview(this.config.userSubaccount, { includePerformance: true }),
+        getDecibelAccountOverview(DLP_VAULT_SUBACCOUNT, { includePerformance: true }),
+      ])
+
+      const snapshot = {
+        ts_unix_ms: Date.now(),
+        clone_subaccount: this.config.userSubaccount,
+        dlp_subaccount: DLP_VAULT_SUBACCOUNT,
+        clone,
+        dlp,
+      }
+
+      const { mkdir, appendFile } = await import('node:fs/promises')
+      const { dirname } = await import('node:path')
+      await mkdir(dirname(pathToWrite), { recursive: true })
+      await appendFile(pathToWrite, `${JSON.stringify(snapshot)}\n`, 'utf8')
+    } catch (error) {
+      console.warn('⚠️ Failed to append DLP benchmark snapshot:', error)
+    }
+  }
+
+  /**
+   * DLP Grid Strategy
+   *
+   * Mirrors the Decibel DLP vault's (backstop) market making grid by:
+   * - Fetching the vault's open orders
+   * - Extracting quote offsets + size weights per market
+   * - Posting a scaled bulk order grid on the user's delegated subaccount
+   *
+   * Config:
+   * - `DLP_GRID_MARKETS=BTC/USD,ETH/USD,...` or `ALL` (default: current selected marketName)
+   * - `DLP_GRID_NOTIONAL_MULTIPLIER=1.0` (default 1.0, total quote notional = capital * multiplier)
+   * - `DLP_GRID_MAX_LEVELS_PER_SIDE=3` (default 3)
+   * - `DLP_GRID_MIN_ORDER_NOTIONAL_USD=10` (default 10)
+   * - `DLP_GRID_WEIGHT_MODE=dlp|equal` (default dlp)
+   */
+  private async refreshDlpGrid(): Promise<{ success: boolean; marketsUpdated: number; txHashes: string[]; error?: string }> {
+    const marketNames = this.getDlpGridMarketNames()
+    const maxLevels = Math.max(1, parseInt(process.env.DLP_GRID_MAX_LEVELS_PER_SIDE || '3', 10) || 3)
+    const minOrderNotional = Math.max(0, parseFloat(process.env.DLP_GRID_MIN_ORDER_NOTIONAL_USD || '10') || 10)
+    const notionalMultiplier = Math.max(0, parseFloat(process.env.DLP_GRID_NOTIONAL_MULTIPLIER || '1') || 1)
+    const weightMode = (process.env.DLP_GRID_WEIGHT_MODE || 'dlp').toLowerCase()
+
+    // Prefer SDK market metadata (survives testnet resets); fall back to hardcoded mappings.
+    const sdkMetaByName: Record<string, { address: string; tickSize: bigint; pxDecimals: number; szDecimals: number }> = {}
+    try {
+      const { getAllMarketAddresses } = await import('./decibel-sdk')
+      const all = await getAllMarketAddresses()
+      for (const m of all) {
+        sdkMetaByName[m.name] = {
+          address: m.address,
+          tickSize: BigInt(m.tickSize),
+          pxDecimals: m.pxDecimals,
+          szDecimals: m.szDecimals,
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ [SDK] Failed to fetch market metadata for DLP grid, using hardcoded values')
+    }
+
+    const marketsToUpdate = marketNames
+      .map((name) => ({ name, addr: sdkMetaByName[name]?.address || MARKETS[name] }))
+      .filter((m) => {
+        if (!m.addr) {
+          console.warn(`⚠️ Unknown market name in DLP_GRID_MARKETS: ${m.name}`)
+          return false
+        }
+        return true
+      })
+
+    if (marketsToUpdate.length === 0) {
+      return { success: false, marketsUpdated: 0, txHashes: [], error: 'No markets configured for DLP grid' }
+    }
+
+    // Fetch vault open orders once
+    let vaultOrders: any[] = []
+    try {
+      const { getDecibelOpenOrders } = await import('./decibel-api')
+      const resp = await getDecibelOpenOrders(DLP_VAULT_SUBACCOUNT, { limit: 200 })
+      vaultOrders = resp.items || []
+    } catch (error) {
+      return { success: false, marketsUpdated: 0, txHashes: [], error: 'Failed to fetch DLP vault open orders' }
+    }
+
+    // Fetch mark prices once
+    const markPricesByName = await this.getMarkPricesByName()
+
+    // Market weights (optional): inferred from vault open order notionals
+    const dlpMarketNotionalByAddr: Record<string, number> = {}
+    let totalDlpNotional = 0
+    for (const { addr } of marketsToUpdate) {
+      const mm = vaultOrders.filter((o) => o.market === addr && typeof o.price === 'number' && typeof o.remaining_size === 'number' && (o.client_order_id || '').startsWith('MM:'))
+      const use = mm.length > 0 ? mm : vaultOrders.filter((o) => o.market === addr && typeof o.price === 'number' && typeof o.remaining_size === 'number')
+      const notional = use.reduce((sum, o) => sum + Math.abs(o.remaining_size * o.price), 0)
+      dlpMarketNotionalByAddr[addr] = notional
+      totalDlpNotional += notional
+    }
+
+    const totalQuoteNotional = this.config.capitalUSDC * notionalMultiplier
+    const txHashes: string[] = []
+    let marketsUpdated = 0
+
+    for (const { name: marketName, addr: marketAddr } of marketsToUpdate) {
+      const markPx = markPricesByName[marketName]
+      if (!markPx || markPx <= 0) {
+        console.warn(`⚠️ No mark price for ${marketName}, skipping`)
+        continue
+      }
+
+      // Prefer MM:* orders; fallback to all open orders for that market
+      const mmOrders = vaultOrders.filter((o) => o.market === marketAddr && (o.client_order_id || '').startsWith('MM:'))
+      const marketOrders = (mmOrders.length > 0 ? mmOrders : vaultOrders.filter((o) => o.market === marketAddr))
+        .filter((o) => typeof o.price === 'number' && typeof o.remaining_size === 'number' && o.price > 0 && o.remaining_size > 0)
+
+      if (marketOrders.length === 0) {
+        console.warn(`⚠️ No vault open orders for ${marketName}, skipping`)
+        continue
+      }
+
+      const bids = marketOrders.filter((o) => o.is_buy).sort((a, b) => b.price - a.price)
+      const asks = marketOrders.filter((o) => !o.is_buy).sort((a, b) => a.price - b.price)
+
+      // Derive the vault's implied mid for offset extraction
+      const impliedMid = (bids.length > 0 && asks.length > 0) ? ((bids[0].price + asks[0].price) / 2) : markPx
+      if (!impliedMid || impliedMid <= 0) {
+        console.warn(`⚠️ Invalid implied mid for ${marketName}, skipping`)
+        continue
+      }
+
+      const mkLevels = (side: 'bid' | 'ask') => {
+        const sideOrders = side === 'bid' ? bids : asks
+        const levels = sideOrders.map((o) => ({
+          offset: Math.abs(o.price - impliedMid) / impliedMid,
+          notional: Math.abs(o.remaining_size * o.price),
+        })).sort((a, b) => a.offset - b.offset).slice(0, maxLevels)
+        const total = levels.reduce((s, l) => s + l.notional, 0)
+        return levels.map((l) => ({ offset: l.offset, weight: total > 0 ? (l.notional / total) : (1 / Math.max(levels.length, 1)) }))
+      }
+
+      const bidLevels = mkLevels('bid')
+      const askLevels = mkLevels('ask')
+
+      if (bidLevels.length === 0 && askLevels.length === 0) {
+        console.warn(`⚠️ No quote levels derived for ${marketName}, skipping`)
+        continue
+      }
+
+      // Market allocation
+      let marketWeight = 1 / marketsToUpdate.length
+      if (weightMode === 'dlp' && totalDlpNotional > 0) {
+        marketWeight = (dlpMarketNotionalByAddr[marketAddr] || 0) / totalDlpNotional
+        if (marketWeight <= 0) marketWeight = 1 / marketsToUpdate.length
+      }
+
+      const marketNotionalBudget = totalQuoteNotional * marketWeight
+      const perSideNotional = marketNotionalBudget / 2
+
+      const meta = sdkMetaByName[marketName]
+      const pxDecimals = meta?.pxDecimals ?? this.getMarketConfigForName(marketName).pxDecimals
+      const szDecimals = meta?.szDecimals ?? this.getMarketSizeDecimalsForName(marketName)
+      const tickSize = meta?.tickSize ?? this.getMarketConfigForName(marketName).tickerSize
+
+      const buildSide = (side: 'bid' | 'ask', levels: Array<{ offset: number; weight: number }>) => {
+        const prices: string[] = []
+        const sizes: string[] = []
+        for (const level of levels) {
+          const px = side === 'bid'
+            ? markPx * (1 - level.offset)
+            : markPx * (1 + level.offset)
+
+          if (!px || px <= 0) continue
+
+          const levelNotional = perSideNotional * level.weight
+          if (levelNotional < minOrderNotional) continue
+
+          const sizeBase = levelNotional / px
+          const sizeChainRaw = BigInt(Math.floor(sizeBase * Math.pow(10, szDecimals)))
+          const sizeChain = this.roundSizeChainToLotSizeForMarket(marketName, sizeChainRaw)
+          const priceChainRaw = BigInt(Math.floor(px * Math.pow(10, pxDecimals)))
+          const priceChain = (priceChainRaw / tickSize) * tickSize
+
+          prices.push(priceChain.toString())
+          sizes.push(sizeChain.toString())
+        }
+        return { prices, sizes }
+      }
+
+      const bid = buildSide('bid', bidLevels)
+      const ask = buildSide('ask', askLevels)
+
+      const placed = await this.placeBulkOrdersForMarket({
+        marketAddr,
+        marketName,
+        bidPrices: bid.prices,
+        bidSizes: bid.sizes,
+        askPrices: ask.prices,
+        askSizes: ask.sizes,
+      })
+
+      if (!placed.success) {
+        console.warn(`⚠️ DLP grid bulk order failed for ${marketName}: ${placed.error}`)
+        continue
+      }
+
+      marketsUpdated++
+      if (placed.txHash) txHashes.push(placed.txHash)
+    }
+
+    // Optionally snapshot PnL vs DLP vault (writes JSONL to disk)
+    await this.maybeAppendDlpBenchmarkSnapshot()
+
+    return { success: marketsUpdated > 0, marketsUpdated, txHashes }
   }
 
   /**
@@ -3008,6 +3367,45 @@ export class VolumeBotEngine {
       }
     }
 
+    // DLP Grid strategy: refresh bulk order quotes (not volume-targeted by trades)
+    if (this.config.strategy === 'dlp_grid') {
+      console.log('🧊 [DLP Grid] Refreshing bulk order grid...')
+      const startedAt = Date.now()
+      const res = await this.refreshDlpGrid()
+
+      this.status.lastOrderTime = Date.now()
+      if (res.success) {
+        this.status.ordersPlaced += 1
+        this.status.error = null
+        console.log(`✅ [DLP Grid] Updated ${res.marketsUpdated} market(s) in ${Date.now() - startedAt}ms`)
+      } else {
+        this.status.error = res.error || 'DLP grid refresh failed'
+        console.warn(`⚠️ [DLP Grid] Refresh failed: ${this.status.error}`)
+      }
+
+      // Persist minimal status so UI can show "last update" even without trade records
+      try {
+        const { prisma } = await import('./prisma')
+        await prisma.botInstance.update({
+          where: {
+            userWalletAddress_userSubaccount: {
+              userWalletAddress: this.config.userWalletAddress,
+              userSubaccount: this.config.userSubaccount,
+            }
+          },
+          data: {
+            lastOrderTime: new Date(this.status.lastOrderTime),
+            error: res.success ? null : this.status.error,
+            ...(res.success ? { ordersPlaced: { increment: 1 } } : {}),
+          },
+        })
+      } catch (error) {
+        console.warn('⚠️ [DLP Grid] Failed to persist status:', error)
+      }
+
+      return
+    }
+
     // Calculate next order
     const orderSize = this.calculateOrderSize()
     if (orderSize === 0) {
@@ -3302,14 +3700,33 @@ export class VolumeBotEngine {
       this.loopInterval = null
     }
 
-    // Cancel all active TWAPs and TP/SL orders via SDK
-    try {
-      console.log('🧹 [SDK] Cleaning up active orders...')
-      await this.cancelAllActiveTwapsSDK()
-      await this.cancelTpSlForPosition()
-      console.log('✅ [SDK] Order cleanup complete')
-    } catch (error) {
-      console.warn('⚠️ [SDK] Order cleanup failed (non-critical):', error)
+    if (this.config.strategy === 'dlp_grid') {
+      // Cancel bulk orders so the grid does not keep trading after stop().
+      try {
+        const marketNames = this.getDlpGridMarketNames()
+        const markets = marketNames
+          .map((name) => ({ name, addr: MARKETS[name] }))
+          .filter((m) => Boolean(m.addr))
+
+        console.log(`🧹 [DLP Grid] Cancelling bulk orders for ${markets.length} market(s)...`)
+        let cancelled = 0
+        for (const m of markets) {
+          if (await this.cancelBulkOrderForMarket(m.addr)) cancelled++
+        }
+        console.log(`✅ [DLP Grid] Cancelled ${cancelled}/${markets.length} bulk order(s)`)
+      } catch (error) {
+        console.warn('⚠️ [DLP Grid] Bulk cancel failed (non-critical):', error)
+      }
+    } else {
+      // Cancel all active TWAPs and TP/SL orders via SDK
+      try {
+        console.log('🧹 [SDK] Cleaning up active orders...')
+        await this.cancelAllActiveTwapsSDK()
+        await this.cancelTpSlForPosition()
+        console.log('✅ [SDK] Order cleanup complete')
+      } catch (error) {
+        console.warn('⚠️ [SDK] Order cleanup failed (non-critical):', error)
+      }
     }
 
     // Update database to mark bot as stopped
@@ -3334,6 +3751,9 @@ export class VolumeBotEngine {
   async executeSingleTrade(): Promise<boolean> {
     try {
       await this.runLoop()
+      if (this.config.strategy === 'dlp_grid') {
+        return !this.status.error
+      }
       return true
     } catch (error) {
       console.error('Error in single trade execution:', error)

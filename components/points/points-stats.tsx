@@ -1,71 +1,15 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { Trophy, TrendingUp, Users, Wallet, RefreshCw, Loader2 } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { usePointsData } from "@/contexts/points-data-context"
 import { ShareCard } from "./share-card"
-
-interface PointsData {
-  points: number
-  dlp_balance: string
-  ua_balance: string
-  total_deposited: string
-  rank?: number
-}
-
-interface GlobalStats {
-  total_points: number
-  total_deposited: number
-  total_dlp: number
-  total_ua: number
-  depositor_count: number
-  dlp_cap?: number
-  status: 'pre-launch' | 'live' | 'paused' | 'error'
-  launch_date?: string
-}
 
 export function PointsStats() {
   const { account, connected } = useWallet()
-  const [pointsData, setPointsData] = useState<PointsData | null>(null)
-  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { globalStats, userData, loading, refresh } = usePointsData()
   const [countdown, setCountdown] = useState<string>('')
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const totalRes = await fetch('/api/predeposit/total')
-      const totalData = await totalRes.json()
-      setGlobalStats(totalData)
-
-      if (account?.address) {
-        const [pointsRes, balancesRes] = await Promise.all([
-          fetch(`/api/predeposit/points?account=${account.address}`),
-          fetch(`/api/predeposit/balances?account=${account.address}`),
-        ])
-
-        const points = await pointsRes.json()
-        const balances = await balancesRes.json()
-
-        setPointsData({
-          points: points.points || 0,
-          dlp_balance: balances.dlp_balance || '0',
-          ua_balance: balances.ua_balance || '0',
-          total_deposited: balances.total_deposited || '0',
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching points data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [account?.address])
-
-  useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
-  }, [fetchData])
 
   useEffect(() => {
     const launchDate = new Date('2026-02-11T00:30:00Z')
@@ -127,7 +71,7 @@ export function PointsStats() {
           )}
         </div>
         <button
-          onClick={fetchData}
+          onClick={refresh}
           disabled={loading}
           className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/50 text-zinc-400 hover:text-primary disabled:opacity-50 shrink-0"
         >
@@ -200,10 +144,9 @@ export function PointsStats() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Your Stats</span>
             <ShareCard
-              points={pointsData?.points || 0}
-              rank={pointsData?.rank}
-              totalDeposited={pointsData?.total_deposited || '0'}
-              dlpBalance={pointsData?.dlp_balance || '0'}
+              points={userData?.points || 0}
+              totalDeposited={userData?.total_deposited || '0'}
+              dlpBalance={userData?.dlp_balance || '0'}
             />
           </div>
 
@@ -211,17 +154,17 @@ export function PointsStats() {
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Points (est.)</div>
               <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
-                {(pointsData?.points || 0) < 1
-                  ? (pointsData?.points || 0).toFixed(4)
-                  : (pointsData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {(userData?.points || 0) < 1
+                  ? (userData?.points || 0).toFixed(4)
+                  : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">DLP Share</div>
               <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {globalStats?.total_points && pointsData?.points
-                  ? ((pointsData.points / globalStats.total_points) * 100).toFixed(4) + '%'
+                {globalStats?.total_points && userData?.points
+                  ? ((userData.points / globalStats.total_points) * 100).toFixed(4) + '%'
                   : '0%'}
               </div>
             </div>
@@ -229,14 +172,14 @@ export function PointsStats() {
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Deposited</div>
               <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {formatNumber(pointsData?.total_deposited || '0')}
+                {formatNumber(userData?.total_deposited || '0')}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Unallocated</div>
               <div className="text-base sm:text-lg font-mono font-bold text-zinc-400 tabular-nums leading-tight">
-                {formatNumber(pointsData?.ua_balance || '0')}
+                {formatNumber(userData?.ua_balance || '0')}
               </div>
             </div>
           </div>

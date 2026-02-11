@@ -1,96 +1,14 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState } from "react"
 import { Trophy, Medal, Award, Search, RefreshCw, Loader2, ExternalLink } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
-import { useMockData } from "@/contexts/mock-data-context"
-import { MOCK_LEADERBOARD, MOCK_POINTS_DATA } from "@/lib/mock-data"
-
-interface LeaderboardEntry {
-  rank: number
-  account: string
-  points: number
-  dlp_balance: string
-  ua_balance: string
-  total_deposited: string
-}
+import { usePointsData } from "@/contexts/points-data-context"
 
 export function Leaderboard() {
   const { account } = useWallet()
-  const { isMockMode } = useMockData()
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([])
-  const [loading, setLoading] = useState(false)
+  const { leaderboardEntries, userRank, leaderboardLoading, refresh } = usePointsData()
   const [searchQuery, setSearchQuery] = useState('')
-  const [userRank, setUserRank] = useState<LeaderboardEntry | null>(null)
-
-  const fetchLeaderboard = useCallback(async () => {
-    if (isMockMode) {
-      setEntries(MOCK_LEADERBOARD)
-      setUserRank(MOCK_LEADERBOARD.find(e => e.rank === 12) || null)
-      return
-    }
-
-    setLoading(true)
-    try {
-      const res = await fetch('/api/predeposit/leaderboard?limit=100')
-      const data = await res.json()
-      let leaderboardEntries: LeaderboardEntry[] = data.entries || []
-
-      if (account?.address) {
-        const addr = account.address.toString().toLowerCase()
-        let userEntry = leaderboardEntries.find(
-          (e: LeaderboardEntry) => e.account?.toLowerCase() === addr
-        )
-
-        if (!userEntry) {
-          const [pointsRes, balancesRes] = await Promise.all([
-            fetch(`/api/predeposit/points?account=${account.address}`),
-            fetch(`/api/predeposit/balances?account=${account.address}`),
-          ])
-          const pointsData = await pointsRes.json()
-          const balancesData = await balancesRes.json()
-          const totalDep = parseFloat(balancesData.total_deposited || '0')
-
-          if (totalDep > 0) {
-            const userPoints = pointsData.points || 0
-            let insertIdx = leaderboardEntries.findIndex((e) => (e.points ?? 0) < userPoints)
-            if (insertIdx === -1) insertIdx = leaderboardEntries.length
-            const rank = insertIdx + 1
-
-            userEntry = {
-              rank,
-              account: account.address.toString(),
-              points: userPoints,
-              total_deposited: totalDep.toFixed(2),
-              dlp_balance: balancesData.dlp_balance || '0',
-              ua_balance: balancesData.ua_balance || '0',
-            }
-
-            leaderboardEntries.splice(insertIdx, 0, userEntry)
-            leaderboardEntries = leaderboardEntries.map((e, i) => ({ ...e, rank: i + 1 }))
-          }
-        }
-
-        setUserRank(userEntry || null)
-      }
-
-      setEntries(leaderboardEntries)
-    } catch (error) {
-      console.error('Error fetching leaderboard:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [account?.address, isMockMode])
-
-  useEffect(() => {
-    fetchLeaderboard()
-    const interval = setInterval(fetchLeaderboard, 60000)
-    return () => clearInterval(interval)
-  }, [fetchLeaderboard])
-
-  useEffect(() => {
-    fetchLeaderboard()
-  }, [isMockMode])
 
   const formatNumber = (num: number | string | undefined) => {
     if (num === undefined || num === null) return '$0'
@@ -120,10 +38,10 @@ export function Leaderboard() {
   }
 
   const filteredEntries = searchQuery
-    ? entries.filter((e) =>
+    ? leaderboardEntries.filter((e) =>
         e.account?.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : entries
+    : leaderboardEntries
 
   return (
     <div className="space-y-2">
@@ -140,12 +58,12 @@ export function Leaderboard() {
           />
         </div>
         <button
-          onClick={fetchLeaderboard}
-          disabled={loading}
+          onClick={refresh}
+          disabled={leaderboardLoading}
           className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/50 text-zinc-400 hover:text-primary disabled:opacity-50 shrink-0"
           aria-label="Refresh"
         >
-          {loading ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+          {leaderboardLoading ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
         </button>
       </div>
 
@@ -187,7 +105,7 @@ export function Leaderboard() {
               </tr>
             </thead>
             <tbody>
-              {loading && entries.length === 0 ? (
+              {leaderboardLoading && leaderboardEntries.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-6">
                     <Loader2 className="size-4 animate-spin mx-auto text-primary" />

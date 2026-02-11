@@ -131,42 +131,59 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     if (!cached?.globalStats) setLoading(true)
     if (!cached?.leaderboardEntries?.length) setLeaderboardLoading(true)
 
-    // Fire ALL requests in parallel
-    const totalPromise = fetch('/api/predeposit/total')
-    const lbPromise = fetch('/api/predeposit/leaderboard?limit=100')
-    const userPromise = addr ? fetch(`/api/predeposit/user?account=${addr}`) : null
+    // Parse each response into a JSON promise — each resolves independently
+    const userJsonP = addr
+      ? fetch(`/api/predeposit/user?account=${addr}`).then(r => r.json())
+      : Promise.resolve(null)
+    const totalJsonP = fetch('/api/predeposit/total').then(r => r.json())
+    const lbJsonP = fetch('/api/predeposit/leaderboard?limit=100').then(r => r.json())
+
+    // Resolved data refs for cross-promise access
+    let resolvedUser: UserData | null = null
+    let resolvedTotal: GlobalStats | null = null
 
     try {
-      const [totalRes, userRes] = await Promise.all([
-        totalPromise,
-        userPromise,
+      // 1) User points — FASTEST, single view function, render the instant it lands
+      if (addr) {
+        userJsonP.then((json) => {
+          if (!mountedRef.current || !json) return
+          const ud: UserData = {
+            points: json.points || 0,
+            dlp_balance: json.dlp_balance || '0',
+            ua_balance: json.ua_balance || '0',
+            total_deposited: json.total_deposited || '0',
+          }
+          resolvedUser = ud
+          setUserData(ud)
+        }).catch(() => {})
+      }
+
+      // 2) Global stats — medium speed, render when ready
+      totalJsonP.then((data) => {
+        if (!mountedRef.current) return
+        resolvedTotal = data
+        setGlobalStats(data)
+        setLoading(false)
+      }).catch(() => {})
+
+      // 3) Leaderboard — slowest, wait for all 3 to finish for user injection
+      const [userJson, , lbData] = await Promise.all([
+        userJsonP.catch(() => null),
+        totalJsonP.catch(() => null),
+        lbJsonP.catch(() => ({ entries: [] })),
       ])
 
       if (!mountedRef.current) return
 
-      const totalData = await totalRes.json()
-      setGlobalStats(totalData)
+      // Use already-resolved user data, or parse now if the .then hasn't fired yet
+      const localUserData = resolvedUser || (userJson ? {
+        points: userJson.points || 0,
+        dlp_balance: userJson.dlp_balance || '0',
+        ua_balance: userJson.ua_balance || '0',
+        total_deposited: userJson.total_deposited || '0',
+      } : null)
 
-      let localUserData: UserData | null = null
-      if (userRes) {
-        const userJson = await userRes.json()
-        localUserData = {
-          points: userJson.points || 0,
-          dlp_balance: userJson.dlp_balance || '0',
-          ua_balance: userJson.ua_balance || '0',
-          total_deposited: userJson.total_deposited || '0',
-        }
-        setUserData(localUserData)
-      }
-
-      setLoading(false)
-
-      // Leaderboard — slowest
-      const lbRes = await lbPromise
-      if (!mountedRef.current) return
-      const lbData = await lbRes.json()
       let entries: LeaderboardEntry[] = lbData.entries || []
-
       let resolvedUserRank: LeaderboardEntry | null = null
 
       if (addr && localUserData) {
@@ -198,9 +215,9 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
 
       setLeaderboardEntries(entries)
 
-      // Persist to localStorage for instant load next time
+      // Persist everything to localStorage
       writeCache({
-        globalStats: totalData,
+        globalStats: resolvedTotal,
         userData: localUserData,
         leaderboardEntries: entries,
         userRank: resolvedUserRank,

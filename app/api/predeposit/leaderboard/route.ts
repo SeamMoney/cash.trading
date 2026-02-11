@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPredepositLeaderboard } from '@/lib/decibel-api'
+import { getMainnetLeaderboard } from '@/lib/mainnet-predeposit'
 
-export const revalidate = 30 // Cache for 30 seconds
+export const revalidate = 60 // Cache for 60 seconds
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const offset = parseInt(searchParams.get('offset') || '0')
 
   try {
-    const leaderboard = await getPredepositLeaderboard({ limit, offset })
+    const leaderboard = await getMainnetLeaderboard({ limit, offset })
     return NextResponse.json({
       entries: leaderboard,
       total: leaderboard.length,

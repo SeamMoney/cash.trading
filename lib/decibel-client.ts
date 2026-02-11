@@ -10,12 +10,17 @@ export const DECIBEL_PACKAGE = '0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c634
 export const ORDERBOOK_ADDR = '0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7';
 export const USDC_DECIMALS = 6;
 
-// Predeposit constants (Season 0)
+// Predeposit constants (Season 0) - TESTNET
 // Object address derived from createObjectAddress(DECIBEL_PACKAGE, "predeposit")
 export const PREDEPOSIT_OBJECT = '0x67d48b77f9110c959b9f7e3141480da14798f70cf3213c7200f3699fc68abaaa';
 export const PREDEPOSIT_MIN_AMOUNT = 50; // $50 minimum deposit
 export const PREDEPOSIT_MAX_AMOUNT = 1_000_000; // $1M maximum per wallet
 export const PRICE_DECIMALS = 6;
+
+// Mainnet predeposit constants
+export const MAINNET_DECIBEL_PACKAGE = '0xc5939ec6e7e656cb6fed9afa155e390eb2aa63ba74e73157161829b2f80e1538';
+export const MAINNET_PREDEPOSIT_OBJECT = '0xbd0c23dbc2e9ac041f5829f79b4c4c1361ddfa2125d5072a96b817984a013d69';
+export const MAINNET_USDC_METADATA = '0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b';
 
 // Bot operator address - users delegate trading permissions to this wallet
 // This wallet is controlled by the backend and executes trades on behalf of users

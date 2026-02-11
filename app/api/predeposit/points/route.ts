@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPredepositPoints } from '@/lib/decibel-api'
+import { getMainnetUserBalance } from '@/lib/mainnet-predeposit'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -10,11 +10,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const points = await getPredepositPoints(account)
-    if (!points) {
-      return NextResponse.json({ account, points: 0 })
-    }
-    return NextResponse.json(points)
+    const balance = await getMainnetUserBalance(account)
+    return NextResponse.json({
+      account,
+      points: Math.round(balance.points * 10000) / 10000,
+    })
   } catch (error) {
     console.error('Error fetching predeposit points:', error)
     return NextResponse.json({ error: 'Failed to fetch points' }, { status: 500 })

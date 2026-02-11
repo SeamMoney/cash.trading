@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPredepositDlpBalance, getPredepositUaPositions } from '@/lib/decibel-api'
+import { getMainnetUserBalance } from '@/lib/mainnet-predeposit'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -10,19 +10,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [dlpBalance, uaPositions] = await Promise.all([
-      getPredepositDlpBalance(account),
-      getPredepositUaPositions(account),
-    ])
-
-    const totalUa = uaPositions.reduce((sum, p) => sum + parseFloat(p.balance || '0'), 0)
-
+    const balance = await getMainnetUserBalance(account)
     return NextResponse.json({
       account,
-      dlp_balance: dlpBalance?.balance || '0',
-      ua_balance: totalUa.toString(),
-      ua_positions: uaPositions,
-      total_deposited: (parseFloat(dlpBalance?.balance || '0') + totalUa).toString(),
+      dlp_balance: balance.dlp_balance.toString(),
+      ua_balance: balance.ua_balance.toString(),
+      ua_positions: [],
+      total_deposited: balance.total_deposited.toString(),
     })
   } catch (error) {
     console.error('Error fetching predeposit balances:', error)

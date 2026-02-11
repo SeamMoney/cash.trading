@@ -793,10 +793,6 @@ export function ServerBotConfig() {
                     <p className="text-xs text-blue-400 mb-2 font-mono">
                       First-time users must delegate trading permissions to the bot operator.
                     </p>
-                    <p className="text-xs text-zinc-500">
-                      This is a one-time transaction that allows the bot to place orders on your behalf.
-                      Your funds stay in YOUR wallet - the bot can only trade, not withdraw.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -869,18 +865,6 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {/* Bot Info */}
-          <div className="p-4 bg-black/40 border border-white/10 relative">
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-white/20" />
-            <h4 className="font-mono text-xs uppercase tracking-widest text-primary mb-3">How it works:</h4>
-            <ul className="text-xs text-zinc-500 space-y-1 font-mono">
-              <li>• Cloud mode: Bot runs every minute via Vercel Cron (browser can be closed)</li>
-              <li>• High Risk strategy: IOC orders with automatic TP/SL on-chain</li>
-              <li>• Uses delegated permissions (you approved this once)</li>
-              <li>• Alternates long/short for neutral bias</li>
-              <li>• TP/SL triggers automatically on blockchain - no polling needed</li>
-            </ul>
-          </div>
         </div>
       </div>
     </div>

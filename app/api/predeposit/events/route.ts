@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPredepositBalanceEvents } from '@/lib/decibel-api'
+import { getMainnetUserDepositEvents } from '@/lib/mainnet-predeposit'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const account = searchParams.get('account')
-  const eventKind = searchParams.get('event_kind') as 'deposit' | 'withdraw' | 'promote' | 'transition' | null
-  const fundType = searchParams.get('fund_type') as 'ua' | 'dlp' | null
   const limit = parseInt(searchParams.get('limit') || '100')
 
   if (!account) {
@@ -13,12 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const events = await getPredepositBalanceEvents(account, {
-      eventKind: eventKind || undefined,
-      fundType: fundType || undefined,
-      limit,
-    })
-
+    const events = await getMainnetUserDepositEvents(account, { limit })
     return NextResponse.json({ events, total: events.length })
   } catch (error) {
     console.error('Error fetching balance events:', error)

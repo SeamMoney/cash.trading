@@ -1,24 +1,20 @@
 import { NextResponse } from 'next/server'
-import { getPredepositTotal } from '@/lib/decibel-api'
+import { getMainnetGlobalStats } from '@/lib/mainnet-predeposit'
 
-export const revalidate = 60 // Cache for 60 seconds
+export const revalidate = 30 // Cache for 30 seconds
 
 export async function GET() {
   try {
-    const total = await getPredepositTotal()
-    if (!total) {
-      // Return placeholder data if API not available yet (pre-launch)
-      return NextResponse.json({
-        total_points: 0,
-        total_deposited: 0,
-        total_dlp: 0,
-        total_ua: 0,
-        depositor_count: 0,
-        status: 'pre-launch',
-        launch_date: '2026-02-07',
-      })
-    }
-    return NextResponse.json({ ...total, status: 'live' })
+    const stats = await getMainnetGlobalStats()
+    return NextResponse.json({
+      total_points: Math.round(stats.total_points * 10000) / 10000,
+      total_deposited: stats.total_deposited,
+      total_dlp: stats.total_dlp,
+      total_ua: stats.total_ua,
+      depositor_count: stats.depositor_count,
+      dlp_cap: stats.dlp_cap,
+      status: stats.status,
+    })
   } catch (error) {
     console.error('Error fetching predeposit total:', error)
     return NextResponse.json({

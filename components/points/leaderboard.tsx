@@ -26,7 +26,6 @@ export function Leaderboard() {
   const fetchLeaderboard = useCallback(async () => {
     if (isMockMode) {
       setEntries(MOCK_LEADERBOARD)
-      // Set user as rank 12 in mock mode
       setUserRank(MOCK_LEADERBOARD.find(e => e.rank === 12) || null)
       return
     }
@@ -35,14 +34,47 @@ export function Leaderboard() {
     try {
       const res = await fetch('/api/predeposit/leaderboard?limit=100')
       const data = await res.json()
-      setEntries(data.entries || [])
+      let leaderboardEntries: LeaderboardEntry[] = data.entries || []
 
       if (account?.address) {
-        const userEntry = data.entries?.find(
-          (e: LeaderboardEntry) => e.account?.toLowerCase() === account.address.toString().toLowerCase()
+        const addr = account.address.toString().toLowerCase()
+        let userEntry = leaderboardEntries.find(
+          (e: LeaderboardEntry) => e.account?.toLowerCase() === addr
         )
+
+        if (!userEntry) {
+          const [pointsRes, balancesRes] = await Promise.all([
+            fetch(`/api/predeposit/points?account=${account.address}`),
+            fetch(`/api/predeposit/balances?account=${account.address}`),
+          ])
+          const pointsData = await pointsRes.json()
+          const balancesData = await balancesRes.json()
+          const totalDep = parseFloat(balancesData.total_deposited || '0')
+
+          if (totalDep > 0) {
+            const userPoints = pointsData.points || 0
+            let insertIdx = leaderboardEntries.findIndex((e) => (e.points ?? 0) < userPoints)
+            if (insertIdx === -1) insertIdx = leaderboardEntries.length
+            const rank = insertIdx + 1
+
+            userEntry = {
+              rank,
+              account: account.address.toString(),
+              points: userPoints,
+              total_deposited: totalDep.toFixed(2),
+              dlp_balance: balancesData.dlp_balance || '0',
+              ua_balance: balancesData.ua_balance || '0',
+            }
+
+            leaderboardEntries.splice(insertIdx, 0, userEntry)
+            leaderboardEntries = leaderboardEntries.map((e, i) => ({ ...e, rank: i + 1 }))
+          }
+        }
+
         setUserRank(userEntry || null)
       }
+
+      setEntries(leaderboardEntries)
     } catch (error) {
       console.error('Error fetching leaderboard:', error)
     } finally {
@@ -56,7 +88,6 @@ export function Leaderboard() {
     return () => clearInterval(interval)
   }, [fetchLeaderboard])
 
-  // Refresh when mock mode changes
   useEffect(() => {
     fetchLeaderboard()
   }, [isMockMode])
@@ -78,13 +109,13 @@ export function Leaderboard() {
   const getRankIcon = (rank: number) => {
     switch (rank) {
       case 1:
-        return <Trophy className="size-5 text-yellow-400" />
+        return <Trophy className="size-4 text-primary" />
       case 2:
-        return <Medal className="size-5 text-gray-300" />
+        return <Medal className="size-4 text-zinc-400" />
       case 3:
-        return <Award className="size-5 text-amber-600" />
+        return <Award className="size-4 text-zinc-500" />
       default:
-        return <span className="size-5 flex items-center justify-center font-mono text-zinc-500 tabular-nums">#{rank}</span>
+        return <span className="text-xs font-mono text-zinc-500 tabular-nums">#{rank}</span>
     }
   }
 
@@ -95,94 +126,77 @@ export function Leaderboard() {
     : entries
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xs font-mono text-zinc-500 uppercase">
-          Season 0 Leaderboard
+      <div className="flex items-center justify-between gap-2">
+        <div className="relative flex-1 max-w-[200px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search address..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-7 pr-2 py-1.5 bg-black/40 border border-white/10 text-white text-[11px] font-mono focus:border-primary/50 focus:outline-none"
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-black/40 border border-white/10 text-white text-xs font-mono focus:border-primary/50 focus:outline-none w-32 sm:w-40"
-            />
-          </div>
-          <button
-            onClick={fetchLeaderboard}
-            disabled={loading}
-            className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/50 text-zinc-400 hover:text-primary disabled:opacity-50"
-            aria-label="Refresh leaderboard"
-          >
-            {loading ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-          </button>
-        </div>
+        <button
+          onClick={fetchLeaderboard}
+          disabled={loading}
+          className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/50 text-zinc-400 hover:text-primary disabled:opacity-50 shrink-0"
+          aria-label="Refresh"
+        >
+          {loading ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+        </button>
       </div>
 
-      {/* Your Rank Card */}
+      {/* Your Rank */}
       {userRank && (
-        <div className="bg-primary/10 border border-primary/30 p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl font-mono font-bold text-primary tabular-nums">
-                #{userRank.rank}
-              </div>
-              <div>
-                <div className="text-[10px] font-mono text-zinc-500 uppercase">Your Rank</div>
-                <div className="text-sm font-mono font-bold text-white tabular-nums">
-                  {(userRank.points ?? 0).toLocaleString()} pts
-                </div>
+        <div className="bg-primary/5 border border-primary/20 px-2.5 py-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg sm:text-xl font-mono font-bold text-primary tabular-nums shrink-0">
+              #{userRank.rank}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[9px] font-mono text-zinc-500 uppercase">You</div>
+              <div className="text-xs font-mono font-bold text-white tabular-nums">
+                {(userRank.points ?? 0) < 1
+                  ? (userRank.points ?? 0).toFixed(4)
+                  : (userRank.points ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} pts
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase">Deposited</div>
-              <div className="text-sm font-mono font-bold text-blue-500 tabular-nums">
-                {formatNumber(userRank.total_deposited)}
-              </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-[9px] font-mono text-zinc-500 uppercase">Deposited</div>
+            <div className="text-xs font-mono font-bold text-white tabular-nums">
+              {formatNumber(userRank.total_deposited)}
             </div>
           </div>
         </div>
       )}
 
-      {/* Leaderboard Table */}
+      {/* Table */}
       <div className="bg-black/40 border border-white/10 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="text-left p-2.5 text-[10px] font-mono uppercase text-zinc-500">
-                  Rank
-                </th>
-                <th className="text-left p-2.5 text-[10px] font-mono uppercase text-zinc-500">
-                  Address
-                </th>
-                <th className="text-right p-2.5 text-[10px] font-mono uppercase text-zinc-500">
-                  Points
-                </th>
-                <th className="text-right p-2.5 text-[10px] font-mono uppercase text-zinc-500">
-                  Total
-                </th>
+                <th className="text-left px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500 w-10">#</th>
+                <th className="text-left px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Address</th>
+                <th className="text-right px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Pts</th>
+                <th className="text-right px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Total</th>
               </tr>
             </thead>
             <tbody>
               {loading && entries.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8">
-                    <Loader2 className="size-5 animate-spin mx-auto text-primary" />
+                  <td colSpan={4} className="text-center py-6">
+                    <Loader2 className="size-4 animate-spin mx-auto text-primary" />
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-zinc-500 font-mono text-sm text-pretty">
-                    {searchQuery ? 'No results found' : 'Leaderboard data not available yet'}
+                  <td colSpan={4} className="text-center py-6 text-zinc-500 font-mono text-xs">
+                    {searchQuery ? 'No results' : 'No data yet'}
                   </td>
                 </tr>
               ) : (
@@ -194,38 +208,38 @@ export function Leaderboard() {
                   return (
                     <tr
                       key={entry.account}
-                      className={`border-b border-white/5 ${
-                        isCurrentUser ? 'bg-primary/10' : ''
-                      }`}
+                      className={`border-b border-white/5 ${isCurrentUser ? 'bg-primary/5' : ''}`}
                     >
-                      <td className="p-2.5">
+                      <td className="px-2 py-1.5">
                         {getRankIcon(entry.rank)}
                       </td>
-                      <td className="p-2.5">
+                      <td className="px-2 py-1.5">
                         <a
-                          href={`https://explorer.aptoslabs.com/account/${entry.account}?network=testnet`}
+                          href={`https://explorer.aptoslabs.com/account/${entry.account}?network=mainnet`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs font-mono text-zinc-300 hover:text-primary"
+                          className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-primary"
                         >
-                          <span className="truncate max-w-[80px] sm:max-w-none">
+                          <span className="truncate max-w-[72px] sm:max-w-none">
                             {shortenAddress(entry.account)}
                           </span>
-                          <ExternalLink className="size-3 shrink-0" />
+                          <ExternalLink className="size-3 shrink-0 text-zinc-500" />
                           {isCurrentUser && (
-                            <span className="text-[9px] font-mono uppercase bg-primary/20 text-primary px-1 py-0.5 shrink-0">
+                            <span className="text-[8px] font-mono uppercase bg-primary/10 text-primary px-1 py-px shrink-0">
                               You
                             </span>
                           )}
                         </a>
                       </td>
-                      <td className="p-2.5 text-right">
-                        <span className="font-mono font-bold text-purple-500 tabular-nums text-sm">
-                          {((entry.points ?? 0)).toLocaleString()}
+                      <td className="px-2 py-1.5 text-right">
+                        <span className="font-mono font-bold text-primary tabular-nums text-[11px] sm:text-xs">
+                          {(entry.points ?? 0) < 1
+                            ? (entry.points ?? 0).toFixed(4)
+                            : (entry.points ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </span>
                       </td>
-                      <td className="p-2.5 text-right">
-                        <span className="font-mono font-bold text-white tabular-nums text-sm">
+                      <td className="px-2 py-1.5 text-right">
+                        <span className="font-mono font-bold text-white tabular-nums text-[11px] sm:text-xs">
                           {formatNumber(entry.total_deposited)}
                         </span>
                       </td>

@@ -51,13 +51,61 @@ const PointsDataContext = createContext<PointsDataContextType>({
   refresh: () => {},
 })
 
+// localStorage cache helpers
+const CACHE_KEY = 'decibrrr_points_cache'
+
+interface CachedData {
+  globalStats: GlobalStats | null
+  userData: UserData | null
+  leaderboardEntries: LeaderboardEntry[]
+  userRank: LeaderboardEntry | null
+  userAddr: string | null
+  timestamp: number
+}
+
+function readCache(addr: string | null): CachedData | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const cached: CachedData = JSON.parse(raw)
+    // Only use cache if same wallet (or both disconnected)
+    if (cached.userAddr !== addr) return null
+    return cached
+  } catch {
+    return null
+  }
+}
+
+function writeCache(data: Omit<CachedData, 'timestamp'>) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }))
+  } catch {
+    // localStorage full or unavailable — ignore
+  }
+}
+
 export function PointsDataProvider({ children }: { children: ReactNode }) {
   const { account } = useWallet()
   const { isMockMode } = useMockData()
-  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
-  const [userData, setUserData] = useState<UserData | null>(null)
-  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([])
-  const [userRank, setUserRank] = useState<LeaderboardEntry | null>(null)
+  const addr = account?.address?.toString() || null
+
+  // Initialize state from localStorage cache for instant render
+  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(() => {
+    if (typeof window === 'undefined') return null
+    return readCache(addr)?.globalStats || null
+  })
+  const [userData, setUserData] = useState<UserData | null>(() => {
+    if (typeof window === 'undefined') return null
+    return readCache(addr)?.userData || null
+  })
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>(() => {
+    if (typeof window === 'undefined') return []
+    return readCache(addr)?.leaderboardEntries || []
+  })
+  const [userRank, setUserRank] = useState<LeaderboardEntry | null>(() => {
+    if (typeof window === 'undefined') return null
+    return readCache(addr)?.userRank || null
+  })
   const [loading, setLoading] = useState(false)
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const mountedRef = useRef(true)
@@ -78,18 +126,17 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    setLoading(true)
-    setLeaderboardLoading(true)
+    // Only show loading spinners if we have no cached data
+    const cached = readCache(addr)
+    if (!cached?.globalStats) setLoading(true)
+    if (!cached?.leaderboardEntries?.length) setLeaderboardLoading(true)
 
-    const addr = account?.address?.toString()
-
-    // Fire ALL requests in parallel — no waterfalls
+    // Fire ALL requests in parallel
     const totalPromise = fetch('/api/predeposit/total')
     const lbPromise = fetch('/api/predeposit/leaderboard?limit=100')
     const userPromise = addr ? fetch(`/api/predeposit/user?account=${addr}`) : null
 
     try {
-      // Process total + user in parallel, update UI as each resolves
       const [totalRes, userRes] = await Promise.all([
         totalPromise,
         userPromise,
@@ -97,11 +144,9 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
 
       if (!mountedRef.current) return
 
-      // Global stats
       const totalData = await totalRes.json()
       setGlobalStats(totalData)
 
-      // User data (local var so leaderboard injection can use it)
       let localUserData: UserData | null = null
       if (userRes) {
         const userJson = await userRes.json()
@@ -114,16 +159,16 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         setUserData(localUserData)
       }
 
-      // Stats + user are done, stop showing main loading
       setLoading(false)
 
-      // Leaderboard — slowest, update independently
+      // Leaderboard — slowest
       const lbRes = await lbPromise
       if (!mountedRef.current) return
       const lbData = await lbRes.json()
       let entries: LeaderboardEntry[] = lbData.entries || []
 
-      // Find or inject user into leaderboard using local var (not stale state)
+      let resolvedUserRank: LeaderboardEntry | null = null
+
       if (addr && localUserData) {
         const addrLower = addr.toLowerCase()
         let userEntry = entries.find(e => e.account?.toLowerCase() === addrLower)
@@ -147,10 +192,20 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
             entries = entries.map((e, i) => ({ ...e, rank: i + 1 }))
           }
         }
-        setUserRank(userEntry || null)
+        resolvedUserRank = userEntry || null
+        setUserRank(resolvedUserRank)
       }
 
       setLeaderboardEntries(entries)
+
+      // Persist to localStorage for instant load next time
+      writeCache({
+        globalStats: totalData,
+        userData: localUserData,
+        leaderboardEntries: entries,
+        userRank: resolvedUserRank,
+        userAddr: addr,
+      })
     } catch (error) {
       console.error('Error fetching points data:', error)
     } finally {
@@ -159,7 +214,17 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         setLeaderboardLoading(false)
       }
     }
-  }, [account?.address, isMockMode])
+  }, [addr, isMockMode])
+
+  // Clear user-specific cache when wallet changes
+  useEffect(() => {
+    const cached = readCache(addr)
+    if (!cached) {
+      // Different wallet or no cache — reset user-specific state
+      setUserData(null)
+      setUserRank(null)
+    }
+  }, [addr])
 
   useEffect(() => {
     mountedRef.current = true

@@ -1,0 +1,38 @@
+Module: async_matching_engine
+Friends: 1
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_engine
+Structs: 9
+  struct PendingRequest has copy, store
+  struct AsyncMatchingEngine has key
+  struct ContinuedPendingOrder has copy, drop, store
+  struct PendingOrder has copy, drop, store
+  struct PendingRequestKey has copy, drop, store
+  struct PendingTwap has copy, drop, store
+  struct SystemPurgedOrderEvent has drop, store
+  struct TwapEvent has copy, drop, store
+  struct TwapOrderStatus has copy, drop, store
+Functions: 24
+  friend register_market(&signer, bool)
+  friend add_adl_to_pending(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>)
+  friend cancel_twap_order(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, &signer, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId)
+  friend drain_async_queue(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>)
+  friend get_async_queue_length(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>) -> (u64)
+  friend place_maker_or_queue_taker(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, address, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_order::PerpOrderRequestCommonArgs, 0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId>, bool, 0x1::option::Option<u64>, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_order::PerpOrderRequestTpSlArgs, 0x1::option::Option<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode>) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId)
+  friend place_twap_order(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, &signer, u64, bool, bool, 0x1::option::Option<0x1::string::String>, u64, u64, 0x1::option::Option<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode>) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId)
+  friend process_pending_requests(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::work_unit_utils::WorkUnit)
+  friend schedule_backstop_liquidation(address, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>) -> (bool)
+  friend schedule_commit_mark_price(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64)
+  friend schedule_margin_call_liquidation(address, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64)
+  friend trigger_matching_sometimes(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::work_unit_utils::WorkUnit)
+  friend trigger_price_based_conditional_orders(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::work_unit_utils::WorkUnit)
+  friend trigger_twap_orders(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::work_unit_utils::WorkUnit)
+  public view_backstop_liquidations_length(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>) -> (u64)
+  public view_first_n_backstop_liquidations(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (vector<address>, vector<bool>)
+  public view_first_n_margin_call_liquidations(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (vector<address>, vector<bool>)
+  public view_first_n_pending_requests(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (vector<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_matching_engine::PendingRequestKey>, vector<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_matching_engine::PendingRequest>)
+  public view_margin_call_liquidations_length(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>) -> (u64)
+  public view_nth_backstop_liquidation(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (0x1::option::Option<address>, 0x1::option::Option<bool>)
+  public view_nth_margin_call_liquidation(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (0x1::option::Option<address>, 0x1::option::Option<bool>)
+  public view_nth_pending_request(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (0x1::option::Option<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_matching_engine::PendingRequestKey>, 0x1::option::Option<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_matching_engine::PendingRequest>)
+  public view_pending_requests_length(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>) -> (u64)
+  public view_pending_requests_length_capped(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u64) -> (u64)

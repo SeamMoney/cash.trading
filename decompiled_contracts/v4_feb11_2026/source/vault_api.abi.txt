@@ -1,0 +1,12 @@
+Module: vault_api
+Friends: 0
+Structs: 0
+Functions: 8
+  [ENTRY] public distribute_fees(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::vault::Vault>)
+  [ENTRY] public process_pending_requests(u32)
+  [ENTRY] public activate_vault(&signer, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::vault::Vault>)
+  public contribute_funds(address, address, 0x1::fungible_asset::FungibleAsset)
+  friend create_vault(&signer, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dex_accounts::Subaccount>, 0x1::object::Object<0x1::fungible_asset::Metadata>, 0x1::string::String, 0x1::string::String, vector<0x1::string::String>, 0x1::string::String, 0x1::string::String, 0x1::string::String, u64, u64, u64) -> (0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::vault::Vault>)
+  friend contribute_from_dex(address, address, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::account_management_apis::TransferCapability)
+  [ENTRY] private create_and_fund_vault(&signer, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dex_accounts::Subaccount>, 0x1::object::Object<0x1::fungible_asset::Metadata>, 0x1::string::String, 0x1::string::String, vector<0x1::string::String>, 0x1::string::String, 0x1::string::String, 0x1::string::String, u64, u64, u64, u64, bool, bool)
+  public get_max_synchronous_redemption(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::vault::Vault>) -> (u64)

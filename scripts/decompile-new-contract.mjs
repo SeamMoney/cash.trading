@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Decompile Decibel v3 contract (Jan 21, 2026)
- * New address: 0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88
+ * Decompile Decibel v4 contract (Feb 11, 2026 - testnet reset)
+ * New address: 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f
  */
 
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const CONTRACT_ADDRESS = '0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88';
-const OUTPUT_DIR = join(process.cwd(), 'decompiled_contracts/v3_jan21_2026');
+const CONTRACT_ADDRESS = '0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f';
+const OUTPUT_DIR = join(process.cwd(), 'decompiled_contracts/v4_feb11_2026');
 const BYTECODE_DIR = join(OUTPUT_DIR, 'bytecode');
 const SOURCE_DIR = join(OUTPUT_DIR, 'source');
 

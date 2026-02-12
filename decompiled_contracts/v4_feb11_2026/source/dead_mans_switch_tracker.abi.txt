@@ -1,0 +1,18 @@
+Module: dead_mans_switch_tracker
+Friends: 1
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::market_types
+Structs: 5
+  struct DeadMansSwitchTracker has store
+    min_keep_alive_time_secs: u64
+    state: 0x1::big_ordered_map::BigOrderedMap<address, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dead_mans_switch_tracker::KeepAliveState>
+  struct KeepAliveDisabledEvent has copy, drop, store
+  struct KeepAliveState has store
+    session_start_time_secs: u64
+    expiration_time_secs: u64
+  struct KeepAliveUpdateEvent has copy, drop, store
+  struct MinKeepAliveTimeUpdatedEvent has copy, drop, store
+Functions: 4
+  friend is_order_valid(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dead_mans_switch_tracker::DeadMansSwitchTracker, address, 0x1::option::Option<u64>) -> (bool)
+  friend keep_alive(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dead_mans_switch_tracker::DeadMansSwitchTracker, address, address, address, u64)
+  friend new_dead_mans_switch_tracker(u64) -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dead_mans_switch_tracker::DeadMansSwitchTracker)
+  friend set_min_keep_alive_time_secs(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::dead_mans_switch_tracker::DeadMansSwitchTracker, address, address, u64)

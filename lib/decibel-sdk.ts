@@ -8,9 +8,10 @@
  * - noFeePayer: true (fee payer had issues)
  * - skipSimulate: true (faster)
  *
- * Updated Feb 3, 2026:
- * - New contract address after testnet reset (Jan 21, 2026)
- * - Module changed: dex_accounts -> dex_accounts_entry
+ * Updated Feb 11, 2026:
+ * - New contract address after testnet reset
+ * - New orderbook types package
+ * - trigger_matching renamed to process_perp_market_pending_requests
  *
  * @see https://docs.decibel.trade/typescript-sdk/overview
  */
@@ -18,15 +19,15 @@
 import { DecibelReadDex, DecibelWriteDex, TESTNET_CONFIG, type DecibelConfig } from "@decibeltrade/sdk";
 import { Account, Ed25519PrivateKey, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 
-// Custom config with updated contract addresses (Feb 3, 2026 - testnet reset Jan 21, 2026)
-// Override SDK's TESTNET_CONFIG with new package/orderbook addresses
+// Custom config with updated contract addresses (Feb 11, 2026 - testnet reset)
+// Override SDK's TESTNET_CONFIG with new package address
+// Note: orderbook types package is 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7
+// but SDK Deployment type only has: package, usdc, testc, perpEngineGlobal
 const CUSTOM_TESTNET_CONFIG: DecibelConfig = {
   ...TESTNET_CONFIG,
   deployment: {
     ...TESTNET_CONFIG.deployment,
-    package: "0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88",
-    // Note: orderbook address may need updating - check SDK 0.2.9 defaults
-    orderbook: "0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7",
+    package: "0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f",
   },
 };
 

@@ -5,13 +5,13 @@
  * The DecibelClient class (for server-side trading) is in a separate file.
  */
 
-// Decibel constants (updated Feb 3, 2026 - testnet contract reset Jan 21, 2026)
-export const DECIBEL_PACKAGE = '0xd0b2dd565e0f2020d66d581a938e7766b2163db4b8c63410c17578d32b4e9e88';
-export const ORDERBOOK_ADDR = '0x1b3fa27b03773a4265a09b292c5059da10b4ae8a3dbd2972245c7504e89f52e7';
+// Decibel constants (updated Feb 11, 2026 - testnet reset)
+export const DECIBEL_PACKAGE = '0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f';
+export const ORDERBOOK_ADDR = '0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7';
 export const USDC_DECIMALS = 6;
 
 // Predeposit constants (Season 0) - TESTNET
-// Object address derived from createObjectAddress(DECIBEL_PACKAGE, "predeposit")
+// Note: predeposit object needs rediscovery after reset
 export const PREDEPOSIT_OBJECT = '0x67d48b77f9110c959b9f7e3141480da14798f70cf3213c7200f3699fc68abaaa';
 export const PREDEPOSIT_MIN_AMOUNT = 50; // $50 minimum deposit
 export const PREDEPOSIT_MAX_AMOUNT = 1_000_000; // $1M maximum per wallet
@@ -31,80 +31,92 @@ export const MAKER_REBATE = 0.00015; // -0.015%
 export const TAKER_FEE = 0.00045; // 0.045%
 export const BUILDER_FEE = 0.0002; // 0.02%
 
-// Market addresses (from perp_engine::Global on-chain - TESTNET - updated Feb 5, 2026)
-// All markets: lot_size=10, min_size=100000, ticker_size=100000, sz_precision=8 decimals
+// Market addresses (from perp_engine::Global on-chain - TESTNET - updated Feb 11, 2026)
+// Per-market: lot_size=10, min_size=100000, but ticker_size & sz_precision vary
 export const MARKETS = {
   'BTC/USD': {
-    address: '0x274b5e1aa56156f087d2a39fc6bded92f27e2bf6bbfff97ea4b4669b8a6d6557',
+    address: '0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a',
     maxLeverage: 40,
     sizeDecimals: 8,
     priceDecimals: 6,
+    tickerSize: 100000, // $0.10
   },
   'ETH/USD': {
-    address: '0x3f20be2579c669064acc135e15cda176a6418a6e26f074bfb9ba81d8a681d0bd',
+    address: '0x0dd1772998bb9bbb1189ef7d680353f1b97adb947b178167b03ace95dd2fcf8e',
     maxLeverage: 20,
-    sizeDecimals: 8,
+    sizeDecimals: 7,
     priceDecimals: 6,
+    tickerSize: 10000, // $0.01
   },
   'SOL/USD': {
-    address: '0x563b315ea3453cf79727de5160b32dfb960e3abbe21d9022d49b428d3c3e9981',
+    address: '0x2b67f9e6b9bb4b83e952058d3e6b17a8970f74175f3c00db4d0c787d86e69fe7',
     maxLeverage: 10,
-    sizeDecimals: 8,
+    sizeDecimals: 6,
     priceDecimals: 6,
+    tickerSize: 1000, // $0.001
   },
   'APT/USD': {
-    address: '0x4fd3b7994c48c5c7a48ebd284ce11ecaa9ea9c2cf032f8aebff45735e59e79ac',
+    address: '0x57ba43880ee443eebd5021af91d5a8156fb3e04247c97c30912e6501c187a428',
     maxLeverage: 10,
-    sizeDecimals: 8,
+    sizeDecimals: 4,
     priceDecimals: 6,
+    tickerSize: 10, // $0.00001
   },
   'XRP/USD': {
-    address: '0xf67a0879b80b2ece2d6d498f3cebc6c206b8de434473a79fbb840d4de3ad7eec',
+    address: '0x19ecde0fdf8308512d4b94400f65302b4c56606f6155a17dd15a612aa700e5ef',
     maxLeverage: 10,
-    sizeDecimals: 8,
+    sizeDecimals: 4,
     priceDecimals: 6,
+    tickerSize: 10, // $0.00001
   },
   'AAVE/USD': {
-    address: '0x4d2d4b80b943d1fd139bf2cc4a2e46f5b4b69cde8efd1af420d7000a1b351695',
+    address: '0xff9fad29f13afbd5f4598b56b097e7a140cbfe1f9dc88662674cfa3a2a712022',
     maxLeverage: 5,
-    sizeDecimals: 8,
+    sizeDecimals: 6,
     priceDecimals: 6,
+    tickerSize: 1000, // $0.001
   },
   'HYPE/USD': {
-    address: '0x33414fbda4a7247a49b26f05d6c297692de079b904fbe0a50c99985df22942db',
+    address: '0x5a08d91d09ff042f6546b4bfcf25612fa708ad8787109892abac0b7e2ac2186a',
     maxLeverage: 3,
-    sizeDecimals: 8,
+    sizeDecimals: 5,
     priceDecimals: 6,
+    tickerSize: 100, // $0.0001
   },
   'WLFI/USD': {
-    address: '0x1c7b5de5ed55e89244797f1888dde0f99d086afd0c739a2897589f98f262a714',
+    address: '0xca6ca1d77048f8bbd6f1ba21b417eaebf363952c789edb470fc9c9fca1379f48',
     maxLeverage: 3,
-    sizeDecimals: 8,
+    sizeDecimals: 3,
     priceDecimals: 6,
+    tickerSize: 1, // $0.000001
   },
   'SUI/USD': {
-    address: '0x2c0a985573e3ef66b99735858a2bb798e80580d639db3500ff0836786c8fb70b',
+    address: '0x6201b0c52ccfa4db99832b5776805f0f78fe681707c305418379174e9eb27c03',
     maxLeverage: 3,
-    sizeDecimals: 8,
+    sizeDecimals: 4,
     priceDecimals: 6,
+    tickerSize: 10, // $0.00001
   },
   'BNB/USD': {
-    address: '0x5136d1a68791f7a9caa6f6574f2c5b7bd7cf204262b770149bb7c61561e0c95b',
+    address: '0xa9c06614506beeed5bf1b1834d045f2d1c68355657748bebd19417d0236cf897',
     maxLeverage: 3,
-    sizeDecimals: 8,
+    sizeDecimals: 6,
     priceDecimals: 6,
+    tickerSize: 1000, // $0.001
   },
   'DOGE/USD': {
-    address: '0x8deecfcaccfea7f4f1a2f203372aeee16d41068bb4ce955dcc4f15c3934c1ae7',
+    address: '0x2caf30beb1257543cab9182a325162e65a9e0e3e8ad970b6f2dea41ef3bc8d80',
     maxLeverage: 5,
-    sizeDecimals: 8,
+    sizeDecimals: 3,
     priceDecimals: 6,
+    tickerSize: 1, // $0.000001
   },
   'ZEC/USD': {
-    address: '0x9a18f3b7400157c46f713d85f3d82d6c52d95b1cb45430506cf593eb39165ebf',
+    address: '0x3d117276a2b009e710b761e1a554b5b66f01b1dac4e58972a2917945189a603c',
     maxLeverage: 5,
-    sizeDecimals: 8,
+    sizeDecimals: 6,
     priceDecimals: 6,
+    tickerSize: 1000, // $0.001
   },
 } as const;
 

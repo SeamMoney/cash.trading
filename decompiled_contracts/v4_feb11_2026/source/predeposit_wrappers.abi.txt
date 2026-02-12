@@ -1,0 +1,11 @@
+Module: predeposit_wrappers
+Friends: 0
+Structs: 0
+Functions: 7
+  public add_to_allow_list_wrapper(&signer, vector<address>)
+  public admin_register_referral_code_wrapper(&signer, address, 0x1::string::String)
+  public admin_register_referrer_wrapper(&signer, address, 0x1::string::String)
+  public contribute_funds_to_vault_wrapper(address, address, 0x1::fungible_asset::FungibleAsset)
+  public deposit_funds_to_subaccount_wrapper(address, 0x1::fungible_asset::FungibleAsset, address)
+  public get_or_create_primary_subaccount_wrapper(address) -> (address)
+  public set_max_referral_codes_wrapper(&signer, address, u64)

@@ -1,0 +1,26 @@
+Module: builder_code_registry
+Friends: 5
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::trading_fees_manager
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_matching_engine
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_engine
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::admin_apis
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_engine_api
+Structs: 3
+  struct BuilderAndAccount has copy, drop, store
+    account: address
+    builder: address
+  struct BuilderCode has copy, drop, store
+    builder: address
+    fees: u64
+  struct Registry has store, key
+Functions: 10
+  friend initialize(&signer, u64)
+  friend approve_max_fee(&signer, address, u64)
+  public get_approved_max_fee(address, address) -> (u64)
+  friend get_builder_fee_for_notional(address, 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode, u128) -> (u64)
+  friend get_builder_from_builder_code(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode) -> (address)
+  friend get_fees_from_builder_code(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode) -> (u64)
+  friend new_builder_code(address, u64) -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode)
+  friend revoke_max_fee(&signer, address)
+  friend set_global_max_fee(u64)
+  friend validate_builder_code(address, &0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::builder_code_registry::BuilderCode)

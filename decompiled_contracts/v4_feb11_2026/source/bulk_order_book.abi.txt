@@ -1,0 +1,14 @@
+Module: bulk_order_book
+Friends: 1
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book
+Structs: 1
+  struct BulkOrderBook<1> has store
+Functions: 8
+  friend cancel_bulk_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::price_time_index::PriceTimeIndex, address) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend cancel_bulk_order_at_price<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::price_time_index::PriceTimeIndex, address, u64, bool) -> (u64, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend get_bulk_order<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, address) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend get_remaining_size<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, address, bool) -> (u64)
+  friend get_single_match_for_taker<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::price_time_index::PriceTimeIndex, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::ActiveMatchedOrder, bool) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatch<T0>)
+  friend new_bulk_order_book<1>() -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>)
+  friend place_bulk_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::price_time_index::PriceTimeIndex, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrderRequest<T0>) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrderPlaceResponse<T0>)
+  friend reinsert_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::bulk_order_book::BulkOrderBook<T0>, &mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::price_time_index::PriceTimeIndex, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatchDetails<T0>, &0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatchDetails<T0>)

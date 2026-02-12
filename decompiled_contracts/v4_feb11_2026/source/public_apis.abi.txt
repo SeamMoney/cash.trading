@@ -1,0 +1,9 @@
+Module: public_apis
+Friends: 0
+Structs: 0
+Functions: 5
+  [ENTRY] friend close_delisted_position(address, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>)
+  [ENTRY] friend liquidate_positions(vector<address>, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>)
+  [ENTRY] friend liquidate_position(address, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>)
+  [ENTRY] public process_perp_collateral_withdrawals(u32)
+  [ENTRY] public process_perp_market_pending_requests(0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, u32)

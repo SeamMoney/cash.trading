@@ -52,12 +52,19 @@ const REFRESH_INTERVAL_MS = 10_000  // Cancel-replace cycle
 const PNL_INTERVAL_MS = 300_000     // PnL snapshot every 5 minutes
 const CANCEL_SETTLE_MS = 500        // Wait for cancels to settle before placing
 
-// Chain constants (all markets on current testnet)
-const TICKER_SIZE = 100000n         // $0.1 in 6-decimal format
+// Chain constants (shared across all markets)
 const LOT_SIZE = 10n
-const MIN_SIZE = 100000n            // 0.001 units in 8-decimal format
-const PX_DECIMALS = 6
-const SZ_DECIMALS = 8
+const MIN_SIZE = 100000n            // Minimum size in chain units
+const PX_DECIMALS = 6               // Price always uses 6 decimals
+
+// Per-market config helper (ticker_size and sz_decimals now vary)
+function getMarketChainConfig(marketName: string) {
+  const m = MARKETS[marketName as MarketName]
+  return {
+    tickerSize: BigInt(m?.tickerSize ?? 100000),
+    szDecimals: m?.sizeDecimals ?? 8,
+  }
+}
 
 // Client order ID prefix for our grid orders
 const ORDER_PREFIX = 'GM:'
@@ -84,19 +91,19 @@ interface GridOrder {
   clientOrderId: string
 }
 
-function alignPriceDown(priceUSD: number): bigint {
+function alignPriceDown(priceUSD: number, tickerSize: bigint): bigint {
   const raw = BigInt(Math.floor(priceUSD * 10 ** PX_DECIMALS))
-  return (raw / TICKER_SIZE) * TICKER_SIZE
+  return (raw / tickerSize) * tickerSize
 }
 
-function alignPriceUp(priceUSD: number): bigint {
+function alignPriceUp(priceUSD: number, tickerSize: bigint): bigint {
   const raw = BigInt(Math.ceil(priceUSD * 10 ** PX_DECIMALS))
-  return ((raw + TICKER_SIZE - 1n) / TICKER_SIZE) * TICKER_SIZE
+  return ((raw + tickerSize - 1n) / tickerSize) * tickerSize
 }
 
-function calculateSize(baseSizeUSD: number, multiplier: number, markPrice: number): bigint {
+function calculateSize(baseSizeUSD: number, multiplier: number, markPrice: number, szDecimals: number): bigint {
   const sizeInBase = (baseSizeUSD * multiplier) / markPrice
-  let sizeChain = BigInt(Math.floor(sizeInBase * 10 ** SZ_DECIMALS))
+  let sizeChain = BigInt(Math.floor(sizeInBase * 10 ** szDecimals))
   // Align to lot size
   sizeChain = (sizeChain / LOT_SIZE) * LOT_SIZE
   // Enforce minimum
@@ -111,6 +118,7 @@ export function calculateGridOrders(marketName: string, markPrice: number): Grid
   const marketAddr = MARKETS[marketName as MarketName]?.address
   if (!marketAddr) return []
 
+  const { tickerSize, szDecimals } = getMarketChainConfig(marketName)
   const orders: GridOrder[] = []
   const epoch = Math.floor(Date.now() / 1000)
 
@@ -122,9 +130,9 @@ export function calculateGridOrders(marketName: string, markPrice: number): Grid
     const bidPrice = markPrice - spread
     const askPrice = markPrice + spread
 
-    const bidPriceChain = alignPriceDown(bidPrice)
-    const askPriceChain = alignPriceUp(askPrice)
-    const sizeChain = calculateSize(config.baseSizeUSD, sizeMult, markPrice)
+    const bidPriceChain = alignPriceDown(bidPrice, tickerSize)
+    const askPriceChain = alignPriceUp(askPrice, tickerSize)
+    const sizeChain = calculateSize(config.baseSizeUSD, sizeMult, markPrice, szDecimals)
 
     // Sanity: skip if price is <= 0 or too close to mark
     if (bidPriceChain <= 0n || askPriceChain <= 0n) continue

@@ -1,0 +1,13 @@
+Module: pre_cancellation_tracker
+Friends: 1
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::market_types
+Structs: 2
+  struct ExpirationAndOrderId has copy, drop, store
+    expiration_time: u64
+    account_order_id: 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::AccountClientOrderId
+  struct PreCancellationTracker has store
+Functions: 4
+  friend garbage_collect(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::pre_cancellation_tracker::PreCancellationTracker)
+  friend is_pre_cancelled(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::pre_cancellation_tracker::PreCancellationTracker, address, 0x1::string::String) -> (bool)
+  friend new_pre_cancellation_tracker(u64) -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::pre_cancellation_tracker::PreCancellationTracker)
+  friend pre_cancel_order_for_tracker(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::pre_cancellation_tracker::PreCancellationTracker, address, 0x1::string::String)

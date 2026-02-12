@@ -1,0 +1,42 @@
+Module: async_withdraw_queue
+Friends: 3
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_engine
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::account_management_apis
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::admin_apis
+Structs: 11
+  struct AsyncWithdrawQueueConfig has key
+  struct PendingWithdrawKey has copy, drop, store
+    time: u64
+    tie_breaker: u128
+  struct PendingWithdrawRequest has copy, drop, store
+  struct RateLimitCheckResult has 
+  struct RateLimitConfig has copy, drop, store
+  struct RateLimitConfigUpdatedEvent has drop, store
+  struct RateLimitStatus has copy, drop
+  struct UserRequestKey has copy, drop, store
+    user: address
+    request_id: u128
+  struct WithdrawCancelledEvent has drop, store
+  struct WithdrawProcessedEvent has drop, store
+  struct WithdrawQueuedEvent has drop, store
+Functions: 20
+  friend initialize(&signer)
+  friend cancel_withdrawal(address, u128)
+  friend configure_rate_limit(0x1::object::Object<0x1::fungible_asset::Metadata>, bool, u64, u64, u64, u8)
+  friend default_can_deposit(address, u64) -> (bool)
+  public get_current_window_usage(0x1::object::Object<0x1::fungible_asset::Metadata>, u64) -> (u64, u64)
+  public get_pending_withdrawal_count(address) -> (u64)
+  public get_pending_withdrawals(address) -> (vector<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_withdraw_queue::PendingWithdrawRequest>)
+  public get_queue_length() -> (u64)
+  public get_rate_limit_config(0x1::object::Object<0x1::fungible_asset::Metadata>) -> (0x1::option::Option<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_withdraw_queue::RateLimitConfig>)
+  friend get_rate_limit_status(0x1::object::Object<0x1::fungible_asset::Metadata>) -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::async_withdraw_queue::RateLimitStatus)
+  friend process_pending_withdrawals(&mut u32)
+  friend queue_withdrawal(address, 0x1::object::Object<0x1::fungible_asset::Metadata>, u64, address) -> (u128)
+  friend queue_withdrawal_from_isolated(address, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, 0x1::object::Object<0x1::fungible_asset::Metadata>, u64, address) -> (u128)
+  friend request_withdrawal_from_cross(&signer, 0x1::object::Object<0x1::fungible_asset::Metadata>, u64, address) -> (0x1::option::Option<u128>)
+  friend request_withdrawal_from_isolated(&signer, 0x1::object::Object<0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::perp_market::PerpMarket>, 0x1::object::Object<0x1::fungible_asset::Metadata>, u64, address) -> (0x1::option::Option<u128>)
+  friend set_can_deposit_callback(0x1::object::Object<0x1::fungible_asset::Metadata>, |address,u64|bool)
+  friend set_rate_limit_enabled(0x1::object::Object<0x1::fungible_asset::Metadata>, bool)
+  friend update_absolute_rate_limit(0x1::object::Object<0x1::fungible_asset::Metadata>, u64)
+  friend update_rate_limit_bps(0x1::object::Object<0x1::fungible_asset::Metadata>, u64)
+  friend update_window_duration(0x1::object::Object<0x1::fungible_asset::Metadata>, u64)

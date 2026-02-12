@@ -1,0 +1,34 @@
+Module: order_book
+Friends: 4
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::market_types
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::market_bulk_order
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_placement
+  friend 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_operations
+Structs: 1
+  struct OrderBook<1> has store
+Functions: 25
+  friend best_ask_price<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>) -> (0x1::option::Option<u64>)
+  friend best_bid_price<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>) -> (0x1::option::Option<u64>)
+  public get_slippage_price<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, bool, u64) -> (0x1::option::Option<u64>)
+  public is_taker_order<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, u64, bool, 0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::TriggerCondition>) -> (bool)
+  friend place_maker_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrderRequest<T0>)
+  friend cancel_bulk_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend cancel_bulk_order_at_price<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, u64, bool) -> (u64, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend get_bulk_order<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrder<T0>)
+  friend get_single_match_for_taker<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, u64, u64, bool) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatch<T0>)
+  friend place_bulk_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrderRequest<T0>) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::bulk_order_types::BulkOrderPlaceResponse<T0>)
+  friend reinsert_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatchDetails<T0>, &0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_match_types::OrderMatchDetails<T0>)
+  friend take_ready_price_based_orders<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, u64, u64) -> (vector<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrder<T0>>)
+  friend take_ready_time_based_orders<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, u64) -> (vector<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrder<T0>>)
+  friend client_order_id_exists<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0x1::string::String) -> (bool)
+  friend get_order_id_by_client_id<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0x1::string::String) -> (0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId>)
+  friend cancel_single_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId) -> (0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrder<T0>)
+  friend decrease_single_order_size<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId, u64)
+  friend get_bulk_order_remaining_size<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, bool) -> (u64)
+  friend get_single_order<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId) -> (0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::OrderWithState<T0>>)
+  friend get_single_order_metadata<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId) -> (0x1::option::Option<T0>)
+  public get_single_remaining_size<1>(&0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId) -> (u64)
+  friend new_order_book<1>() -> (0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>)
+  friend set_single_order_metadata<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId, T0)
+  friend try_cancel_single_order<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::order_book_types::OrderId) -> (0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrder<T0>>)
+  friend try_cancel_single_order_with_client_order_id<1>(&mut 0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f::order_book::OrderBook<T0>, address, 0x1::string::String) -> (0x1::option::Option<0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7::single_order_types::SingleOrder<T0>>)

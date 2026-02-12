@@ -173,19 +173,20 @@ const MARKETS: Record<string, string> = {
 
 // Market configuration (from on-chain PerpMarketConfig - TESTNET - updated Feb 5, 2026)
 // All markets now share: tickerSize=100000, lotSize=10, minSize=100000, szDecimals=8
+// Per-market chain params (updated Feb 11, 2026 - testnet reset, params now vary)
 const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
-  'BTC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'ETH/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'SOL/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'APT/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'XRP/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'AAVE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'HYPE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'WLFI/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'SUI/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'BNB/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'DOGE/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
-  'ZEC/USD': { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'BTC/USD':  { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
+  'ETH/USD':  { tickerSize: 10000n,  lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 7 },
+  'SOL/USD':  { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
+  'APT/USD':  { tickerSize: 10n,     lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'XRP/USD':  { tickerSize: 10n,     lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'AAVE/USD': { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
+  'HYPE/USD': { tickerSize: 100n,    lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 5 },
+  'WLFI/USD': { tickerSize: 1n,      lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
+  'SUI/USD':  { tickerSize: 10n,     lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 4 },
+  'BNB/USD':  { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
+  'DOGE/USD': { tickerSize: 1n,      lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
+  'ZEC/USD':  { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
 }
 
 // Decibel testnet DLP vault "backstop_liquidator" subaccount (observed on-chain)
@@ -2109,12 +2110,12 @@ export class VolumeBotEngine {
         data: { lastOrderTime: new Date() }
       })
 
-      // Place GTC order + trigger_matching in parallel
+      // Place GTC order + process_pending_requests in parallel
       // The async matching engine only auto-triggers 33% of the time (counter % 3 == 0)
-      // By calling trigger_matching ourselves, we force immediate processing
+      // By calling process_perp_market_pending_requests ourselves, we force immediate processing
       // Build both TXs with seq N and N+1, submit without waiting
       try {
-        console.log(`📝 [GTC] Building order + trigger_matching...`)
+        console.log(`📝 [GTC] Building order + process_pending_requests...`)
 
         const [orderTx, triggerTx] = await Promise.all([
           this.aptos.transaction.build.simple({
@@ -2137,7 +2138,7 @@ export class VolumeBotEngine {
           this.aptos.transaction.build.simple({
             sender: this.botAccount.accountAddress,
             data: {
-              function: `${DECIBEL_PACKAGE}::public_apis::trigger_matching`,
+              function: `${DECIBEL_PACKAGE}::public_apis::process_perp_market_pending_requests`,
               typeArguments: [],
               functionArguments: [this.config.market, 10],
             },
@@ -2153,11 +2154,11 @@ export class VolumeBotEngine {
           signer: this.botAccount,
           transaction: orderTx,
         })
-        // Fire trigger_matching right after — don't await, let it process in background
+        // Fire process_pending_requests right after — don't await, let it process in background
         const triggerPromise = this.aptos.signAndSubmitTransaction({
           signer: this.botAccount,
           transaction: triggerTx,
-        }).catch(e => console.warn(`⚠️ trigger_matching submit failed:`, e.message?.slice(0, 100)))
+        }).catch(e => console.warn(`⚠️ process_pending_requests submit failed:`, e.message?.slice(0, 100)))
 
         console.log(`📤 [GTC] Order + trigger submitted. Polling...`)
 
@@ -2291,7 +2292,7 @@ export class VolumeBotEngine {
       console.log(`\n📝 [GTC] Force closing ${position.isLong ? 'LONG' : 'SHORT'} position...`)
       console.log(`   Size: ${position.size}, Close price: $${closePrice.toFixed(2)}`)
 
-      // Build close order TX + trigger_matching TX + cancel TP/SL all in parallel
+      // Build close order TX + process_pending_requests TX + cancel TP/SL all in parallel
       const [, orderTx, triggerTx] = await Promise.all([
         this.cancelTpSlForPosition().catch(() => {}),
         this.aptos.transaction.build.simple({
@@ -2314,7 +2315,7 @@ export class VolumeBotEngine {
         this.aptos.transaction.build.simple({
           sender: this.botAccount.accountAddress,
           data: {
-            function: `${DECIBEL_PACKAGE}::public_apis::trigger_matching`,
+            function: `${DECIBEL_PACKAGE}::public_apis::process_perp_market_pending_requests`,
             typeArguments: [],
             functionArguments: [this.config.market, 10],
           },
@@ -2325,7 +2326,7 @@ export class VolumeBotEngine {
       // @ts-ignore - rawTransaction.sequence_number is accessible
       triggerTx.rawTransaction.sequence_number = orderTx.rawTransaction.sequence_number + 1n
 
-      // Submit close order, then trigger_matching immediately
+      // Submit close order, then process_pending_requests immediately
       const committedTxn = await this.aptos.signAndSubmitTransaction({
         signer: this.botAccount,
         transaction: orderTx,
@@ -2333,7 +2334,7 @@ export class VolumeBotEngine {
       const triggerPromise = this.aptos.signAndSubmitTransaction({
         signer: this.botAccount,
         transaction: triggerTx,
-      }).catch(e => console.warn(`⚠️ trigger_matching submit failed:`, e.message?.slice(0, 100)))
+      }).catch(e => console.warn(`⚠️ process_pending_requests submit failed:`, e.message?.slice(0, 100)))
 
       console.log(`📤 [GTC] Close + trigger submitted. Polling...`)
 

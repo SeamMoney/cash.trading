@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
-import { DECIBEL_PACKAGE } from '@/lib/decibel-client'
+import { getActiveNetwork, TESTNET_CONFIG, MAINNET_CONFIG } from '@/lib/decibel-sdk'
+
+const DECIBEL_PACKAGE = getActiveNetwork() === 'mainnet'
+  ? MAINNET_CONFIG.deployment.package
+  : TESTNET_CONFIG.deployment.package
 import { prisma } from '@/lib/prisma'
 
 // Market configs for size/price decimals and ticker sizes (updated Feb 5, 2026)
@@ -57,9 +61,14 @@ export async function POST(request: NextRequest) {
     const apiKey = (process.env.APTOS_NODE_API_KEY || process.env.GEOMI_API_KEY || '')
       .replace(/\\n/g, '').replace(/\n/g, '').trim()
 
+    const activeNet = getActiveNetwork()
     const config = new AptosConfig({
-      network: Network.TESTNET,
-      clientConfig: apiKey ? { HEADERS: { Authorization: `Bearer ${apiKey}` } } : undefined
+      network: activeNet === 'mainnet' ? Network.MAINNET : Network.TESTNET,
+      clientConfig: apiKey
+        ? activeNet === 'mainnet'
+          ? { API_KEY: apiKey }
+          : { HEADERS: { Authorization: `Bearer ${apiKey}` } }
+        : undefined,
     })
     const aptos = new Aptos(config)
 
@@ -94,13 +103,13 @@ export async function POST(request: NextRequest) {
     // Get current price for TWAP limit
     let currentPrice = 0
     try {
-      const priceData = await getMarkPrice(marketAddress, 'testnet', 2000)
+      const priceData = await getMarkPrice(marketAddress, getActiveNetwork(), 2000)
       if (priceData) {
         currentPrice = priceData.markPx
       } else {
         // Fallback to on-chain
         const priceRes = await fetch(
-          `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddress}/resources`
+          `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddress}/resources`
         )
         const priceResources = await priceRes.json()
         const priceResource = priceResources.find((r: any) =>

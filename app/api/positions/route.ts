@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMarkPrice } from '@/lib/price-feed'
-import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
+import { createAuthenticatedAptos, getActiveNetwork } from '@/lib/decibel-sdk'
 
 // Market configs for size/price decimals (updated Feb 5, 2026 - all markets now use 8 szDecimals)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 
       try {
         const marketRes = await fetch(
-          `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+          `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
         )
         const marketResources = await marketRes.json()
         const configResource = marketResources.find((r: any) =>
@@ -115,13 +115,13 @@ export async function GET(request: NextRequest) {
       let marginUsed: number | undefined     // Margin used
 
       try {
-        const priceData = await getMarkPrice(marketAddr, 'testnet', 2000)
+        const priceData = await getMarkPrice(marketAddr, getActiveNetwork(), 2000)
         if (priceData) {
           currentPrice = priceData.markPx
         } else {
           // Fallback to on-chain oracle
           const priceRes = await fetch(
-            `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+            `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
           )
           const priceResources = await priceRes.json()
           const priceResource = priceResources.find((r: any) =>

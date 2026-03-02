@@ -2,23 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
-import { createAuthenticatedAptos, TESTNET_CONFIG, getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, getAllMarketAddresses } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
 
-const DECIBEL_PACKAGE = TESTNET_CONFIG.deployment.package ||
-  process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
-  '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+const net = getActiveNetwork();
+const DECIBEL_PACKAGE = net === 'mainnet'
+  ? MAINNET_CONFIG.deployment.package
+  : (process.env.NEXT_PUBLIC_DECIBEL_PACKAGE || TESTNET_CONFIG.deployment.package)
 
-// Market configs for size decimals
-const MARKET_CONFIG: Record<string, { szDecimals: number }> = {
+// Market configs for size decimals (differ between testnet and mainnet)
+const TESTNET_SIZE_CONFIG: Record<string, { szDecimals: number }> = {
   'BTC/USD': { szDecimals: 8 },
-  'APT/USD': { szDecimals: 4 },
+  'ETH/USD': { szDecimals: 8 },
+  'SOL/USD': { szDecimals: 8 },
+  'APT/USD': { szDecimals: 8 },
   'WLFI/USD': { szDecimals: 3 },
-  'SOL/USD': { szDecimals: 6 },
-  'ETH/USD': { szDecimals: 7 },
 }
+const MAINNET_SIZE_CONFIG: Record<string, { szDecimals: number }> = {
+  'BTC/USD': { szDecimals: 8 },
+  'ETH/USD': { szDecimals: 8 },
+  'SOL/USD': { szDecimals: 7 },
+  'APT/USD': { szDecimals: 5 },
+  'HYPE/USD': { szDecimals: 6 },
+}
+const MARKET_CONFIG = net === 'mainnet' ? MAINNET_SIZE_CONFIG : TESTNET_SIZE_CONFIG
 
 export async function POST(request: NextRequest) {
   try {
@@ -127,7 +136,7 @@ export async function POST(request: NextRequest) {
             console.log(`   Size: ${positionSize}, Entry: $${entryPrice.toFixed(2)}`)
 
             // Get current mark price for volume/PnL calculation
-            const priceData = await getMarkPrice(bot.market, 'testnet', 3000)
+            const priceData = await getMarkPrice(bot.market, getActiveNetwork(), 3000)
             const currentPrice = priceData?.markPx || entryPrice // Fallback to entry if WebSocket fails
 
             // Close the position with TWAP

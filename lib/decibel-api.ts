@@ -10,6 +10,7 @@
  */
 
 import { normalizeArrayResponse } from './api-helpers'
+import { getActiveNetwork } from './decibel-sdk'
 
 const TESTNET_API_URL = 'https://api.testnet.aptoslabs.com/decibel/api/v1'
 const MAINNET_API_URL = 'https://api.mainnet.aptoslabs.com/decibel/api/v1'
@@ -105,7 +106,7 @@ function getApiKey(): string {
 /**
  * Get base URL for the specified network
  */
-function getBaseUrl(network: 'testnet' | 'mainnet' = 'testnet'): string {
+function getBaseUrl(network: 'testnet' | 'mainnet' = getActiveNetwork()): string {
   return network === 'testnet' ? TESTNET_API_URL : MAINNET_API_URL
 }
 
@@ -126,7 +127,7 @@ export async function getDecibelAccountOverview(
   } = {}
 ): Promise<DecibelAccountOverview | null> {
   const {
-    network = 'testnet',
+    network = getActiveNetwork(),
     volumeWindow = '30d',
     includePerformance = false,
     performanceLookbackDays = 90
@@ -182,7 +183,7 @@ export async function getDecibelTradeHistory(
   } = {}
 ): Promise<DecibelTrade[]> {
   const {
-    network = 'testnet',
+    network = getActiveNetwork(),
     limit = 100,
     offset = 0,
     market,
@@ -238,7 +239,7 @@ export async function getDecibelOpenOrders(
   } = {}
 ): Promise<{ items: DecibelOpenOrder[]; total_count?: number }> {
   const {
-    network = 'testnet',
+    network = getActiveNetwork(),
     limit = 100,
     offset = 0,
     market,
@@ -291,7 +292,7 @@ export async function getDecibelOpenOrders(
 export async function getDecibelVolume(
   userAddr: string,
   volumeWindow: VolumeWindow = '30d',
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<number | null> {
   const overview = await getDecibelAccountOverview(userAddr, {
     network,
@@ -311,6 +312,127 @@ export function formatVolume(volume: number): string {
     return `$${(volume / 1_000).toFixed(2)}K`
   } else {
     return `$${volume.toFixed(2)}`
+  }
+}
+
+// ============================================
+// VAULT API ENDPOINTS
+// ============================================
+
+export interface VaultInfo {
+  address: string
+  name: string
+  description: string | null
+  manager: string
+  status: string
+  created_at: number
+  tvl: number | null
+  volume: number | null
+  volume_30d: number | null
+  all_time_pnl: number | null
+  net_deposits: number | null
+  all_time_return: number | null
+  past_month_return: number | null
+  sharpe_ratio: number | null
+  max_drawdown: number | null
+  profit_share: number | null
+  depositors: number | null
+  perp_equity: number | null
+  vault_type: 'user' | 'protocol' | null
+}
+
+export interface VaultPerformance {
+  vault: VaultInfo
+  account_address: string
+  total_deposited: number | null
+  total_withdrawn: number | null
+  current_num_shares: number | null
+  current_value_of_shares: number | null
+  share_price: number | null
+  all_time_earned: number | null
+  all_time_return: number | null
+  volume: number | null
+  deposits: Array<{
+    amount_usdc: number
+    shares_received: number
+    timestamp_ms: number
+    unlock_timestamp_ms: number | null
+  }> | null
+  withdrawals: Array<{
+    amount_usdc: number | null
+    shares_redeemed: number
+    timestamp_ms: number
+    status: string
+  }> | null
+  locked_amount: number | null
+  unrealized_pnl: number | null
+}
+
+/**
+ * Get vaults from Decibel REST API
+ */
+export async function getVaults(
+  options: {
+    network?: 'testnet' | 'mainnet'
+    vaultType?: 'user' | 'protocol'
+    limit?: number
+  } = {}
+): Promise<{ items: VaultInfo[]; total_value_locked?: number; total_count?: number }> {
+  const { network = getActiveNetwork(), vaultType, limit = 50 } = options
+
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const params = new URLSearchParams({ limit: limit.toString() })
+    if (vaultType) params.set('vault_type', vaultType)
+
+    const response = await fetch(`${baseUrl}/vaults?${params}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) {
+      console.error(`Decibel vaults API error: ${response.status} ${response.statusText}`)
+      return { items: [] }
+    }
+
+    const data = await response.json()
+    return {
+      items: data.items || (Array.isArray(data) ? data : []),
+      total_value_locked: data.total_value_locked,
+      total_count: data.total_count,
+    }
+  } catch (error) {
+    console.error('Error fetching vaults:', error)
+    return { items: [] }
+  }
+}
+
+/**
+ * Get user's vault performance (deposits, share value, PnL)
+ */
+export async function getAccountVaultPerformance(
+  userAddr: string,
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
+): Promise<VaultPerformance[]> {
+  try {
+    const baseUrl = getBaseUrl(network)
+    const apiKey = getApiKey()
+
+    const response = await fetch(`${baseUrl}/account_vault_performance?account=${userAddr}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    })
+
+    if (!response.ok) {
+      console.error(`Decibel vault performance API error: ${response.status} ${response.statusText}`)
+      return []
+    }
+
+    const data = await response.json()
+    return normalizeArrayResponse<VaultPerformance>(data)
+  } catch (error) {
+    console.error('Error fetching vault performance:', error)
+    return []
   }
 }
 
@@ -365,7 +487,7 @@ export interface LeaderboardEntry {
  */
 export async function getPredepositPoints(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<PredepositPoints | null> {
   try {
     const baseUrl = getBaseUrl(network)
@@ -388,7 +510,7 @@ export async function getPredepositPoints(
  */
 export async function getPredepositDlpBalance(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<PredepositDlpBalance | null> {
   try {
     const baseUrl = getBaseUrl(network)
@@ -411,7 +533,7 @@ export async function getPredepositDlpBalance(
  */
 export async function getPredepositUaPositions(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<PredepositUaPosition[]> {
   try {
     const baseUrl = getBaseUrl(network)
@@ -442,7 +564,7 @@ export async function getPredepositBalanceEvents(
     limit?: number
   } = {}
 ): Promise<PredepositBalanceEvent[]> {
-  const { network = 'testnet', eventKind, fundType, limit = 100 } = options
+  const { network = getActiveNetwork(), eventKind, fundType, limit = 100 } = options
 
   try {
     const baseUrl = getBaseUrl(network)
@@ -472,7 +594,7 @@ export async function getPredepositBalanceEvents(
  * Get total predeposit stats (Season 0)
  */
 export async function getPredepositTotal(
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<PredepositTotal | null> {
   try {
     const baseUrl = getBaseUrl(network)
@@ -500,7 +622,7 @@ export async function getPredepositLeaderboard(
     offset?: number
   } = {}
 ): Promise<LeaderboardEntry[]> {
-  const { network = 'testnet', limit = 100, offset = 0 } = options
+  const { network = getActiveNetwork(), limit = 100, offset = 0 } = options
 
   try {
     const baseUrl = getBaseUrl(network)

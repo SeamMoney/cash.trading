@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { BOT_OPERATOR, DECIBEL_PACKAGE } from '@/lib/decibel-client'
+import { BOT_OPERATOR } from '@/lib/decibel-client'
+import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-sdk'
 
 /**
  * Returns the transaction payload for delegating permissions to the bot
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       payload: {
-        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
+        function: `${getActiveNetwork() === 'mainnet' ? MAINNET_CONFIG.deployment.package : TESTNET_CONFIG.deployment.package}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
         typeArguments: [],
         functionArguments: [
           userSubaccount,

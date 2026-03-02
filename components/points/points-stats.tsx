@@ -8,7 +8,7 @@ import { ShareCard } from "./share-card"
 
 export function PointsStats() {
   const { account, connected } = useWallet()
-  const { globalStats, userData, loading, refresh } = usePointsData()
+  const { globalStats, userData, vaultUserData, loading, refresh } = usePointsData()
   const [countdown, setCountdown] = useState<string>('')
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export function PointsStats() {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] sm:text-xs font-mono text-zinc-500 uppercase tracking-widest whitespace-nowrap">
-            Season 0
+            DLP
           </span>
           {isLive && (
             <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-primary whitespace-nowrap">
@@ -145,41 +145,47 @@ export function PointsStats() {
             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Your Stats</span>
             <ShareCard
               points={userData?.points || 0}
-              totalDeposited={userData?.total_deposited || '0'}
-              dlpBalance={userData?.dlp_balance || '0'}
+              totalDeposited={vaultUserData?.totalDeposited?.toString() || userData?.total_deposited || '0'}
+              dlpBalance={vaultUserData?.currentValue?.toString() || userData?.dlp_balance || '0'}
             />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Points (est.)</div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">DLP Value</div>
               <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
-                {(userData?.points || 0) < 1
-                  ? (userData?.points || 0).toFixed(4)
-                  : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">DLP Share</div>
-              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {globalStats?.total_points && userData?.points
-                  ? ((userData.points / globalStats.total_points) * 100).toFixed(4) + '%'
-                  : '0%'}
+                {formatNumber(vaultUserData?.currentValue || userData?.dlp_balance || '0')}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Deposited</div>
               <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {formatNumber(userData?.total_deposited || '0')}
+                {formatNumber(vaultUserData?.totalDeposited || userData?.total_deposited || '0')}
               </div>
             </div>
 
             <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Unallocated</div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Vault PnL</div>
+              <div className={`text-base sm:text-lg font-mono font-bold tabular-nums leading-tight ${
+                (vaultUserData?.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {vaultUserData?.totalPnl != null
+                  ? `${vaultUserData.totalPnl >= 0 ? '+' : ''}${formatNumber(Math.abs(vaultUserData.totalPnl))}`
+                  : '$0.00'}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
+                {(userData?.points || 0) > 0 ? 'Points (est.)' : 'Predeposit'}
+              </div>
               <div className="text-base sm:text-lg font-mono font-bold text-zinc-400 tabular-nums leading-tight">
-                {formatNumber(userData?.ua_balance || '0')}
+                {(userData?.points || 0) > 0
+                  ? (userData?.points || 0) < 1
+                    ? (userData?.points || 0).toFixed(4)
+                    : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                  : formatNumber(userData?.ua_balance || '0')}
               </div>
             </div>
           </div>

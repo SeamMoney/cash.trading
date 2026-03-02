@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
-import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
+import { getAptosNodeUrl, getActivePackage } from "@/lib/decibel-client"
 
 export interface WalletBalanceState {
   balance: number | null
@@ -26,14 +26,15 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
 
   const fetchMarginForSubaccount = async (subaccountAddr: string, retries = 2): Promise<number | null> => {
-    const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+    const APTOS_NODE = getAptosNodeUrl()
+    const PACKAGE = getActivePackage()
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const marginResponse = await fetch(`${APTOS_NODE}/view`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
+            function: `${PACKAGE}::accounts_collateral::available_order_margin`,
             type_arguments: [],
             arguments: [subaccountAddr],
           }),
@@ -77,7 +78,8 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     setError(null)
 
     try {
-      const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+      const APTOS_NODE = getAptosNodeUrl()
+      const PACKAGE = getActivePackage()
       const walletAddress = account.address.toString()
       console.log("🔍 Fetching balance for wallet:", walletAddress)
 
@@ -108,13 +110,13 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
 
       // Get primary subaccount - the function is in dex_accounts module
       console.log("🔍 Fetching primary subaccount for:", walletAddress)
-      console.log("🔍 Using package:", DECIBEL_PACKAGE)
+      console.log("🔍 Using package:", PACKAGE)
 
       const primaryResponse = await fetch(`${APTOS_NODE}/view`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+          function: `${PACKAGE}::dex_accounts::primary_subaccount`,
           type_arguments: [],
           arguments: [walletAddress],
         }),

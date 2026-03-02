@@ -55,12 +55,15 @@ export interface OrderResult {
   positionHeldMs?: number
 }
 
-// Package address - prefer SDK config, fallback to env var, then hardcoded
-// After testnet reset, update SDK package to get new addresses automatically
-import { TESTNET_CONFIG, TimeInForce } from './decibel-sdk'
-const DECIBEL_PACKAGE = TESTNET_CONFIG.deployment.package ||
-  process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
-  '0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75'
+// Package address - resolved from SDK config based on active network
+import { TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, TimeInForce } from './decibel-sdk'
+function getDecibelPackage(): string {
+  const net = getActiveNetwork();
+  if (net === 'mainnet') return MAINNET_CONFIG.deployment.package;
+  return process.env.NEXT_PUBLIC_DECIBEL_PACKAGE ||
+    TESTNET_CONFIG.deployment.package;
+}
+const DECIBEL_PACKAGE = getDecibelPackage()
 
 /**
  * Parse actual fill information from transaction events
@@ -171,10 +174,9 @@ const MARKETS: Record<string, string> = {
   'ZEC/USD': '0x9a18f3b7400157c46f713d85f3d82d6c52d95b1cb45430506cf593eb39165ebf',
 }
 
-// Market configuration (from on-chain PerpMarketConfig - TESTNET - updated Feb 5, 2026)
-// All markets now share: tickerSize=100000, lotSize=10, minSize=100000, szDecimals=8
-// Per-market chain params (updated Feb 11, 2026 - testnet reset, params now vary)
-const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }> = {
+// Market configuration — TESTNET (Feb 11, 2026 reset)
+type MarketParams = { tickerSize: bigint; lotSize: bigint; minSize: bigint; pxDecimals: number; szDecimals: number }
+const TESTNET_MARKET_CONFIG: Record<string, MarketParams> = {
   'BTC/USD':  { tickerSize: 100000n, lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 8 },
   'ETH/USD':  { tickerSize: 10000n,  lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 7 },
   'SOL/USD':  { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
@@ -188,6 +190,19 @@ const MARKET_CONFIG: Record<string, { tickerSize: bigint; lotSize: bigint; minSi
   'DOGE/USD': { tickerSize: 1n,      lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 3 },
   'ZEC/USD':  { tickerSize: 1000n,   lotSize: 10n, minSize: 100000n, pxDecimals: 6, szDecimals: 6 },
 }
+
+// Market configuration — MAINNET (from 0x50ead live contract, Feb 25 2026)
+// Note: lot_size, min_size, and sz_decimals differ significantly from testnet
+const MAINNET_MARKET_CONFIG: Record<string, MarketParams> = {
+  'BTC/USD':  { tickerSize: 100000n, lotSize: 1000n,  minSize: 2000n,   pxDecimals: 6, szDecimals: 8 },
+  'ETH/USD':  { tickerSize: 100000n, lotSize: 10000n, minSize: 50000n,  pxDecimals: 6, szDecimals: 8 },
+  'SOL/USD':  { tickerSize: 10000n,  lotSize: 10000n, minSize: 200000n, pxDecimals: 6, szDecimals: 7 },
+  'APT/USD':  { tickerSize: 100n,    lotSize: 10000n, minSize: 100000n, pxDecimals: 6, szDecimals: 5 },
+  'HYPE/USD': { tickerSize: 1000n,   lotSize: 10000n, minSize: 50000n,  pxDecimals: 6, szDecimals: 6 },
+}
+
+// Select config based on active network
+const MARKET_CONFIG: Record<string, MarketParams> = getActiveNetwork() === 'mainnet' ? MAINNET_MARKET_CONFIG : TESTNET_MARKET_CONFIG
 
 // Decibel testnet DLP vault "backstop_liquidator" subaccount (observed on-chain)
 // Used for mirroring the vault's market making grid.
@@ -236,11 +251,14 @@ export class VolumeBotEngine {
       .replace(/\n/g, '')
       .trim()
 
+    const activeNet = getActiveNetwork()
     const aptosConfig = new AptosConfig({
-      network: Network.TESTNET,
-      clientConfig: nodeApiKey ? {
-        HEADERS: { Authorization: `Bearer ${nodeApiKey}` }
-      } : undefined
+      network: activeNet === 'mainnet' ? Network.MAINNET : Network.TESTNET,
+      clientConfig: nodeApiKey
+        ? activeNet === 'mainnet'
+          ? { API_KEY: nodeApiKey }
+          : { HEADERS: { Authorization: `Bearer ${nodeApiKey}` } }
+        : undefined,
     })
     this.aptos = new Aptos(aptosConfig)
 

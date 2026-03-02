@@ -1,23 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { DECIBEL_PACKAGE, MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
+import { DECIBEL_PACKAGE, MARKETS, MAINNET_MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
+import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
 
-const APTOS_NODE = 'https://api.testnet.aptoslabs.com/v1'
+const APTOS_NODE = getActiveNetwork() === 'mainnet'
+  ? 'https://api.mainnet.aptoslabs.com/v1'
+  : 'https://api.testnet.aptoslabs.com/v1'
+
+const ACTIVE_PACKAGE = getActiveNetwork() === 'mainnet'
+  ? MAINNET_CONFIG.deployment.package
+  : TESTNET_CONFIG.deployment.package
 
 // Testnet reset date - filter out all data before this
 // Dec 17, 2025 at 00:00 UTC (when Decibel testnet was reset)
 const TESTNET_RESET_DATE = new Date('2025-12-17T00:00:00Z')
 
-// Market address to name mapping (updated Dec 17, 2025 after reset)
-const MARKET_NAMES: Record<string, string> = Object.entries(MARKETS).reduce(
-  (acc, [name, config]) => {
-    acc[config.address.toLowerCase()] = name
-    return acc
-  },
-  {} as Record<string, string>
-)
+// Market address to name mapping — includes both testnet and mainnet
+const MARKET_NAMES: Record<string, string> = {
+  ...Object.entries(MARKETS).reduce(
+    (acc, [name, config]) => { acc[config.address.toLowerCase()] = name; return acc },
+    {} as Record<string, string>
+  ),
+  ...Object.entries(MAINNET_MARKETS).reduce(
+    (acc, [name, config]) => { acc[config.address.toLowerCase()] = name; return acc },
+    {} as Record<string, string>
+  ),
+}
 
 // Price decimals for each market - all use 6 decimals on Decibel testnet
 // Verified from on-chain oracle_px values (e.g., BTC: 87001041693 → $87,001)
@@ -353,7 +363,7 @@ export async function GET(request: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
+            function: `${ACTIVE_PACKAGE}::accounts_collateral::available_order_margin`,
             type_arguments: [],
             arguments: [activeSubaccount],
           }),

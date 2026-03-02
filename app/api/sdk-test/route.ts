@@ -8,12 +8,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { getReadDex, getAllMarketAddresses, TESTNET_CONFIG } from "@/lib/decibel-sdk";
+import { getReadDex, getAllMarketAddresses, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork } from "@/lib/decibel-sdk";
 import { MARKETS, DECIBEL_PACKAGE } from "@/lib/decibel-client";
 
 export const runtime = 'nodejs';
 
 export async function GET() {
+  const net = getActiveNetwork();
+  const config = net === 'mainnet' ? MAINNET_CONFIG : TESTNET_CONFIG;
+
   const results: {
     success: boolean;
     sdkVersion: string;
@@ -26,9 +29,9 @@ export async function GET() {
     errors: string[];
   } = {
     success: true,
-    sdkVersion: "0.2.1",
-    network: String(TESTNET_CONFIG.network),
-    packageAddress: TESTNET_CONFIG.deployment.package,
+    sdkVersion: "0.3.1",
+    network: String(config.network),
+    packageAddress: config.deployment.package,
     packageAddressMatch: false,
     marketsCount: 0,
     pricesCount: 0,
@@ -39,7 +42,7 @@ export async function GET() {
   try {
     // Check if SDK package address matches our hardcoded one
     results.packageAddressMatch =
-      TESTNET_CONFIG.deployment.package.toLowerCase() === DECIBEL_PACKAGE.toLowerCase();
+      config.deployment.package.toLowerCase() === DECIBEL_PACKAGE.toLowerCase();
 
     // Test 1: Get all markets
     const markets = await getAllMarketAddresses();

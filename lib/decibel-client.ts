@@ -5,34 +5,42 @@
  * The DecibelClient class (for server-side trading) is in a separate file.
  */
 
-// Decibel constants (updated Feb 11, 2026 - testnet reset)
+// ============================================================
+// TESTNET constants (updated Feb 11, 2026 - testnet reset)
+// ============================================================
 export const DECIBEL_PACKAGE = '0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f';
 export const ORDERBOOK_ADDR = '0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7';
 export const USDC_DECIMALS = 6;
 
 // Predeposit constants (Season 0) - TESTNET
-// Note: predeposit object needs rediscovery after reset
 export const PREDEPOSIT_OBJECT = '0x67d48b77f9110c959b9f7e3141480da14798f70cf3213c7200f3699fc68abaaa';
 export const PREDEPOSIT_MIN_AMOUNT = 50; // $50 minimum deposit
 export const PREDEPOSIT_MAX_AMOUNT = 1_000_000; // $1M maximum per wallet
 export const PRICE_DECIMALS = 6;
 
-// Mainnet predeposit constants
-export const MAINNET_DECIBEL_PACKAGE = '0xc5939ec6e7e656cb6fed9afa155e390eb2aa63ba74e73157161829b2f80e1538';
-export const MAINNET_PREDEPOSIT_OBJECT = '0xbd0c23dbc2e9ac041f5829f79b4c4c1361ddfa2125d5072a96b817984a013d69';
+// ============================================================
+// MAINNET constants (SDK v0.4.0 — 0x50ead is now the canonical address)
+// ============================================================
+export const MAINNET_DECIBEL_PACKAGE = '0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06';
 export const MAINNET_USDC_METADATA = '0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b';
+
+// Predeposit-only contract (separate from trading)
+export const MAINNET_PREDEPOSIT_PACKAGE = '0xc5939ec6e7e656cb6fed9afa155e390eb2aa63ba74e73157161829b2f80e1538';
+export const MAINNET_PREDEPOSIT_OBJECT = '0xbd0c23dbc2e9ac041f5829f79b4c4c1361ddfa2125d5072a96b817984a013d69';
 
 // Bot operator address - users delegate trading permissions to this wallet
 // This wallet is controlled by the backend and executes trades on behalf of users
 export const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da';
 
-// Fee structure
+// Fee structure (testnet — mainnet fees TBD, may differ)
 export const MAKER_REBATE = 0.00015; // -0.015%
 export const TAKER_FEE = 0.00045; // 0.045%
 export const BUILDER_FEE = 0.0002; // 0.02%
 
-// Market addresses (from perp_engine::Global on-chain - TESTNET - updated Feb 11, 2026)
-// Per-market: lot_size=10, min_size=100000, but ticker_size & sz_precision vary
+// ============================================================
+// TESTNET Market addresses (from perp_engine::Global on-chain)
+// Per-market: lot_size=10, min_size=100000
+// ============================================================
 export const MARKETS = {
   'BTC/USD': {
     address: '0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a',
@@ -121,6 +129,84 @@ export const MARKETS = {
 } as const;
 
 export type MarketName = keyof typeof MARKETS;
+
+// ============================================================
+// MAINNET Markets (from SDK v0.4.0 contract 0x50ead, fetched Feb 25 2026)
+// Note: lot_size & min_size differ significantly from testnet
+// ============================================================
+export const MAINNET_MARKETS = {
+  'BTC/USD': {
+    address: '0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861',
+    maxLeverage: 40,
+    sizeDecimals: 8,
+    priceDecimals: 6,
+    tickerSize: 100000, // $0.10
+    lotSize: 1000,
+    minSize: 2000,
+  },
+  'ETH/USD': {
+    address: '0x96c3c2e77041264d082d03365e9c346fbc6be9c9428a401be8e70dcb60dc60c6',
+    maxLeverage: 20,
+    sizeDecimals: 8,  // testnet=7
+    priceDecimals: 6,
+    tickerSize: 100000, // testnet=10000
+    lotSize: 10000,
+    minSize: 50000,
+  },
+  'SOL/USD': {
+    address: '0xdf3f9b3241aaf20c47e99eac29f3ff2f736e40644c856e0db612a22e62b847f3',
+    maxLeverage: 10,
+    sizeDecimals: 7,  // testnet=6
+    priceDecimals: 6,
+    tickerSize: 10000, // testnet=1000
+    lotSize: 10000,
+    minSize: 200000,
+  },
+  'APT/USD': {
+    address: '0xda8615922bac85a53811e845ce39110713be6d80366f4477d5427002ac0162e3',
+    maxLeverage: 10,
+    sizeDecimals: 5,  // testnet=4
+    priceDecimals: 6,
+    tickerSize: 100, // testnet=10
+    lotSize: 10000,
+    minSize: 100000,
+  },
+  'HYPE/USD': {
+    address: '0x0c6b3fa01e6ee89b04fe3960d8d6377ebbe6caa8e47d87c2120dae1492044df2',
+    maxLeverage: 3,
+    sizeDecimals: 6,  // testnet=5
+    priceDecimals: 6,
+    tickerSize: 1000, // testnet=100
+    lotSize: 10000,
+    minSize: 50000,
+  },
+} as const;
+
+export type MainnetMarketName = keyof typeof MAINNET_MARKETS;
+
+// ============================================================
+// Dynamic helpers (client-safe — reads NEXT_PUBLIC_ env vars)
+// ============================================================
+
+/** Get active network from client-safe env var */
+export function getClientNetwork(): 'testnet' | 'mainnet' {
+  const env = typeof window !== 'undefined'
+    ? process.env.NEXT_PUBLIC_DECIBEL_NETWORK
+    : (process.env.DECIBEL_NETWORK || process.env.NEXT_PUBLIC_DECIBEL_NETWORK)
+  return env === 'mainnet' ? 'mainnet' : 'testnet'
+}
+
+/** Get the correct Aptos node URL for the active network */
+export function getAptosNodeUrl(): string {
+  return getClientNetwork() === 'mainnet'
+    ? 'https://api.mainnet.aptoslabs.com/v1'
+    : 'https://api.testnet.aptoslabs.com/v1'
+}
+
+/** Get the correct Decibel package address for the active network */
+export function getActivePackage(): string {
+  return getClientNetwork() === 'mainnet' ? MAINNET_DECIBEL_PACKAGE : DECIBEL_PACKAGE
+}
 
 /**
  * NOTE: DecibelClient class has been moved to lib/decibel-server.ts

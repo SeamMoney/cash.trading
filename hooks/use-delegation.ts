@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
-import { DECIBEL_PACKAGE, BOT_OPERATOR } from "@/lib/decibel-client"
+import { BOT_OPERATOR, getAptosNodeUrl, getActivePackage } from "@/lib/decibel-client"
 import { useWalletBalance } from "./use-wallet-balance"
 
 export interface DelegationState {
@@ -33,14 +33,14 @@ export function useDelegation(): DelegationState {
     setError(null)
 
     try {
-      const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+      const APTOS_NODE = getAptosNodeUrl()
 
       // Check if bot operator is delegated for this subaccount
       const response = await fetch(`${APTOS_NODE}/view`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::dex_accounts_entry::is_delegated_trader`,
+          function: `${getActivePackage()}::dex_accounts_entry::is_delegated_trader`,
           type_arguments: [],
           arguments: [subaccount, BOT_OPERATOR],
         }),
@@ -74,7 +74,7 @@ export function useDelegation(): DelegationState {
     try {
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
+        function: `${getActivePackage()}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
         type_arguments: [],
         arguments: [
           subaccount,
@@ -88,7 +88,7 @@ export function useDelegation(): DelegationState {
       })
 
       // Wait for transaction confirmation
-      const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+      const APTOS_NODE = getAptosNodeUrl()
       let confirmed = false
       let attempts = 0
       const maxAttempts = 20
@@ -137,7 +137,7 @@ export function useDelegation(): DelegationState {
     try {
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::revoke_trading_delegation_for_subaccount`,
+        function: `${getActivePackage()}::dex_accounts_entry::revoke_trading_delegation_for_subaccount`,
         type_arguments: [],
         arguments: [subaccount, BOT_OPERATOR],
       }
@@ -147,7 +147,7 @@ export function useDelegation(): DelegationState {
       })
 
       // Wait for confirmation (same as above)
-      const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+      const APTOS_NODE = getAptosNodeUrl()
       let confirmed = false
       let attempts = 0
 

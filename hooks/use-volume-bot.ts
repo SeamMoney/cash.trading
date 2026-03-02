@@ -3,9 +3,12 @@
 import { useState, useEffect, useRef } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk"
+import { getClientNetwork, getActivePackage, MARKETS, MAINNET_MARKETS } from "@/lib/decibel-client"
 
-const DECIBEL_PACKAGE = "0x1f513904b7568445e3c291a6c58cb272db017d8a72aea563d5664666221d5f75"
-const BTC_MARKET = "0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e"
+const ACTIVE_PACKAGE = getActivePackage()
+const BTC_MARKET = getClientNetwork() === 'mainnet'
+  ? MAINNET_MARKETS['BTC/USD'].address
+  : MARKETS['BTC/USD'].address
 
 interface BotConfig {
   capitalUSDC: number
@@ -34,7 +37,7 @@ export function useVolumeBot() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const configRef = useRef<BotConfig | null>(null)
-  const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+  const aptos = new Aptos(new AptosConfig({ network: getClientNetwork() === 'mainnet' ? Network.MAINNET : Network.TESTNET }))
 
   const placeOrder = async (isLong: boolean) => {
     const currentConfig = configRef.current
@@ -51,7 +54,7 @@ export function useVolumeBot() {
       // Match the exact format that works in the delegation hook
       const payload = {
         type: "entry_function_payload",
-        function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
+        function: `${ACTIVE_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
         type_arguments: [],
         arguments: [
           currentConfig.subaccount,
@@ -72,7 +75,7 @@ export function useVolumeBot() {
       const txHash = response.hash
 
       console.log(`✅ Order submitted: ${txHash}`)
-      console.log(`🔗 View: https://explorer.aptoslabs.com/txn/${txHash}?network=testnet`)
+      console.log(`🔗 View: https://explorer.aptoslabs.com/txn/${txHash}?network=${getClientNetwork()}`)
 
       // Wait for transaction
       await aptos.waitForTransaction({ transactionHash: txHash })

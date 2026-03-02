@@ -7,7 +7,12 @@
   ],
   "build": {
     "env": {
-      "NODE_VERSION": "20"
+      "NODE_VERSION": "20",
+      "NEXT_PUBLIC_DECIBEL_NETWORK": "mainnet"
     }
+  },
+  "env": {
+    "DECIBEL_NETWORK": "mainnet",
+    "NEXT_PUBLIC_DECIBEL_NETWORK": "mainnet"
   }
 }

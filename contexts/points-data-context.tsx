@@ -13,6 +13,9 @@ export interface GlobalStats {
   depositor_count: number
   dlp_cap?: number
   status: 'pre-launch' | 'live' | 'paused' | 'error'
+  // Vault stats (mainnet DLP)
+  vault_tvl?: number
+  vault_depositors?: number
 }
 
 export interface UserData {
@@ -20,6 +23,20 @@ export interface UserData {
   dlp_balance: string
   ua_balance: string
   total_deposited: string
+}
+
+export interface VaultUserData {
+  totalDeposited: number
+  currentValue: number
+  totalPnl: number
+  vaults: Array<{
+    name: string
+    address: string
+    deposited: number
+    currentValue: number
+    pnl: number
+    vaultType: string | null
+  }>
 }
 
 export interface LeaderboardEntry {
@@ -34,6 +51,7 @@ export interface LeaderboardEntry {
 interface PointsDataContextType {
   globalStats: GlobalStats | null
   userData: UserData | null
+  vaultUserData: VaultUserData | null
   leaderboardEntries: LeaderboardEntry[]
   userRank: LeaderboardEntry | null
   loading: boolean
@@ -44,6 +62,7 @@ interface PointsDataContextType {
 const PointsDataContext = createContext<PointsDataContextType>({
   globalStats: null,
   userData: null,
+  vaultUserData: null,
   leaderboardEntries: [],
   userRank: null,
   loading: false,
@@ -57,6 +76,7 @@ const CACHE_KEY = 'decibrrr_points_cache'
 interface CachedData {
   globalStats: GlobalStats | null
   userData: UserData | null
+  vaultUserData: VaultUserData | null
   leaderboardEntries: LeaderboardEntry[]
   userRank: LeaderboardEntry | null
   userAddr: string | null
@@ -98,6 +118,10 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     if (typeof window === 'undefined') return null
     return readCache(addr)?.userData || null
   })
+  const [vaultUserData, setVaultUserData] = useState<VaultUserData | null>(() => {
+    if (typeof window === 'undefined') return null
+    return readCache(addr)?.vaultUserData || null
+  })
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>(() => {
     if (typeof window === 'undefined') return []
     return readCache(addr)?.leaderboardEntries || []
@@ -138,9 +162,16 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     const totalJsonP = fetch('/api/predeposit/total').then(r => r.json())
     const lbJsonP = fetch('/api/predeposit/leaderboard?limit=100').then(r => r.json())
 
+    // Vault data fetches (mainnet DLP)
+    const vaultUserP = addr
+      ? fetch(`/api/vault/user?account=${addr}`).then(r => r.ok ? r.json() : null).catch(() => null)
+      : Promise.resolve(null)
+    const vaultTotalP = fetch('/api/vault/total').then(r => r.ok ? r.json() : null).catch(() => null)
+
     // Resolved data refs for cross-promise access
     let resolvedUser: UserData | null = null
     let resolvedTotal: GlobalStats | null = null
+    let resolvedVaultUser: VaultUserData | null = null
 
     try {
       // 1) User points — FASTEST, single view function, render the instant it lands
@@ -158,30 +189,81 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         }).catch(() => {})
       }
 
+      // 1b) Vault user data — fast, render immediately
+      if (addr) {
+        vaultUserP.then((json) => {
+          if (!mountedRef.current || !json) return
+          const vd: VaultUserData = {
+            totalDeposited: json.totalDeposited || 0,
+            currentValue: json.currentValue || 0,
+            totalPnl: json.totalPnl || 0,
+            vaults: json.vaults || [],
+          }
+          resolvedVaultUser = vd
+          setVaultUserData(vd)
+        }).catch(() => {})
+      }
+
       // 2) Global stats — medium speed, render when ready
-      totalJsonP.then((data) => {
+      // Also merge vault TVL data
+      Promise.all([totalJsonP, vaultTotalP]).then(([predeposit, vaultTotal]) => {
         if (!mountedRef.current) return
-        resolvedTotal = data
-        setGlobalStats(data)
+        const merged = { ...predeposit }
+        if (vaultTotal) {
+          merged.vault_tvl = vaultTotal.totalTvl || 0
+          merged.vault_depositors = vaultTotal.totalDepositors || 0
+          // Add vault TVL to total DLP for the global display
+          merged.total_dlp = (merged.total_dlp || 0) + (vaultTotal.totalTvl || 0)
+          merged.total_deposited = (merged.total_deposited || 0) + (vaultTotal.totalTvl || 0)
+        }
+        resolvedTotal = merged
+        setGlobalStats(merged)
         setLoading(false)
       }).catch(() => {})
 
-      // 3) Leaderboard — slowest, wait for all 3 to finish for user injection
-      const [userJson, , lbData] = await Promise.all([
+      // 3) Leaderboard — slowest, wait for all to finish for user injection
+      const [userJson, , lbData, vaultUserJson] = await Promise.all([
         userJsonP.catch(() => null),
         totalJsonP.catch(() => null),
         lbJsonP.catch(() => ({ entries: [] })),
+        vaultUserP.catch(() => null),
       ])
 
       if (!mountedRef.current) return
 
       // Use already-resolved user data, or parse now if the .then hasn't fired yet
-      const localUserData = resolvedUser || (userJson ? {
+      const predepositData = resolvedUser || (userJson ? {
         points: userJson.points || 0,
         dlp_balance: userJson.dlp_balance || '0',
         ua_balance: userJson.ua_balance || '0',
         total_deposited: userJson.total_deposited || '0',
       } : null)
+
+      // Merge vault DLP into user data so existing UI picks it up
+      const localVaultData = resolvedVaultUser || (vaultUserJson ? {
+        totalDeposited: vaultUserJson.totalDeposited || 0,
+        currentValue: vaultUserJson.currentValue || 0,
+        totalPnl: vaultUserJson.totalPnl || 0,
+        vaults: vaultUserJson.vaults || [],
+      } as VaultUserData : null)
+
+      // Merge: add vault value to predeposit DLP balance
+      let localUserData = predepositData
+      if (localVaultData && localVaultData.currentValue > 0) {
+        const predepDlp = parseFloat(predepositData?.dlp_balance || '0')
+        const predepTotal = parseFloat(predepositData?.total_deposited || '0')
+        localUserData = {
+          points: predepositData?.points || 0,
+          dlp_balance: (predepDlp + localVaultData.currentValue).toString(),
+          ua_balance: predepositData?.ua_balance || '0',
+          total_deposited: (predepTotal + localVaultData.totalDeposited).toString(),
+        }
+        setUserData(localUserData)
+      }
+
+      if (localVaultData) {
+        setVaultUserData(localVaultData)
+      }
 
       let entries: LeaderboardEntry[] = lbData.entries || []
       let resolvedUserRank: LeaderboardEntry | null = null
@@ -219,6 +301,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
       writeCache({
         globalStats: resolvedTotal,
         userData: localUserData,
+        vaultUserData: localVaultData,
         leaderboardEntries: entries,
         userRank: resolvedUserRank,
         userAddr: addr,
@@ -239,6 +322,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     if (!cached) {
       // Different wallet or no cache — reset user-specific state
       setUserData(null)
+      setVaultUserData(null)
       setUserRank(null)
     }
   }, [addr])
@@ -257,6 +341,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     <PointsDataContext.Provider value={{
       globalStats,
       userData,
+      vaultUserData,
       leaderboardEntries,
       userRank,
       loading,

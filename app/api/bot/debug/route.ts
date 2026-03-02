@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
+import { getActiveNetwork } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
 
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing subaccount or market' }, { status: 400 })
     }
 
-    const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }))
+    const aptos = new Aptos(new AptosConfig({ network: getActiveNetwork() === 'mainnet' ? Network.MAINNET : Network.TESTNET }))
 
     const resources = await aptos.getAccountResources({
       accountAddress: subaccount

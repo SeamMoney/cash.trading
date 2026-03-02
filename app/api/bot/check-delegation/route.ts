@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { BOT_OPERATOR, DECIBEL_PACKAGE } from '@/lib/decibel-client'
+import { BOT_OPERATOR } from '@/lib/decibel-client'
 import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
 
 // Use authenticated Aptos client to avoid 429 rate limits

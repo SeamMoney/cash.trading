@@ -7,16 +7,17 @@
 
 import WebSocket from 'ws'
 import { normalizeArrayResponse } from './api-helpers'
+import { getActiveNetwork } from './decibel-sdk'
 
 const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
-const MAINNET_WS_URL = 'wss://api.netna.aptoslabs.com/decibel/ws'
+const MAINNET_WS_URL = 'wss://api.mainnet.aptoslabs.com/decibel/ws'
 
-// Market address mapping
+// Market address mapping (testnet — for mainnet, use MAINNET_MARKETS from decibel-client)
 export const MARKET_ADDRESSES: Record<string, string> = {
-  'BTC/USD': '0xf50add10e6982e3953d9d5bec945506c3ac049c79b375222131704d25251530e',
-  'ETH/USD': '0x...',  // Add when needed
-  'SOL/USD': '0x...',
-  'APT/USD': '0x...',
+  'BTC/USD': '0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a',
+  'ETH/USD': '0x0dd1772998bb9bbb1189ef7d680353f1b97adb947b178167b03ace95dd2fcf8e',
+  'SOL/USD': '0x2b67f9e6b9bb4b83e952058d3e6b17a8970f74175f3c00db4d0c787d86e69fe7',
+  'APT/USD': '0x57ba43880ee443eebd5021af91d5a8156fb3e04247c97c30912e6501c187a428',
 }
 
 export interface MarketPrice {
@@ -36,7 +37,7 @@ export interface MarketPrice {
  */
 export async function getMarkPrice(
   marketAddress: string,
-  network: 'testnet' | 'mainnet' = 'testnet',
+  network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 5000
 ): Promise<{ markPx: number; oraclePx: number; midPx: number } | null> {
   const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
@@ -89,7 +90,7 @@ export async function getMarkPrice(
  */
 export async function getMarkPriceByName(
   marketName: string,
-  network: 'testnet' | 'mainnet' = 'testnet'
+  network: 'testnet' | 'mainnet' = getActiveNetwork()
 ): Promise<{ markPx: number; oraclePx: number; midPx: number } | null> {
   const marketAddress = MARKET_ADDRESSES[marketName]
   if (!marketAddress) {

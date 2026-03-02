@@ -3,17 +3,20 @@
 import { FC, ReactNode } from "react"
 import { AptosWalletAdapterProvider, type DappConfig } from "@aptos-labs/wallet-adapter-react"
 import { Network } from "@aptos-labs/ts-sdk"
+import { getClientNetwork } from "@/lib/decibel-client"
+
+const ACTIVE_NETWORK = getClientNetwork() === 'mainnet' ? Network.MAINNET : Network.TESTNET
 
 // Initialize X-Chain wallet derivation at module level (client-side only)
 // This allows Phantom, MetaMask, Rainbow, etc. to derive Aptos accounts
 if (typeof window !== 'undefined') {
   // Dynamic imports for client-side only
   import('@aptos-labs/derived-wallet-ethereum').then(({ setupAutomaticEthereumWalletDerivation }) => {
-    setupAutomaticEthereumWalletDerivation({ defaultNetwork: Network.TESTNET })
+    setupAutomaticEthereumWalletDerivation({ defaultNetwork: ACTIVE_NETWORK })
   }).catch(console.error)
 
   import('@aptos-labs/derived-wallet-solana').then(({ setupAutomaticSolanaWalletDerivation }) => {
-    setupAutomaticSolanaWalletDerivation({ defaultNetwork: Network.TESTNET })
+    setupAutomaticSolanaWalletDerivation({ defaultNetwork: ACTIVE_NETWORK })
   }).catch(console.error)
 }
 
@@ -27,7 +30,7 @@ const getDappImageURI = () => {
 
 export const WalletProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const dappConfig: DappConfig = {
-    network: Network.TESTNET,
+    network: ACTIVE_NETWORK,
     // Enable cross-chain wallets (Phantom Solana, MetaMask Ethereum, etc.)
     crossChainWallets: true,
     // Aptos Connect configuration for keyless wallets (Google/Apple login)

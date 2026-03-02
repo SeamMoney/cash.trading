@@ -2,16 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { getMarkPrice } from '@/lib/price-feed'
-import { getAllMarketAddresses, createAuthenticatedAptos } from '@/lib/decibel-sdk'
+import { getAllMarketAddresses, createAuthenticatedAptos, getActiveNetwork } from '@/lib/decibel-sdk'
 
-// Market configs for size/price decimals
-const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
+// Market configs for size/price decimals (differ between testnet and mainnet)
+const TESTNET_MKT_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
   'BTC/USD': { pxDecimals: 6, szDecimals: 8 },
-  'APT/USD': { pxDecimals: 6, szDecimals: 4 },
+  'ETH/USD': { pxDecimals: 6, szDecimals: 8 },
+  'SOL/USD': { pxDecimals: 6, szDecimals: 8 },
+  'APT/USD': { pxDecimals: 6, szDecimals: 8 },
   'WLFI/USD': { pxDecimals: 6, szDecimals: 3 },
-  'SOL/USD': { pxDecimals: 6, szDecimals: 6 },
-  'ETH/USD': { pxDecimals: 6, szDecimals: 7 },
 }
+const MAINNET_MKT_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
+  'BTC/USD': { pxDecimals: 6, szDecimals: 8 },
+  'ETH/USD': { pxDecimals: 6, szDecimals: 8 },
+  'SOL/USD': { pxDecimals: 6, szDecimals: 7 },
+  'APT/USD': { pxDecimals: 6, szDecimals: 5 },
+  'HYPE/USD': { pxDecimals: 6, szDecimals: 6 },
+}
+const MARKET_CONFIG = getActiveNetwork() === 'mainnet' ? MAINNET_MKT_CONFIG : TESTNET_MKT_CONFIG
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time to wait for TWAP fills
@@ -299,7 +307,7 @@ export async function POST(request: NextRequest) {
 
           try {
             const marketRes = await fetch(
-              `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+              `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
             )
             const marketResources = await marketRes.json()
             const configResource = marketResources.find((r: any) =>
@@ -333,13 +341,13 @@ export async function POST(request: NextRequest) {
           let mktCurrentPrice: number | undefined
           let mktPnlPercent: number | undefined
           try {
-            const priceData = await getMarkPrice(marketAddr, 'testnet', 2000)
+            const priceData = await getMarkPrice(marketAddr, getActiveNetwork(), 2000)
             if (priceData) {
               mktCurrentPrice = priceData.markPx
             } else {
               // Fallback to on-chain oracle
               const priceRes = await fetch(
-                `https://api.testnet.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+                `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
               )
               const priceResources = await priceRes.json()
               const priceResource = priceResources.find((r: any) =>

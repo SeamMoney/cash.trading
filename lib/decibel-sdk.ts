@@ -2,38 +2,48 @@
  * Decibel SDK Singleton
  *
  * This module provides initialized SDK instances for read/write operations.
- * Uses @decibeltrade/sdk v0.2.9
+ * Uses @decibeltrade/sdk v0.4.0
  *
  * Configuration from dev chat:
- * - noFeePayer: true (fee payer had issues)
+ * - noFeePayer: true (fee payer had issues on testnet)
  * - skipSimulate: true (faster)
  *
- * Updated Feb 11, 2026:
- * - New contract address after testnet reset
- * - New orderbook types package
- * - trigger_matching renamed to process_perp_market_pending_requests
+ * SDK v0.4.0 changes (Mar 2, 2026):
+ * - MAINNET_CONFIG now points to live contract (0x50ead) — no more override needed
+ * - New readers: VaultsReader, TradingPointsReader, GlobalPointsStatsReader
+ * - CompatVersion V0_4
  *
  * @see https://docs.decibel.trade/typescript-sdk/overview
  */
 
-import { DecibelReadDex, DecibelWriteDex, TESTNET_CONFIG, type DecibelConfig } from "@decibeltrade/sdk";
+import {
+  DecibelReadDex,
+  DecibelWriteDex,
+  TESTNET_CONFIG,
+  MAINNET_CONFIG,
+  type DecibelConfig,
+} from "@decibeltrade/sdk";
 import { Account, Ed25519PrivateKey, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 
-// Custom config with updated contract addresses (Feb 11, 2026 - testnet reset)
-// Override SDK's TESTNET_CONFIG with new package address
-// Note: orderbook types package is 0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7
-// but SDK Deployment type only has: package, usdc, testc, perpEngineGlobal
-const CUSTOM_TESTNET_CONFIG: DecibelConfig = {
-  ...TESTNET_CONFIG,
-  deployment: {
-    ...TESTNET_CONFIG.deployment,
-    package: "0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f",
-  },
-};
+export type DecibelNetwork = "testnet" | "mainnet";
 
-// Singleton instances
-let readDex: DecibelReadDex | null = null;
-let writeDex: DecibelWriteDex | null = null;
+// Determine active network from env — defaults to testnet
+function getActiveNetwork(): DecibelNetwork {
+  const env = process.env.DECIBEL_NETWORK || process.env.NEXT_PUBLIC_DECIBEL_NETWORK;
+  if (env === "mainnet") return "mainnet";
+  return "testnet";
+}
+
+function getConfig(network?: DecibelNetwork): DecibelConfig {
+  const net = network ?? getActiveNetwork();
+  return net === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+}
+
+// Singleton instances (keyed by network to avoid cross-contamination)
+let readDexTestnet: DecibelReadDex | null = null;
+let readDexMainnet: DecibelReadDex | null = null;
+let writeDexTestnet: DecibelWriteDex | null = null;
+let writeDexMainnet: DecibelWriteDex | null = null;
 
 // Get API key - try APTOS_NODE_API_KEY first, fall back to GEOMI_API_KEY
 // Clean the key to remove any newlines or whitespace that could cause header errors
@@ -46,16 +56,28 @@ const getNodeApiKey = () => {
  * Get the DecibelReadDex singleton instance
  * Used for: markets, prices, account overview, positions, orders
  */
-export function getReadDex(): DecibelReadDex {
-  if (!readDex) {
-    readDex = new DecibelReadDex(CUSTOM_TESTNET_CONFIG, {
+export function getReadDex(network?: DecibelNetwork): DecibelReadDex {
+  const net = network ?? getActiveNetwork();
+  if (net === "mainnet") {
+    if (!readDexMainnet) {
+      readDexMainnet = new DecibelReadDex(MAINNET_CONFIG, {
+        nodeApiKey: getNodeApiKey(),
+        onWsError: (error) => {
+          console.error("[SDK:mainnet] WebSocket error:", error);
+        },
+      });
+    }
+    return readDexMainnet;
+  }
+  if (!readDexTestnet) {
+    readDexTestnet = new DecibelReadDex(TESTNET_CONFIG, {
       nodeApiKey: getNodeApiKey(),
       onWsError: (error) => {
-        console.error("[SDK] WebSocket error:", error);
+        console.error("[SDK:testnet] WebSocket error:", error);
       },
     });
   }
-  return readDex;
+  return readDexTestnet;
 }
 
 /**
@@ -64,40 +86,28 @@ export function getReadDex(): DecibelReadDex {
  *
  * NOTE: Uses bot operator account from environment
  */
-export function getWriteDex(): DecibelWriteDex {
-  if (!writeDex) {
-    const privateKeyHex = process.env.BOT_OPERATOR_PRIVATE_KEY;
-    if (!privateKeyHex) {
-      throw new Error("BOT_OPERATOR_PRIVATE_KEY not set");
+export function getWriteDex(network?: DecibelNetwork): DecibelWriteDex {
+  const net = network ?? getActiveNetwork();
+  const config = getConfig(net);
+
+  if (net === "mainnet") {
+    if (!writeDexMainnet) {
+      writeDexMainnet = createWriteDex(config);
     }
-
-    // Clean the key (remove prefix if present)
-    const cleanKey = privateKeyHex
-      .replace("ed25519-priv-", "")
-      .replace(/\\n/g, "")
-      .replace(/\n/g, "")
-      .trim();
-
-    const privateKey = new Ed25519PrivateKey(cleanKey);
-    const account = Account.fromPrivateKey({ privateKey });
-
-    // Use working config from dev chat
-    // noFeePayer: true because fee payer service had issues
-    // skipSimulate: true for faster transactions
-    writeDex = new DecibelWriteDex(CUSTOM_TESTNET_CONFIG, account, {
-      nodeApiKey: getNodeApiKey(),
-      skipSimulate: true,
-      noFeePayer: true,
-    });
+    return writeDexMainnet;
   }
-  return writeDex;
+  if (!writeDexTestnet) {
+    writeDexTestnet = createWriteDex(config);
+  }
+  return writeDexTestnet;
 }
 
-/**
- * Get a WriteDex instance with a custom account (for user-specific operations)
- * Used when bot needs to act on behalf of a specific user's delegation
- */
-export function getWriteDexForAccount(privateKeyHex: string): DecibelWriteDex {
+function createWriteDex(config: DecibelConfig): DecibelWriteDex {
+  const privateKeyHex = process.env.BOT_OPERATOR_PRIVATE_KEY;
+  if (!privateKeyHex) {
+    throw new Error("BOT_OPERATOR_PRIVATE_KEY not set");
+  }
+
   const cleanKey = privateKeyHex
     .replace("ed25519-priv-", "")
     .replace(/\\n/g, "")
@@ -107,7 +117,30 @@ export function getWriteDexForAccount(privateKeyHex: string): DecibelWriteDex {
   const privateKey = new Ed25519PrivateKey(cleanKey);
   const account = Account.fromPrivateKey({ privateKey });
 
-  return new DecibelWriteDex(CUSTOM_TESTNET_CONFIG, account, {
+  return new DecibelWriteDex(config, account, {
+    nodeApiKey: getNodeApiKey(),
+    skipSimulate: true,
+    noFeePayer: true,
+  });
+}
+
+/**
+ * Get a WriteDex instance with a custom account (for user-specific operations)
+ * Used when bot needs to act on behalf of a specific user's delegation
+ */
+export function getWriteDexForAccount(privateKeyHex: string, network?: DecibelNetwork): DecibelWriteDex {
+  const config = getConfig(network);
+
+  const cleanKey = privateKeyHex
+    .replace("ed25519-priv-", "")
+    .replace(/\\n/g, "")
+    .replace(/\n/g, "")
+    .trim();
+
+  const privateKey = new Ed25519PrivateKey(cleanKey);
+  const account = Account.fromPrivateKey({ privateKey });
+
+  return new DecibelWriteDex(config, account, {
     nodeApiKey: getNodeApiKey(),
     skipSimulate: true,
     noFeePayer: true,
@@ -118,10 +151,10 @@ export function getWriteDexForAccount(privateKeyHex: string): DecibelWriteDex {
  * Utility: Get market address from market name using SDK
  * Falls back to null if not found
  */
-export async function getMarketAddressFromSDK(marketName: string): Promise<string | null> {
+export async function getMarketAddressFromSDK(marketName: string, network?: DecibelNetwork): Promise<string | null> {
   try {
-    const readDex = getReadDex();
-    const markets = await readDex.markets.getAll();
+    const dex = getReadDex(network);
+    const markets = await dex.markets.getAll();
     const market = markets.find((m) => m.market_name === marketName);
     return market?.market_addr || null;
   } catch (error) {
@@ -134,12 +167,12 @@ export async function getMarketAddressFromSDK(marketName: string): Promise<strin
  * Utility: Get all market addresses from SDK
  * Useful after testnet reset to update hardcoded values
  */
-export async function getAllMarketAddresses(): Promise<
+export async function getAllMarketAddresses(network?: DecibelNetwork): Promise<
   Array<{ name: string; address: string; tickSize: number; szDecimals: number; pxDecimals: number }>
 > {
   try {
-    const readDex = getReadDex();
-    const markets = await readDex.markets.getAll();
+    const dex = getReadDex(network);
+    const markets = await dex.markets.getAll();
     return markets.map((m) => ({
       name: m.market_name,
       address: m.market_addr,
@@ -156,23 +189,29 @@ export async function getAllMarketAddresses(): Promise<
 /**
  * Create an authenticated Aptos client with API key
  * Use this instead of new Aptos(new AptosConfig({...})) to avoid 429 rate limits
+ *
+ * Mainnet uses API_KEY in clientConfig (not Authorization header)
+ * Testnet uses Authorization: Bearer header
  */
-export function createAuthenticatedAptos(): Aptos {
+export function createAuthenticatedAptos(network?: DecibelNetwork): Aptos {
+  const net = network ?? getActiveNetwork();
   const nodeApiKey = getNodeApiKey();
 
   const config = new AptosConfig({
-    network: Network.TESTNET,
-    clientConfig: nodeApiKey ? {
-      HEADERS: { Authorization: `Bearer ${nodeApiKey}` }
-    } : undefined
+    network: net === "mainnet" ? Network.MAINNET : Network.TESTNET,
+    clientConfig: nodeApiKey
+      ? net === "mainnet"
+        ? { API_KEY: nodeApiKey }
+        : { HEADERS: { Authorization: `Bearer ${nodeApiKey}` } }
+      : undefined,
   });
 
   return new Aptos(config);
 }
 
-// Export getNodeApiKey for use elsewhere
-export { getNodeApiKey };
+// Re-export for use elsewhere
+export { getNodeApiKey, getActiveNetwork };
 
-// Export config and TimeInForce for reference
-export { CUSTOM_TESTNET_CONFIG as TESTNET_CONFIG };
+// Export configs for reference
+export { TESTNET_CONFIG, MAINNET_CONFIG };
 export { TimeInForce } from "@decibeltrade/sdk";

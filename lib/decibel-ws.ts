@@ -10,9 +10,10 @@
 
 import WebSocket from 'ws'
 import { normalizeArrayResponse } from './api-helpers'
+import { getActiveNetwork } from './decibel-sdk'
 
 const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
-const MAINNET_WS_URL = 'wss://api.aptoslabs.com/decibel/ws'
+const MAINNET_WS_URL = 'wss://api.mainnet.aptoslabs.com/decibel/ws'
 
 export interface AccountOverview {
   perp_equity_balance: number
@@ -60,7 +61,7 @@ export interface Trade {
  */
 export async function getAccountOverview(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = 'testnet',
+  network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 10000
 ): Promise<AccountOverview | null> {
   const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
@@ -126,7 +127,7 @@ export async function getAccountOverview(
  */
 export async function getRecentTrades(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = 'testnet',
+  network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 10000
 ): Promise<Trade[]> {
   const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL

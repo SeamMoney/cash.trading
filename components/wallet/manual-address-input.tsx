@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Info, ExternalLink, AlertTriangle } from "lucide-react"
-import { DECIBEL_PACKAGE } from "@/lib/decibel-client"
+import { getAptosNodeUrl, getActivePackage } from "@/lib/decibel-client"
 
 export function ManualAddressInput() {
   const [address, setAddress] = useState("")
@@ -37,7 +37,8 @@ export function ManualAddressInput() {
     setResult(null)
 
     try {
-      const APTOS_NODE = "https://api.testnet.aptoslabs.com/v1"
+      const APTOS_NODE = getAptosNodeUrl()
+      const PACKAGE = getActivePackage()
       let subaccountAddr = address
 
       // Try to get primary subaccount using direct fetch
@@ -46,7 +47,7 @@ export function ManualAddressInput() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            function: `${DECIBEL_PACKAGE}::dex_accounts::primary_subaccount`,
+            function: `${PACKAGE}::dex_accounts::primary_subaccount`,
             type_arguments: [],
             arguments: [address],
           }),
@@ -66,7 +67,7 @@ export function ManualAddressInput() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${DECIBEL_PACKAGE}::accounts_collateral::available_order_margin`,
+          function: `${PACKAGE}::accounts_collateral::available_order_margin`,
           type_arguments: [],
           arguments: [subaccountAddr],
         }),

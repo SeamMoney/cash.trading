@@ -1,3 +1,8 @@
+import { dirname } from "path"
+import { fileURLToPath } from "url"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -19,8 +24,9 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
-  // Empty turbopack config to silence webpack warning
-  turbopack: {},
+  turbopack: {
+    root: __dirname,
+  },
 }
 
 export default nextConfig

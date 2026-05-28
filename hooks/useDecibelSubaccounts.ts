@@ -1,0 +1,151 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import {
+  getStoredDecibelSubaccount,
+  onDecibelSubaccountChange,
+  pickDecibelSubaccount,
+  storeDecibelSubaccount,
+} from "@/lib/decibel-selection";
+
+export interface DecibelSubaccount {
+  address: string;
+  name: string | null;
+  isPrimary: boolean;
+  isActive?: boolean;
+  hasAssetsOrPositions?: boolean;
+}
+
+interface DecibelSubaccountResponse {
+  subaccounts?: DecibelSubaccount[];
+  lookupError?: string | null;
+  lookupIncomplete?: boolean;
+  source?: string;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function shortAddress(address: string) {
+  return `${address.slice(0, 8)}...${address.slice(-5)}`;
+}
+
+export function useDecibelSubaccounts() {
+  const { account, connected } = useWallet();
+  const owner = account?.address?.toString() ?? "";
+  const [subaccounts, setSubaccounts] = useState<DecibelSubaccount[]>([]);
+  const [selectedSubaccount, setSelectedSubaccount] = useState("");
+  const [isLoadingSubaccounts, setIsLoadingSubaccounts] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupIncomplete, setLookupIncomplete] = useState(false);
+  const [lookupSource, setLookupSource] = useState("");
+
+  const selectSubaccount = useCallback(
+    (next: string | null) => {
+      setSelectedSubaccount(next ?? "");
+      storeDecibelSubaccount(next, owner);
+    },
+    [owner]
+  );
+
+  const refreshSubaccounts = useCallback(async () => {
+    if (!connected || !owner) {
+      setSubaccounts([]);
+      setSelectedSubaccount("");
+      setIsLoadingSubaccounts(false);
+      setLookupError(null);
+      setLookupIncomplete(false);
+      setLookupSource("");
+      return [];
+    }
+
+    setIsLoadingSubaccounts(true);
+    setLookupError(null);
+    setLookupIncomplete(false);
+
+    try {
+      const res = await fetch(`/api/decibel/subaccount?address=${owner}`);
+      const data = (await res.json()) as DecibelSubaccountResponse;
+      if (!res.ok) {
+        throw new Error(data.lookupError || `Decibel account lookup failed (${res.status})`);
+      }
+
+      const next = (data.subaccounts ?? []) as DecibelSubaccount[];
+      setSubaccounts(next);
+      setLookupError(data.lookupError ?? null);
+      setLookupIncomplete(Boolean(data.lookupIncomplete));
+      setLookupSource(data.source ?? "");
+      setSelectedSubaccount((current) => {
+        if (next.length === 0 && data.lookupIncomplete) {
+          return current;
+        }
+        const picked = pickDecibelSubaccount(next, owner, current);
+        storeDecibelSubaccount(picked, owner);
+        return picked ?? "";
+      });
+      return next;
+    } catch (error) {
+      setSubaccounts([]);
+      setSelectedSubaccount("");
+      setLookupError(error instanceof Error ? error.message : "Decibel account lookup failed.");
+      setLookupIncomplete(true);
+      setLookupSource("");
+      return [];
+    } finally {
+      setIsLoadingSubaccounts(false);
+    }
+  }, [connected, owner]);
+
+  const waitForSubaccounts = useCallback(async () => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const next = await refreshSubaccounts();
+      if (next.length > 0) return next;
+      await sleep(1250);
+    }
+    return [];
+  }, [refreshSubaccounts]);
+
+  useEffect(() => {
+    refreshSubaccounts().catch(() => {
+      setSubaccounts([]);
+      setSelectedSubaccount("");
+    });
+  }, [refreshSubaccounts]);
+
+  useEffect(() => {
+    return onDecibelSubaccountChange(() => {
+      const stored = getStoredDecibelSubaccount(owner);
+      setSelectedSubaccount(
+        stored && subaccounts.some((s) => s.address === stored) ? stored : ""
+      );
+    });
+  }, [owner, subaccounts]);
+
+  const selectedSubaccountRecord = useMemo(
+    () =>
+      selectedSubaccount
+        ? subaccounts.find((s) => s.address === selectedSubaccount)
+        : undefined,
+    [selectedSubaccount, subaccounts]
+  );
+  const hasDecibelAccount = Boolean(
+    selectedSubaccountRecord && selectedSubaccountRecord.isActive !== false
+  );
+
+  return {
+    hasDecibelAccount,
+    isLoadingSubaccounts,
+    lookupError,
+    lookupIncomplete,
+    lookupSource,
+    owner,
+    refreshSubaccounts,
+    selectSubaccount,
+    selectedSubaccount,
+    selectedSubaccountRecord,
+    subaccounts,
+    waitForSubaccounts,
+  };
+}

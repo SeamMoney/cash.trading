@@ -1,0 +1,130 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getAptosFullnodeApiKey, type DecibelNetwork } from "@/lib/decibel";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const DECIBEL_WS_URLS: Record<DecibelNetwork, string> = {
+  testnet: "wss://api.testnet.aptoslabs.com/decibel/ws",
+  mainnet: "wss://api.mainnet.aptoslabs.com/decibel/ws",
+};
+
+const SSE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "Connection": "keep-alive",
+  "Content-Type": "text/event-stream",
+  "X-Accel-Buffering": "no",
+};
+
+const TOPIC_PATTERN =
+  /^(all_market_prices|market_price:0x[a-fA-F0-9]+|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
+
+function getNetwork(req: NextRequest): DecibelNetwork {
+  return req.nextUrl.searchParams.get("network") === "mainnet"
+    ? "mainnet"
+    : "testnet";
+}
+
+function getTopics(req: NextRequest) {
+  const raw = req.nextUrl.searchParams.get("topics") ?? "all_market_prices";
+  return raw
+    .split(",")
+    .map((topic) => topic.trim())
+    .filter((topic) => topic.length > 0)
+    .filter((topic, index, all) => all.indexOf(topic) === index)
+    .filter((topic) => TOPIC_PATTERN.test(topic))
+    .slice(0, 20);
+}
+
+function encodeSse(payload: unknown) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+export async function GET(req: NextRequest) {
+  const network = getNetwork(req);
+  const topics = getTopics(req);
+  const apiKey = getAptosFullnodeApiKey(network);
+
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Missing Decibel API key for WebSocket stream proxy" },
+      { status: 503, headers: SSE_HEADERS }
+    );
+  }
+
+  if (topics.length === 0) {
+    return NextResponse.json(
+      { error: "No valid Decibel stream topics requested" },
+      { status: 400, headers: SSE_HEADERS }
+    );
+  }
+
+  const encoder = new TextEncoder();
+  let ws: WebSocket | null = null;
+  let keepAlive: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const enqueue = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          closed = true;
+        }
+      };
+
+      const send = (payload: unknown) => enqueue(encodeSse(payload));
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (keepAlive) clearInterval(keepAlive);
+        ws?.close();
+        try {
+          controller.close();
+        } catch {
+          // Stream may already be closed by the client.
+        }
+      };
+
+      ws = new WebSocket(DECIBEL_WS_URLS[network], ["decibel", apiKey]);
+      keepAlive = setInterval(() => enqueue(": keepalive\n\n"), 25_000);
+
+      ws.addEventListener("open", () => {
+        send({ type: "connected", network, topics });
+        for (const topic of topics) {
+          ws?.send(JSON.stringify({ method: "subscribe", topic }));
+        }
+      });
+
+      ws.addEventListener("message", (event) => {
+        if (typeof event.data === "string") {
+          enqueue(`data: ${event.data}\n\n`);
+          return;
+        }
+
+        send({ type: "message", data: String(event.data) });
+      });
+
+      ws.addEventListener("error", () => {
+        send({ type: "error", message: "Decibel WebSocket error" });
+      });
+
+      ws.addEventListener("close", () => {
+        send({ type: "closed" });
+        cleanup();
+      });
+
+      req.signal.addEventListener("abort", cleanup);
+    },
+    cancel() {
+      closed = true;
+      if (keepAlive) clearInterval(keepAlive);
+      ws?.close();
+    },
+  });
+
+  return new Response(stream, { headers: SSE_HEADERS });
+}

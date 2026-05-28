@@ -18,40 +18,39 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://decibrrr.vercel.app"),
-  title: "Decibrrr - Farm Decibel Points on Aptos",
+  metadataBase: new URL("https://cash.trading"),
+  title: "cash.trading - Aptos Perps and CASH Rewards",
   description:
-    "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
+    "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
   keywords: [
-    "Decibel",
-    "Decibrrr",
-    "points farming",
+    "cash.trading",
+    "CASH",
     "Aptos",
+    "Decibel",
+    "trading",
     "perpetual futures",
     "perp DEX",
-    "TWAP",
+    "analytics",
     "automated trading",
     "DeFi",
-    "perpetuals",
-    "volume farming",
   ],
-  authors: [{ name: "Decibrrr" }],
-  creator: "Decibrrr",
-  publisher: "Decibrrr",
+  authors: [{ name: "cash.trading" }],
+  creator: "cash.trading",
+  publisher: "cash.trading",
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://decibrrr.vercel.app",
-    title: "Decibrrr - Farm Decibel Points on Aptos",
+    url: "https://cash.trading",
+    title: "cash.trading - Aptos Perps and CASH Rewards",
     description:
-      "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
-    siteName: "Decibrrr",
+      "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
+    siteName: "cash.trading",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Decibrrr - Farm Decibel Points on Aptos",
+    title: "cash.trading - Aptos Perps and CASH Rewards",
     description:
-      "Farm points on Decibel perp DEX. Automated volume generation bot for Decibel perpetual futures on Aptos blockchain.",
+      "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
   },
   robots: {
     index: true,

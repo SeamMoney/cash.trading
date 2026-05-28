@@ -1,0 +1,1569 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { Liveline, type CandlePoint, type LivelinePoint } from "liveline";
+// lightweight-charts types kept for toChartTime helper (used by aggregation utils)
+import type { UTCTimestamp } from "lightweight-charts";
+import { TetherLoader } from "@/components/layout/TetherLoader";
+import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
+import { getPriceCandleProductId, supportsPriceCandleMarket, usePriceCandles } from "@/hooks/useBtcCandles";
+import type { MarketHistoryCandle } from "@/lib/btc-history";
+import {
+  fetchDecibelMainnetCandles,
+  fetchDecibelMainnetPrices,
+  fetchDecibelMainnetTrades,
+  getDecibelPublicNetwork,
+  type DecibelRestCandle,
+  type DecibelRestTrade,
+} from "@/lib/decibel-public";
+import { dedupeAndSort, withLiveTail } from "@/lib/trade/lineData";
+
+type TradeSample = {
+  price: number;
+  transaction_unix_ms: number;
+};
+
+type LiquidationLine = {
+  id: string;
+  price: number;
+  side: "long" | "short";
+};
+
+export interface PerpMarketSnapshot {
+  connected: boolean;
+  fundingRateBps: number | null;
+  openInterest: number | null;
+  oraclePrice: number;
+  price: number;
+}
+
+type ChartInterval = "1s" | "5s" | "15s" | "1m";
+
+type ViewAnchor = {
+  centerTime: number;
+  spanSecs: number;
+};
+
+const CHART_PADDING = { top: 8, right: 80, bottom: 36, left: 8 } as const;
+const TRADE_POLL_MS = 4000;
+const PRICE_POLL_MS = 1000;
+const ONE_SECOND_WINDOW_SECS = 12 * 60;
+const MINUTE_HISTORY_MS = 12 * 60 * 60 * 1000;
+const SECOND_TRADE_LIMIT = 1800;
+const INITIAL_TRADE_LIMIT = 900;
+const BTC_FALLBACK_ACTIVATE_MS = 3500;
+const DEFAULT_LINE_WINDOW_SECS = 5 * 60;
+const MOBILE_DEFAULT_LINE_WINDOW_SECS = 3 * 60;
+const MIN_LINE_WINDOW_SECS = 60;
+const MAX_LINE_WINDOW_SECS = MINUTE_HISTORY_MS / 1000;
+const LIVE_EDGE_HEADROOM_SECS = 2;
+const LIVE_EDGE_SNAP_SECS = 6;
+const BASE_LINE_VERTICAL_PAD = 14;
+const MAX_LINE_VERTICAL_PAD = 72;
+const INITIAL_REQUEST_TIMEOUT_MS = 9000;
+const COINBASE_BOOTSTRAP_TARGET_SECS = 12 * 60;
+
+const INTERVAL_SECONDS: Record<ChartInterval, number> = {
+  "1s": 1,
+  "5s": 5,
+  "15s": 15,
+  "1m": 60,
+};
+
+const BAR_SPACING: Record<ChartInterval, number> = {
+  "1s": 5.6,
+  "5s": 7.2,
+  "15s": 8.4,
+  "1m": 9.4,
+};
+
+function toChartTime(time: number): UTCTimestamp {
+  return Math.floor(time) as UTCTimestamp;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function toCandlePoints(candles: DecibelRestCandle[]) {
+  return candles
+    .map((candle) => ({
+      time: Math.floor(candle.t / 1000),
+      open: candle.o,
+      high: candle.h,
+      low: candle.l,
+      close: candle.c,
+    }))
+    .sort((a, b) => a.time - b.time);
+}
+
+function toHistoryCandlePoints(candles: MarketHistoryCandle[]) {
+  return candles
+    .map((candle) => ({
+      time: Math.floor(candle.time),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+    }))
+    .sort((a, b) => a.time - b.time);
+}
+
+function aggregateCandles(candles: CandlePoint[], bucketSecs: number) {
+  if (candles.length === 0 || bucketSecs <= 1) return candles;
+
+  const grouped = new Map<number, CandlePoint>();
+
+  for (const candle of candles) {
+    const bucket = Math.floor(candle.time / bucketSecs) * bucketSecs;
+    const existing = grouped.get(bucket);
+
+    if (!existing) {
+      grouped.set(bucket, {
+        time: bucket,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      });
+      continue;
+    }
+
+    grouped.set(bucket, {
+      ...existing,
+      high: Math.max(existing.high, candle.high),
+      low: Math.min(existing.low, candle.low),
+      close: candle.close,
+    });
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => a.time - b.time);
+}
+
+function buildSecondCandlesFromTrades(
+  trades: TradeSample[],
+  fallbackPrice: number,
+  nowMs: number,
+) {
+  const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
+  const currentSec = Math.floor(nowMs / 1000);
+  const oldestTradeSec = sorted.length > 0
+    ? Math.floor(sorted[0].transaction_unix_ms / 1000)
+    : currentSec - ONE_SECOND_WINDOW_SECS + 1;
+  const startSec = Math.max(currentSec - ONE_SECOND_WINDOW_SECS + 1, oldestTradeSec);
+  const tradesBySecond = new Map<number, TradeSample[]>();
+
+  for (const trade of sorted) {
+    const sec = Math.floor(trade.transaction_unix_ms / 1000);
+    if (sec < startSec) continue;
+    const bucket = tradesBySecond.get(sec);
+    if (bucket) {
+      bucket.push(trade);
+    } else {
+      tradesBySecond.set(sec, [trade]);
+    }
+  }
+
+  const firstTradePrice = sorted.length > 0 ? sorted[0].price : fallbackPrice;
+  let lastClose = Number.isFinite(firstTradePrice) && firstTradePrice > 0 ? firstTradePrice : fallbackPrice;
+  const candles: CandlePoint[] = [];
+
+  for (let sec = startSec; sec <= currentSec; sec += 1) {
+    const bucket = tradesBySecond.get(sec) ?? [];
+
+    if (bucket.length === 0) {
+      candles.push({
+        time: sec,
+        open: lastClose,
+        high: lastClose,
+        low: lastClose,
+        close: lastClose,
+      });
+      continue;
+    }
+
+    const open = bucket[0].price;
+    const close = bucket[bucket.length - 1].price;
+    let high = open;
+    let low = open;
+
+    for (const trade of bucket) {
+      if (trade.price > high) high = trade.price;
+      if (trade.price < low) low = trade.price;
+    }
+
+    candles.push({
+      time: sec,
+      open,
+      high,
+      low,
+      close,
+    });
+    lastClose = close;
+  }
+
+  return candles;
+}
+
+function mergeTradesIntoSecondCandles(
+  candles: CandlePoint[],
+  trades: TradeSample[],
+  fallbackPrice: number,
+  nowMs: number,
+) {
+  if (trades.length === 0) return candles;
+
+  const next = candles.slice();
+  const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
+  let lastClose = next[next.length - 1]?.close ?? fallbackPrice;
+
+  for (const trade of sorted) {
+    const price = trade.price;
+    const sec = Math.floor(trade.transaction_unix_ms / 1000);
+    const index = next.findIndex((candle) => candle.time === sec);
+
+    if (index >= 0) {
+      const candle = next[index];
+      next[index] = {
+        ...candle,
+        high: Math.max(candle.high, price),
+        low: Math.min(candle.low, price),
+        close: price,
+      };
+      lastClose = price;
+      continue;
+    }
+
+    const previous = next[next.length - 1];
+    if (!previous) {
+      next.push({
+        time: sec,
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+      });
+      lastClose = price;
+      continue;
+    }
+
+    for (let fillSec = previous.time + 1; fillSec < sec; fillSec += 1) {
+      next.push({
+        time: fillSec,
+        open: lastClose,
+        high: lastClose,
+        low: lastClose,
+        close: lastClose,
+      });
+    }
+
+    next.push({
+      time: sec,
+      open: lastClose,
+      high: Math.max(lastClose, price),
+      low: Math.min(lastClose, price),
+      close: price,
+    });
+    lastClose = price;
+  }
+
+  return updateSecondCandlesWithPrice(next.slice(-ONE_SECOND_WINDOW_SECS), lastClose, nowMs);
+}
+
+function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number, nowMs: number) {
+  if (!Number.isFinite(nextPrice) || nextPrice <= 0) return candles;
+
+  const currentSec = Math.floor(nowMs / 1000);
+  const next = candles.slice();
+  const last = next[next.length - 1];
+
+  if (!last) {
+    return [{
+      time: currentSec,
+      open: nextPrice,
+      high: nextPrice,
+      low: nextPrice,
+      close: nextPrice,
+    }];
+  }
+
+  if (last.time === currentSec) {
+    next[next.length - 1] = {
+      ...last,
+      high: Math.max(last.high, nextPrice),
+      low: Math.min(last.low, nextPrice),
+      close: nextPrice,
+    };
+    return next;
+  }
+
+  let prevClose = last.close;
+  for (let sec = last.time + 1; sec < currentSec; sec += 1) {
+    next.push({
+      time: sec,
+      open: prevClose,
+      high: prevClose,
+      low: prevClose,
+      close: prevClose,
+    });
+  }
+
+  next.push({
+    time: currentSec,
+    open: prevClose,
+    high: Math.max(prevClose, nextPrice),
+    low: Math.min(prevClose, nextPrice),
+    close: nextPrice,
+  });
+
+  return next.slice(-ONE_SECOND_WINDOW_SECS);
+}
+
+function mergeMinuteCandlesWithLive(minuteCandles: CandlePoint[], secondCandles: CandlePoint[]) {
+  if (minuteCandles.length === 0) return aggregateCandles(secondCandles, 60);
+  if (secondCandles.length === 0) return minuteCandles;
+
+  const liveMinute = aggregateCandles(secondCandles, 60);
+  if (liveMinute.length === 0) return minuteCandles;
+
+  const latestLive = liveMinute[liveMinute.length - 1];
+  return [
+    ...minuteCandles.filter((candle) => candle.time < latestLive.time),
+    latestLive,
+  ];
+}
+
+function densifyCandles(
+  candles: CandlePoint[],
+  stepSecs: number,
+  fallbackSpanSecs: number,
+) {
+  if (candles.length === 0 || stepSecs <= 0) return candles;
+
+  const expanded: CandlePoint[] = [];
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    const nextTime = candles[index + 1]?.time ?? (candle.time + fallbackSpanSecs);
+    const spanSecs = Math.max(stepSecs, nextTime - candle.time);
+    const steps = Math.max(1, Math.round(spanSecs / stepSecs));
+    const firstPivot = candle.close >= candle.open ? candle.low : candle.high;
+    const secondPivot = candle.close >= candle.open ? candle.high : candle.low;
+
+    const sample = (progress: number) => {
+      if (progress <= 0.28) {
+        return candle.open + (firstPivot - candle.open) * (progress / 0.28);
+      }
+      if (progress <= 0.72) {
+        return firstPivot + (secondPivot - firstPivot) * ((progress - 0.28) / 0.44);
+      }
+      return secondPivot + (candle.close - secondPivot) * ((progress - 0.72) / 0.28);
+    };
+
+    for (let step = 0; step < steps; step += 1) {
+      const startProgress = step / steps;
+      const endProgress = (step + 1) / steps;
+      const open = sample(startProgress);
+      const close = sample(endProgress);
+      let high = Math.max(open, close);
+      let low = Math.min(open, close);
+
+      if (startProgress <= 0.28 && endProgress >= 0.28) {
+        high = Math.max(high, firstPivot);
+        low = Math.min(low, firstPivot);
+      }
+      if (startProgress <= 0.72 && endProgress >= 0.72) {
+        high = Math.max(high, secondPivot);
+        low = Math.min(low, secondPivot);
+      }
+
+      expanded.push({
+        time: candle.time + step * stepSecs,
+        open,
+        high,
+        low,
+        close,
+      });
+    }
+  }
+
+  return expanded;
+}
+
+function buildLineHistory(
+  minuteCandles: CandlePoint[],
+  secondCandles: CandlePoint[],
+  interval: ChartInterval,
+) {
+  if (interval === "1m") {
+    return mergeMinuteCandlesWithLive(minuteCandles, secondCandles);
+  }
+
+  if (interval === "1s") {
+    if (secondCandles.length === 0) return densifyCandles(minuteCandles, 5, 60);
+
+    return [
+      ...densifyCandles(
+        minuteCandles.filter((candle) => candle.time < secondCandles[0].time),
+        5,
+        60,
+      ),
+      ...secondCandles,
+    ];
+  }
+
+  const recentCandles = interval === "15s"
+    ? aggregateCandles(secondCandles, 15)
+    : interval === "5s"
+      ? aggregateCandles(secondCandles, 5)
+      : secondCandles;
+
+  if (recentCandles.length === 0) return minuteCandles;
+
+  return [
+    ...minuteCandles.filter((candle) => candle.time < recentCandles[0].time),
+    ...recentCandles,
+  ];
+}
+
+function getLineIntervalForWindow(windowSecs: number): ChartInterval {
+  if (windowSecs <= 15 * 60) return "1s";
+  if (windowSecs <= 75 * 60) return "5s";
+  if (windowSecs <= 4 * 60 * 60) return "15s";
+  return "1m";
+}
+
+function buildLinePoints(candles: CandlePoint[], interval: ChartInterval) {
+  if (candles.length === 0) return [];
+
+  const points: LivelinePoint[] = [
+    {
+      time: candles[0].time,
+      value: candles[0].open,
+    },
+  ];
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    const nextTime = candles[index + 1]?.time ?? (candle.time + INTERVAL_SECONDS[interval]);
+    const span = Math.max(1, nextTime - candle.time);
+    const firstTurnTime = candle.time + span * 0.24;
+    const secondTurnTime = candle.time + span * 0.58;
+    const closeTime = candle.time + span * 0.98;
+    const isBull = candle.close >= candle.open;
+    const firstTurnValue = isBull ? candle.low : candle.high;
+    const secondTurnValue = isBull ? candle.high : candle.low;
+
+    points.push(
+      {
+        time: firstTurnTime,
+        value: firstTurnValue,
+      },
+      {
+        time: secondTurnTime,
+        value: secondTurnValue,
+      },
+      {
+        time: closeTime,
+        value: candle.close,
+      },
+    );
+  }
+
+  return points;
+}
+
+function buildCloseLinePoints(candles: CandlePoint[], interval: ChartInterval) {
+  if (candles.length === 0) return [];
+
+  const spanSecs = INTERVAL_SECONDS[interval];
+  const points: LivelinePoint[] = [
+    {
+      time: candles[0].time,
+      value: candles[0].open,
+    },
+  ];
+
+  for (const candle of candles) {
+    points.push({
+      time: candle.time + spanSecs * 0.96,
+      value: candle.close,
+    });
+  }
+
+  return points;
+}
+
+function mergeLivelinePoints(...groups: LivelinePoint[][]) {
+  const byTime = new Map<number, LivelinePoint>();
+
+  for (const group of groups) {
+    for (const point of group) {
+      if (!Number.isFinite(point.time) || !Number.isFinite(point.value) || point.value <= 0) continue;
+      byTime.set(Math.round(point.time * 1000), point);
+    }
+  }
+
+  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+}
+
+function buildHybridVisibleLinePoints(
+  minuteCandles: CandlePoint[],
+  secondCandles: CandlePoint[],
+  startTime: number,
+  endTime: number,
+) {
+  const visibleSecondCandles = secondCandles.filter(
+    (candle) => candle.time >= startTime && candle.time <= endTime,
+  );
+  const recentStart = visibleSecondCandles[0]?.time ?? endTime;
+  const historicalPoints = buildCloseLinePoints(
+    densifyCandles(
+      minuteCandles.filter((candle) => candle.time >= startTime - 60 && candle.time < recentStart),
+      5,
+      60,
+    ).filter((candle) => candle.time >= startTime && candle.time < recentStart),
+    "5s",
+  );
+  const recentPoints = buildCloseLinePoints(
+    visibleSecondCandles,
+    "1s",
+  );
+
+  return mergeLivelinePoints(historicalPoints, recentPoints);
+}
+
+function buildHybridSecondLinePoints(
+  minuteCandles: CandlePoint[],
+  secondCandles: CandlePoint[],
+  startTime: number,
+  endTime: number,
+) {
+  const recentStart = secondCandles[0]?.time ?? endTime;
+  const backfillCandles = densifyCandles(
+    minuteCandles.filter((candle) => candle.time >= startTime - 60 && candle.time < recentStart),
+    5,
+    60,
+  );
+  const backfillPoints = buildLinePoints(backfillCandles, "5s")
+    .filter((point) => point.time >= startTime && point.time <= endTime);
+  const recentPoints = buildLinePoints(
+    secondCandles.filter((candle) => candle.time >= startTime && candle.time <= endTime),
+    "1s",
+  );
+  const byTime = new Map<number, LivelinePoint>();
+
+  for (const point of backfillPoints) {
+    byTime.set(Math.round(point.time * 1000), point);
+  }
+  for (const point of recentPoints) {
+    byTime.set(Math.round(point.time * 1000), point);
+  }
+
+  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+}
+
+function fillLineWindowStart(points: LivelinePoint[], startTime: number) {
+  if (points.length === 0) return points;
+
+  const first = points[0];
+  if (first.time <= startTime + 2) return points;
+
+  const gap = first.time - startTime;
+  const steps = clamp(Math.ceil(gap / 6), 8, 48);
+  const second = points[1] ?? first;
+  const prefix: LivelinePoint[] = [];
+
+  for (let index = 0; index < steps; index += 1) {
+    const progress = index / steps;
+    prefix.push({
+      time: startTime + gap * progress,
+      value: first.value + (second.value - first.value) * progress * 0.18,
+    });
+  }
+
+  return [...prefix, ...points];
+}
+
+function sliceCandlesForWindow(candles: CandlePoint[], startTime: number, endTime: number) {
+  if (candles.length === 0) return [];
+
+  const visible = candles.filter((candle) => candle.time >= startTime && candle.time <= endTime);
+  if (visible.length > 0) return visible;
+
+  const nearest = nearestIndexByTime(candles, endTime);
+  return candles.slice(Math.max(0, nearest - 1), nearest + 1);
+}
+
+function nearestIndexByTime(candles: CandlePoint[], targetTime: number) {
+  if (candles.length === 0) return 0;
+
+  let low = 0;
+  let high = candles.length - 1;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (candles[mid].time < targetTime) low = mid + 1;
+    else high = mid;
+  }
+
+  if (low === 0) return 0;
+  if (low >= candles.length) return candles.length - 1;
+
+  return Math.abs(candles[low].time - targetTime) < Math.abs(candles[low - 1].time - targetTime)
+    ? low
+    : low - 1;
+}
+
+function chooseNextInterval(
+  current: ChartInterval,
+  barsVisible: number,
+  atLiveEdge: boolean,
+): ChartInterval {
+  if (current === "1s" && (barsVisible > 170 || !atLiveEdge && barsVisible > 130)) return "5s";
+  if (current === "5s") {
+    if (barsVisible > 185 || !atLiveEdge && barsVisible > 145) return "15s";
+    if (barsVisible < 95 && atLiveEdge) return "1s";
+  }
+  if (current === "15s") {
+    if (barsVisible > 215 || !atLiveEdge && barsVisible > 170) return "1m";
+    if (barsVisible < 95 && atLiveEdge) return "5s";
+  }
+  if (current === "1m" && barsVisible < 110 && atLiveEdge) return "15s";
+  return current;
+}
+
+function formatPerpPrice(value: number, decimals: number) {
+  return "$" + value.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+export function BtcPerpsChart({
+  active,
+  liquidationLines = [],
+  market,
+  mode,
+  onSnapshotChange,
+}: {
+  active: boolean;
+  liquidationLines?: LiquidationLine[];
+  market: PerpMarketData;
+  mode: "line" | "candle";
+  onSnapshotChange?: (snapshot: PerpMarketSnapshot) => void;
+}) {
+  const intervalRef = useRef<ChartInterval>("1s");
+  const initializedRangeRef = useRef(false);
+  const pendingAnchorRef = useRef<ViewAnchor | null>(null);
+
+  const [marketAddress, setMarketAddress] = useState<string | null>(market.marketAddr);
+  const [secondCandles, setSecondCandles] = useState<CandlePoint[]>([]);
+  const [minuteCandles, setMinuteCandles] = useState<CandlePoint[]>([]);
+  const [coinbaseMinuteCandles, setCoinbaseMinuteCandles] = useState<CandlePoint[]>([]);
+  const [coinbaseHistorySecondCandles, setCoinbaseHistorySecondCandles] = useState<CandlePoint[]>([]);
+  const [coinbaseHistoryTicks, setCoinbaseHistoryTicks] = useState<LivelinePoint[]>([]);
+  const [coinbaseBootstrapReady, setCoinbaseBootstrapReady] = useState(false);
+  const [hasInitialHistory, setHasInitialHistory] = useState(false);
+  const [useBtcFallback, setUseBtcFallback] = useState(false);
+  const [interval, setInterval] = useState<ChartInterval>("1s");
+  const [lineWindowSecs, setLineWindowSecs] = useState(DEFAULT_LINE_WINDOW_SECS);
+  const [lineEndTime, setLineEndTime] = useState<number | null>(null);
+  const [manualLineVerticalPad, setManualLineVerticalPad] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [snapshot, setSnapshot] = useState<PerpMarketSnapshot>({
+    connected: false,
+    fundingRateBps: null,
+    openInterest: null,
+    oraclePrice: market.seedPrice * 1.0004,
+    price: market.seedPrice,
+  });
+  const snapshotRef = useRef(snapshot);
+  const decibelLiveAtRef = useRef(0);
+
+  intervalRef.current = interval;
+  snapshotRef.current = snapshot;
+
+  const btcFallbackEnabled = market.marketName === "BTC/USD";
+  // Always use Coinbase feed when available so line & candle views share the same data
+  const useCoinbaseLineFeed = supportsPriceCandleMarket(market.marketName);
+
+  const {
+    candles: coinbaseCandles,
+    ticks: coinbaseTicks,
+    liveCandle: coinbaseLiveCandle,
+    price: coinbasePrice,
+    connected: coinbaseConnected,
+  } = usePriceCandles(market.marketName, active && useCoinbaseLineFeed, [], 0, 1, {
+    seedBackfillTicks: false,
+    preserveStateOnResume: true,
+  });
+
+  const coinbaseSecondCandles = useMemo(() => {
+    if (!useCoinbaseLineFeed) return [];
+    const merged = [
+      ...coinbaseHistorySecondCandles.map((candle) => ({
+        time: candle.time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      })),
+      ...coinbaseCandles.map((candle) => ({
+        time: candle.time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      })),
+      ...(coinbaseLiveCandle
+        ? [{
+            time: coinbaseLiveCandle.time,
+            open: coinbaseLiveCandle.open,
+            high: coinbaseLiveCandle.high,
+            low: coinbaseLiveCandle.low,
+            close: coinbaseLiveCandle.close,
+          }]
+        : []),
+    ];
+    const byTime = new Map<number, CandlePoint>();
+    for (const candle of merged) byTime.set(candle.time, candle);
+    return Array.from(byTime.values()).sort((a, b) => a.time - b.time).slice(-ONE_SECOND_WINDOW_SECS);
+  }, [coinbaseCandles, coinbaseHistorySecondCandles, coinbaseLiveCandle, useCoinbaseLineFeed]);
+
+  const activeSecondCandles = useMemo(
+    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : secondCandles),
+    [coinbaseSecondCandles, secondCandles, useCoinbaseLineFeed],
+  );
+  const activeMinuteCandles = useMemo(
+    () => (useCoinbaseLineFeed ? coinbaseMinuteCandles : minuteCandles),
+    [coinbaseMinuteCandles, minuteCandles, useCoinbaseLineFeed],
+  );
+
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startEndTime: number;
+    spanSecs: number;
+  } | null>(null);
+
+  const displayedCandles = useMemo(() => {
+    if (interval === "1m") {
+      return mergeMinuteCandlesWithLive(activeMinuteCandles, activeSecondCandles);
+    }
+    if (interval === "15s") return aggregateCandles(activeSecondCandles, 15);
+    if (interval === "5s") return aggregateCandles(activeSecondCandles, 5);
+    return activeSecondCandles;
+  }, [activeMinuteCandles, activeSecondCandles, interval]);
+
+  const lineBounds = useMemo(() => {
+    const earliest = activeMinuteCandles[0]?.time ?? activeSecondCandles[0]?.time ?? null;
+    const latest = activeSecondCandles[activeSecondCandles.length - 1]?.time
+      ?? activeMinuteCandles[activeMinuteCandles.length - 1]?.time
+      ?? null;
+
+    return { earliest, latest };
+  }, [activeMinuteCandles, activeSecondCandles]);
+
+  const lineResolvedEndTime = useMemo(() => {
+    if (lineBounds.latest == null) return null;
+    return lineEndTime ?? (lineBounds.latest + LIVE_EDGE_HEADROOM_SECS);
+  }, [lineBounds.latest, lineEndTime]);
+
+  const lineInterval = useMemo(
+    () => (activeSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
+    [activeSecondCandles.length, lineWindowSecs],
+  );
+
+  const lineHistoryCandles = useMemo(
+    () => buildLineHistory(activeMinuteCandles, activeSecondCandles, lineInterval),
+    [activeMinuteCandles, activeSecondCandles, lineInterval],
+  );
+
+  const lineVisibleCandles = useMemo(() => {
+    if (lineResolvedEndTime == null) return [];
+    return sliceCandlesForWindow(
+      lineHistoryCandles,
+      lineResolvedEndTime - lineWindowSecs,
+      lineResolvedEndTime,
+    );
+  }, [lineHistoryCandles, lineResolvedEndTime, lineWindowSecs]);
+
+  const lineData = useMemo(
+    () => {
+      const liveTime = lineBounds.latest ?? Date.now() / 1000;
+
+      if (useCoinbaseLineFeed && lineInterval === "1s" && lineResolvedEndTime != null) {
+        const startTime = lineResolvedEndTime - lineWindowSecs;
+        // Reconstruct committed history from canonical sources every render
+        // (acceptance #4: resume must rebuild from sorted arrays, not from
+        // animated path state). Then attach the live tick via withLiveTail,
+        // which never mutates a committed point.
+        return withLiveTail(
+          dedupeAndSort([
+            ...buildHybridVisibleLinePoints(
+              activeMinuteCandles,
+              activeSecondCandles,
+              startTime,
+              lineResolvedEndTime,
+            ),
+            ...coinbaseHistoryTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
+            ...coinbaseTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
+          ]),
+          snapshot.price,
+          liveTime,
+        );
+      }
+
+      return withLiveTail(
+        dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval)),
+        snapshot.price,
+        liveTime,
+      );
+    },
+    [
+      activeMinuteCandles,
+      activeSecondCandles,
+      coinbaseHistoryTicks,
+      coinbaseTicks,
+      lineInterval,
+      lineBounds.latest,
+      lineResolvedEndTime,
+      lineVisibleCandles,
+      lineWindowSecs,
+      snapshot.price,
+      useCoinbaseLineFeed,
+    ],
+  );
+
+  const lineBootstrapReady = useMemo(() => {
+    if (!useCoinbaseLineFeed) return false;
+    const requiredHistorySecs = clamp(Math.floor(lineWindowSecs * 0.65), MIN_LINE_WINDOW_SECS, DEFAULT_LINE_WINDOW_SECS);
+    return (
+      coinbaseHistorySecondCandles.length >= requiredHistorySecs
+      || coinbaseHistoryTicks.length >= Math.max(40, Math.floor(requiredHistorySecs / 2))
+      || coinbaseMinuteCandles.length >= 2
+      || coinbaseTicks.length >= 8
+    );
+  }, [
+    coinbaseHistorySecondCandles.length,
+    coinbaseHistoryTicks.length,
+    coinbaseMinuteCandles.length,
+    coinbaseTicks.length,
+    lineWindowSecs,
+    useCoinbaseLineFeed,
+  ]);
+
+  const lineAutoVerticalPad = useMemo(() => {
+    const zoomRatio = Math.max(1, lineWindowSecs / DEFAULT_LINE_WINDOW_SECS);
+    return clamp(Math.log(zoomRatio) / Math.log(2) * 18, 0, MAX_LINE_VERTICAL_PAD);
+  }, [lineWindowSecs]);
+
+  // Bucket the Coinbase-history coverage into 5-minute tiers so the bootstrap
+  // effect below does not refetch on every small `lineWindowSecs` change.
+  // Crossing a tier boundary (zooming out beyond covered span) is the only
+  // legitimate trigger for re-fetching history. Acceptance #5.
+  const historyCoverageTier = useMemo(() => {
+    const required = Math.max(COINBASE_BOOTSTRAP_TARGET_SECS, Math.ceil(lineWindowSecs + 90));
+    return Math.ceil(required / 300) * 300;
+  }, [lineWindowSecs]);
+
+  const lineVerticalPad = clamp(
+    BASE_LINE_VERTICAL_PAD + lineAutoVerticalPad + manualLineVerticalPad,
+    0,
+    MAX_LINE_VERTICAL_PAD,
+  );
+
+  const linePadding = useMemo(
+    () => ({
+      top: CHART_PADDING.top + lineVerticalPad,
+      right: CHART_PADDING.right,
+      bottom: CHART_PADDING.bottom,
+      left: CHART_PADDING.left,
+    }),
+    [lineVerticalPad],
+  );
+
+  function normalizeLineEndTime(nextEndTime: number, nextWindowSecs: number) {
+    if (lineBounds.earliest == null || lineBounds.latest == null) return null;
+
+    const liveEdge = lineBounds.latest + LIVE_EDGE_HEADROOM_SECS;
+    const fullSpan = liveEdge - lineBounds.earliest;
+
+    if (fullSpan <= nextWindowSecs + LIVE_EDGE_SNAP_SECS) {
+      return null;
+    }
+
+    const minEnd = lineBounds.earliest + nextWindowSecs;
+    const clampedEnd = clamp(nextEndTime, minEnd, liveEdge);
+
+    return liveEdge - clampedEnd <= LIVE_EDGE_SNAP_SECS ? null : clampedEnd;
+  }
+
+  const handleLineWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (lineBounds.latest == null || lineResolvedEndTime == null) return;
+
+    const horizontalIntent = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey;
+
+    if (horizontalIntent) {
+      const delta = event.deltaX !== 0 ? event.deltaX : event.deltaY;
+      const panSecs = delta * Math.max(lineWindowSecs / 280, 1.5);
+      setLineEndTime(normalizeLineEndTime(lineResolvedEndTime + panSecs, lineWindowSecs));
+      return;
+    }
+
+    if (Math.abs(event.deltaY) < 0.5) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const anchorRatio = rect.width > 0
+      ? clamp((event.clientX - rect.left) / rect.width, 0.12, 0.88)
+      : 1;
+    const zoomScale = clamp(Math.exp(event.deltaY * 0.00085), 0.94, 1.08);
+    const nextWindowSecs = clamp(
+      lineWindowSecs * zoomScale,
+      MIN_LINE_WINDOW_SECS,
+      MAX_LINE_WINDOW_SECS,
+    );
+    const currentStart = lineResolvedEndTime - lineWindowSecs;
+    const anchorTime = currentStart + lineWindowSecs * anchorRatio;
+    const nextStart = anchorTime - nextWindowSecs * anchorRatio;
+    const nextEnd = nextStart + nextWindowSecs;
+
+    setLineWindowSecs(nextWindowSecs);
+    setLineEndTime(normalizeLineEndTime(nextEnd, nextWindowSecs));
+  };
+
+  const handleLinePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch" || lineResolvedEndTime == null) return;
+
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startEndTime: lineResolvedEndTime,
+      spanSecs: lineWindowSecs,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleLinePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    const panSecs = -(event.clientX - dragState.startX) / rect.width * dragState.spanSecs;
+    setLineEndTime(normalizeLineEndTime(dragState.startEndTime + panSecs, dragState.spanSecs));
+  };
+
+  const handleLinePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    dragStateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleLineAxisWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (Math.abs(event.deltaY) < 0.5) return;
+
+    setManualLineVerticalPad((prev) =>
+      clamp(prev + (event.deltaY > 0 ? 8 : -8), 0, MAX_LINE_VERTICAL_PAD - BASE_LINE_VERTICAL_PAD)
+    );
+  };
+
+  useEffect(() => {
+    onSnapshotChange?.(snapshot);
+  }, [onSnapshotChange, snapshot]);
+
+  useEffect(() => {
+    if (!useCoinbaseLineFeed) {
+      setCoinbaseMinuteCandles([]);
+      setCoinbaseHistorySecondCandles([]);
+      setCoinbaseHistoryTicks([]);
+      setCoinbaseBootstrapReady(false);
+      return () => {};
+    }
+
+    if (!active) {
+      return () => {};
+    }
+
+    const productId = getPriceCandleProductId(market.marketName);
+    if (!productId) {
+      setCoinbaseMinuteCandles([]);
+      setCoinbaseHistorySecondCandles([]);
+      setCoinbaseHistoryTicks([]);
+      setCoinbaseBootstrapReady(false);
+      return () => {};
+    }
+
+    let cancelled = false;
+    setCoinbaseBootstrapReady(false);
+
+    const loadHistory = async () => {
+      try {
+        const end = Math.floor(Date.now() / 1000);
+        const start = end - Math.max(Math.floor(MINUTE_HISTORY_MS / 1000), 120 * 60);
+        const [candlesResponse, tradesResponse] = await Promise.all([
+          fetch(
+            `https://api.exchange.coinbase.com/products/${productId}/candles?granularity=60&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}`,
+            { cache: "no-store" },
+          ),
+          fetch(
+            `/api/coinbase/trades?productId=${encodeURIComponent(productId)}&targetSpanSecs=${historyCoverageTier}`,
+            { cache: "no-store" },
+          ),
+        ]);
+        const rawCandles = candlesResponse.ok
+          ? (await candlesResponse.json()) as Array<[number, number, number, number, number, number]>
+          : [];
+        const tradesPayload = tradesResponse.ok
+          ? (await tradesResponse.json()) as { trades?: TradeSample[] }
+          : { trades: [] };
+        if (cancelled) return;
+
+        const minuteCandles = Array.isArray(rawCandles)
+          ? rawCandles
+            .map((candle) => ({
+              time: candle[0],
+              low: candle[1],
+              high: candle[2],
+              open: candle[3],
+              close: candle[4],
+            }))
+            .sort((a, b) => a.time - b.time)
+          : [];
+
+        setCoinbaseMinuteCandles(minuteCandles);
+
+        const latestMinuteClose = minuteCandles[minuteCandles.length - 1]?.close;
+
+        const rawTrades = Array.isArray(tradesPayload.trades) ? tradesPayload.trades : [];
+        if (rawTrades.length > 0) {
+          const bootstrapPrice = rawTrades[rawTrades.length - 1]?.price
+            || snapshotRef.current.price
+            || latestMinuteClose
+            || market.seedPrice;
+          setCoinbaseHistoryTicks(
+            rawTrades.map((trade) => ({
+              time: trade.transaction_unix_ms / 1000,
+              value: trade.price,
+            })),
+          );
+          setCoinbaseHistorySecondCandles(
+            buildSecondCandlesFromTrades(
+              rawTrades,
+              bootstrapPrice,
+              Date.now(),
+            ),
+          );
+          setSnapshot((prev) => ({
+            connected: prev.connected,
+            fundingRateBps: prev.fundingRateBps,
+            openInterest: prev.openInterest,
+            oraclePrice: bootstrapPrice * 1.0004,
+            price: bootstrapPrice,
+          }));
+        } else {
+          setCoinbaseHistorySecondCandles([]);
+          setCoinbaseHistoryTicks([]);
+          if (typeof latestMinuteClose === "number" && latestMinuteClose > 0) {
+            setSnapshot((prev) => ({
+              connected: prev.connected,
+              fundingRateBps: prev.fundingRateBps,
+              openInterest: prev.openInterest,
+              oraclePrice: latestMinuteClose * 1.0004,
+              price: latestMinuteClose,
+            }));
+          }
+        }
+      } catch {
+        // Keep the last Coinbase history if refresh fails.
+      } finally {
+        if (!cancelled) {
+          setCoinbaseBootstrapReady(true);
+        }
+      }
+    };
+
+    void loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, historyCoverageTier, market.marketName, market.seedPrice, useCoinbaseLineFeed]);
+
+  useEffect(() => {
+    setUseBtcFallback(false);
+    decibelLiveAtRef.current = 0;
+  }, [market.id]);
+
+  useEffect(() => {
+    if (!btcFallbackEnabled) {
+      setUseBtcFallback(false);
+      return;
+    }
+
+    if (useCoinbaseLineFeed) {
+      setUseBtcFallback(false);
+      return;
+    }
+
+    if (decibelLiveAtRef.current > 0) {
+      setUseBtcFallback(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (decibelLiveAtRef.current === 0) {
+        setUseBtcFallback(true);
+      }
+    }, BTC_FALLBACK_ACTIVATE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [btcFallbackEnabled, useCoinbaseLineFeed]);
+
+  useEffect(() => {
+    if (!useCoinbaseLineFeed) return;
+
+    const bootstrapPrice =
+      coinbasePrice
+      || coinbaseHistoryTicks[coinbaseHistoryTicks.length - 1]?.value
+      || coinbaseHistorySecondCandles[coinbaseHistorySecondCandles.length - 1]?.close
+      || coinbaseMinuteCandles[coinbaseMinuteCandles.length - 1]?.close
+      || 0;
+
+    if (bootstrapPrice > 0) {
+      setSnapshot((prev) => ({
+        connected: coinbaseConnected || prev.connected,
+        fundingRateBps: prev.fundingRateBps,
+        openInterest: prev.openInterest,
+        oraclePrice: bootstrapPrice * 1.0004,
+        price: bootstrapPrice,
+      }));
+    }
+
+    if (coinbaseBootstrapReady && lineBootstrapReady) {
+      setHasInitialHistory(true);
+      setLoading(false);
+    }
+  }, [
+    coinbaseBootstrapReady,
+    coinbaseConnected,
+    coinbaseHistorySecondCandles,
+    coinbaseHistoryTicks,
+    coinbaseMinuteCandles,
+    coinbasePrice,
+    lineBootstrapReady,
+    useCoinbaseLineFeed,
+  ]);
+
+  useEffect(() => {
+    if (!useBtcFallback || !btcFallbackEnabled || useCoinbaseLineFeed) return () => {};
+
+    let cancelled = false;
+    let tickerTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const loadFallbackHistory = async () => {
+      try {
+        const response = await fetch("/api/btc/candles?limit=180", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+
+        const data = await response.json() as { candles?: MarketHistoryCandle[] };
+        if (cancelled || !data.candles || data.candles.length === 0) return;
+
+        const history = toHistoryCandlePoints(data.candles);
+        if (history.length > 0) {
+          setMinuteCandles(aggregateCandles(history, 60));
+          setSecondCandles(history.slice(-ONE_SECOND_WINDOW_SECS));
+          setHasInitialHistory(true);
+        }
+      } catch {
+        // Ignore fallback history misses; ticker polling below can still recover the chart.
+      }
+    };
+
+    const pollFallbackTicker = async () => {
+      try {
+        const response = await fetch("/api/btc/ticker", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+
+        const data = await response.json() as { price?: number };
+        const nextPrice = typeof data.price === "number" ? data.price : 0;
+        if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
+
+        setSnapshot((prev) => ({
+          connected: true,
+          fundingRateBps: prev.fundingRateBps,
+          openInterest: prev.openInterest,
+          oraclePrice: nextPrice * 1.0004,
+          price: nextPrice,
+        }));
+        setSecondCandles((prev) => updateSecondCandlesWithPrice(prev, nextPrice, Date.now()));
+        setHasInitialHistory(true);
+      } catch {
+        // Keep the existing fallback state if the ticker misses a beat.
+      } finally {
+        if (!cancelled) {
+          tickerTimer = setTimeout(pollFallbackTicker, PRICE_POLL_MS);
+        }
+      }
+    };
+
+    void loadFallbackHistory();
+    void pollFallbackTicker();
+
+    return () => {
+      cancelled = true;
+      if (tickerTimer) clearTimeout(tickerTimer);
+    };
+  }, [btcFallbackEnabled, useBtcFallback, useCoinbaseLineFeed]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (useCoinbaseLineFeed) {
+      setLoading(true);
+      setInterval("1s");
+      setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+      setLineEndTime(null);
+      setManualLineVerticalPad(0);
+      setMarketAddress(market.marketAddr);
+      setSecondCandles([]);
+      setMinuteCandles([]);
+      setCoinbaseMinuteCandles([]);
+      setCoinbaseHistorySecondCandles([]);
+      setCoinbaseHistoryTicks([]);
+      setHasInitialHistory(false);
+      setSnapshot({
+        connected: false,
+        fundingRateBps: null,
+        openInterest: null,
+        oraclePrice: market.seedPrice * 1.0004,
+        price: market.seedPrice,
+      });
+      initializedRangeRef.current = false;
+      pendingAnchorRef.current = null;
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function loadInitial() {
+      setLoading(true);
+      setInterval("1s");
+      setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+      setLineEndTime(null);
+      setManualLineVerticalPad(0);
+      setMarketAddress(market.marketAddr);
+      setSecondCandles([]);
+      setMinuteCandles([]);
+      setHasInitialHistory(false);
+      setSnapshot({
+        connected: false,
+        fundingRateBps: null,
+        openInterest: null,
+        oraclePrice: market.seedPrice * 1.0004,
+        price: market.seedPrice,
+      });
+      initializedRangeRef.current = false;
+      pendingAnchorRef.current = null;
+
+      try {
+        const now = Date.now();
+        const [pricesResult, candlesResult, tradesResult] = await Promise.allSettled([
+          fetchDecibelMainnetPrices(INITIAL_REQUEST_TIMEOUT_MS),
+          fetchDecibelMainnetCandles(
+            market.marketAddr,
+            "1m",
+            now - MINUTE_HISTORY_MS,
+            now,
+            INITIAL_REQUEST_TIMEOUT_MS,
+          ),
+          fetchDecibelMainnetTrades(
+            market.marketAddr,
+            INITIAL_TRADE_LIMIT,
+            INITIAL_REQUEST_TIMEOUT_MS,
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const priceEntry = pricesResult.status === "fulfilled"
+          ? pricesResult.value.find((entry) => entry.market === market.marketAddr) ?? null
+          : null;
+        const nextPrice =
+          priceEntry?.mark_px ?? priceEntry?.mid_px ?? priceEntry?.oracle_px ?? market.seedPrice;
+
+        setSnapshot({
+          connected: priceEntry !== null,
+          fundingRateBps: priceEntry?.funding_rate_bps ?? null,
+          openInterest: priceEntry?.open_interest ?? null,
+          oraclePrice: priceEntry?.oracle_px ?? nextPrice * 1.0004,
+          price: nextPrice,
+        });
+        if (priceEntry) {
+          decibelLiveAtRef.current = Date.now();
+          setUseBtcFallback(false);
+        }
+
+        if (candlesResult.status === "fulfilled" && candlesResult.value.length > 0) {
+          setMinuteCandles(toCandlePoints(candlesResult.value));
+        }
+
+        if (tradesResult.status === "fulfilled" && tradesResult.value.length > 0) {
+          setSecondCandles(buildSecondCandlesFromTrades(tradesResult.value, nextPrice, now));
+        }
+
+        setHasInitialHistory(
+          (candlesResult.status === "fulfilled" && candlesResult.value.length > 0)
+            || (tradesResult.status === "fulfilled" && tradesResult.value.length > 0)
+        );
+      } catch {
+        if (cancelled) return;
+        setSecondCandles([]);
+        setHasInitialHistory(false);
+        setSnapshot({
+          connected: false,
+          fundingRateBps: null,
+          openInterest: null,
+          oraclePrice: market.seedPrice * 1.0004,
+          price: market.seedPrice,
+        });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadInitial();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [market, useCoinbaseLineFeed]);
+
+  useEffect(() => {
+    if (!marketAddress || useCoinbaseLineFeed) {
+      return () => {};
+    }
+
+    if (btcFallbackEnabled && useBtcFallback) {
+      return () => {};
+    }
+
+    let cancelled = false;
+    let priceTimer: ReturnType<typeof setTimeout> | null = null;
+    let tradeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const pollPrice = async () => {
+      try {
+        const prices = await fetchDecibelMainnetPrices();
+        const price = prices.find((entry) => entry.market === marketAddress);
+        if (!price || cancelled) return;
+
+        setSnapshot({
+          connected: true,
+          fundingRateBps: price.funding_rate_bps,
+          openInterest: price.open_interest,
+          oraclePrice: price.oracle_px,
+          price: price.mark_px ?? price.mid_px ?? price.oracle_px,
+        });
+        decibelLiveAtRef.current = Date.now();
+        setUseBtcFallback(false);
+
+        setSecondCandles((prev) =>
+          updateSecondCandlesWithPrice(
+            prev,
+            price.mark_px ?? price.mid_px ?? price.oracle_px,
+            Date.now(),
+          )
+        );
+        setHasInitialHistory(true);
+      } catch {
+        if (!cancelled) {
+          if (!useBtcFallback) {
+            setSnapshot((prev) => ({ ...prev, connected: false }));
+          }
+        }
+      } finally {
+        if (!cancelled) priceTimer = setTimeout(pollPrice, PRICE_POLL_MS);
+      }
+    };
+
+    const refreshTrades = async () => {
+      try {
+        const trades = await fetchDecibelMainnetTrades(marketAddress, SECOND_TRADE_LIMIT);
+        if (cancelled) return;
+
+        setSecondCandles(buildSecondCandlesFromTrades(trades, snapshotRef.current.price, Date.now()));
+        if (trades.length > 0) {
+          setHasInitialHistory(true);
+        }
+      } catch {
+        // Keep existing candles if the trade refresh misses a beat.
+      } finally {
+        if (!cancelled) tradeTimer = setTimeout(refreshTrades, TRADE_POLL_MS);
+      }
+    };
+
+    void pollPrice();
+    void refreshTrades();
+
+    return () => {
+      cancelled = true;
+      if (priceTimer) clearTimeout(priceTimer);
+      if (tradeTimer) clearTimeout(tradeTimer);
+    };
+  }, [btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !marketAddress || useCoinbaseLineFeed || (btcFallbackEnabled && useBtcFallback)) return () => {};
+
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stream: EventSource | null = null;
+    let reconnectAttempt = 0;
+
+    const connect = () => {
+      if (cancelled) return;
+      const params = new URLSearchParams({
+        network: getDecibelPublicNetwork(),
+        topics: [`market_price:${marketAddress}`, `trades:${marketAddress}`].join(","),
+      });
+      stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
+
+      stream.addEventListener("open", () => {
+        reconnectAttempt = 0;
+      });
+
+      stream.addEventListener("message", (event) => {
+        if (cancelled) return;
+
+        try {
+          const message = JSON.parse(event.data) as {
+            success?: boolean;
+            topic?: string;
+            price?: {
+              funding_rate_bps: number;
+              mark_px: number;
+              mid_px: number;
+              open_interest: number;
+              oracle_px: number;
+            };
+            trades?: DecibelRestTrade[];
+          };
+
+          if (!message.topic || message.success) return;
+
+          if (message.topic === `market_price:${marketAddress}` && message.price) {
+            const livePrice = message.price.mark_px ?? message.price.mid_px ?? message.price.oracle_px;
+            setSnapshot({
+              connected: true,
+              fundingRateBps: message.price.funding_rate_bps ?? null,
+              openInterest: message.price.open_interest ?? null,
+              oraclePrice: message.price.oracle_px ?? livePrice * 1.0004,
+              price: livePrice,
+            });
+            decibelLiveAtRef.current = Date.now();
+            setUseBtcFallback(false);
+            setSecondCandles((prev) => updateSecondCandlesWithPrice(prev, livePrice, Date.now()));
+            setHasInitialHistory(true);
+          }
+
+          if (message.topic === `trades:${marketAddress}` && Array.isArray(message.trades) && message.trades.length > 0) {
+            decibelLiveAtRef.current = Date.now();
+            setUseBtcFallback(false);
+            setSecondCandles((prev) =>
+              mergeTradesIntoSecondCandles(prev, message.trades ?? [], snapshotRef.current.price, Date.now())
+            );
+            setHasInitialHistory(true);
+          }
+        } catch {
+          // Ignore malformed ws frames and keep the existing connection alive.
+        }
+      });
+
+      stream.addEventListener("error", () => {
+        if (cancelled) return;
+        stream?.close();
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(connect, Math.min(1000 * 1.5 ** reconnectAttempt, 8000));
+      });
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stream?.close();
+    };
+  }, [btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
+
+  // Derive a live candle from the latest second candle for Liveline
+  const liveCandle = useMemo(() => {
+    if (activeSecondCandles.length === 0) return undefined;
+    return activeSecondCandles[activeSecondCandles.length - 1];
+  }, [activeSecondCandles]);
+
+  return (
+    <>
+      {/* Loading overlay */}
+      {loading && !hasInitialHistory && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center" style={{ paddingRight: CHART_PADDING.right, paddingLeft: CHART_PADDING.left }}>
+          <TetherLoader size={52} label="Loading" />
+        </div>
+      )}
+      {/* Single Liveline instance — handles both line and candle modes */}
+      <div
+        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+        onPointerDown={handleLinePointerDown}
+        onPointerMove={handleLinePointerMove}
+        onPointerUp={handleLinePointerUp}
+        onPointerCancel={handleLinePointerUp}
+        onWheel={handleLineWheel}
+        style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}
+      >
+        <Liveline
+          mode="candle"
+          data={lineData}
+          value={snapshot.price}
+          candles={activeSecondCandles}
+          candleWidth={1}
+          liveCandle={liveCandle}
+          lineMode={mode === "line"}
+          lineData={lineData}
+          lineValue={snapshot.price}
+          theme="dark"
+          color={market.color}
+          window={Math.max(MIN_LINE_WINDOW_SECS, lineWindowSecs)}
+          grid
+          scrub
+          badge
+          momentum={false}
+          badgeTail
+          badgeVariant="default"
+          formatValue={(value: number) => formatPerpPrice(value, market.priceDecimals)}
+          loading={loading && lineData.length === 0 && activeSecondCandles.length === 0}
+          emptyText=""
+          padding={linePadding}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 right-0 z-10 w-[84px] cursor-ns-resize"
+          onWheel={handleLineAxisWheel}
+          onDoubleClick={() => setManualLineVerticalPad(0)}
+        />
+      </div>
+    </>
+  );
+}

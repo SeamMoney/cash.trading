@@ -17,6 +17,8 @@ build/
 .env*.local
 .env.development
 .env.production
+.env.vercel
+.env.*.vercel
 
 # Logs
 *.log

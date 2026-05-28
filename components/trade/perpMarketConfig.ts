@@ -1,0 +1,209 @@
+"use client";
+
+export interface PerpMarketData {
+  change24h: string;
+  color: string;
+  id: string;
+  label: string;
+  leverage: number;
+  marketAddr: string;
+  marketName: string;
+  openInterestLabel: string;
+  pair: string;
+  priceDecimals: number;
+  seedPrice: number;
+  volume24h: string;
+  volatility: number;
+}
+
+type DecibelNetwork = "mainnet" | "testnet";
+
+const DECIBEL_MARKET_ADDRESSES: Record<DecibelNetwork, Record<string, string>> = {
+  testnet: {
+    "BTC/USD": "0x161b7b3f58327d057ee5824de0c1a4fc4fa3d121b847c138e921a255768a0dca",
+    "ETH/USD": "0x12cf0b34f9ba0a1144f1e7c6f7d0aa28e4a7815a55bf637ba96d66256becc559",
+    "SOL/USD": "0xc2f9b548d2b75afa0aa449ec36c7b1279b2c88022233b4c44965b5b27507ed7c",
+    "APT/USD": "0x2bfe28c0de988afd44843ddd8ddf9a81d0e106eb8d85d9275d330b2d93a02bb6",
+    "XRP/USD": "0xe11411f3e859b19745c699598c218076728e2f0fd397bf12cd7d8e75cc70c2c9",
+    "DOGE/USD": "0x90d20af890b0672cae552fc74e8a870241b106e91f0287dbd34fc2114bf1ebcb",
+    "HYPE/USD": "0x944547402c4cc6dba3d7724354ba7280f648d4d856613a8479fec40b2c252179",
+    "SUI/USD": "0x4cdee0065ed00b281c6979d425a6ead15f357a2c83d785e56693eb566b54d02e",
+    "BNB/USD": "0x7a38c627803df2198bebdc8d7e78ba9070da702e4dd3691ef48c528f0e12ad28",
+    "ZEC/USD": "0xe8b091045020f58f2ab4acdbf609bfec50444fbe02d3a23f849322dc21af3ffd",
+  },
+  mainnet: {
+    "BTC/USD": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+    "ETH/USD": "0x96c3c2e77041264d082d03365e9c346fbc6be9c9428a401be8e70dcb60dc60c6",
+    "SOL/USD": "0xdf3f9b3241aaf20c47e99eac29f3ff2f736e40644c856e0db612a22e62b847f3",
+    "APT/USD": "0xda8615922bac85a53811e845ce39110713be6d80366f4477d5427002ac0162e3",
+    "XRP/USD": "0xd3223402bb7b156fad9a645a8c114a5e08eda8e492a38e42db1b0df1d3ba1058",
+    "DOGE/USD": "0xd62d10d1ef0cbe2103b5bd479691ac38222a85140fcbe7c2dc66ed23bdef58ae",
+    "HYPE/USD": "0x0c6b3fa01e6ee89b04fe3960d8d6377ebbe6caa8e47d87c2120dae1492044df2",
+    "SUI/USD": "0xe7da11926e61dbd227170d1271f73bfaf9f5aab7605fac1ae62541dd3810ae76",
+    "BNB/USD": "0xa0b805baf5e69adbb717e3daefe71f5ebaae708dd480fbb964ad324f9c5e6490",
+    "ZEC/USD": "0xaef108ea0590464effd25054e2e1b66b6ea8be088c479da63518983e4728282b",
+  },
+};
+
+function getDecibelNetwork(): DecibelNetwork {
+  return process.env.NEXT_PUBLIC_APTOS_NETWORK === "mainnet"
+    ? "mainnet"
+    : "testnet";
+}
+
+function getDecibelMarketAddress(marketName: string, fallback: string) {
+  return DECIBEL_MARKET_ADDRESSES[getDecibelNetwork()][marketName] ?? fallback;
+}
+
+export const PERP_MARKET_DATA: Record<string, PerpMarketData> = {
+  "BTC-PERP/USD": {
+    id: "BTC-PERP/USD",
+    label: "Bitcoin Perps",
+    pair: "BTC/USDC PERPS",
+    marketAddr: getDecibelMarketAddress("BTC/USD", "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861"),
+    marketName: "BTC/USD",
+    leverage: 40,
+    color: "#f7931a",
+    seedPrice: 68179,
+    priceDecimals: 2,
+    change24h: "-4.19%",
+    volume24h: "$26.6m",
+    openInterestLabel: "$1,455,050.95",
+    volatility: 0.0014,
+  },
+  "APT/USD": {
+    id: "APT/USD",
+    label: "Aptos",
+    pair: "APT/USD",
+    marketAddr: getDecibelMarketAddress("APT/USD", "0xda8615922bac85a53811e845ce39110713be6d80366f4477d5427002ac0162e3"),
+    marketName: "APT/USD",
+    leverage: 10,
+    color: "#00d4aa",
+    seedPrice: 0.9524,
+    priceDecimals: 4,
+    change24h: "-5.39%",
+    volume24h: "$1.7m",
+    openInterestLabel: "$137,195.66",
+    volatility: 0.0038,
+  },
+  "ETH/USD": {
+    id: "ETH/USD",
+    label: "Ethereum",
+    pair: "ETH/USD",
+    marketAddr: getDecibelMarketAddress("ETH/USD", "0x96c3c2e77041264d082d03365e9c346fbc6be9c9428a401be8e70dcb60dc60c6"),
+    marketName: "ETH/USD",
+    leverage: 20,
+    color: "#627eea",
+    seedPrice: 1977.4,
+    priceDecimals: 1,
+    change24h: "-5.16%",
+    volume24h: "$3.2m",
+    openInterestLabel: "$378,582.39",
+    volatility: 0.0026,
+  },
+  "SOL/USD": {
+    id: "SOL/USD",
+    label: "Solana",
+    pair: "SOL/USD",
+    marketAddr: getDecibelMarketAddress("SOL/USD", "0xdf3f9b3241aaf20c47e99eac29f3ff2f736e40644c856e0db612a22e62b847f3"),
+    marketName: "SOL/USD",
+    leverage: 10,
+    color: "#9945ff",
+    seedPrice: 84.6,
+    priceDecimals: 3,
+    change24h: "-4.34%",
+    volume24h: "$895.7k",
+    openInterestLabel: "$163,493.98",
+    volatility: 0.0034,
+  },
+  "HYPE/USD": {
+    id: "HYPE/USD",
+    label: "Hyperliquid",
+    pair: "HYPE/USD",
+    marketAddr: getDecibelMarketAddress("HYPE/USD", "0x0c6b3fa01e6ee89b04fe3960d8d6377ebbe6caa8e47d87c2120dae1492044df2"),
+    marketName: "HYPE/USD",
+    leverage: 5,
+    color: "#50e3c2",
+    seedPrice: 30.842,
+    priceDecimals: 3,
+    change24h: "+0.79%",
+    volume24h: "$477.4k",
+    openInterestLabel: "$70,544.98",
+    volatility: 0.0032,
+  },
+  "BNB/USD": {
+    id: "BNB/USD",
+    label: "BNB",
+    pair: "BNB/USD",
+    marketAddr: getDecibelMarketAddress("BNB/USD", "0xa0b805baf5e69adbb717e3daefe71f5ebaae708dd480fbb964ad324f9c5e6490"),
+    marketName: "BNB/USD",
+    leverage: 5,
+    color: "#f3ba2f",
+    seedPrice: 627.93,
+    priceDecimals: 2,
+    change24h: "-3.56%",
+    volume24h: "$38.3k",
+    openInterestLabel: "$9,970.64",
+    volatility: 0.0022,
+  },
+  "XRP/USD": {
+    id: "XRP/USD",
+    label: "XRP",
+    pair: "XRP/USD",
+    marketAddr: getDecibelMarketAddress("XRP/USD", "0xd3223402bb7b156fad9a645a8c114a5e08eda8e492a38e42db1b0df1d3ba1058"),
+    marketName: "XRP/USD",
+    leverage: 10,
+    color: "#d9d9d9",
+    seedPrice: 1.3651,
+    priceDecimals: 4,
+    change24h: "-3.34%",
+    volume24h: "$68.6k",
+    openInterestLabel: "$6,762.96",
+    volatility: 0.0042,
+  },
+  "DOGE/USD": {
+    id: "DOGE/USD",
+    label: "Dogecoin",
+    pair: "DOGE/USD",
+    marketAddr: getDecibelMarketAddress("DOGE/USD", "0xd62d10d1ef0cbe2103b5bd479691ac38222a85140fcbe7c2dc66ed23bdef58ae"),
+    marketName: "DOGE/USD",
+    leverage: 5,
+    color: "#c2a633",
+    seedPrice: 0.09143,
+    priceDecimals: 5,
+    change24h: "-2.85%",
+    volume24h: "$59.4k",
+    openInterestLabel: "$4,310.08",
+    volatility: 0.0048,
+  },
+  "SUI/USD": {
+    id: "SUI/USD",
+    label: "Sui",
+    pair: "SUI/USD",
+    marketAddr: getDecibelMarketAddress("SUI/USD", "0xe7da11926e61dbd227170d1271f73bfaf9f5aab7605fac1ae62541dd3810ae76"),
+    marketName: "SUI/USD",
+    leverage: 5,
+    color: "#6dd6ff",
+    seedPrice: 0.9013,
+    priceDecimals: 4,
+    change24h: "-6.00%",
+    volume24h: "$52.0k",
+    openInterestLabel: "$3,443.53",
+    volatility: 0.0045,
+  },
+  "ZEC/USD": {
+    id: "ZEC/USD",
+    label: "Zcash",
+    pair: "ZEC/USD",
+    marketAddr: getDecibelMarketAddress("ZEC/USD", "0xaef108ea0590464effd25054e2e1b66b6ea8be088c479da63518983e4728282b"),
+    marketName: "ZEC/USD",
+    leverage: 5,
+    color: "#f4b728",
+    seedPrice: 209.82,
+    priceDecimals: 2,
+    change24h: "-8.03%",
+    volume24h: "$78.3k",
+    openInterestLabel: "$4,732.70",
+    volatility: 0.0041,
+  },
+};

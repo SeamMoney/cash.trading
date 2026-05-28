@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
             console.log(`   Volume: $${volumeGenerated.toFixed(2)}, Est PnL: $${estimatedPnl.toFixed(2)}`)
 
             // Record the close order in history
-            await prisma.orderHistory.create({
+            const orderHistory = await prisma.orderHistory.create({
               data: {
                 botId: bot.id,
                 direction: positionIsLong ? 'long' : 'short',
@@ -233,6 +233,20 @@ export async function POST(request: NextRequest) {
                 market: bot.marketName,
                 userSubaccount: bot.userSubaccount,
               }
+            })
+
+            const { recordCashRewardForTrade } = await import('@/lib/cash-rewards')
+            recordCashRewardForTrade({
+              orderHistoryId: orderHistory.id,
+              sourceId: `order:${orderHistory.id}`,
+              userWalletAddress: bot.userWalletAddress,
+              userSubaccount: bot.userSubaccount,
+              sourceTxHash: closeCommittedTxn.hash,
+              volumeGenerated,
+              market: bot.marketName,
+              strategy: bot.strategy,
+            }).catch((rewardError) => {
+              console.error('⚠️  [STOP] Failed to send CASH reward:', rewardError)
             })
 
             // Update cumulative volume

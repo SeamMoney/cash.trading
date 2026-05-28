@@ -57,8 +57,46 @@ model OrderHistory {
   leverage        Int?        // Leverage used for this trade
   userSubaccount  String?     // Subaccount address this trade was executed on
   bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
+  cashReward      CashRewardTransfer?
 
   @@index([botId])
   @@index([sessionId])
   @@index([userSubaccount])
+}
+
+enum CashRewardStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model CashRewardTransfer {
+  id                       String           @id @default(cuid())
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  sentAt                   DateTime?
+  sourceType               String
+  sourceId                 String
+  orderHistoryId           String?          @unique
+  userWalletAddress        String
+  userSubaccount           String?
+  recipientAddress         String
+  amountCash               Float
+  amountAtomic             BigInt
+  volumeGenerated          Float?
+  rewardRateCashPerUsd     Float?
+  status                   CashRewardStatus @default(PENDING)
+  txHash                   String?
+  error                    String?
+  attemptCount             Int              @default(0)
+  metadata                 Json?
+  orderHistory             OrderHistory?    @relation(fields: [orderHistoryId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceType, sourceId])
+  @@index([recipientAddress])
+  @@index([userWalletAddress])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
-import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, CheckCircle, XCircle, Timer, Square, X, Loader2 } from "lucide-react"
+import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, Timer, Square, X, Loader2, Coins } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Size decimals for each market (for proper display) - all markets now use 8 decimals
@@ -62,6 +62,18 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
   }>>([])  // Track ALL positions including manual ones
   const [rateLimitBackoff, setRateLimitBackoff] = useState(0) // Extra seconds to wait after rate limit
   const [isStopping, setIsStopping] = useState(false)
+  const [cashRewards, setCashRewards] = useState<{
+    config?: {
+      enabled: boolean
+      disabledReason?: string
+      network: string
+      rewardRateCashPerUsd: number
+    }
+    totals: {
+      sentCash: number
+      pendingCash: number
+    }
+  } | null>(null)
   const lastTickTimeRef = useRef<number>(0)
 
   // Live positions state (for when bot is not running)
@@ -120,6 +132,24 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       setIsStopping(false)
     }
   }, [userWalletAddress, userSubaccount, onStatusChange])
+
+  const fetchCashRewards = useCallback(async () => {
+    if (!userWalletAddress) return
+
+    try {
+      const response = await fetch(
+        `/api/cash/rewards?userWalletAddress=${encodeURIComponent(userWalletAddress)}&userSubaccount=${encodeURIComponent(userSubaccount)}`
+      )
+      if (!response.ok) return
+      const data = await response.json()
+      setCashRewards({
+        config: data.config,
+        totals: data.totals,
+      })
+    } catch (error) {
+      console.error('Error fetching CASH rewards:', error)
+    }
+  }, [userWalletAddress, userSubaccount])
 
   // Fetch live positions from chain (works even when bot is not running)
   const fetchLivePositions = useCallback(async () => {
@@ -401,6 +431,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       if (statusData.config) {
         setConfig(statusData.config)
       }
+      fetchCashRewards()
 
       lastTickTimeRef.current = Date.now()
     } catch (error) {
@@ -408,7 +439,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     } finally {
       setIsExecuting(false)
     }
-  }, [userWalletAddress, userSubaccount, isRunning, isExecuting, onStatusChange])
+  }, [userWalletAddress, userSubaccount, isRunning, isExecuting, onStatusChange, fetchCashRewards])
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -456,6 +487,12 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     const interval = setInterval(fetchStatus, 5000)
     return () => clearInterval(interval)
   }, [userWalletAddress, userSubaccount, isRunning])
+
+  useEffect(() => {
+    fetchCashRewards()
+    const interval = setInterval(fetchCashRewards, 10000)
+    return () => clearInterval(interval)
+  }, [fetchCashRewards])
 
   // Poll for live positions (especially important when bot is NOT running)
   useEffect(() => {
@@ -731,6 +768,37 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                 </p>
               </div>
             </div>
+
+            {/* CASH Rewards */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 bg-black/40 border border-white/10 relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/20" />
+                <div className="flex items-center gap-2 mb-1">
+                  <Coins className="w-3 h-3 text-green-400" />
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CASH Sent</span>
+                </div>
+                <p className="text-lg font-bold text-green-400">
+                  {(cashRewards?.totals.sentCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                </p>
+              </div>
+
+              <div className="p-3 bg-black/40 border border-white/10 relative">
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/20" />
+                <div className="flex items-center gap-2 mb-1">
+                  <Timer className="w-3 h-3 text-yellow-400" />
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CASH Pending</span>
+                </div>
+                <p className="text-lg font-bold text-yellow-400">
+                  {(cashRewards?.totals.pendingCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                </p>
+              </div>
+            </div>
+
+            {cashRewards?.config && !cashRewards.config.enabled && (
+              <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 text-[10px] text-yellow-300">
+                CASH rewards paused: {cashRewards.config.disabledReason}
+              </div>
+            )}
 
             {/* Next Trade Countdown */}
             <div className={cn(
@@ -1088,6 +1156,17 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       ) : (
                         <span className="text-[10px] text-zinc-500">
                           {isClose ? 'No PnL data' : 'Position opened'}
+                        </span>
+                      )}
+                      {order.cashReward && (
+                        <span className={cn(
+                          "text-[10px] px-2 py-0.5 border",
+                          order.cashReward.status === 'SENT' && "bg-green-500/10 text-green-400 border-green-500/30",
+                          (order.cashReward.status === 'PENDING' || order.cashReward.status === 'PROCESSING') && "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+                          order.cashReward.status === 'FAILED' && "bg-red-500/10 text-red-400 border-red-500/30",
+                          order.cashReward.status === 'SKIPPED' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/30"
+                        )}>
+                          +{order.cashReward.amountCash.toLocaleString(undefined, { maximumFractionDigits: 4 })} CASH {order.cashReward.status}
                         </span>
                       )}
                     </div>

@@ -49,6 +49,9 @@ export async function GET(request: NextRequest) {
         botId: botInstance.id,
         sessionId: botInstance.sessionId,  // Only orders from current session
       },
+      include: {
+        cashReward: true,
+      },
       orderBy: { timestamp: 'desc' },
       take: 50,
     })
@@ -57,6 +60,15 @@ export async function GET(request: NextRequest) {
     const sessionOrders = sessionOrdersRaw.map(order => ({
       ...order,
       size: Number(order.size),  // BigInt -> number for JSON
+      cashReward: order.cashReward
+        ? {
+            ...order.cashReward,
+            amountAtomic: order.cashReward.amountAtomic.toString(),
+            createdAt: order.cashReward.createdAt.toISOString(),
+            updatedAt: order.cashReward.updatedAt.toISOString(),
+            sentAt: order.cashReward.sentAt?.toISOString() ?? null,
+          }
+        : null,
     }))
 
     // Calculate progress

@@ -30,8 +30,46 @@ An automated volume generation bot for Decibel DEX on Aptos blockchain. Features
 - **Session Tracking** - Each bot run tracked separately with unique session ID
 - **Multi-Wallet Support** - Petra, Martian, Pontem, and 15+ Aptos wallets
 - **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
+- **Direct CASH Rewards** - Successful bot trade records can trigger live mainnet `$CASH` transfers from a funded rewards treasury
 
 ---
+
+## Direct CASH Rewards
+
+The app rewards confirmed bot trading activity with direct `$CASH` transfers. This is not an internal points balance: each reward is stored as an idempotent transfer attempt with status, amount, recipient, and Aptos transaction hash.
+
+Mainnet CASH is a legacy Aptos Coin:
+
+```text
+0x61ed8b048636516b4eaf4c74250fa4f9440d9c3e163d96aeb863fe658a4bdc67::CASH::CASH
+decimals: 6
+```
+
+Required env:
+
+```bash
+CASH_REWARDS_ENABLED=true
+CASH_REWARD_TREASURY_PRIVATE_KEY=ed25519-priv-0x...
+CASH_REWARD_CASH_PER_USD_VOLUME=0.01
+CASH_REWARD_NETWORK=mainnet
+```
+
+Safety env:
+
+```bash
+CASH_REWARD_MIN_VOLUME_USD=1
+CASH_REWARD_MAX_CASH_PER_TRADE=100
+CASH_REWARD_DAILY_WALLET_CAP=1000
+CASH_REWARD_DAILY_GLOBAL_CAP=100000
+```
+
+Reward status API:
+
+```text
+GET /api/cash/rewards?userWalletAddress=0x...&userSubaccount=0x...
+POST /api/cash/rewards
+Authorization: Bearer <CASH_REWARD_ADMIN_SECRET or CRON_SECRET>
+```
 
 ## Quick Start
 

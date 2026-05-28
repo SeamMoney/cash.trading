@@ -3525,7 +3525,7 @@ export class VolumeBotEngine {
         if (botInstance) {
           console.log(`💾 Creating order history record...`)
           // Create order history record with session ID
-          await prisma.orderHistory.create({
+          const orderHistory = await prisma.orderHistory.create({
             data: {
               botId: botInstance.id,
               sessionId: botInstance.sessionId,  // Track which session this order belongs to
@@ -3543,6 +3543,20 @@ export class VolumeBotEngine {
               leverage: this.getMarketMaxLeverage(),  // Save leverage used
               userSubaccount: this.config.userSubaccount,  // Track which subaccount this trade was on
             }
+          })
+
+          const { recordCashRewardForTrade } = await import('./cash-rewards')
+          recordCashRewardForTrade({
+            orderHistoryId: orderHistory.id,
+            sourceId: `order:${orderHistory.id}`,
+            userWalletAddress: this.config.userWalletAddress,
+            userSubaccount: this.config.userSubaccount,
+            sourceTxHash: result.txHash,
+            volumeGenerated: result.volumeGenerated,
+            market: this.config.marketName,
+            strategy: this.config.strategy || 'twap',
+          }).catch((rewardError) => {
+            console.error('⚠️  Failed to send CASH reward:', rewardError)
           })
 
           // Update bot instance status - INCREMENT the database values
@@ -3587,7 +3601,7 @@ export class VolumeBotEngine {
           })
 
           if (botInstance) {
-            await prisma.orderHistory.create({
+            const orderHistory = await prisma.orderHistory.create({
               data: {
                 botId: botInstance.id,
                 sessionId: botInstance.sessionId,
@@ -3605,6 +3619,20 @@ export class VolumeBotEngine {
                 leverage: this.getMarketMaxLeverage(),
                 userSubaccount: this.config.userSubaccount,
               }
+            })
+
+            const { recordCashRewardForTrade } = await import('./cash-rewards')
+            recordCashRewardForTrade({
+              orderHistoryId: orderHistory.id,
+              sourceId: `order:${orderHistory.id}`,
+              userWalletAddress: this.config.userWalletAddress,
+              userSubaccount: this.config.userSubaccount,
+              sourceTxHash: result.txHash,
+              volumeGenerated: result.volumeGenerated,
+              market: this.config.marketName,
+              strategy: this.config.strategy || 'twap',
+            }).catch((rewardError) => {
+              console.error('⚠️  Failed to send CASH reward after DB retry:', rewardError)
             })
 
             const newCumulativeVolume = botInstance.cumulativeVolume + result.volumeGenerated

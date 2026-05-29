@@ -277,6 +277,7 @@ export function TradeForm({
         message: "Order submitted. Waiting for on-chain confirmation...",
         hash: result.hash,
       });
+      emitDecibelPositionsRefresh();
       await waitForTransactionConfirmation(result.hash);
       emitDecibelPositionsRefresh();
 

@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { explorerTxUrl } from "@/lib/constants";
 import {
+  emitDecibelPositionsRefresh,
   onDecibelPositionsRefresh,
   onDecibelSubaccountChange,
   pickDecibelSubaccount,
 } from "@/lib/decibel-selection";
+import { getDecibelPublicNetwork } from "@/lib/decibel-public";
+import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
@@ -35,6 +39,7 @@ interface Position {
 interface OpenOrder {
   orderId: string;
   market: string;
+  marketAddress: string | null;
   isBuy: boolean;
   price: number;
   origSize: number;
@@ -61,6 +66,12 @@ interface Subaccount {
   address: string;
   isPrimary?: boolean;
 }
+
+type ActionStatus = {
+  tone: "pending" | "success" | "error";
+  message: string;
+  hash?: string;
+};
 
 function positionKey(p: Pick<Position, "marketAddress" | "market" | "isLong">) {
   if (p.marketAddress) return p.marketAddress.toLowerCase();
@@ -204,7 +215,7 @@ function formatVolume(value: number | null): string {
  * flicker between polls.
  */
 export function Positions() {
-  const { account, connected } = useWallet();
+  const { account, connected, signAndSubmitTransaction } = useWallet();
   const ownerAddress = account?.address?.toString() ?? "";
   const [positions, setPositions] = useState<Position[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
@@ -212,6 +223,13 @@ export function Positions() {
   const [selectedSubaccount, setSelectedSubaccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
+  const [closingPositionKeys, setClosingPositionKeys] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const chainControllerRef = useRef<AbortController | null>(null);
   const indexedControllerRef = useRef<AbortController | null>(null);
 
@@ -323,12 +341,194 @@ export function Positions() {
     }
   }, []);
 
+  const setClosingPosition = useCallback((key: string, pending: boolean) => {
+    setClosingPositionKeys((prev) => {
+      const next = new Set(prev);
+      if (pending) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+
+  const setCancelingOrder = useCallback((orderId: string, pending: boolean) => {
+    setCancelingOrderIds((prev) => {
+      const next = new Set(prev);
+      if (pending) next.add(orderId);
+      else next.delete(orderId);
+      return next;
+    });
+  }, []);
+
+  const handleClosePosition = useCallback(
+    async (position: Position) => {
+      const key = positionKey(position);
+      const referencePrice = position.markPrice ?? position.entryPrice;
+      const size = Math.abs(position.size);
+
+      if (!selectedSubaccount) {
+        setActionStatus({
+          tone: "error",
+          message: "Select a Decibel subaccount before closing positions.",
+        });
+        return;
+      }
+      if (!signAndSubmitTransaction) {
+        setActionStatus({
+          tone: "error",
+          message: "Wallet signing is not available.",
+        });
+        return;
+      }
+      if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
+        setActionStatus({
+          tone: "error",
+          message: `No usable mark or entry price for ${position.market}.`,
+        });
+        return;
+      }
+      if (!Number.isFinite(size) || size <= 0) {
+        setActionStatus({
+          tone: "error",
+          message: `No open size detected for ${position.market}.`,
+        });
+        return;
+      }
+
+      setClosingPosition(key, true);
+      setActionStatus({
+        tone: "pending",
+        message: `Sign reduce-only close for ${position.market}.`,
+      });
+
+      try {
+        const { hash } = await buildAndSign(
+          "/api/decibel/order",
+          {
+            marketName: position.market,
+            marketAddress: position.marketAddress ?? undefined,
+            price: referencePrice,
+            size,
+            isBuy: !position.isLong,
+            orderType: "market",
+            reduceOnly: true,
+            subaccount: selectedSubaccount,
+          },
+          signAndSubmitTransaction
+        );
+
+        setActionStatus({
+          tone: "pending",
+          message: "Close submitted. Waiting for confirmation...",
+          hash,
+        });
+        emitDecibelPositionsRefresh();
+        await waitForTransactionConfirmation(hash);
+        emitDecibelPositionsRefresh();
+        setActionStatus({
+          tone: "success",
+          message: `Close confirmed for ${position.market}.`,
+          hash,
+        });
+      } catch (error) {
+        setActionStatus({
+          tone: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : `Failed to close ${position.market}.`,
+        });
+      } finally {
+        setClosingPosition(key, false);
+      }
+    },
+    [
+      selectedSubaccount,
+      setClosingPosition,
+      signAndSubmitTransaction,
+    ]
+  );
+
+  const handleCancelOrder = useCallback(
+    async (order: OpenOrder) => {
+      const orderId = String(order.orderId);
+      if (!selectedSubaccount) {
+        setActionStatus({
+          tone: "error",
+          message: "Select a Decibel subaccount before canceling orders.",
+        });
+        return;
+      }
+      if (!signAndSubmitTransaction) {
+        setActionStatus({
+          tone: "error",
+          message: "Wallet signing is not available.",
+        });
+        return;
+      }
+      if (!order.marketAddress) {
+        setActionStatus({
+          tone: "error",
+          message: `Missing market address for order ${orderId}.`,
+        });
+        return;
+      }
+
+      setCancelingOrder(orderId, true);
+      setActionStatus({
+        tone: "pending",
+        message: `Sign cancel for ${order.market} order ${orderId}.`,
+      });
+
+      try {
+        const { hash } = await buildAndSign(
+          "/api/decibel/cancel-order",
+          {
+            subaccount: selectedSubaccount,
+            marketName: order.market,
+            marketAddress: order.marketAddress,
+            orderId,
+          },
+          signAndSubmitTransaction
+        );
+
+        setOpenOrders((prev) =>
+          prev.filter((item) => String(item.orderId) !== orderId)
+        );
+        setActionStatus({
+          tone: "pending",
+          message: "Cancel submitted. Waiting for confirmation...",
+          hash,
+        });
+        emitDecibelPositionsRefresh();
+        await waitForTransactionConfirmation(hash);
+        emitDecibelPositionsRefresh();
+        setActionStatus({
+          tone: "success",
+          message: `Order ${orderId} canceled.`,
+          hash,
+        });
+      } catch (error) {
+        setActionStatus({
+          tone: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : `Failed to cancel order ${orderId}.`,
+        });
+      } finally {
+        setCancelingOrder(orderId, false);
+      }
+    },
+    [selectedSubaccount, setCancelingOrder, signAndSubmitTransaction]
+  );
+
   useEffect(() => {
     if (!connected || !ownerAddress) {
       setPositions([]);
       setOpenOrders([]);
       setOverview(null);
       setSelectedSubaccount(null);
+      setActionStatus(null);
       setLoading(false);
       return;
     }
@@ -376,6 +576,78 @@ export function Positions() {
       unsubscribeRefresh();
       chainControllerRef.current?.abort();
       indexedControllerRef.current?.abort();
+    };
+  }, [connected, fetchChainState, fetchIndexedState, selectedSubaccount]);
+
+  useEffect(() => {
+    if (!connected || !selectedSubaccount || typeof window === "undefined") {
+      return;
+    }
+
+    let closed = false;
+    let stream: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        if (closed) return;
+        void fetchChainState(selectedSubaccount);
+        void fetchIndexedState(selectedSubaccount);
+      }, 150);
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const params = new URLSearchParams({
+        network: getDecibelPublicNetwork(),
+        topics: [
+          `account_positions:${selectedSubaccount}`,
+          `account_overview:${selectedSubaccount}`,
+          `account_open_orders:${selectedSubaccount}`,
+          `order_updates:${selectedSubaccount}`,
+          `user_trades:${selectedSubaccount}`,
+        ].join(","),
+      });
+
+      stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
+      stream.onopen = () => {
+        attempt = 0;
+      };
+      stream.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as { topic?: string; type?: string };
+          if (message.type === "connected" || message.type === "closed") return;
+          if (
+            message.topic?.startsWith("account_") ||
+            message.topic?.startsWith("order_updates:") ||
+            message.topic?.startsWith("user_trades:")
+          ) {
+            scheduleRefresh();
+          }
+        } catch {
+          scheduleRefresh();
+        }
+      };
+      stream.onerror = () => {
+        stream?.close();
+        stream = null;
+        if (closed) return;
+        const delay = Math.min(8_000, 750 * 2 ** attempt);
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      stream?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, [connected, fetchChainState, fetchIndexedState, selectedSubaccount]);
 
@@ -458,6 +730,30 @@ export function Positions() {
         </div>
       )}
 
+      {actionStatus && (
+        <div
+          className={`surface-1 rounded-[12px] p-3 text-[12px] ${
+            actionStatus.tone === "success"
+              ? "text-success"
+              : actionStatus.tone === "pending"
+              ? "text-accent"
+              : "text-danger"
+          }`}
+        >
+          {actionStatus.message}
+          {actionStatus.hash && (
+            <a
+              href={explorerTxUrl(actionStatus.hash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 underline"
+            >
+              View on Explorer
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Open Positions */}
       <div className="surface-1 rounded-[16px] overflow-hidden">
         <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
@@ -489,6 +785,7 @@ export function Positions() {
                   <th className="text-right px-4 py-2 font-medium">Margin</th>
                   <th className="text-right px-4 py-2 font-medium">Funding</th>
                   <th className="text-right px-4 py-2 font-medium">TP/SL</th>
+                  <th className="text-right px-4 py-2 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -513,6 +810,16 @@ export function Positions() {
                       : p.unrealizedFunding < 0
                       ? "text-danger"
                       : "text-zinc-500";
+                  const actionKey = positionKey(p);
+                  const isClosing = closingPositionKeys.has(actionKey);
+                  const canClose = Boolean(
+                    selectedSubaccount &&
+                      !isClosing &&
+                      Number.isFinite(Math.abs(p.size)) &&
+                      Math.abs(p.size) > 0 &&
+                      Number.isFinite(p.markPrice ?? p.entryPrice) &&
+                      (p.markPrice ?? p.entryPrice) > 0
+                  );
 
                   return (
                     <tr
@@ -577,6 +884,16 @@ export function Positions() {
                           : ""}
                         {!p.tpTriggerPrice && !p.slTriggerPrice ? "—" : ""}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void handleClosePosition(p)}
+                          disabled={!canClose}
+                          className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {isClosing ? "Closing" : "Close"}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -605,33 +922,54 @@ export function Positions() {
                     Size (Remaining)
                   </th>
                   <th className="text-right px-4 py-2 font-medium">Type</th>
+                  <th className="text-right px-4 py-2 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {openOrders.map((o) => (
-                  <tr
-                    key={o.orderId}
-                    className="border-b border-white/5"
-                  >
-                    <td className="px-4 py-3 font-medium">{o.market}</td>
-                    <td
-                      className={`px-4 py-3 text-right font-medium ${
-                        o.isBuy ? "text-success" : "text-danger"
-                      }`}
+                {openOrders.map((o) => {
+                  const orderId = String(o.orderId);
+                  const isCanceling = cancelingOrderIds.has(orderId);
+                  const canCancel = Boolean(
+                    selectedSubaccount &&
+                      o.marketAddress &&
+                      !isCanceling
+                  );
+
+                  return (
+                    <tr
+                      key={orderId}
+                      className="border-b border-white/5"
                     >
-                      {o.isBuy ? "BUY" : "SELL"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      ${Number(o.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {Number(o.remainingSize).toFixed(4)} / {Number(o.origSize).toFixed(4)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-zinc-500">
-                      {o.details}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-4 py-3 font-medium">{o.market}</td>
+                      <td
+                        className={`px-4 py-3 text-right font-medium ${
+                          o.isBuy ? "text-success" : "text-danger"
+                        }`}
+                      >
+                        {o.isBuy ? "BUY" : "SELL"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono tabular-nums">
+                        ${Number(o.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono tabular-nums">
+                        {Number(o.remainingSize).toFixed(4)} / {Number(o.origSize).toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-zinc-500">
+                        {o.details}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void handleCancelOrder(o)}
+                          disabled={!canCancel}
+                          className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {isCanceling ? "Canceling" : "Cancel"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

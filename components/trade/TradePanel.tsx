@@ -182,6 +182,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
       const result = await signAndSubmitTransaction({ data: json.payload });
       setStatusHash(result.hash);
       setStatusMessage("Order submitted. Waiting for on-chain confirmation...");
+      emitDecibelPositionsRefresh();
       await waitForTransactionConfirmation(result.hash);
       emitDecibelPositionsRefresh();
       setStatusMessage("Order confirmed. Checking Decibel position state...");

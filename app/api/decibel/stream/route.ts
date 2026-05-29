@@ -17,8 +17,10 @@ const SSE_HEADERS = {
   "X-Accel-Buffering": "no",
 };
 
-const TOPIC_PATTERN =
+const MARKET_TOPIC_PATTERN =
   /^(all_market_prices|market_price:0x[a-fA-F0-9]+|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
+const ACCOUNT_TOPIC_PATTERN =
+  /^(account_open_orders|order_updates|account_positions|account_overview|user_trades|notifications|withdraw_queue|bulk_orders|bulk_order_fills|bulk_order_rejections|twap_order_updates|twap_fills|twap_rejections):0x[a-fA-F0-9]+$/;
 
 function getNetwork(req: NextRequest): DecibelNetwork {
   return req.nextUrl.searchParams.get("network") === "mainnet"
@@ -33,7 +35,7 @@ function getTopics(req: NextRequest) {
     .map((topic) => topic.trim())
     .filter((topic) => topic.length > 0)
     .filter((topic, index, all) => all.indexOf(topic) === index)
-    .filter((topic) => TOPIC_PATTERN.test(topic))
+    .filter((topic) => MARKET_TOPIC_PATTERN.test(topic) || ACCOUNT_TOPIC_PATTERN.test(topic))
     .slice(0, 20);
 }
 

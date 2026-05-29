@@ -79,6 +79,9 @@ scripts/predeposit-sniper.ts
 # Bot PnL data (generated at runtime)
 grid-mm-pnl-data.json
 
+# Launchpad runtime state
+.data/
+
 # Local SQLite (never commit)
 *.db
 dev.db

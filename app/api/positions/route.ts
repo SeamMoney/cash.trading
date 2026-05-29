@@ -46,9 +46,11 @@ export async function GET(request: NextRequest) {
       entryPrice: number
       currentPrice?: number
       pnlPercent?: number
+      pnlPercentLeveraged?: number
       pnlUsd?: number
       leverage?: number
       notionalValue?: number
+      marginUsed?: number
     }> = []
 
     // Fetch all positions from on-chain

@@ -121,7 +121,7 @@ function createWriteDex(config: DecibelConfig): DecibelWriteDex {
     nodeApiKey: getNodeApiKey(),
     skipSimulate: true,
     noFeePayer: true,
-  });
+  } as any);
 }
 
 /**
@@ -144,7 +144,7 @@ export function getWriteDexForAccount(privateKeyHex: string, network?: DecibelNe
     nodeApiKey: getNodeApiKey(),
     skipSimulate: true,
     noFeePayer: true,
-  });
+  } as any);
 }
 
 /**

@@ -37,7 +37,7 @@ export function HistoryTable() {
 
   const fetchTrades = useCallback(async () => {
     if (isMockMode) {
-      setTrades(MOCK_TRADES)
+      setTrades(MOCK_TRADES as Trade[])
       return
     }
 

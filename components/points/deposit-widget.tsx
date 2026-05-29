@@ -59,7 +59,7 @@ export function DepositWidget({ onDepositSuccess }: DepositWidgetProps) {
       console.log("📤 Submitting predeposit transaction:", payload)
 
       const response = await signAndSubmitTransaction({
-        data: payload,
+        data: payload as any,
       })
 
       console.log("✅ Predeposit transaction:", response.hash)

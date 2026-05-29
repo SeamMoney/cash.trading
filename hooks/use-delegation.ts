@@ -84,7 +84,7 @@ export function useDelegation(): DelegationState {
       }
 
       const response = await signAndSubmitTransaction({
-        data: payload,
+        data: payload as any,
       })
 
       // Wait for transaction confirmation
@@ -143,7 +143,7 @@ export function useDelegation(): DelegationState {
       }
 
       const response = await signAndSubmitTransaction({
-        data: payload,
+        data: payload as any,
       })
 
       // Wait for confirmation (same as above)

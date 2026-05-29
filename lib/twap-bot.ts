@@ -1,4 +1,21 @@
-import { DecibelClient, MAKER_REBATE, BUILDER_FEE } from './decibel-client';
+import { MAKER_REBATE, BUILDER_FEE } from './decibel-client';
+
+interface DecibelClient {
+  getMarket(marketId: string): Promise<{ volume_24h?: string | number }>;
+  getOrderbook(marketId: string): Promise<{
+    bids: Array<{ price: number }>;
+    asks: Array<{ price: number }>;
+  }>;
+  getAvailableMargin(subaccountAddress: string): Promise<number>;
+  placeLimitOrder(args: {
+    marketAddress: string;
+    subaccountAddress: string;
+    isLong: boolean;
+    price: number;
+    size: number;
+    postOnly: boolean;
+  }): Promise<string>;
+}
 
 export type ExecutionMode = 'aggressive' | 'normal' | 'passive';
 
@@ -136,7 +153,7 @@ export class TWAPBot {
 
     // Calculate number of slices based on participation rate
     const market = await this.client.getMarket(this.config.marketId);
-    const dailyVolume = parseFloat(market.volume_24h || '1000000'); // fallback to 1M
+    const dailyVolume = parseFloat(String(market.volume_24h || '1000000')); // fallback to 1M
     const targetDuration = Math.max(
       modeConfig.minDuration,
       this.state.totalVolume / (dailyVolume * modeConfig.participationRate / 86400)

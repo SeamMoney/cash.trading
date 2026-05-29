@@ -196,7 +196,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
         icon: '/wallet-logos/rabby-logo.png',
         url: 'https://rabby.io/',
         readyState: WalletReadyState.NotDetected,
-      } as AdapterNotDetectedWallet)
+      } as unknown as AdapterNotDetectedWallet)
     }
     if (!seenEthereum.has('rainbow')) {
       ethereumWallets.push({
@@ -204,7 +204,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
         icon: '/wallet-logos/rainbow-logo.png',
         url: 'https://rainbow.me/',
         readyState: WalletReadyState.NotDetected,
-      } as AdapterNotDetectedWallet)
+      } as unknown as AdapterNotDetectedWallet)
     }
     if (!seenEthereum.has('metamask')) {
       ethereumWallets.push({
@@ -212,7 +212,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
         icon: WALLET_ICONS['metamask'],
         url: 'https://metamask.io/',
         readyState: WalletReadyState.NotDetected,
-      } as AdapterNotDetectedWallet)
+      } as unknown as AdapterNotDetectedWallet)
     }
 
     // Add wallets to Solana tab if not already present
@@ -222,7 +222,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
         icon: WALLET_ICONS['phantom'],
         url: 'https://phantom.app/',
         readyState: WalletReadyState.NotDetected,
-      } as AdapterNotDetectedWallet)
+      } as unknown as AdapterNotDetectedWallet)
     }
     if (!seenSolana.has('backpack')) {
       solanaWallets.push({
@@ -230,7 +230,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
         icon: '/wallet-logos/backpack-logo.png',
         url: 'https://backpack.app/',
         readyState: WalletReadyState.NotDetected,
-      } as AdapterNotDetectedWallet)
+      } as unknown as AdapterNotDetectedWallet)
     }
 
     return {

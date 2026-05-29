@@ -70,7 +70,7 @@ export function useVolumeBot() {
       console.log("🔐 Transaction payload:", JSON.stringify(payload, null, 2))
       console.log("🔐 Requesting wallet signature...")
       const response = await signAndSubmitTransaction({
-        data: payload,
+        data: payload as any,
       })
       const txHash = response.hash
 
@@ -162,7 +162,7 @@ export function useVolumeBot() {
 
       console.log(`\n📊 Bot Status:`)
       console.log(`Orders: ${ordersPlaced + 1}`)
-      console.log(`Volume: $${(cumulativeVolume + result.volumeGenerated).toFixed(2)} / $${config.volumeTargetUSDC}`)
+      console.log(`Volume: $${(cumulativeVolume + result.volumeGenerated).toFixed(2)} / $${currentConfig.volumeTargetUSDC}`)
     } else {
       const errorMsg = (result as any).error || "Order placement failed"
       setError(errorMsg)

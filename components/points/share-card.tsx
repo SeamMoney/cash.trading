@@ -61,7 +61,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
 
     const link = document.createElement('a')
     link.href = imageUrl
-    link.download = `decibrrr-season0-${account?.address.slice(0, 8) || 'stats'}.png`
+    link.download = `decibrrr-season0-${account?.address?.toString().slice(0, 8) || 'stats'}.png`
     link.click()
   }
 

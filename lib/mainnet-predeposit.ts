@@ -124,6 +124,9 @@ export async function getMainnetGlobalStats(): Promise<MainnetGlobalStats> {
     // Calculate total points based on time-weighted deposits
     const totalPoints = calculateTotalPoints(depositors)
 
+    const pausedValue = isPaused[0] as unknown
+    const isDepositPaused = pausedValue === true || pausedValue === 'true'
+
     const stats: MainnetGlobalStats = {
       total_deposited: dlpTotalUsd + uaTotalUsd,
       total_dlp: dlpTotalUsd,
@@ -131,8 +134,8 @@ export async function getMainnetGlobalStats(): Promise<MainnetGlobalStats> {
       dlp_cap: dlpCapUsd,
       depositor_count: depositorCount,
       total_points: totalPoints,
-      is_deposit_paused: isPaused[0] === true || isPaused[0] === 'true',
-      status: isPaused[0] === true || isPaused[0] === 'true' ? 'paused' : 'live',
+      is_deposit_paused: isDepositPaused,
+      status: isDepositPaused ? 'paused' : 'live',
     }
 
     globalStatsCache = { data: stats, timestamp: Date.now() }

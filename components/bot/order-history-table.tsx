@@ -9,8 +9,8 @@ interface OrderHistoryProps {
     timestamp: number | string
     txHash: string
     direction: 'long' | 'short'
-    strategy: string
-    size: number
+    strategy?: string
+    size?: number
     volumeGenerated: number
     success: boolean
     entryPrice?: number

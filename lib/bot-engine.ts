@@ -1582,9 +1582,10 @@ export class VolumeBotEngine {
 
       console.log(`✅ [SDK] TP/SL placed successfully!`)
       console.log(`   Result:`, JSON.stringify(result).slice(0, 300))
+      const resultRecord = result as { hash?: string; transactionHash?: string }
       return {
         success: true,
-        txHash: result?.hash || result?.transactionHash || 'unknown'
+        txHash: resultRecord.hash || resultRecord.transactionHash || 'unknown'
       }
     } catch (error) {
       // Log FULL error for debugging - TP/SL is critical for risk management!
@@ -1614,14 +1615,15 @@ export class VolumeBotEngine {
       const openOrders = await readDex.userOpenOrders.getByAddr({
         subAddr: this.config.userSubaccount
       })
+      const openOrderItems = Array.isArray(openOrders) ? openOrders : openOrders?.items ?? []
 
-      if (!openOrders || openOrders.length === 0) {
+      if (openOrderItems.length === 0) {
         console.log('   No TP/SL orders to cancel')
         return true
       }
 
       // Find TP/SL orders (reduce_only orders with stop_market or take_profit type)
-      const tpSlOrders = openOrders.filter((order: any) => {
+      const tpSlOrders = openOrderItems.filter((order: any) => {
         const orderType = order.order_type?.toLowerCase() || ''
         return (orderType.includes('stop_market') || orderType.includes('take_profit')) &&
                order.is_reduce_only

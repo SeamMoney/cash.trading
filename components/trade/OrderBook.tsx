@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { getDecibelPublicNetwork } from "@/lib/decibel-public";
+import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 
 interface OrderBookProps {
   marketName: string;
+  marketAddress?: string;
   onPriceClick?: (price: number) => void;
   currentPrice?: number;
 }
@@ -20,10 +23,11 @@ interface OrderBookData {
 }
 
 /**
- * Real orderbook component using Decibel's marketDepth.getByName() via /api/decibel/depth.
- * Polls every 2 seconds for live bid/ask levels.
+ * Real orderbook component using Decibel's authenticated WebSocket stream
+ * through the server-side SSE proxy. SDK 0.4 exposes depth as a stream, not a
+ * REST reader, so this is the primary depth path.
  */
-export function OrderBook({ marketName, onPriceClick, currentPrice }: OrderBookProps) {
+export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBookProps) {
   const [book, setBook] = useState<OrderBookData>({
     bids: [],
     asks: [],
@@ -32,40 +36,84 @@ export function OrderBook({ marketName, onPriceClick, currentPrice }: OrderBookP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBook = useCallback(async () => {
-    if (!marketName) return;
-    try {
-      // URL-encode market name: "BTC/USD" → "BTC-USD" for URL safety
-      const urlMarket = marketName.replace("/", "-");
-      const priceHint = currentPrice && currentPrice > 0 ? `&price=${currentPrice}` : "";
-      const res = await fetch(`/api/decibel/depth?market=${urlMarket}&limit=15${priceHint}`);
-      const data = await res.json();
+  const resolvedMarketAddress =
+    marketAddress ??
+    Object.values(PERP_MARKET_DATA).find((market) => market.marketName === marketName)
+      ?.marketAddr;
 
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
+  const ingestDepth = useCallback((message: any) => {
+    const bids = Array.isArray(message?.bids) ? message.bids : message?.depth?.bids;
+    const asks = Array.isArray(message?.asks) ? message.asks : message?.depth?.asks;
+    if (!Array.isArray(bids) || !Array.isArray(asks)) return;
 
-      setBook({
-        bids: data.bids || [],
-        asks: data.asks || [],
-        timestamp: data.timestamp || null,
-      });
-      setError(null);
-    } catch {
-      setError("Failed to connect to orderbook");
-    } finally {
-      setLoading(false);
-    }
-  }, [marketName, currentPrice]);
+    setBook({
+      bids: bids.slice(0, 15),
+      asks: asks.slice(0, 15),
+      timestamp: message.unix_ms ?? message.timestamp ?? Date.now(),
+    });
+    setError(null);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
+    if (!resolvedMarketAddress) {
+      setLoading(false);
+      setError("Unknown Decibel market");
+      return;
+    }
+
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stream: EventSource | null = null;
+    let reconnectAttempt = 0;
+
     setLoading(true);
-    fetchBook();
-    // Poll every 2 seconds for real-time-ish orderbook
-    const interval = setInterval(fetchBook, 2000);
-    return () => clearInterval(interval);
-  }, [fetchBook]);
+
+    const connect = () => {
+      if (cancelled) return;
+      const params = new URLSearchParams({
+        network: getDecibelPublicNetwork(),
+        topics: `depth:${resolvedMarketAddress}:1`,
+      });
+      stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
+
+      stream.addEventListener("open", () => {
+        reconnectAttempt = 0;
+      });
+
+      stream.addEventListener("message", (event) => {
+        if (cancelled) return;
+
+        try {
+          const message = JSON.parse(event.data);
+          if (message.success || message.type === "connected") return;
+          ingestDepth(message);
+        } catch {
+          // Ignore malformed frames and keep the stream open.
+        }
+      });
+
+      stream.addEventListener("error", () => {
+        if (cancelled) return;
+        setError("Depth stream unavailable");
+        setLoading(false);
+        stream?.close();
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(
+          connect,
+          Math.min(1000 * 1.5 ** reconnectAttempt, 8000)
+        );
+      });
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stream?.close();
+    };
+  }, [ingestDepth, resolvedMarketAddress]);
 
   if (loading) {
     return (
@@ -130,7 +178,7 @@ export function OrderBook({ marketName, onPriceClick, currentPrice }: OrderBookP
           <span className="text-[10px] text-zinc-600">Unavailable</span>
         ) : (
           <span className="text-[10px] text-zinc-600">
-            {book.bids.length + book.asks.length} levels
+            Live · {book.bids.length + book.asks.length} levels
           </span>
         )}
       </div>

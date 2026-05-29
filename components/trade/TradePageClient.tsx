@@ -5,8 +5,10 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
+import { OrderBook } from "@/components/trade/OrderBook";
 import { Positions as DecibelPositions } from "@/components/trade/Positions";
 import { TradePanel } from "@/components/trade/TradePanel";
+import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { dispatchPortfolioActivity, dispatchBalanceUpdate } from "@/lib/portfolio-events";
 import { cn } from "@/lib/utils";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
@@ -970,6 +972,10 @@ export function TradePageClient({
       price: pos.liquidationPrice,
       side: pos.side,
     }));
+  const selectedPerpMarket = PERP_MARKET_DATA[market.id];
+  const decibelMarketName =
+    selectedPerpMarket?.marketName ??
+    market.pair.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
 
   return (
     <div className="min-h-screen pb-24 md:pb-0">
@@ -1027,6 +1033,13 @@ export function TradePageClient({
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
             />
+            <div className="mt-4">
+              <OrderBook
+                marketName={decibelMarketName}
+                marketAddress={selectedPerpMarket?.marketAddr}
+                currentPrice={currentPrice}
+              />
+            </div>
           </div>
         </div>
 

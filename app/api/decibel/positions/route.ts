@@ -7,7 +7,12 @@ import {
   getMarkPricesForAddresses,
   type ChainDecibelPosition,
 } from "@/lib/decibel-chain";
-import { getReadDex, MARKETS, PRICE_DECIMALS } from "@/lib/decibel";
+import {
+  getDecibelMarketNameForAddress,
+  getReadDex,
+  MARKETS,
+  PRICE_DECIMALS,
+} from "@/lib/decibel";
 
 const INDEXED_POSITIONS_TIMEOUT_MS = 600;
 
@@ -24,6 +29,7 @@ interface OpenOrder {
   orderId: unknown;
   clientOrderId: unknown;
   market: unknown;
+  marketAddress: unknown;
   isBuy: unknown;
   price: unknown;
   origSize: unknown;
@@ -50,17 +56,21 @@ async function fetchOpenOrders(address: string): Promise<{
 
     return {
       source: "rest",
-      orders: openOrders.items.map((order) => ({
-        orderId: order.order_id,
-        clientOrderId: order.client_order_id,
-        market: order.market,
-        isBuy: order.is_buy,
-        price: order.price,
-        origSize: order.orig_size,
-        remainingSize: order.remaining_size,
-        details: order.details,
-        timestamp: order.unix_ms,
-      })),
+      orders: openOrders.items.map((order) => {
+        const marketAddress = String(order.market ?? "");
+        return {
+          orderId: order.order_id,
+          clientOrderId: order.client_order_id,
+          market: getDecibelMarketNameForAddress(marketAddress) ?? marketAddress,
+          marketAddress,
+          isBuy: order.is_buy,
+          price: order.price,
+          origSize: order.orig_size,
+          remainingSize: order.remaining_size,
+          details: order.details,
+          timestamp: order.unix_ms,
+        };
+      }),
     };
   } catch (error) {
     const message =

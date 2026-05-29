@@ -213,15 +213,24 @@ function mergeTradesIntoSecondCandles(
 ) {
   if (trades.length === 0) return candles;
 
-  const next = candles.slice();
+  const next = candles.slice().sort((a, b) => a.time - b.time);
   const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
-  let lastClose = next[next.length - 1]?.close ?? fallbackPrice;
+  let latestTime = next[next.length - 1]?.time ?? 0;
+  let latestClose = next[next.length - 1]?.close ?? fallbackPrice;
 
   for (const trade of sorted) {
     const price = trade.price;
     const sec = Math.floor(trade.transaction_unix_ms / 1000);
-    const index = next.findIndex((candle) => candle.time === sec);
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(sec)) continue;
 
+    const previous = next[next.length - 1];
+    if (previous && sec < previous.time) {
+      // Late websocket frames after tab restore must not rewrite committed
+      // history or append out-of-order candles.
+      continue;
+    }
+
+    const index = next.findIndex((candle) => candle.time === sec);
     if (index >= 0) {
       const candle = next[index];
       next[index] = {
@@ -230,11 +239,13 @@ function mergeTradesIntoSecondCandles(
         low: Math.min(candle.low, price),
         close: price,
       };
-      lastClose = price;
+      if (sec >= latestTime) {
+        latestTime = sec;
+        latestClose = price;
+      }
       continue;
     }
 
-    const previous = next[next.length - 1];
     if (!previous) {
       next.push({
         time: sec,
@@ -243,31 +254,37 @@ function mergeTradesIntoSecondCandles(
         low: price,
         close: price,
       });
-      lastClose = price;
+      latestTime = sec;
+      latestClose = price;
       continue;
     }
 
     for (let fillSec = previous.time + 1; fillSec < sec; fillSec += 1) {
       next.push({
         time: fillSec,
-        open: lastClose,
-        high: lastClose,
-        low: lastClose,
-        close: lastClose,
+        open: latestClose,
+        high: latestClose,
+        low: latestClose,
+        close: latestClose,
       });
     }
 
     next.push({
       time: sec,
-      open: lastClose,
-      high: Math.max(lastClose, price),
-      low: Math.min(lastClose, price),
+      open: latestClose,
+      high: Math.max(latestClose, price),
+      low: Math.min(latestClose, price),
       close: price,
     });
-    lastClose = price;
+    latestTime = sec;
+    latestClose = price;
   }
 
-  return updateSecondCandlesWithPrice(next.slice(-ONE_SECOND_WINDOW_SECS), lastClose, nowMs);
+  return updateSecondCandlesWithPrice(
+    next.slice(-ONE_SECOND_WINDOW_SECS),
+    latestClose,
+    nowMs
+  );
 }
 
 function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number, nowMs: number) {
@@ -295,6 +312,10 @@ function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number,
       close: nextPrice,
     };
     return next;
+  }
+
+  if (last.time > currentSec) {
+    return next.sort((a, b) => a.time - b.time).slice(-ONE_SECOND_WINDOW_SECS);
   }
 
   let prevClose = last.close;

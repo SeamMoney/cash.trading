@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   buildDecibelOrderPayload,
+  getDecibelMarketConfigFromRegistry,
   TAKER_FEE,
   MAKER_REBATE,
 } from "@/lib/decibel";
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       marketName,
+      marketAddress,
       price,
       size,
       isBuy,
@@ -39,11 +41,11 @@ export async function POST(req: NextRequest) {
       subaccount,
     } = body;
 
-    if (!marketName || size === undefined || isBuy === undefined || !subaccount) {
+    if ((!marketName && !marketAddress) || size === undefined || isBuy === undefined || !subaccount) {
       return NextResponse.json(
         {
           error:
-            "Missing required fields: marketName, size, isBuy, subaccount",
+            "Missing required fields: marketName or marketAddress, size, isBuy, subaccount",
         },
         { status: 400 }
       );
@@ -63,9 +65,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
+      await getDecibelMarketConfigFromRegistry(marketAddress || marketName, {
+        signal: req.signal,
+      });
+
     const { payload, marketConfig, sizeRaw, priceRaw } =
       buildDecibelOrderPayload({
-        marketName,
+        marketName: resolvedMarketName,
+        marketConfig: resolvedMarketConfig,
         price,
         size,
         isBuy,
@@ -89,7 +97,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       payload,
       meta: {
-        market: marketName,
+        market: resolvedMarketName,
         marketAddress: marketConfig.address,
         side: isBuy ? "buy" : "sell",
         orderType,

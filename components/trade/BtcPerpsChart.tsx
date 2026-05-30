@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Liveline, type CandlePoint, type LivelinePoint } from "liveline";
-// lightweight-charts types kept for toChartTime helper (used by aggregation utils)
-import type { UTCTimestamp } from "lightweight-charts";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { getPriceCandleProductId, supportsPriceCandleMarket, usePriceCandles } from "@/hooks/useBtcCandles";
@@ -39,11 +37,6 @@ export interface PerpMarketSnapshot {
 
 type ChartInterval = "1s" | "5s" | "15s" | "1m";
 
-type ViewAnchor = {
-  centerTime: number;
-  spanSecs: number;
-};
-
 const CHART_PADDING = { top: 8, right: 80, bottom: 36, left: 8 } as const;
 const TRADE_POLL_MS = 4000;
 const PRICE_POLL_MS = 1000;
@@ -69,17 +62,6 @@ const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "15s": 15,
   "1m": 60,
 };
-
-const BAR_SPACING: Record<ChartInterval, number> = {
-  "1s": 5.6,
-  "5s": 7.2,
-  "15s": 8.4,
-  "1m": 9.4,
-};
-
-function toChartTime(time: number): UTCTimestamp {
-  return Math.floor(time) as UTCTimestamp;
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -636,24 +618,6 @@ function nearestIndexByTime(candles: CandlePoint[], targetTime: number) {
     : low - 1;
 }
 
-function chooseNextInterval(
-  current: ChartInterval,
-  barsVisible: number,
-  atLiveEdge: boolean,
-): ChartInterval {
-  if (current === "1s" && (barsVisible > 170 || !atLiveEdge && barsVisible > 130)) return "5s";
-  if (current === "5s") {
-    if (barsVisible > 185 || !atLiveEdge && barsVisible > 145) return "15s";
-    if (barsVisible < 95 && atLiveEdge) return "1s";
-  }
-  if (current === "15s") {
-    if (barsVisible > 215 || !atLiveEdge && barsVisible > 170) return "1m";
-    if (barsVisible < 95 && atLiveEdge) return "5s";
-  }
-  if (current === "1m" && barsVisible < 110 && atLiveEdge) return "15s";
-  return current;
-}
-
 function formatPerpPrice(value: number, decimals: number) {
   return "$" + value.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
@@ -661,24 +625,25 @@ function formatPerpPrice(value: number, decimals: number) {
   });
 }
 
-export function BtcPerpsChart({
-  active,
-  liquidationLines = [],
-  market,
-  mode,
-  onSnapshotChange,
-}: {
+type BtcPerpsChartProps = {
   active: boolean;
   liquidationLines?: LiquidationLine[];
   market: PerpMarketData;
   mode: "line" | "candle";
   onSnapshotChange?: (snapshot: PerpMarketSnapshot) => void;
-}) {
-  const intervalRef = useRef<ChartInterval>("1s");
-  const initializedRangeRef = useRef(false);
-  const pendingAnchorRef = useRef<ViewAnchor | null>(null);
+};
 
-  const [marketAddress, setMarketAddress] = useState<string | null>(market.marketAddr);
+function BtcPerpsChartComponent({
+  active,
+  liquidationLines = [],
+  market,
+  mode,
+  onSnapshotChange,
+}: BtcPerpsChartProps) {
+  const marketRef = useRef(market);
+  marketRef.current = market;
+  const marketKey = `${market.marketName}:${market.marketAddr ?? ""}`;
+  const marketAddress = market.marketAddr;
   const [secondCandles, setSecondCandles] = useState<CandlePoint[]>([]);
   const [minuteCandles, setMinuteCandles] = useState<CandlePoint[]>([]);
   const [coinbaseMinuteCandles, setCoinbaseMinuteCandles] = useState<CandlePoint[]>([]);
@@ -687,7 +652,6 @@ export function BtcPerpsChart({
   const [coinbaseBootstrapReady, setCoinbaseBootstrapReady] = useState(false);
   const [hasInitialHistory, setHasInitialHistory] = useState(false);
   const [useBtcFallback, setUseBtcFallback] = useState(false);
-  const [interval, setInterval] = useState<ChartInterval>("1s");
   const [lineWindowSecs, setLineWindowSecs] = useState(DEFAULT_LINE_WINDOW_SECS);
   const [lineEndTime, setLineEndTime] = useState<number | null>(null);
   const [manualLineVerticalPad, setManualLineVerticalPad] = useState(0);
@@ -701,8 +665,8 @@ export function BtcPerpsChart({
   });
   const snapshotRef = useRef(snapshot);
   const decibelLiveAtRef = useRef(0);
+  const coinbaseHistoryLoadedKeyRef = useRef<string | null>(null);
 
-  intervalRef.current = interval;
   snapshotRef.current = snapshot;
 
   const btcFallbackEnabled = market.marketName === "BTC/USD";
@@ -768,15 +732,6 @@ export function BtcPerpsChart({
     spanSecs: number;
   } | null>(null);
 
-  const displayedCandles = useMemo(() => {
-    if (interval === "1m") {
-      return mergeMinuteCandlesWithLive(activeMinuteCandles, activeSecondCandles);
-    }
-    if (interval === "15s") return aggregateCandles(activeSecondCandles, 15);
-    if (interval === "5s") return aggregateCandles(activeSecondCandles, 5);
-    return activeSecondCandles;
-  }, [activeMinuteCandles, activeSecondCandles, interval]);
-
   const lineBounds = useMemo(() => {
     const earliest = activeMinuteCandles[0]?.time ?? activeSecondCandles[0]?.time ?? null;
     const latest = activeSecondCandles[activeSecondCandles.length - 1]?.time
@@ -812,7 +767,11 @@ export function BtcPerpsChart({
 
   const lineData = useMemo(
     () => {
-      const liveTime = lineBounds.latest ?? Date.now() / 1000;
+      const latestCoinbaseTick = useCoinbaseLineFeed
+        ? coinbaseTicks[coinbaseTicks.length - 1] ?? coinbaseHistoryTicks[coinbaseHistoryTicks.length - 1]
+        : null;
+      const liveTime = latestCoinbaseTick?.time ?? Math.max(Date.now() / 1000, lineBounds.latest ?? 0);
+      const liveValue = latestCoinbaseTick?.value ?? snapshot.price;
 
       if (useCoinbaseLineFeed && lineInterval === "1s" && lineResolvedEndTime != null) {
         const startTime = lineResolvedEndTime - lineWindowSecs;
@@ -831,14 +790,14 @@ export function BtcPerpsChart({
             ...coinbaseHistoryTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
             ...coinbaseTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
           ]),
-          snapshot.price,
+          liveValue,
           liveTime,
         );
       }
 
       return withLiveTail(
         dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval)),
-        snapshot.price,
+        liveValue,
         liveTime,
       );
     },
@@ -856,6 +815,8 @@ export function BtcPerpsChart({
       useCoinbaseLineFeed,
     ],
   );
+  const displayedLineValue = lineData[lineData.length - 1]?.value ?? snapshot.price;
+  const displayedCandleValue = activeSecondCandles[activeSecondCandles.length - 1]?.close ?? snapshot.price;
 
   const lineBootstrapReady = useMemo(() => {
     if (!useCoinbaseLineFeed) return false;
@@ -878,15 +839,6 @@ export function BtcPerpsChart({
   const lineAutoVerticalPad = useMemo(() => {
     const zoomRatio = Math.max(1, lineWindowSecs / DEFAULT_LINE_WINDOW_SECS);
     return clamp(Math.log(zoomRatio) / Math.log(2) * 18, 0, MAX_LINE_VERTICAL_PAD);
-  }, [lineWindowSecs]);
-
-  // Bucket the Coinbase-history coverage into 5-minute tiers so the bootstrap
-  // effect below does not refetch on every small `lineWindowSecs` change.
-  // Crossing a tier boundary (zooming out beyond covered span) is the only
-  // legitimate trigger for re-fetching history. Acceptance #5.
-  const historyCoverageTier = useMemo(() => {
-    const required = Math.max(COINBASE_BOOTSTRAP_TARGET_SECS, Math.ceil(lineWindowSecs + 90));
-    return Math.ceil(required / 300) * 300;
   }, [lineWindowSecs]);
 
   const lineVerticalPad = clamp(
@@ -1007,9 +959,6 @@ export function BtcPerpsChart({
 
   useEffect(() => {
     if (!useCoinbaseLineFeed) {
-      setCoinbaseMinuteCandles([]);
-      setCoinbaseHistorySecondCandles([]);
-      setCoinbaseHistoryTicks([]);
       setCoinbaseBootstrapReady(false);
       return () => {};
     }
@@ -1020,17 +969,22 @@ export function BtcPerpsChart({
 
     const productId = getPriceCandleProductId(market.marketName);
     if (!productId) {
-      setCoinbaseMinuteCandles([]);
-      setCoinbaseHistorySecondCandles([]);
-      setCoinbaseHistoryTicks([]);
       setCoinbaseBootstrapReady(false);
       return () => {};
     }
 
     let cancelled = false;
+    if (coinbaseHistoryLoadedKeyRef.current === marketKey) {
+      setCoinbaseBootstrapReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setCoinbaseBootstrapReady(false);
 
     const loadHistory = async () => {
+      let historyLoaded = false;
       try {
         const end = Math.floor(Date.now() / 1000);
         const start = end - Math.max(Math.floor(MINUTE_HISTORY_MS / 1000), 120 * 60);
@@ -1040,7 +994,7 @@ export function BtcPerpsChart({
             { cache: "no-store" },
           ),
           fetch(
-            `/api/coinbase/trades?productId=${encodeURIComponent(productId)}&targetSpanSecs=${historyCoverageTier}`,
+            `/api/coinbase/trades?productId=${encodeURIComponent(productId)}&targetSpanSecs=${COINBASE_BOOTSTRAP_TARGET_SECS}`,
             { cache: "no-store" },
           ),
         ]);
@@ -1107,10 +1061,14 @@ export function BtcPerpsChart({
             }));
           }
         }
+        historyLoaded = true;
       } catch {
         // Keep the last Coinbase history if refresh fails.
       } finally {
         if (!cancelled) {
+          if (historyLoaded) {
+            coinbaseHistoryLoadedKeyRef.current = marketKey;
+          }
           setCoinbaseBootstrapReady(true);
         }
       }
@@ -1121,12 +1079,12 @@ export function BtcPerpsChart({
     return () => {
       cancelled = true;
     };
-  }, [active, historyCoverageTier, market.marketName, market.seedPrice, useCoinbaseLineFeed]);
+  }, [active, market.marketName, marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
     setUseBtcFallback(false);
     decibelLiveAtRef.current = 0;
-  }, [market.id]);
+  }, [marketKey]);
 
   useEffect(() => {
     if (!btcFallbackEnabled) {
@@ -1251,14 +1209,14 @@ export function BtcPerpsChart({
 
   useEffect(() => {
     let cancelled = false;
+    const currentMarket = marketRef.current;
 
     if (useCoinbaseLineFeed) {
+      coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setInterval("1s");
       setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
       setLineEndTime(null);
       setManualLineVerticalPad(0);
-      setMarketAddress(market.marketAddr);
       setSecondCandles([]);
       setMinuteCandles([]);
       setCoinbaseMinuteCandles([]);
@@ -1269,23 +1227,21 @@ export function BtcPerpsChart({
         connected: false,
         fundingRateBps: null,
         openInterest: null,
-        oraclePrice: market.seedPrice * 1.0004,
-        price: market.seedPrice,
+        oraclePrice: currentMarket.seedPrice * 1.0004,
+        price: currentMarket.seedPrice,
       });
-      initializedRangeRef.current = false;
-      pendingAnchorRef.current = null;
       return () => {
         cancelled = true;
       };
     }
 
     async function loadInitial() {
+      const currentMarket = marketRef.current;
+      coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setInterval("1s");
       setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
       setLineEndTime(null);
       setManualLineVerticalPad(0);
-      setMarketAddress(market.marketAddr);
       setSecondCandles([]);
       setMinuteCandles([]);
       setHasInitialHistory(false);
@@ -1293,25 +1249,23 @@ export function BtcPerpsChart({
         connected: false,
         fundingRateBps: null,
         openInterest: null,
-        oraclePrice: market.seedPrice * 1.0004,
-        price: market.seedPrice,
+        oraclePrice: currentMarket.seedPrice * 1.0004,
+        price: currentMarket.seedPrice,
       });
-      initializedRangeRef.current = false;
-      pendingAnchorRef.current = null;
 
       try {
         const now = Date.now();
         const [pricesResult, candlesResult, tradesResult] = await Promise.allSettled([
           fetchDecibelMainnetPrices(INITIAL_REQUEST_TIMEOUT_MS),
           fetchDecibelMainnetCandles(
-            market.marketAddr,
+            currentMarket.marketAddr,
             "1m",
             now - MINUTE_HISTORY_MS,
             now,
             INITIAL_REQUEST_TIMEOUT_MS,
           ),
           fetchDecibelMainnetTrades(
-            market.marketAddr,
+            currentMarket.marketAddr,
             INITIAL_TRADE_LIMIT,
             INITIAL_REQUEST_TIMEOUT_MS,
           ),
@@ -1320,10 +1274,10 @@ export function BtcPerpsChart({
         if (cancelled) return;
 
         const priceEntry = pricesResult.status === "fulfilled"
-          ? pricesResult.value.find((entry) => entry.market === market.marketAddr) ?? null
+          ? pricesResult.value.find((entry) => entry.market === currentMarket.marketAddr) ?? null
           : null;
         const nextPrice =
-          priceEntry?.mark_px ?? priceEntry?.mid_px ?? priceEntry?.oracle_px ?? market.seedPrice;
+          priceEntry?.mark_px ?? priceEntry?.mid_px ?? priceEntry?.oracle_px ?? currentMarket.seedPrice;
 
         setSnapshot({
           connected: priceEntry !== null,
@@ -1357,8 +1311,8 @@ export function BtcPerpsChart({
           connected: false,
           fundingRateBps: null,
           openInterest: null,
-          oraclePrice: market.seedPrice * 1.0004,
-          price: market.seedPrice,
+          oraclePrice: currentMarket.seedPrice * 1.0004,
+          price: currentMarket.seedPrice,
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -1370,7 +1324,7 @@ export function BtcPerpsChart({
     return () => {
       cancelled = true;
     };
-  }, [market, useCoinbaseLineFeed]);
+  }, [marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
     if (!marketAddress || useCoinbaseLineFeed) {
@@ -1557,13 +1511,13 @@ export function BtcPerpsChart({
         <Liveline
           mode="candle"
           data={lineData}
-          value={snapshot.price}
+          value={displayedCandleValue}
           candles={activeSecondCandles}
           candleWidth={1}
           liveCandle={liveCandle}
           lineMode={mode === "line"}
           lineData={lineData}
-          lineValue={snapshot.price}
+          lineValue={displayedLineValue}
           theme="dark"
           color={market.color}
           window={Math.max(MIN_LINE_WINDOW_SECS, lineWindowSecs)}
@@ -1588,3 +1542,15 @@ export function BtcPerpsChart({
     </>
   );
 }
+
+export const BtcPerpsChart = memo(BtcPerpsChartComponent, (prev, next) => (
+  prev.active === next.active
+  && prev.mode === next.mode
+  && prev.liquidationLines === next.liquidationLines
+  && prev.onSnapshotChange === next.onSnapshotChange
+  && prev.market.marketName === next.market.marketName
+  && prev.market.marketAddr === next.market.marketAddr
+  && prev.market.color === next.market.color
+  && prev.market.priceDecimals === next.market.priceDecimals
+  && prev.market.leverage === next.market.leverage
+));

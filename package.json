@@ -9,6 +9,7 @@
   "scripts": {
     "build": "prisma generate && next build",
     "db:migrate:deploy": "prisma migrate deploy",
+    "doctor": "react-doctor --full --no-score",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
@@ -132,6 +133,7 @@
     "jsdom": "^28.0.0",
     "postcss": "^8.5",
     "prisma": "^5.22.0",
+    "react-doctor": "0.2.14",
     "tailwindcss": "^4.1.9",
     "tsx": "^4.20.6",
     "turndown": "^7.2.2",

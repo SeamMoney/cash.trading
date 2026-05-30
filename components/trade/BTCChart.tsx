@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Liveline } from "liveline";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { usePriceCandles } from "@/hooks/useBtcCandles";
 import { useInViewport } from "@/hooks/useInViewport";
 import { usePageVisible } from "@/hooks/usePageVisible";
@@ -143,10 +143,25 @@ interface Market {
   marketAddr?: string;
   marketName?: string;
   mode?: string;
+  fundingRateBps?: number | null;
 }
 
 const CATEGORIES = [
-  { key: "decibel", label: "Decibel Markets" },
+  { key: "crypto", label: "Crypto" },
+  { key: "stocks", label: "Stocks" },
+  { key: "commodities", label: "Commodities" },
+] as const;
+
+const PRIMARY_MARKET_TABS = [
+  { key: "all", label: "All" },
+  { key: "crypto", label: "Crypto" },
+  { key: "tradfi", label: "TradFi" },
+] as const;
+
+const TRADFI_MARKET_TABS = [
+  { key: "all", label: "All" },
+  { key: "stocks", label: "Stocks" },
+  { key: "commodities", label: "Commodities" },
 ] as const;
 
 /* ─── Token logos ──────────────────────────────────── */
@@ -167,16 +182,24 @@ const TOKEN_LOGOS: Record<string, string> = {
 
 const MARKET_LABELS: Record<string, string> = {
   AAPL: "Apple",
+  AMZN: "Amazon",
   APT: "Aptos",
   BTC: "Bitcoin",
   BNB: "BNB",
+  CBRS: "Chainbase",
   DOGE: "Dogecoin",
   ETH: "Ethereum",
   GOLD: "Gold",
+  GOOGL: "Google",
   HYPE: "Hyperliquid",
+  MEGA: "Mega",
+  MU: "Micron",
+  NVDA: "Nvidia",
+  SNDK: "SanDisk",
   SILVER: "Silver",
   SOL: "Solana",
   SUI: "Sui",
+  TSLA: "Tesla",
   XRP: "XRP",
   ZEC: "Zcash",
 };
@@ -195,6 +218,36 @@ const MARKET_COLORS: Record<string, string> = {
   XRP: "#d9d9d9",
   ZEC: "#f4b728",
 };
+
+const COMMODITY_SYMBOLS = new Set([
+  "GOLD",
+  "SILVER",
+  "XAU",
+  "XAG",
+  "OIL",
+  "WTI",
+  "BRENT",
+  "NATGAS",
+]);
+
+const CRYPTO_SYMBOLS = new Set([
+  "AAVE",
+  "APT",
+  "BNB",
+  "BTC",
+  "DOGE",
+  "ENA",
+  "ETH",
+  "HYPE",
+  "LINK",
+  "SOL",
+  "SUI",
+  "USDC",
+  "USDT",
+  "WLFI",
+  "XRP",
+  "ZEC",
+]);
 
 interface DecibelApiMarket {
   name: string;
@@ -234,6 +287,13 @@ function getMarketLabel(marketName: string) {
 
 function getMarketColor(marketName: string) {
   return MARKET_COLORS[getBaseSymbol(marketName)] ?? "#39ff14";
+}
+
+function classifyMarketCategory(marketName: string): "crypto" | "stocks" | "commodities" {
+  const base = getBaseSymbol(marketName);
+  if (COMMODITY_SYMBOLS.has(base)) return "commodities";
+  if (CRYPTO_SYMBOLS.has(base)) return "crypto";
+  return "stocks";
 }
 
 function getDisplayDecimals(price: number | null | undefined) {
@@ -280,10 +340,11 @@ function apiMarketToMarket(market: DecibelApiMarket): Market {
     color: perpData.color,
     chartKind: "perps",
     perpData,
-    category: "decibel",
+    category: classifyMarketCategory(market.name),
     marketAddr: market.address,
     marketName: market.name,
     mode: market.mode,
+    fundingRateBps: market.fundingRateBps,
   };
 }
 
@@ -300,9 +361,10 @@ const FALLBACK_MARKETS: Market[] = Object.values(PERP_MARKET_DATA).map((market) 
     label: getMarketLabel(market.marketName),
     pair: market.marketName,
   },
-  category: "decibel",
+  category: classifyMarketCategory(market.marketName),
   marketAddr: market.marketAddr,
   marketName: market.marketName,
+  fundingRateBps: null,
 }));
 const MARKETS = FALLBACK_MARKETS;
 
@@ -346,6 +408,41 @@ function MarketModal({
   loading?: boolean;
   network: DecibelPublicNetwork;
 }) {
+  const [query, setQuery] = useState("");
+  const [primaryTab, setPrimaryTab] = useState<"all" | "crypto" | "tradfi">("all");
+  const [tradfiTab, setTradfiTab] = useState<"all" | "stocks" | "commodities">("all");
+
+  const filteredMarkets = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return marketsList.filter((market) => {
+      const isTradFi = market.category === "stocks" || market.category === "commodities";
+      if (primaryTab === "crypto" && market.category !== "crypto") return false;
+      if (primaryTab === "tradfi" && !isTradFi) return false;
+      if (primaryTab === "tradfi" && tradfiTab !== "all" && market.category !== tradfiTab) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
+      return [
+        market.label,
+        market.pair,
+        market.marketName,
+        market.id,
+        getBaseSymbol(market.id),
+      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
+    });
+  }, [marketsList, primaryTab, query, tradfiTab]);
+
+  const visibleCategories = useMemo(
+    () =>
+      categoriesList
+        .map((category) => ({
+          ...category,
+          items: filteredMarkets.filter((market) => market.category === category.key),
+        }))
+        .filter((category) => category.items.length > 0),
+    [categoriesList, filteredMarkets],
+  );
+
   // Lock body scroll + escape key
   useEffect(() => {
     if (!open) return;
@@ -372,16 +469,14 @@ function MarketModal({
       {/* Outer card — matches payments log pattern */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[420px] bg-[#1c1c1c] rounded-2xl p-2 shadow-[0px_0px_1px_rgba(0,0,0,0.50)]"
+        className="relative w-full max-w-[760px] bg-[#141414] rounded-[12px] p-1 shadow-[0px_0px_1px_rgba(0,0,0,0.50)]"
         style={{ animation: "market-modal-in 0.2s ease-out" }}
       >
-        <div className="border border-[#2a2a2a] overflow-hidden rounded-lg">
+        <div className="overflow-hidden rounded-[10px] border border-[#303030]">
           {/* Header — same style as PAYMENT_LOGS / APTOS_MAINNET */}
           <header className="border-b border-[#2a2a2a] text-[#888] bg-[#202020] flex items-center justify-between px-5 py-4 font-mono text-sm font-semibold">
             <span className="flex items-center gap-2">
-              <span className="relative h-2 w-2 shrink-0 rounded-full bg-green-500">
-                <span className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
-              </span>
+              <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
               <span>SELECT MARKET</span>
               <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
                 {network}
@@ -397,39 +492,91 @@ function MarketModal({
           </header>
 
           {/* Content — grid rows matching table style */}
-          <div className="bg-[#181818] font-mono text-sm font-medium max-h-[50vh] overflow-y-auto">
+          <div className="bg-[#101010] p-4 font-mono text-sm font-medium">
+            <label className="flex h-11 items-center gap-3 rounded-[8px] border border-[#303030] bg-[#0d0d0d] px-4 text-[#777] focus-within:border-[#484848]">
+              <Search className="size-4 shrink-0" aria-hidden="true" />
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoFocus
+                placeholder="Search coins"
+                className="min-w-0 flex-1 bg-transparent text-[14px] text-zinc-200 outline-none placeholder:text-zinc-500"
+              />
+            </label>
+
+            <div className="mt-4 flex items-center gap-5 border-b border-[#252525]">
+              {PRIMARY_MARKET_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setPrimaryTab(tab.key)}
+                  className={`pb-2 text-[13px] transition-colors ${
+                    primaryTab === tab.key
+                      ? "border-b-2 border-zinc-200 text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {primaryTab === "tradfi" && (
+              <div className="mt-3 flex items-center gap-5 border-b border-[#252525]">
+                {TRADFI_MARKET_TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setTradfiTab(tab.key)}
+                    className={`pb-2 text-[13px] transition-colors ${
+                      tradfiTab === tab.key
+                        ? "border-b-2 border-zinc-200 text-zinc-100"
+                        : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Column headers */}
-            <div className="grid grid-cols-[1fr_auto_auto] items-center text-[#999] px-5 pt-4 pb-3 sticky top-0 bg-[#181818] z-10 gap-x-2">
-              <span className="font-bold text-xs">MARKET</span>
-              <span className="font-bold text-xs text-right whitespace-nowrap">OPEN INT.</span>
-              <span className="font-bold text-xs text-right whitespace-nowrap">LEV.</span>
+            <div className="grid grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] items-center gap-x-4 px-3 pt-5 pb-2 text-[#999]">
+              <span className="text-xs font-bold">Symbol</span>
+              <span className="text-right text-xs font-bold">Price</span>
+              <span className="text-right text-xs font-bold">Funding</span>
+              <span className="text-right text-xs font-bold">Open Interest</span>
+              <span className="text-right text-xs font-bold">Lev.</span>
             </div>
 
             {loading && (
-              <div className="px-5 pb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-green-500/70">
+              <div className="px-3 pb-2 text-[10px] font-bold uppercase text-green-500/70">
                 Updating market registry...
               </div>
             )}
 
             {/* Category groups */}
-            {categoriesList.map((cat) => {
-              const items = marketsList.filter((m) => m.category === cat.key);
-              if (items.length === 0) return null;
+            <div className="max-h-[min(58vh,560px)] overflow-y-auto pr-1">
+            {visibleCategories.map((cat) => {
+              const items = cat.items;
               return (
                 <div key={cat.key}>
-                  <div className="px-5 pt-2 pb-1 flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#555]">
+                  <div className="px-3 pt-3 pb-1 flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase text-[#555]">
                       {cat.label}
                     </span>
                   </div>
-                  <div className="flex flex-col gap-0.5 px-3">
+                  <div className="flex flex-col gap-0.5">
                     {items.map((m) => {
                       const isActive = m.id === selected;
+                      const mark = m.perpData?.seedPrice ?? 0;
+                      const fundingText = m.fundingRateBps == null ? "—" : fmtFundingRate(m.fundingRateBps);
                       return (
                         <button
                           key={m.id}
                           onClick={() => { onSelect(m.id); onClose(); }}
-                          className={`w-full grid grid-cols-[1fr_auto_auto] items-center gap-x-2 px-2 py-2 rounded-md transition-colors ${
+                          className={`grid w-full grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] items-center gap-x-4 rounded-[8px] px-3 py-2.5 transition-colors ${
                             isActive
                               ? "bg-white/[0.05] text-white"
                               : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
@@ -445,10 +592,19 @@ function MarketModal({
                               <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
                             )}
                           </span>
-                          <span className="text-[10px] tabular-nums text-right shrink-0 text-[#555]">
+                          <span className="text-right text-[12px] tabular-nums text-zinc-500">
+                            {mark > 0 ? mark.toLocaleString("en-US", {
+                              minimumFractionDigits: getDisplayDecimals(mark),
+                              maximumFractionDigits: getDisplayDecimals(mark),
+                            }) : "—"}
+                          </span>
+                          <span className="text-right text-[12px] tabular-nums text-green-400/80">
+                            {fundingText}
+                          </span>
+                          <span className="text-right text-[12px] tabular-nums text-[#555]">
                             {m.perpData?.openInterestLabel ?? "—"}
                           </span>
-                          <span className={`text-xs font-bold tabular-nums text-right shrink-0 ${
+                          <span className={`text-right text-xs font-bold tabular-nums ${
                             isActive ? "text-green-400" : "text-[#666]"
                           }`}>
                             {m.leverage > 0 ? `${m.leverage}x` : "Spot"}
@@ -460,7 +616,13 @@ function MarketModal({
                 </div>
               );
             })}
+            {visibleCategories.length === 0 && (
+              <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
+                No Decibel markets match this search.
+              </div>
+            )}
             <div className="h-3" />
+            </div>
           </div>
         </div>
       </div>

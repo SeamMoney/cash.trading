@@ -11,6 +11,7 @@ import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT, type BalanceUpdateDetail, type
 
 const NAV_ITEMS = [
   { href: "/trade", label: "Trade" },
+  { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
   { href: "/automation", label: "Automation" },
   { href: "/points", label: "Points" },

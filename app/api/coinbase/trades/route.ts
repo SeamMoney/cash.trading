@@ -9,6 +9,9 @@ type CoinbaseTrade = {
 const PAGE_SIZE = 300;
 const MAX_PAGES = 30;
 const DEFAULT_TARGET_SPAN_SECS = 8 * 60;
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -18,8 +21,11 @@ export async function GET(req: Request) {
     30 * 60,
   );
 
-  if (!productId) {
-    return Response.json({ error: "productId is required" }, { status: 400 });
+  if (!productId || !/^[A-Z0-9-]{1,32}$/.test(productId)) {
+    return Response.json(
+      { error: "A valid productId is required" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
   }
 
   try {
@@ -57,9 +63,12 @@ export async function GET(req: Request) {
     }
 
     trades.sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
-    return Response.json({ trades });
+    return Response.json({ trades }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch Coinbase trades";
-    return Response.json({ error: message }, { status: 502 });
+    return Response.json(
+      { trades: [], unavailable: true, reason: message },
+      { headers: NO_STORE_HEADERS },
+    );
   }
 }

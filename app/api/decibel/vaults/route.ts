@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { getAptosFullnodeApiKey } from "@/lib/decibel";
 
 export const runtime = "nodejs";
-export const revalidate = 30; // ISR: cache for 30s
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const DECIBEL_BASE = "https://api.mainnet.aptoslabs.com/decibel/api/v1";
-const API_KEY = process.env.GEOMI_API_KEY ?? "";
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 export interface DecibelVault {
   address: string;
@@ -31,22 +35,29 @@ export interface DecibelVault {
   manager_cash_pct: number | null;
 }
 
+function unavailableVaults(reason: string) {
+  return NextResponse.json(
+    { vaults: [], fetchedAt: Date.now(), unavailable: true, reason },
+    { headers: NO_STORE_HEADERS },
+  );
+}
+
 export async function GET() {
-  if (!API_KEY) {
-    return NextResponse.json({ error: "GEOMI_API_KEY not configured" }, { status: 500 });
+  const apiKey = getAptosFullnodeApiKey("mainnet");
+
+  if (!apiKey) {
+    return unavailableVaults("missing_api_key");
   }
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
 
+  try {
     const res = await fetch(`${DECIBEL_BASE}/vaults?limit=50`, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
       signal: controller.signal,
       cache: "no-store",
     });
-
-    clearTimeout(timer);
 
     if (!res.ok) {
       throw new Error(`Decibel vaults API returned ${res.status}`);
@@ -60,9 +71,13 @@ export async function GET() {
       .filter((v: DecibelVault) => v.status === "active" && (v.tvl ?? 0) > 0)
       .sort((a: DecibelVault, b: DecibelVault) => (b.tvl ?? 0) - (a.tvl ?? 0));
 
-    return NextResponse.json({ vaults, fetchedAt: Date.now() });
+    return NextResponse.json({ vaults, fetchedAt: Date.now() }, { headers: NO_STORE_HEADERS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to fetch vaults";
-    return NextResponse.json({ error: message }, { status: 502 });
+    const reason = error instanceof Error && error.name === "AbortError"
+      ? "timeout"
+      : "upstream_unavailable";
+    return unavailableVaults(reason);
+  } finally {
+    clearTimeout(timer);
   }
 }

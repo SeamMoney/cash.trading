@@ -1,8 +1,8 @@
-# cash.trading - Decibel Volume Generation Bot
+# cash.trading - Decibel Trading Frontend
 
-An automated volume generation bot for Decibel DEX on Aptos blockchain. Features a custom-built Decibel SDK for on-chain trading since Decibel's REST API is read-only.
+A Decibel trading frontend for Aptos with live market data, wallet-signed execution, portfolio management, indicator automation, vault workflows, and direct CASH rewards for product usage.
 
-**Status**: 90% Complete | Ready for Testing
+**Status**: Mainnet deployed | Trading, portfolio, automation, and launchpad flows in active development
 
 ---
 
@@ -23,6 +23,8 @@ An automated volume generation bot for Decibel DEX on Aptos blockchain. Features
 ## Features
 
 - **Automated Volume Generation** - TWAP orders executing over 5-10 minutes
+- **Decibel Trading Frontend** - Mainnet market selector, live chart, order book, positions, close orders, and account state
+- **Portfolio Management** - Portfolio chart, Decibel positions, open orders, balances, and USDC withdrawal flow
 - **Multiple Trading Strategies** - TWAP, Market Maker, Delta Neutral, High Risk
 - **Real-time Monitoring** - Live balance, order progress, and trade history
 - **Secure Delegation Model** - Bot can trade but never withdraw your funds
@@ -218,29 +220,20 @@ The bot uses a **delegation model** for security:
 3. User retains full control and can revoke delegation anytime
 4. Withdrawals require user's signature, not bot's
 
-### Official SDK (Coming Soon)
+### Decibel SDK
 
-The official `@decibel/sdk` package is fully documented but not yet available on npm. Key advantages:
+This app uses Decibel's TypeScript SDK where it is available and direct on-chain Aptos payloads for trading actions that must be signed by the connected wallet. The read paths use Decibel/Aptos market data plus Aptos fullnode views as a fallback, so trading actions do not need to depend on a browser-owned API key.
+
+Key advantages:
 
 - Type-safe API with full TypeScript definitions
 - WebSocket subscriptions for real-time updates
 - Gas price optimization and fee payer service
-- TP/SL (take profit/stop loss) helpers
+- TP/SL (take profit/stop loss) helpers where supported
 - Vault operations for copy trading
 - Built-in tick size rounding and price formatting
 
-**Migration Path**: When the official SDK becomes available, we can migrate in 3-5 days. See [SDK_COMPARISON_MATRIX.md](./docs/SDK_COMPARISON_MATRIX.md) for detailed comparison.
-
-### Critical Missing Features
-
-Our custom SDK is missing these essential features (available in official SDK):
-
-1. **Withdraw USDC** - Users can deposit but can't withdraw
-2. **Cancel orders** - Users can't cancel orders once placed
-3. **Revoke delegation** - Users can't remove bot permissions
-4. **TP/SL orders** - No automated risk management
-
-**Recommendation**: Contact Decibel team for early SDK access or implement these features manually.
+**Migration Path**: keep replacing local payload builders with official SDK helpers as Decibel exposes stable write helpers. See [SDK_COMPARISON_MATRIX.md](./docs/SDK_COMPARISON_MATRIX.md) for detailed comparison.
 
 ---
 
@@ -444,31 +437,34 @@ If delegated, you'll see the bot operator address in the output with "TradePerps
 - [x] Multi-wallet support (15+ wallets)
 - [x] Delegation system
 - [x] TWAP order placement
+- [x] Market and reduce-only position close payloads
+- [x] Order cancellation payloads
 - [x] Multiple trading strategies
 - [x] Real-time order monitoring
+- [x] SSE stream proxy with polling fallback
 - [x] Session-based trade tracking
 - [x] Mobile-responsive UI
 - [x] Database integration (Neon PostgreSQL)
 - [x] Vercel Cron jobs for automation
+- [x] PnL tracking and Decibel account overview
+- [x] Portfolio chart visualization
+- [x] USDC withdraw flow to owner wallet and optional recipient transfer
+- [x] Mainnet deployment on `cash.trading`
 
 ### In Progress
-- [ ] Position closing/management
-- [ ] Order cancellation
-- [ ] PnL tracking & reporting
-- [ ] Portfolio chart visualization
+- [ ] TP/SL (take profit/stop loss) automation
+- [ ] Revoke delegation UI
+- [ ] Dedicated real-time indexer service
+- [ ] Copy trading and vault management polish
+- [ ] Mobile trading UX polish
 
 ### Planned
-- [ ] TP/SL (take profit/stop loss) automation
-- [ ] Withdraw USDC functionality
-- [ ] Revoke delegation UI
-- [ ] WebSocket real-time updates
 - [ ] Multi-market arbitrage
-- [ ] Copy trading (vaults)
-- [ ] Mainnet deployment
+- [ ] Advanced bot guardrails UI for indicator-bound strategies
 
-### Blocked
-- [ ] Official Decibel SDK migration (waiting for npm package)
-- [ ] Advanced features (TP/SL, vaults) - requires SDK
+### External Dependencies
+- [ ] Some mainnet accounts cannot create Decibel subaccounts unless Decibel allowlists/referrers permit it (`EACCOUNT_WITHOUT_REFERRER_OR_IN_ALLOW_LIST`)
+- [ ] Authenticated Decibel/Aptos market streams require server-side API keys in deployment env
 
 ---
 

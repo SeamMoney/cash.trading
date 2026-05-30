@@ -1082,7 +1082,7 @@ export function TradePageClient({
               </span>
             </div>
           </div>
-          <p className="text-[13px] font-sans text-zinc-400 max-w-3xl text-pretty leading-relaxed">
+          <p className="hidden sm:block text-[13px] font-sans text-zinc-400 max-w-3xl text-pretty leading-relaxed">
             A self-custodial, fully on-chain orderbook perpetual futures exchange with real-time Decibel execution on Aptos. Trade through the cash.trading frontend, run indicator strategies, and earn direct CASH rewards as the product grows.
           </p>
         </div>
@@ -1132,11 +1132,11 @@ export function TradePageClient({
           <DecibelPositions />
         </div>
 
-        <div className="mt-6 animate-enter">
+        <div className="mt-6 hidden lg:block animate-enter">
           <VaultsPanel />
         </div>
 
-        <div className="mt-6 animate-enter">
+        <div className="mt-6 hidden lg:block animate-enter">
           <SignalProductsPanel
             onDeploy={(ind) => setDeployTarget(ind)}
             onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}

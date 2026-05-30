@@ -87,26 +87,47 @@ const OrderBookRow = memo(function OrderBookRow({
       ref={flashRef}
       type="button"
       onClick={() => onPriceClick?.(level.price)}
-      className={`relative grid w-full grid-cols-3 px-4 py-[2.5px] text-[11px] transition-colors ${
-        side === "bid" ? "hover:bg-green-500/10" : "hover:bg-red-500/10"
+      className={`group relative grid h-[22px] w-full grid-cols-[1fr_96px_1fr] items-center overflow-hidden px-3 text-[11px] transition-colors ${
+        side === "bid" ? "hover:bg-[#17c964]/10" : "hover:bg-[#ff8a00]/10"
       }`}
     >
-      <div
-        className={`absolute inset-y-0 ${side === "bid" ? "left-0 bg-green-500/8" : "right-0 bg-red-500/8"}`}
-        style={{ width: `${depthPct.toFixed(1)}%` }}
-      />
-      <span className="relative text-left font-mono tabular-nums text-zinc-400">
-        {level.size.toFixed(4)}
+      <div className="pointer-events-none absolute inset-y-0 left-3 right-[calc(50%+48px)]">
+        {side === "bid" && (
+          <div
+            className="ml-auto h-full bg-[#17c964]/20 group-hover:bg-[#17c964]/25"
+            style={{ width: `${depthPct.toFixed(1)}%` }}
+          />
+        )}
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 left-[calc(50%+48px)] right-3">
+        {side === "ask" && (
+          <div
+            className="h-full bg-[#ff8a00]/20 group-hover:bg-[#ff8a00]/25"
+            style={{ width: `${depthPct.toFixed(1)}%` }}
+          />
+        )}
+      </div>
+
+      <span
+        className={`relative min-w-0 text-left font-mono tabular-nums ${
+          side === "bid" ? "text-[#17c964]" : "text-transparent"
+        }`}
+      >
+        {side === "bid" ? level.size.toFixed(4) : ""}
       </span>
       <span
-        className={`relative text-right font-mono font-medium tabular-nums ${
-          side === "bid" ? "text-success" : "text-danger"
+        className={`relative text-center font-mono font-semibold tabular-nums ${
+          side === "bid" ? "text-[#17c964]" : "text-[#ff9b2f]"
         }`}
       >
         {formattedPrice}
       </span>
-      <span className="relative text-right font-mono tabular-nums text-zinc-500">
-        {level.cumulative.toFixed(4)}
+      <span
+        className={`relative min-w-0 text-right font-mono tabular-nums ${
+          side === "ask" ? "text-[#ff9b2f]" : "text-transparent"
+        }`}
+      >
+        {side === "ask" ? level.size.toFixed(4) : ""}
       </span>
     </button>
   );
@@ -127,7 +148,12 @@ function withCumulative(levels: Level[], reverse = false): CumulativeLevel[] {
  * through the server-side SSE proxy. SDK 0.4 exposes depth as a stream, not a
  * REST reader, so this is the primary depth path.
  */
-export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBookProps) {
+export function OrderBook({
+  marketName,
+  marketAddress,
+  onPriceClick,
+  currentPrice,
+}: OrderBookProps) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [book, setBook] = useState<OrderBookData>({
     bids: [],
@@ -235,17 +261,21 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
   const bestAsk = book.asks[0]?.price;
   const midPrice =
     bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
+  const displayPrice = currentPrice ?? midPrice;
   const spread = bestBid && bestAsk ? bestAsk - bestBid : null;
   const spreadPct =
     spread && midPrice ? ((spread / midPrice) * 100).toFixed(3) : null;
 
   if (loading) {
     return (
-      <div className="rounded-[16px] bg-[#0e0e0e] border border-white/[0.06] p-4">
-        <div className="text-[11px] font-display font-medium text-zinc-500 uppercase tracking-wider mb-3">Order Book</div>
-        <div className="animate-pulse space-y-1">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-5 bg-zinc-800/50 rounded" />
+      <div className="bg-[#0b0b0b] px-3 py-3">
+        <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+          <span>Order Book</span>
+          <span>Loading</span>
+        </div>
+        <div className="animate-pulse space-y-[3px]">
+          {Array.from({ length: 13 }).map((_, i) => (
+            <div key={i} className="h-[22px] bg-white/[0.04]" />
           ))}
         </div>
       </div>
@@ -255,40 +285,38 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
   // If error and no data, show clean empty state
   if (error && book.bids.length === 0 && book.asks.length === 0) {
     return (
-      <div className="rounded-[16px] bg-[#0e0e0e] border border-white/[0.06] overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
-          <h3 className="text-[11px] font-display font-semibold uppercase tracking-wider text-zinc-400">Order Book</h3>
-          <span className="text-[10px] text-zinc-600">Unavailable</span>
+      <div className="overflow-hidden bg-[#0b0b0b]">
+        <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+          <h3 className="font-display font-semibold text-zinc-500">Order Book</h3>
+          <span>Unavailable</span>
         </div>
-        <div className="px-4 py-8 text-center">
-          <p className="text-[11px] text-zinc-600 font-mono">No depth data for this market</p>
+        <div className="px-3 py-8 text-center">
+          <p className="font-mono text-[11px] text-zinc-600">No depth data for this market</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-[16px] bg-[#0e0e0e] border border-white/[0.06] overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
-        <h3 className="text-[11px] font-display font-semibold uppercase tracking-wider text-zinc-400">Order Book</h3>
+    <div className="overflow-hidden bg-[#0b0b0b]">
+      <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+        <h3 className="font-display font-semibold text-zinc-500">Order Book</h3>
         {error ? (
-          <span className="text-[10px] text-zinc-600">Unavailable</span>
+          <span>Unavailable</span>
         ) : (
-          <span className="text-[10px] text-zinc-600">
+          <span>
             Live · {book.bids.length + book.asks.length} levels
           </span>
         )}
       </div>
 
-      {/* Column Headers */}
-      <div className="grid grid-cols-3 px-4 py-1.5 text-[10px] text-zinc-600 font-semibold border-b border-white/[0.06]">
-        <span>Size ({marketName.split("/")[0]})</span>
-        <span className="text-right">Price</span>
-        <span className="text-right">Total</span>
+      <div className="grid grid-cols-[1fr_96px_1fr] px-3 pb-1 text-[10px] font-medium text-zinc-700">
+        <span>Bid size</span>
+        <span className="text-center">Price</span>
+        <span className="text-right">Ask size</span>
       </div>
 
-      {/* Asks (sells) — displayed highest price at top, lowest near spread */}
-      <div className="max-h-52 overflow-y-auto no-scrollbar flex flex-col-reverse">
+      <div className="max-h-[176px] overflow-y-auto no-scrollbar">
         {asksWithCumulative.map((level, i) => (
           <OrderBookRow
             key={`ask-${i}`}
@@ -300,20 +328,18 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
         ))}
       </div>
 
-      {/* Spread / Mid Price */}
-      <div className="border-y border-white/[0.06] bg-[#141414] px-4 py-2">
-        <div className="text-center font-mono text-[17px] font-bold tabular-nums text-white">
-          {midPrice ? `$${midPrice.toLocaleString("en-US", { minimumFractionDigits: priceDecimals(midPrice), maximumFractionDigits: priceDecimals(midPrice) })}` : "—"}
+      <div className="px-3 py-2">
+        <div className="text-center font-mono text-[18px] font-bold tabular-nums text-white">
+          {displayPrice ? `$${displayPrice.toLocaleString("en-US", { minimumFractionDigits: priceDecimals(displayPrice), maximumFractionDigits: priceDecimals(displayPrice) })}` : "—"}
         </div>
         {spread !== null && (
-          <div className="mt-0.5 text-center text-[10px] font-mono tabular-nums text-zinc-500">
+          <div className="mt-0.5 text-center font-mono text-[10px] tabular-nums text-zinc-600">
             Spread {spread.toFixed(2)} ({spreadPct}%)
           </div>
         )}
       </div>
 
-      {/* Bids (buys) — highest bid at top, descending */}
-      <div className="max-h-52 overflow-y-auto no-scrollbar">
+      <div className="max-h-[176px] overflow-y-auto no-scrollbar">
         {bidsWithCumulative.map((level, i) => (
           <OrderBookRow
             key={`bid-${i}`}
@@ -325,9 +351,8 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
         ))}
       </div>
 
-      {/* Timestamp */}
       {book.timestamp && (
-        <div className="px-4 py-1 border-t border-white/[0.06] text-[9px] text-zinc-600 text-right font-mono">
+        <div className="px-3 py-1 text-right font-mono text-[9px] text-zinc-700">
           {new Date(book.timestamp).toLocaleTimeString()}
         </div>
       )}

@@ -472,7 +472,7 @@ If delegated, you'll see the bot operator address in the output with "TradePerps
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 15, React 19, TailwindCSS, shadcn/ui |
+| Frontend | Next.js 16, React 19, TailwindCSS, shadcn/ui |
 | Backend | Next.js API Routes, Prisma ORM |
 | Database | Neon PostgreSQL (serverless) |
 | Blockchain | Aptos TypeScript SDK (`@aptos-labs/ts-sdk`) |

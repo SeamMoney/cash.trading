@@ -398,17 +398,17 @@ export function usePriceCandles(
       const historyStart = historyEnd - Math.max(historyLimit, 30) * 60;
 
       fetch(
-        `https://api.exchange.coinbase.com/products/${productId}/candles?granularity=60&start=${new Date(historyStart * 1000).toISOString()}&end=${new Date(historyEnd * 1000).toISOString()}`,
+        `/api/coinbase/candles?productId=${encodeURIComponent(productId)}&granularity=60&start=${historyStart}&end=${historyEnd}`,
         {
           cache: "no-store",
           signal: historyController.signal,
         },
       )
         .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!active || !Array.isArray(data)) return;
+        .then((data: { candles?: Array<[number, number, number, number, number, number]> } | null) => {
+          if (!active || !Array.isArray(data?.candles)) return;
 
-          const rawCandles = (data as Array<[number, number, number, number, number, number]>)
+          const rawCandles = data.candles
             .map((candle) => ({
               time: candle[0],
               low: candle[1],
@@ -454,13 +454,13 @@ export function usePriceCandles(
 
     const pollTicker = async () => {
       try {
-        const response = await fetch(`https://api.exchange.coinbase.com/products/${productId}/ticker`, {
+        const response = await fetch(`/api/coinbase/ticker?productId=${encodeURIComponent(productId)}`, {
           cache: "no-store",
         });
         if (!response.ok || !active) return;
 
-        const data = (await response.json()) as { price?: string };
-        const nextPrice = parseFloat(data.price || "0");
+        const data = (await response.json()) as { price?: number | null };
+        const nextPrice = Number(data.price);
         if (Number.isFinite(nextPrice) && nextPrice > 0) {
           if (liveCandleRef.current == null) {
             const seed = makeSeed(nextPrice, candleSecs);

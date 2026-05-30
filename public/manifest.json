@@ -1,11 +1,11 @@
 {
-  "name": "Decibrrr - Farm Decibel Points",
-  "short_name": "Decibrrr",
-  "description": "Farm points on Decibel perp DEX on Aptos",
+  "name": "cash.trading - Aptos Perps",
+  "short_name": "CASH",
+  "description": "Trade Decibel perps on Aptos with live analytics, automated strategies, and direct CASH rewards.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#005B5B",
+  "theme_color": "#39ff14",
   "icons": [
     {
       "src": "/icon-192.jpg",

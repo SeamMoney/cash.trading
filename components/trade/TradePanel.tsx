@@ -2,12 +2,18 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { Check, ChevronDown } from "lucide-react";
 import { dispatchPortfolioActivity } from "@/lib/portfolio-events";
 import { explorerTxUrl } from "@/lib/constants";
 import { getEstimatedLiquidationPrice } from "@/lib/trade-utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import {
@@ -19,20 +25,43 @@ import {
 
 const LEVERAGE_MIN = 1.1;
 const SLIDER_CONTENT_HEIGHT = 72;
-const SUPPORTED_DECIBEL_MARKETS = new Set([
-  "BTC/USD",
-  "ETH/USD",
-  "SOL/USD",
-  "APT/USD",
-  "XRP/USD",
-  "DOGE/USD",
-  "HYPE/USD",
-  "SUI/USD",
-  "BNB/USD",
-  "ZEC/USD",
-]);
 
-export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, currentPrice = 0, onPositionOpen, chartHeight }: { market?: string; marketId?: string; maxLeverage?: number; currentPrice?: number; onPositionOpen?: (pos: { market: string; side: "long" | "short"; collateral: number; leverage: number }) => void; chartHeight?: number }) {
+type OrderLifecycle =
+  | "idle"
+  | "building"
+  | "wallet"
+  | "submitted"
+  | "open"
+  | "filled"
+  | "canceled"
+  | "stale-oracle-denied"
+  | "denied"
+  | "error";
+
+type MarketStatus = {
+  isOpen: boolean;
+  mode: string;
+  markPrice: number | null;
+};
+
+export function TradePanel({
+  market = "BTC/USDC",
+  marketId,
+  marketName,
+  marketAddress,
+  maxLeverage = 40,
+  currentPrice = 0,
+  onPositionOpen,
+}: {
+  market?: string;
+  marketId?: string;
+  marketName?: string;
+  marketAddress?: string;
+  maxLeverage?: number;
+  currentPrice?: number;
+  onPositionOpen?: (pos: { market: string; side: "long" | "short"; collateral: number; leverage: number }) => void;
+  chartHeight?: number;
+}) {
   const { account, connected, signAndSubmitTransaction } = useWallet();
   const [side, setSide] = useState<"long" | "short">("long");
   const [amount, setAmount] = useState("");
@@ -43,8 +72,13 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
   const [leverageOpen, setLeverageOpen] = useState(false);
   const [tradeStatus, setTradeStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [tradeAction, setTradeAction] = useState<"idle" | "order">("idle");
+  const [orderLifecycle, setOrderLifecycle] = useState<OrderLifecycle>("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusHash, setStatusHash] = useState("");
+  const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
+  const [marketStatusLoading, setMarketStatusLoading] = useState(false);
+  const [marketStatusError, setMarketStatusError] = useState<string | null>(null);
+  const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,18 +91,22 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
     subaccounts,
   } = useDecibelSubaccounts();
   const decibelMarketName =
+    marketName ||
     (marketId && PERP_MARKET_DATA[marketId]?.marketName) ||
     market.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
   const inputAmount = Number(amount);
   const hasTradeAmount = Number.isFinite(inputAmount) && inputAmount > 0;
-  const supportedDecibelMarket = SUPPORTED_DECIBEL_MARKETS.has(decibelMarketName);
+  const supportedDecibelMarket = Boolean(decibelMarketName || marketAddress);
   const usesDecibelCollateral = collateralToken === "USDC";
   const canUseDecibel = Boolean(
     connected && account && hasDecibelAccount && supportedDecibelMarket && usesDecibelCollateral
   );
-  const canSubmitDecibel = Boolean(canUseDecibel && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
+  const marketAllowsOrders = marketStatus?.isOpen !== false;
+  const canSubmitDecibel = Boolean(canUseDecibel && marketAllowsOrders && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
+
+  useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   useEffect(() => {
     if (!collateralOpen) return;
@@ -80,6 +118,47 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [collateralOpen]);
+
+  useEffect(() => {
+    if (!supportedDecibelMarket) {
+      setMarketStatus(null);
+      setMarketStatusError(null);
+      setMarketStatusLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setMarketStatusLoading(true);
+    setMarketStatusError(null);
+
+    const params = new URLSearchParams({ network: decibelNetwork });
+    if (marketAddress) params.set("marketAddress", marketAddress);
+    else params.set("marketName", decibelMarketName);
+
+    fetch(`/api/decibel/order?${params.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok || json.error) {
+          throw new Error(json.error || "Could not read market status");
+        }
+        setMarketStatus(json.marketStatus ?? null);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setMarketStatus(null);
+        setMarketStatusError(
+          error instanceof Error ? error.message : "Could not read market status"
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMarketStatusLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [decibelMarketName, decibelNetwork, marketAddress, supportedDecibelMarket]);
 
   const leveragePct =
     ((leverage - LEVERAGE_MIN) / (maxLeverage - LEVERAGE_MIN)) * 100;
@@ -139,9 +218,23 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
       setTradeStatus("error");
       return;
     }
-    if (!SUPPORTED_DECIBEL_MARKETS.has(decibelMarketName)) {
-      setStatusMessage(`${decibelMarketName} is not enabled in this Decibel deployment yet.`);
+    if (!supportedDecibelMarket) {
+      setStatusMessage("Select a Decibel market before placing orders.");
       setTradeStatus("error");
+      setOrderLifecycle("denied");
+      return;
+    }
+    if (marketStatus?.isOpen === false) {
+      const code = /stale|oracle/i.test(marketStatus.mode)
+        ? "stale-oracle-denied"
+        : "denied";
+      setStatusMessage(
+        /stale|oracle/i.test(marketStatus.mode)
+          ? `${decibelMarketName} is blocked because the oracle is stale.`
+          : `${decibelMarketName} is not open (${marketStatus.mode}).`
+      );
+      setTradeStatus("error");
+      setOrderLifecycle(code);
       return;
     }
     if (!Number.isFinite(collateral) || collateral <= 0) {
@@ -157,6 +250,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
     inputRef.current?.blur();
     setTradeAction("order");
     setTradeStatus("submitting");
+    setOrderLifecycle("building");
     setStatusMessage("Build Decibel market order...");
     setStatusHash("");
 
@@ -168,6 +262,8 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           marketName: decibelMarketName,
+          marketAddress,
+          network: decibelNetwork,
           price: currentPrice,
           size,
           isBuy: side === "long",
@@ -176,11 +272,19 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
         }),
       });
       const json = await res.json();
-      if (!res.ok || json.error) throw new Error(json.error || "Order builder failed");
+      if (!res.ok || json.error) {
+        const code = typeof json.code === "string" ? json.code : "";
+        if (code === "STALE_ORACLE_DENIED") setOrderLifecycle("stale-oracle-denied");
+        else if (code === "MARKET_CLOSED") setOrderLifecycle("denied");
+        throw new Error(json.error || "Order builder failed");
+      }
 
+      if (json.meta?.marketStatus) setMarketStatus(json.meta.marketStatus);
+      setOrderLifecycle("wallet");
       setStatusMessage("Sign Decibel order in your wallet...");
       const result = await signAndSubmitTransaction({ data: json.payload });
       setStatusHash(result.hash);
+      setOrderLifecycle("submitted");
       setStatusMessage("Order submitted. Waiting for on-chain confirmation...");
       emitDecibelPositionsRefresh();
       await waitForTransactionConfirmation(result.hash);
@@ -188,7 +292,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
       setStatusMessage("Order confirmed. Checking Decibel position state...");
 
       const positionsRes = await fetch(
-        `/api/decibel/positions?address=${selectedSubaccount}`
+        `/api/decibel/positions?address=${selectedSubaccount}&openOrders=true&network=${decibelNetwork}`
       );
       const positionsJson = await positionsRes.json().catch(() => ({}));
       const hasMatchingPosition = Array.isArray(positionsJson.positions)
@@ -197,12 +301,22 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
               position.market === decibelMarketName || position.market === market
           )
         : false;
+      const hasMatchingOpenOrder = Array.isArray(positionsJson.openOrders)
+        ? positionsJson.openOrders.some(
+            (order: { market?: string; isBuy?: boolean }) =>
+              (order.market === decibelMarketName || order.market === market) &&
+              order.isBuy === (side === "long")
+          )
+        : false;
 
       setTradeStatus("success");
+      setOrderLifecycle(hasMatchingPosition ? "filled" : hasMatchingOpenOrder ? "open" : "submitted");
       setStatusMessage(
         hasMatchingPosition
           ? "Decibel order confirmed and position detected."
-          : "Decibel order confirmed. Refresh positions to verify fill."
+          : hasMatchingOpenOrder
+          ? "Decibel order confirmed and resting open."
+          : "Decibel order confirmed. Waiting for indexed fill state."
       );
       dispatchPortfolioActivity({
         type: side === "long" ? "Long" : "Short",
@@ -217,10 +331,16 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
       setTimeout(() => {
         setTradeStatus("idle");
         setTradeAction("idle");
+        setOrderLifecycle("idle");
       }, 2500);
     } catch (err) {
       setStatusMessage(err instanceof Error ? err.message : "Order failed");
       setTradeStatus("error");
+      setOrderLifecycle((current) =>
+        current === "stale-oracle-denied" || current === "denied"
+          ? current
+          : "error"
+      );
     }
   }, [
     account,
@@ -229,15 +349,19 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
     connected,
     currentPrice,
     decibelMarketName,
+    decibelNetwork,
     leverage,
     isLoadingSubaccounts,
     lookupIncomplete,
     market,
+    marketAddress,
+    marketStatus,
     onPositionOpen,
     selectedSubaccount,
     side,
     signAndSubmitTransaction,
     subaccounts,
+    supportedDecibelMarket,
     tradeStatus,
   ]);
 
@@ -255,11 +379,45 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
         ? "Create account first"
       : !supportedDecibelMarket
         ? `${decibelMarketName} unavailable`
+      : marketStatus?.isOpen === false
+        ? /stale|oracle/i.test(marketStatus.mode)
+          ? "Oracle stale"
+          : "Market closed"
       : !hasTradeAmount
         ? "Enter amount"
       : isLong
         ? `Long ${market}`
         : `Short ${market}`;
+  const lifecycleLabel: Record<OrderLifecycle, string> = {
+    idle: "Ready",
+    building: "Building",
+    wallet: "Wallet",
+    submitted: "Submitted",
+    open: "Open",
+    filled: "Filled",
+    canceled: "Canceled",
+    "stale-oracle-denied": "Stale oracle denied",
+    denied: "Denied",
+    error: "Error",
+  };
+  const marketStatusText = marketStatusLoading
+    ? "Checking market"
+    : marketStatusError
+    ? "Status unavailable"
+    : !supportedDecibelMarket
+    ? "Unsupported"
+    : marketStatus?.isOpen === false
+    ? /stale|oracle/i.test(marketStatus.mode)
+      ? "Stale oracle"
+      : marketStatus.mode || "Closed"
+    : "Open";
+  const marketStatusClass = marketStatusLoading
+    ? "border-white/10 bg-white/[0.04] text-zinc-400"
+    : marketStatusError
+    ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-300"
+    : marketStatus?.isOpen === false || !supportedDecibelMarket
+    ? "border-red-500/25 bg-red-500/10 text-red-300"
+    : "border-accent/20 bg-accent/10 text-accent";
 
   return (
     <div>
@@ -267,7 +425,10 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setSide("long")}
+            onClick={() => {
+              setSide("long");
+              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+            }}
             className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
               isLong ? "text-success" : "text-zinc-600 hover:text-zinc-400"
             }`}
@@ -276,7 +437,10 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
           </button>
           <span className="text-zinc-700">/</span>
           <button
-            onClick={() => setSide("short")}
+            onClick={() => {
+              setSide("short");
+              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+            }}
             className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
               !isLong ? "text-danger" : "text-zinc-600 hover:text-zinc-400"
             }`}
@@ -302,7 +466,10 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
             onChange={(e) => {
               const v = e.target.value.replace(/[^0-9.]/g, "");
               if (v.split(".").length <= 2) setAmount(v);
-              if (tradeStatus !== "idle") setTradeStatus("idle");
+              if (tradeStatus !== "idle") {
+                setTradeStatus("idle");
+                setOrderLifecycle("idle");
+              }
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -323,9 +490,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
               <span className="text-[14px] font-display font-semibold text-white">
                 {collateralToken}
               </span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`text-zinc-500 transition-transform ${collateralOpen ? "rotate-180" : ""}`}>
-                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <ChevronDown className={`h-3 w-3 text-zinc-500 transition-transform ${collateralOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {collateralOpen && (
@@ -339,7 +504,10 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
                       onClick={() => {
                         setCollateralToken(token.symbol);
                         setCollateralOpen(false);
-                        if (tradeStatus !== "idle") setTradeStatus("idle");
+                        if (tradeStatus !== "idle") {
+                          setTradeStatus("idle");
+                          setOrderLifecycle("idle");
+                        }
                       }}
                       className={`w-full flex items-center justify-between gap-3 rounded-[9px] px-2.5 py-2 text-left transition-colors ${
                         active
@@ -359,9 +527,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
                         </span>
                       </span>
                       {active && (
-                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-400">
-                          <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
                       )}
                     </button>
                   );
@@ -476,6 +642,26 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
         );
       })()}
 
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono uppercase">
+        <div className={cn("rounded-[10px] border px-3 py-2", marketStatusClass)}>
+          <div className="text-[9px] text-zinc-500">Market</div>
+          <div className="mt-0.5 font-semibold">{marketStatusText}</div>
+        </div>
+        <div
+          className={cn(
+            "rounded-[10px] border px-3 py-2",
+            orderLifecycle === "filled" || orderLifecycle === "open"
+              ? "border-accent/20 bg-accent/10 text-accent"
+              : orderLifecycle === "error" || orderLifecycle === "denied" || orderLifecycle === "stale-oracle-denied"
+              ? "border-red-500/25 bg-red-500/10 text-red-300"
+              : "border-white/10 bg-white/[0.04] text-zinc-400"
+          )}
+        >
+          <div className="text-[9px] text-zinc-500">Order</div>
+          <div className="mt-0.5 font-semibold">{lifecycleLabel[orderLifecycle]}</div>
+        </div>
+      </div>
+
       {/* Submit button */}
       <button
         onClick={handleSubmit}
@@ -499,9 +685,7 @@ export function TradePanel({ market = "BTC/USDC", marketId, maxLeverage = 40, cu
           </span>
         ) : isOrderSuccess ? (
           <span className="flex items-center justify-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+            <Check className="h-4 w-4" aria-hidden="true" strokeWidth={3} />
             Order Submitted
           </span>
         ) : (

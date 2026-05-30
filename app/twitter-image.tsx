@@ -2,7 +2,7 @@ import { ImageResponse } from 'next/og'
 
 export const runtime = 'edge'
 
-export const alt = 'Decibrrr - Farm Decibel Points on Aptos'
+export const alt = 'cash.trading - Aptos perps on Decibel'
 export const size = {
   width: 1200,
   height: 630,
@@ -21,7 +21,6 @@ export default async function Image() {
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: '#000',
-          backgroundImage: 'radial-gradient(circle at 25% 25%, #1a1a1a 0%, #000 50%)',
         }}
       >
         <div
@@ -32,20 +31,16 @@ export default async function Image() {
             marginBottom: 40,
           }}
         >
-          <span style={{ fontSize: 120 }}>🔊💵</span>
+          <span style={{ fontSize: 120, color: '#39ff14', fontWeight: 900 }}>$</span>
         </div>
         <div
           style={{
             fontSize: 80,
             fontWeight: 900,
-            fontStyle: 'italic',
-            background: 'linear-gradient(90deg, #fff600, #ffff00, #fff600)',
-            backgroundClip: 'text',
-            color: 'transparent',
-            letterSpacing: '-0.05em',
+            color: '#39ff14',
           }}
         >
-          DECIBRRR
+          cash.trading
         </div>
         <div
           style={{
@@ -55,19 +50,19 @@ export default async function Image() {
             textAlign: 'center',
           }}
         >
-          Farm Points on Decibel Perp DEX
+          Decibel perps, analytics, bots, and CASH rewards
         </div>
         <div
           style={{
             fontSize: 24,
-            color: '#fff600',
+            color: '#39ff14',
             marginTop: 30,
             padding: '10px 30px',
-            border: '2px solid #fff600',
+            border: '2px solid #39ff14',
             borderRadius: 8,
           }}
         >
-          Aptos Blockchain
+          Aptos Mainnet
         </div>
       </div>
     ),

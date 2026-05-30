@@ -5,7 +5,7 @@ import { motion, useInView } from "framer-motion"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const YELLOW = "#fff600"
+const YELLOW = "#39ff14"
 
 const MARKETS = [
   { name: "BTC/USD",  color: "#f7931a", leverage: "40x" },

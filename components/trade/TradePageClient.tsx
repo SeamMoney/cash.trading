@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { ChevronLeft } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
@@ -67,20 +68,20 @@ interface DecibelVault {
 
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
 
-// Display overrides for vault cards — mapped to top Whop trading communities
+// Display overrides for vault cards shown beside Decibel protocol vaults.
 // Decibel Protocol Vault uses 100% real API data — no override needed
 const GUILD_OVERRIDES: Record<string, {
   displayName: string;
   volume: number; pnl: number; traders: number; openInterest: number;
   sharpe?: number; maxDrawdown?: number; profitShare?: number;
-  leader?: { name: string; avatar: string; whopUrl: string };
+  leader?: { name: string; avatar: string };
 }> = {
-  "Team Resonance":  { displayName: "Kaizen", volume: 33_567_859, pnl: 4.71,  traders: 20_000, openInterest: 935_122,  sharpe: 1.82, maxDrawdown: -3.1, profitShare: 10, leader: { name: "Brian Jung", avatar: "https://unavatar.io/x/thebrianjung", whopUrl: "https://whop.com/kaizen/" } },
-  "iLiquid":         { displayName: "The Whale Room", volume: 28_303_675, pnl: 3.84,  traders: 8_200, openInterest: 231_103,  sharpe: 1.45, maxDrawdown: -4.2, profitShare: 5, leader: { name: "Kyledoops", avatar: "https://unavatar.io/x/kyledoops", whopUrl: "https://whop.com/thewhaleroom/" } },
-  "Phase Zero":      { displayName: "Options Insider", volume: 34_957_869, pnl: 2.17,  traders: 14_892, openInterest: 222_173,  sharpe: 1.23, maxDrawdown: -3.8, profitShare: 2, leader: { name: "DesiTrade", avatar: "https://unavatar.io/x/Desi_Trade", whopUrl: "https://whop.com/optionsinsider/" } },
-  "Echo Dynasty":    { displayName: "Scarface Trades", volume: 10_299_974, pnl: 1.93,  traders: 4_561, openInterest: 416_549,  sharpe: 1.07, maxDrawdown: -2.9, profitShare: 5, leader: { name: "Tony", avatar: "https://unavatar.io/x/ScarfaceTrades_", whopUrl: "https://whop.com/scarfacetrades/" } },
-  "Signal9":         { displayName: "EmmanuelTrades", volume: 10_904_768, pnl: 1.52,  traders: 63_900, openInterest: 149_051,  sharpe: 0.94, maxDrawdown: -5.1, profitShare: 2, leader: { name: "Emmanuel", avatar: "https://unavatar.io/x/Emmanueltrades", whopUrl: "https://whop.com/emmanueltrades/" } },
-  "Crypto Vikings":  { displayName: "American Dream", volume: 1_042_842,  pnl: 0.87,  traders: 3_200, openInterest: 78_200,   sharpe: 0.61, maxDrawdown: -6.8, profitShare: 10, leader: { name: "Chad Christian", avatar: "https://unavatar.io/x/ADTCoach", whopUrl: "https://whop.com/americandreamtrading/" } },
+  "Team Resonance":  { displayName: "Kaizen", volume: 33_567_859, pnl: 4.71,  traders: 20_000, openInterest: 935_122,  sharpe: 1.82, maxDrawdown: -3.1, profitShare: 10, leader: { name: "Brian Jung", avatar: "https://unavatar.io/x/thebrianjung" } },
+  "iLiquid":         { displayName: "The Whale Room", volume: 28_303_675, pnl: 3.84,  traders: 8_200, openInterest: 231_103,  sharpe: 1.45, maxDrawdown: -4.2, profitShare: 5, leader: { name: "Kyledoops", avatar: "https://unavatar.io/x/kyledoops" } },
+  "Phase Zero":      { displayName: "Options Insider", volume: 34_957_869, pnl: 2.17,  traders: 14_892, openInterest: 222_173,  sharpe: 1.23, maxDrawdown: -3.8, profitShare: 2, leader: { name: "DesiTrade", avatar: "https://unavatar.io/x/Desi_Trade" } },
+  "Echo Dynasty":    { displayName: "Scarface Trades", volume: 10_299_974, pnl: 1.93,  traders: 4_561, openInterest: 416_549,  sharpe: 1.07, maxDrawdown: -2.9, profitShare: 5, leader: { name: "Tony", avatar: "https://unavatar.io/x/ScarfaceTrades_" } },
+  "Signal9":         { displayName: "EmmanuelTrades", volume: 10_904_768, pnl: 1.52,  traders: 63_900, openInterest: 149_051,  sharpe: 0.94, maxDrawdown: -5.1, profitShare: 2, leader: { name: "Emmanuel", avatar: "https://unavatar.io/x/Emmanueltrades" } },
+  "Crypto Vikings":  { displayName: "American Dream", volume: 1_042_842,  pnl: 0.87,  traders: 3_200, openInterest: 78_200,   sharpe: 0.61, maxDrawdown: -6.8, profitShare: 10, leader: { name: "Chad Christian", avatar: "https://unavatar.io/x/ADTCoach" } },
 };
 
 function formatUsd(n: number | null): string {
@@ -258,7 +259,7 @@ function VaultsPanel() {
                     <span className="truncate font-sans text-[15px] font-bold text-white">{guild?.displayName ?? vault.name}</span>
                     <span className={cn(
                       "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                      vault.vault_type === "protocol" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-700/50 text-zinc-400"
+                      vault.vault_type === "protocol" ? "bg-accent/15 text-accent" : "bg-zinc-700/50 text-zinc-400"
                     )}>
                       {vault.vault_type === "protocol" ? "Protocol" : "User"}
                     </span>
@@ -268,31 +269,23 @@ function VaultsPanel() {
                     <span className="flex size-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#252525] bg-[#1a1a1a]">
                       {vault.vault_type === "protocol"
                         ? <DecibelMark className="h-[14px] w-auto" />
-                        : <WhopMark className="h-[12px] w-auto text-[#FA4616]" />
+                        : <CashMark className="h-[14px] w-auto text-accent" />
                       }
                     </span>
                     {guild?.leader && (
-                      <a
-                        href={guild.leader.whopUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <span
                         className="-ml-[18px] flex size-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#111] bg-[#1a1a1a]"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={guild.leader.avatar} alt={guild.leader.name} className="h-full w-full rounded-full object-cover" />
-                      </a>
+                      </span>
                     )}
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[9px] font-bold uppercase text-[#4a4a4a]">Vault Manager</span>
                       {guild?.leader ? (
-                        <a
-                          href={guild.leader.whopUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="truncate font-sans text-[13px] font-semibold text-[#ccc] hover:text-white transition-colors"
-                        >
+                        <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
                           {guild.leader.name}
-                        </a>
+                        </span>
                       ) : (
                         <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
                           {shortenAddr(vault.manager)}
@@ -423,14 +416,11 @@ function VaultsPanel() {
   );
 }
 
-/* ─── Whop logo (triple-chevron) ─── */
-function WhopMark({ className = "" }: { className?: string }) {
+function CashMark({ className = "" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 52 32" fill="none">
-      <path d="M8.403 0C5.041 0 2.723 1.475.97 3.143.97 3.143.261 3.814.27 3.835L7.636 11.2 15 3.835C13.605 1.915 10.976 0 8.403 0Z" fill="currentColor" />
-      <path d="M26.588.001c-3.362 0-5.679 1.475-7.433 3.143 0 0-.647.654-.676.692l-9.104 9.106 7.354 7.353L33.186 3.836C31.791 1.916 29.163.001 26.588.001Z" fill="currentColor" />
-      <path d="M44.827 0c-3.362 0-5.679 1.475-7.433 3.143 0 0-.674 1.659-.699.692L18.483 22.049l1.927 1.928c2.983 2.982 7.864 2.982 10.847 0L51.401 3.835h.023C50.03 1.915 47.402 0 44.827 0Z" fill="currentColor" />
-    </svg>
+    <span className={cn("inline-flex items-center font-mono text-[10px] font-black leading-none", className)}>
+      CASH
+    </span>
   );
 }
 
@@ -523,9 +513,9 @@ function PnlCardModal({
             {/* Header */}
             <div className="relative px-6 pt-5 pb-4 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <WhopMark className="h-4 w-auto text-[#FA4616]" />
+                <CashMark className="h-4 w-auto text-accent" />
                 <span className="text-[11px] font-display font-bold uppercase tracking-[0.15em] text-zinc-400">
-                  Whop Trade
+                  cash.trading
                 </span>
               </div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.06]">
@@ -623,9 +613,9 @@ function PnlCardModal({
 
             {/* Footer watermark */}
             <div className="px-6 pb-4 flex items-center justify-center gap-1.5">
-              <WhopMark className="h-2.5 w-auto text-zinc-700" />
+              <CashMark className="h-2.5 w-auto text-zinc-700" />
               <span className="text-[9px] font-mono text-zinc-700 uppercase tracking-[0.2em]">
-                whop.finance
+                cash.trading
               </span>
             </div>
           </div>
@@ -900,7 +890,13 @@ export function TradePageClient({
 }: {
   initialBtcCandles?: MarketHistoryCandle[];
 }) {
-  const [market, setMarket] = useState({ id: "BTC-PERP/USD", pair: "BTC/USDC PERPS", leverage: 40 });
+  const [market, setMarket] = useState<{
+    id: string;
+    pair: string;
+    leverage: number;
+    marketAddr?: string;
+    marketName?: string;
+  }>({ id: "BTC/USD", pair: "BTC/USD", leverage: 40 });
   const [positions, setPositions] = useState<Position[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
@@ -1052,7 +1048,9 @@ export function TradePageClient({
       side: pos.side,
     }));
   const selectedPerpMarket = PERP_MARKET_DATA[market.id];
+  const decibelMarketAddress = market.marketAddr ?? selectedPerpMarket?.marketAddr;
   const decibelMarketName =
+    market.marketName ??
     selectedPerpMarket?.marketName ??
     market.pair.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
   const signVaultTransaction = useCallback(
@@ -1075,9 +1073,7 @@ export function TradePageClient({
           href="/"
           className="absolute top-4 right-5 z-40 w-9 h-9 rounded-full bg-white/[0.06] backdrop-blur-sm flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.1] transition-colors"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" strokeWidth={2.5} />
         </Link>
         {/* ── Hero ─────────────── */}
         <div className="mb-4 sm:mb-6 lg:mb-4 animate-enter">
@@ -1117,14 +1113,17 @@ export function TradePageClient({
             <TradePanel
               market={market.pair}
               marketId={market.id}
+              marketName={decibelMarketName}
+              marketAddress={decibelMarketAddress}
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
             />
             <div className="mt-4">
               <OrderBook
+                key={decibelMarketAddress ?? decibelMarketName}
                 marketName={decibelMarketName}
-                marketAddress={selectedPerpMarket?.marketAddr}
+                marketAddress={decibelMarketAddress}
                 currentPrice={currentPrice}
               />
             </div>

@@ -2,6 +2,8 @@
 
 export const DECIBEL_PUBLIC_PROXY_BASE = "/api/decibel/public";
 export type DecibelPublicNetwork = "mainnet" | "testnet";
+export const DECIBEL_NETWORK_STORAGE_KEY = "cash:decibel-network";
+export const DECIBEL_NETWORK_CHANGE_EVENT = "cash:decibel-network-change";
 
 const DECIBEL_PUBLIC_BASES: Record<DecibelPublicNetwork, string> = {
   mainnet: "https://api.mainnet.aptoslabs.com/decibel/api/v1",
@@ -13,10 +15,55 @@ const DECIBEL_WS_BASES: Record<DecibelPublicNetwork, string> = {
   testnet: "wss://api.testnet.aptoslabs.com/decibel/ws",
 };
 
+function normalizeNetwork(value: unknown): DecibelPublicNetwork | null {
+  return value === "mainnet" || value === "testnet" ? value : null;
+}
+
+function getDefaultNetwork(): DecibelPublicNetwork {
+  return normalizeNetwork(process.env.NEXT_PUBLIC_DECIBEL_NETWORK) ??
+    normalizeNetwork(process.env.NEXT_PUBLIC_APTOS_NETWORK) ??
+    "testnet";
+}
+
 export function getDecibelPublicNetwork(): DecibelPublicNetwork {
-  return process.env.NEXT_PUBLIC_APTOS_NETWORK === "mainnet"
-    ? "mainnet"
-    : "testnet";
+  if (isBrowserRuntime()) {
+    return normalizeNetwork(window.localStorage.getItem(DECIBEL_NETWORK_STORAGE_KEY)) ??
+      getDefaultNetwork();
+  }
+  return getDefaultNetwork();
+}
+
+export function setDecibelPublicNetwork(network: DecibelPublicNetwork) {
+  if (!isBrowserRuntime()) return;
+  const previous = getDecibelPublicNetwork();
+  if (previous === network) return;
+  window.localStorage.setItem(DECIBEL_NETWORK_STORAGE_KEY, network);
+  window.dispatchEvent(
+    new CustomEvent(DECIBEL_NETWORK_CHANGE_EVENT, {
+      detail: { network, previous },
+    }),
+  );
+}
+
+export function onDecibelPublicNetworkChange(
+  callback: (network: DecibelPublicNetwork) => void,
+) {
+  if (!isBrowserRuntime()) return () => {};
+  const onChange = (event: Event) => {
+    const detail = (event as CustomEvent<{ network?: DecibelPublicNetwork }>).detail;
+    callback(detail?.network ?? getDecibelPublicNetwork());
+  };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === DECIBEL_NETWORK_STORAGE_KEY) {
+      callback(getDecibelPublicNetwork());
+    }
+  };
+  window.addEventListener(DECIBEL_NETWORK_CHANGE_EVENT, onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(DECIBEL_NETWORK_CHANGE_EVENT, onChange);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 
 export function getDecibelPublicWsUrl(network = getDecibelPublicNetwork()) {

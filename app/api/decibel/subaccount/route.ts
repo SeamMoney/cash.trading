@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFastSubaccounts } from "@/lib/decibel-chain";
 import {
-  getActiveNetwork,
   getDecibelCollateralMetadata,
   getReadDex,
+  type DecibelNetwork,
   USDC_DECIMALS,
 } from "@/lib/decibel";
 
@@ -24,16 +24,20 @@ type RestSubaccount = {
   source: "rest";
 };
 
-function collateral() {
+function getRequestNetwork(req: NextRequest): DecibelNetwork {
+  return req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+}
+
+function collateral(network: DecibelNetwork) {
   return {
     symbol: "USDC",
-    metadata: getDecibelCollateralMetadata(),
+    metadata: getDecibelCollateralMetadata(network),
     decimals: USDC_DECIMALS,
   };
 }
 
-function createUrl() {
-  return getActiveNetwork() === "mainnet"
+function createUrl(network: DecibelNetwork) {
+  return network === "mainnet"
     ? "https://decibel.trade"
     : "https://testnet.decibel.trade";
 }
@@ -49,14 +53,14 @@ function lookupErrorMessage(error: unknown) {
   return message || "Decibel REST lookup failed.";
 }
 
-async function fetchRestSubaccounts(address: string): Promise<{
+async function fetchRestSubaccounts(address: string, network: DecibelNetwork): Promise<{
   subaccounts: RestSubaccount[];
   error: string | null;
 }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REST_SUBACCOUNT_TIMEOUT_MS);
   try {
-    const dex = getReadDex();
+    const dex = getReadDex(network);
     const subaccounts = await dex.userSubaccounts.getByAddr({
       ownerAddr: address,
       fetchOptions: { signal: controller.signal },
@@ -91,6 +95,7 @@ async function fetchRestSubaccounts(address: string): Promise<{
  */
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
+  const network = getRequestNetwork(req);
   if (!address) {
     return NextResponse.json(
       { error: "Missing address parameter" },
@@ -100,14 +105,14 @@ export async function GET(req: NextRequest) {
 
   const startedAt = Date.now();
   let chainError: string | null = null;
-  const chainSubaccounts = await getFastSubaccounts(address).catch((error) => {
+  const chainSubaccounts = await getFastSubaccounts(address, network).catch((error) => {
     chainError = error instanceof Error ? error.message : "Decibel chain lookup failed.";
     return [];
   });
   const restResult =
     chainSubaccounts.length > 0
       ? { subaccounts: [] as RestSubaccount[], error: null }
-      : await fetchRestSubaccounts(address);
+      : await fetchRestSubaccounts(address, network);
   const subaccounts =
     chainSubaccounts.length > 0
       ? chainSubaccounts.map((subaccount) => ({
@@ -125,12 +130,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     hasSubaccount: subaccounts.length > 0,
     subaccounts,
-    collateral: collateral(),
-    createUrl: createUrl(),
+    collateral: collateral(network),
+    createUrl: createUrl(network),
     latencyMs: Date.now() - startedAt,
     lookupError: restResult.error ?? chainError,
     lookupIncomplete,
-    network: getActiveNetwork(),
+    network,
     source: chainSubaccounts.length > 0 ? "chain" : "rest-fallback",
   }, { headers: NO_STORE_HEADERS });
 }

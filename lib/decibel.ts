@@ -354,17 +354,25 @@ export function getDecibelMarketConfig(marketName: string): MarketConfig {
 }
 
 function getStaticDecibelMarketConfig(
-  marketNameOrAddress: string
+  marketNameOrAddress: string,
+  network: DecibelNetwork = getActiveNetwork()
 ): { marketName: string; config: MarketConfig } | null {
+  const specs = network === "mainnet" ? MARKET_SPECS : TESTNET_MARKET_SPECS;
+  const addresses = network === "mainnet" ? MAINNET_MARKET_ADDRESSES : TESTNET_MARKET_ADDRESSES;
+  const staticMarkets: Record<string, MarketConfig> = {};
+  for (const [name, spec] of Object.entries(specs)) {
+    staticMarkets[name] = { ...spec, address: addresses[name] };
+  }
+
   if (marketNameOrAddress.startsWith("0x")) {
-    const match = Object.entries(MARKETS).find(
+    const match = Object.entries(staticMarkets).find(
       ([, config]) =>
         config.address.toLowerCase() === marketNameOrAddress.toLowerCase()
     );
     return match ? { marketName: match[0], config: match[1] } : null;
   }
 
-  const config = MARKETS[marketNameOrAddress as keyof typeof MARKETS];
+  const config = staticMarkets[marketNameOrAddress];
   return config ? { marketName: marketNameOrAddress, config } : null;
 }
 
@@ -477,7 +485,7 @@ export async function getDecibelMarketConfigFromRegistry(
   options: { signal?: AbortSignal; network?: DecibelNetwork } = {}
 ): Promise<{ marketName: string; config: MarketConfig }> {
   const network = options.network ?? getActiveNetwork();
-  const staticConfig = getStaticDecibelMarketConfig(marketNameOrAddress);
+  const staticConfig = getStaticDecibelMarketConfig(marketNameOrAddress, network);
   if (staticConfig) return staticConfig;
 
   const cachedConfig = getCachedMarketRegistryConfig(
@@ -510,22 +518,27 @@ export async function getDecibelMarketConfigFromRegistry(
   return market;
 }
 
-export function getDecibelMarketNameForAddress(address: string): string | null {
+export function getDecibelMarketNameForAddress(address: string, network?: DecibelNetwork): string | null {
   const normalized = address.toLowerCase();
-  for (const [name, config] of Object.entries(MARKETS)) {
+  const specs = (network ?? getActiveNetwork()) === "mainnet" ? MARKET_SPECS : TESTNET_MARKET_SPECS;
+  const addresses = (network ?? getActiveNetwork()) === "mainnet" ? MAINNET_MARKET_ADDRESSES : TESTNET_MARKET_ADDRESSES;
+  for (const name of Object.keys(specs)) {
+    const config = { address: addresses[name] };
     if (config.address.toLowerCase() === normalized) return name;
   }
   return null;
 }
 
-export function getDecibelMarketAddress(marketNameOrAddress: string): string {
+export function getDecibelMarketAddress(marketNameOrAddress: string, network?: DecibelNetwork): string {
   if (marketNameOrAddress.startsWith("0x")) return marketNameOrAddress;
-  return getDecibelMarketConfig(marketNameOrAddress).address;
+  return (getStaticDecibelMarketConfig(marketNameOrAddress, network)?.config ??
+    getDecibelMarketConfig(marketNameOrAddress)).address;
 }
 
 export function buildDecibelOrderPayload(args: {
   marketName: string;
   marketConfig?: MarketConfig;
+  network?: DecibelNetwork;
   price?: number | string | null;
   size: number | string;
   isBuy: boolean;
@@ -542,8 +555,11 @@ export function buildDecibelOrderPayload(args: {
 } {
   if (!args.subaccount) throw new Error("subaccount is required");
 
-  const pkg = getDecibelPackage();
-  const marketConfig = args.marketConfig ?? getDecibelMarketConfig(args.marketName);
+  const pkg = getDecibelPackage(args.network);
+  const marketConfig =
+    args.marketConfig ??
+    getStaticDecibelMarketConfig(args.marketName, args.network)?.config ??
+    getDecibelMarketConfig(args.marketName);
   const sizeRaw = alignSizeToLot(
     toRawAmount(args.size, marketConfig.sizeDecimals),
     marketConfig.lotSize,
@@ -632,6 +648,7 @@ export function buildDecibelCancelOrderPayload(args: {
   subaccount: string;
   marketName?: string;
   marketAddress?: string;
+  network?: DecibelNetwork;
   orderId: string | number;
 }): {
   payload: DecibelEntryPayload;
@@ -642,15 +659,15 @@ export function buildDecibelCancelOrderPayload(args: {
     throw new Error("orderId is required");
   }
   const marketAddress = args.marketAddress
-    ? getDecibelMarketAddress(args.marketAddress)
+    ? getDecibelMarketAddress(args.marketAddress, args.network)
     : args.marketName
-      ? getDecibelMarketAddress(args.marketName)
+      ? getDecibelMarketAddress(args.marketName, args.network)
       : "";
   if (!marketAddress) throw new Error("marketName or marketAddress is required");
 
   return {
     payload: {
-      function: `${getDecibelPackage()}::dex_accounts_entry::cancel_order_to_subaccount`,
+      function: `${getDecibelPackage(args.network)}::dex_accounts_entry::cancel_order_to_subaccount`,
       typeArguments: [],
       functionArguments: [args.subaccount, String(args.orderId), marketAddress],
     },

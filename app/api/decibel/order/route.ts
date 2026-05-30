@@ -2,18 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import {
   buildDecibelOrderPayload,
-  getActiveNetwork,
   getDecibelPackage,
   getDecibelMarketConfigFromRegistry,
   TAKER_FEE,
   MAKER_REBATE,
+  type DecibelNetwork,
   type MarketConfig,
 } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 
-function getAptos() {
-  const net = getActiveNetwork();
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
+
+function getRequestNetwork(value: unknown): DecibelNetwork {
+  return value === "mainnet" ? "mainnet" : "testnet";
+}
+
+function getAptos(network: DecibelNetwork) {
+  const net = network;
   return new Aptos(new AptosConfig({
     network: net === "mainnet" ? Network.MAINNET : Network.TESTNET,
   }));
@@ -26,13 +34,13 @@ function moveVariantName(value: unknown): string {
   return String(value ?? "unknown");
 }
 
-async function readMarketState(marketConfig: MarketConfig): Promise<{
+async function readMarketState(marketConfig: MarketConfig, network: DecibelNetwork): Promise<{
   isOpen: boolean;
   mode: string;
   markPrice: number | null;
 }> {
-  const aptos = getAptos();
-  const pkg = getDecibelPackage();
+  const aptos = getAptos(network);
+  const pkg = getDecibelPackage(network);
   const marketAddress = marketConfig.address;
   const [isOpenRaw, modeRaw, markAndOracle] = await Promise.all([
     aptos.view({
@@ -69,6 +77,56 @@ async function readMarketState(marketConfig: MarketConfig): Promise<{
   };
 }
 
+function classifyMarketDenial(mode: string): "MARKET_CLOSED" | "STALE_ORACLE_DENIED" {
+  return /stale|oracle/i.test(mode) ? "STALE_ORACLE_DENIED" : "MARKET_CLOSED";
+}
+
+/**
+ * GET /api/decibel/order?marketName=BTC/USD
+ *
+ * Lightweight preflight used by the trade panel before the user submits.
+ */
+export async function GET(req: NextRequest) {
+  const marketName = req.nextUrl.searchParams.get("marketName");
+  const marketAddress = req.nextUrl.searchParams.get("marketAddress");
+  const network = getRequestNetwork(req.nextUrl.searchParams.get("network"));
+  const lookupKey = marketAddress ?? marketName;
+
+  if (!lookupKey) {
+    return NextResponse.json(
+      { error: "Missing marketName or marketAddress" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
+  }
+
+  try {
+    const { marketName: resolvedMarketName, config } =
+      await getDecibelMarketConfigFromRegistry(lookupKey, {
+        network,
+        signal: req.signal,
+      });
+    const marketStatus = await readMarketState(config, network);
+
+    return NextResponse.json(
+      {
+        network,
+        market: resolvedMarketName,
+        marketAddress: config.address,
+        marketStatus,
+        code: marketStatus.isOpen ? "MARKET_OPEN" : classifyMarketDenial(marketStatus.mode),
+      },
+      { headers: NO_STORE_HEADERS }
+    );
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to read Decibel market status";
+    return NextResponse.json(
+      { error: message },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
+  }
+}
+
 /**
  * POST /api/decibel/order
  *
@@ -100,7 +158,9 @@ export async function POST(req: NextRequest) {
       orderType,
       reduceOnly = false,
       subaccount,
+      network: rawNetwork,
     } = body;
+    const network = getRequestNetwork(rawNetwork);
 
     if ((!marketName && !marketAddress) || size === undefined || isBuy === undefined || !subaccount) {
       return NextResponse.json(
@@ -121,14 +181,18 @@ export async function POST(req: NextRequest) {
 
     const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
       await getDecibelMarketConfigFromRegistry(marketAddress || marketName, {
+        network,
         signal: req.signal,
       });
-    const marketState = await readMarketState(resolvedMarketConfig);
+    const marketState = await readMarketState(resolvedMarketConfig, network);
     if (!marketState.isOpen && !reduceOnly) {
+      const code = classifyMarketDenial(marketState.mode);
       return NextResponse.json(
         {
           error: `Decibel market ${resolvedMarketName} is not open (${marketState.mode})`,
+          code,
           marketMode: marketState.mode,
+          marketStatus: marketState,
         },
         { status: 409 }
       );
@@ -152,6 +216,7 @@ export async function POST(req: NextRequest) {
         orderType: orderType === "limit" ? "limit" : "market",
         reduceOnly,
         subaccount,
+        network,
       });
 
     const adjustedSize = sizeRaw / Math.pow(10, marketConfig.sizeDecimals);
@@ -170,6 +235,7 @@ export async function POST(req: NextRequest) {
       payload,
       meta: {
         market: resolvedMarketName,
+        network,
         marketAddress: marketConfig.address,
         side: isBuy ? "buy" : "sell",
         orderType,
@@ -183,6 +249,11 @@ export async function POST(req: NextRequest) {
         priceRaw,
         markPrice: marketState.markPrice,
         marketMode: marketState.mode,
+        marketStatus: {
+          isOpen: marketState.isOpen,
+          mode: marketState.mode,
+          markPrice: marketState.markPrice,
+        },
         estimatedFee: estimatedFee.toFixed(4),
         feeType: orderType === "market" ? "taker" : "maker (rebate)",
         maxLeverage: marketConfig.maxLeverage,
@@ -191,6 +262,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to build order";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const code = /stale|oracle/i.test(message)
+      ? "STALE_ORACLE_DENIED"
+      : undefined;
+    return NextResponse.json({ error: message, code }, { status: 500 });
   }
 }

@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildDecibelCancelOrderPayload,
   getDecibelMarketConfigFromRegistry,
+  type DecibelNetwork,
 } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 
+function getRequestNetwork(value: unknown): DecibelNetwork {
+  return value === "mainnet" ? "mainnet" : "testnet";
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { subaccount, marketName, marketAddress, orderId } = await req.json();
+    const { subaccount, marketName, marketAddress, orderId, network: rawNetwork } = await req.json();
+    const network = getRequestNetwork(rawNetwork);
 
     if (!subaccount || !orderId || (!marketName && !marketAddress)) {
       return NextResponse.json(
@@ -21,6 +27,7 @@ export async function POST(req: NextRequest) {
       ? marketAddress
       : (
           await getDecibelMarketConfigFromRegistry(marketName, {
+            network,
             signal: req.signal,
           })
         ).config.address;
@@ -30,6 +37,7 @@ export async function POST(req: NextRequest) {
         subaccount,
         marketName,
         marketAddress: resolvedMarketAddress,
+        network,
         orderId,
       });
 
@@ -37,6 +45,7 @@ export async function POST(req: NextRequest) {
       payload,
       meta: {
         orderId,
+        network,
         marketName: marketName ?? null,
         marketAddress: payloadMarketAddress,
       },

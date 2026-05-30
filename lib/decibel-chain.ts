@@ -162,7 +162,7 @@ async function view<T = unknown[]>(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-aptos-client": "aptos-whop-finance/decibel-chain",
+        "x-aptos-client": "cash-trading/decibel-chain",
         ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
       body,

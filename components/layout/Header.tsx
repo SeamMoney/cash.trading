@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { WalletSelector } from "@/components/wallet/whop-wallet-selector";
+import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT, type BalanceUpdateDetail, type YieldClaimDetail } from "@/lib/portfolio-events";
@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { href: "/points", label: "Points" },
 ];
 
-function WhopWordmark() {
+function CashWordmark() {
   return (
     <span className="font-display text-[20px] font-bold tracking-normal text-white">
       cash<span className="text-accent">.trading</span>
@@ -71,7 +71,7 @@ export function Header() {
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
             <Link href="/" className="text-white shrink-0" aria-label="cash.trading home">
-              <WhopWordmark />
+              <CashWordmark />
             </Link>
 
             {/* Desktop nav links */}
@@ -131,7 +131,7 @@ export function Header() {
                 </button>
                 <button
                   onClick={handleWalletClick}
-                  className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-[#1754d8] text-white hover:bg-[#1e63e6] transition-colors"
+                  className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black hover:bg-[#5dff3f] transition-colors"
                 >
                   Sign In
                 </button>

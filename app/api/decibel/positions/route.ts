@@ -12,6 +12,7 @@ import {
   getReadDex,
   MARKETS,
   PRICE_DECIMALS,
+  type DecibelNetwork,
 } from "@/lib/decibel";
 
 const INDEXED_POSITIONS_TIMEOUT_MS = 600;
@@ -35,10 +36,15 @@ interface OpenOrder {
   origSize: unknown;
   remainingSize: unknown;
   details: unknown;
+  status: "Open";
   timestamp: unknown;
 }
 
-async function fetchOpenOrders(address: string): Promise<{
+function getRequestNetwork(req: NextRequest): DecibelNetwork {
+  return req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+}
+
+async function fetchOpenOrders(address: string, network: DecibelNetwork): Promise<{
   orders: OpenOrder[];
   source: "rest" | "unavailable";
   error?: string;
@@ -47,7 +53,7 @@ async function fetchOpenOrders(address: string): Promise<{
   const timer = setTimeout(() => controller.abort(), REST_OPEN_ORDER_TIMEOUT_MS);
 
   try {
-    const dex = getReadDex();
+    const dex = getReadDex(network);
     const openOrders = await dex.userOpenOrders.getByAddr({
       subAddr: address,
       limit: 50,
@@ -61,13 +67,14 @@ async function fetchOpenOrders(address: string): Promise<{
         return {
           orderId: order.order_id,
           clientOrderId: order.client_order_id,
-          market: getDecibelMarketNameForAddress(marketAddress) ?? marketAddress,
+          market: getDecibelMarketNameForAddress(marketAddress, network) ?? marketAddress,
           marketAddress,
           isBuy: order.is_buy,
           price: order.price,
           origSize: order.orig_size,
           remainingSize: order.remaining_size,
           details: order.details,
+          status: "Open",
           timestamp: order.unix_ms,
         };
       }),
@@ -86,7 +93,7 @@ async function fetchOpenOrders(address: string): Promise<{
  * Returns `null` (not throws) on timeout/failure so the caller can fall back
  * to chain rows without dropping the response.
  */
-async function tryIndexedPositions(address: string): Promise<{
+async function tryIndexedPositions(address: string, network: DecibelNetwork): Promise<{
   positions: ChainDecibelPosition[] | null;
   error?: string;
 }> {
@@ -97,6 +104,7 @@ async function tryIndexedPositions(address: string): Promise<{
   );
   try {
     const positions = await getIndexedPositions(address, {
+      network,
       signal: controller.signal,
     });
     return { positions };
@@ -175,6 +183,7 @@ function enrichWithMark(
  */
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
+  const network = getRequestNetwork(req);
   const chainOnly = req.nextUrl.searchParams.get("chainOnly") === "true";
   const includeOpenOrders =
     req.nextUrl.searchParams.get("openOrders") !== "false" && !chainOnly;
@@ -191,10 +200,10 @@ export async function GET(req: NextRequest) {
   try {
     const [chainPositions, overview, openOrders, indexedResult] =
       await Promise.all([
-        getFastPositions(address),
-        getFastOverview(address),
+        getFastPositions(address, network),
+        getFastOverview(address, network),
         includeOpenOrders
-          ? fetchOpenOrders(address)
+          ? fetchOpenOrders(address, network)
           : Promise.resolve({
               source: "skipped" as const,
               orders: [],
@@ -202,7 +211,7 @@ export async function GET(req: NextRequest) {
             }),
         chainOnly
           ? Promise.resolve({ positions: null as null, error: undefined })
-          : tryIndexedPositions(address),
+          : tryIndexedPositions(address, network),
       ]);
 
     // Indexed rows are authoritative for size/liq/funding when available.
@@ -254,7 +263,7 @@ export async function GET(req: NextRequest) {
         const [marks, names] = await Promise.all([
           getMarkPricesForAddresses(addresses, decimalsByAddress),
           unknownAddresses.length > 0
-            ? getMarketNamesForAddresses(unknownAddresses)
+            ? getMarketNamesForAddresses(unknownAddresses, network)
             : Promise.resolve({} as Record<string, string | null>),
         ]);
 
@@ -275,6 +284,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
+      network,
       positions,
       openOrders: openOrders.orders,
       overview,

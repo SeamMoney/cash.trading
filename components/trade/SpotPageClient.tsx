@@ -41,7 +41,7 @@ export function SpotPageClient({
           <div className="mb-4 sm:mb-6 lg:mb-4 animate-enter">
             <div className="flex items-center gap-4 mb-2">
               <span className="inline-block text-[11px] font-display font-medium px-2.5 py-1 rounded-[10px] bg-accent/10 text-accent uppercase tracking-wider">
-                Whop Spot
+                CASH Spot
               </span>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">

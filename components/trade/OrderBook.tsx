@@ -193,6 +193,7 @@ export function OrderBook({
 
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let noDepthTimer: ReturnType<typeof setTimeout> | null = null;
     let stream: EventSource | null = null;
     let reconnectAttempt = 0;
 
@@ -218,6 +219,10 @@ export function OrderBook({
         try {
           const message = JSON.parse(event.data);
           if (message.success || message.type === "connected") return;
+          if (noDepthTimer) {
+            clearTimeout(noDepthTimer);
+            noDepthTimer = null;
+          }
           ingestDepth(message);
         } catch {
           // Ignore malformed frames and keep the stream open.
@@ -238,10 +243,16 @@ export function OrderBook({
     };
 
     connect();
+    noDepthTimer = setTimeout(() => {
+      if (cancelled) return;
+      setLoading(false);
+      setError("Depth stream waiting");
+    }, 2500);
 
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (noDepthTimer) clearTimeout(noDepthTimer);
       stream?.close();
     };
   }, [ingestDepth, network, resolvedMarketAddress]);
@@ -268,7 +279,7 @@ export function OrderBook({
 
   if (loading) {
     return (
-      <div className="bg-[#0b0b0b] px-3 py-3">
+      <div className="hidden bg-[#0b0b0b] px-3 py-3 md:block">
         <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-zinc-600">
           <span>Order Book</span>
           <span>Loading</span>
@@ -285,7 +296,7 @@ export function OrderBook({
   // If error and no data, show clean empty state
   if (error && book.bids.length === 0 && book.asks.length === 0) {
     return (
-      <div className="overflow-hidden bg-[#0b0b0b]">
+      <div className="hidden overflow-hidden bg-[#0b0b0b] md:block">
         <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-[0.14em] text-zinc-600">
           <h3 className="font-display font-semibold text-zinc-500">Order Book</h3>
           <span>Unavailable</span>

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import type { IndicatorEntry } from "@/app/api/launchpad/indicators/route";
 import Scrubber from "@/components/ui/scrubber";
+import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ interface Props {
 
 export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: Props) {
   const { connected, account } = useWallet();
+  const { selectedSubaccount } = useDecibelSubaccounts();
   const [allocation, setAllocation] = useState(5); // % of balance
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,10 @@ export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: 
       setError("Connect your wallet first");
       return;
     }
+    if (!selectedSubaccount) {
+      setError("Select or create a Decibel subaccount before deploying this bot");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -65,7 +71,11 @@ export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: 
           indicatorName: indicator.name,
           expectedSignal: 0, // follow all signals
           actionType: "record_signal",
-          actionData: JSON.stringify({ market: mkt, allocationPct: allocation }),
+          actionData: JSON.stringify({
+            market: mkt,
+            allocationPct: allocation,
+            decibelSubaccount: selectedSubaccount,
+          }),
           actionAmount: allocation / 100,
           gasDeposit: 0.05,
           owner: account.address.toString(),

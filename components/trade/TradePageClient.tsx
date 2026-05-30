@@ -3,11 +3,15 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
 import { Positions as DecibelPositions } from "@/components/trade/Positions";
 import { TradePanel } from "@/components/trade/TradePanel";
+import { VaultActionModal } from "@/components/trade/VaultActionModal";
+import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
+import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { dispatchPortfolioActivity, dispatchBalanceUpdate } from "@/lib/portfolio-events";
 import { cn } from "@/lib/utils";
@@ -726,11 +730,14 @@ function PositionsTable({ positions, currentPrice, onClose }: { positions: Posit
 interface GraduatedIndicator {
   address: string;
   name: string;
+  symbol?: string;
+  description?: string;
   assets: string[];
   lastSignal: number;
   meanSharpe: number;
   profitablePct: number;
   simsFunded: number;
+  vaultAddr?: string | null;
   whopProductId?: string | null;
   isProprietary?: boolean;
 }
@@ -766,9 +773,11 @@ function useGraduatedIndicators() {
 function SignalProductsPanel({
   onDeploy,
   onUnlock,
+  onVaultAction,
 }: {
   onDeploy: (ind: GraduatedIndicator) => void;
   onUnlock: (ind: GraduatedIndicator) => void;
+  onVaultAction: (mode: VaultActionMode, ind: GraduatedIndicator) => void;
 }) {
   const indicators = useGraduatedIndicators();
   const { isSubscribed } = useSubscription();
@@ -835,12 +844,20 @@ function SignalProductsPanel({
                   Unlock
                 </button>
               ) : (
-                <button
-                  onClick={() => onDeploy(ind)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500 text-white text-[11px] font-bold hover:bg-purple-400 transition-colors"
-                >
-                  Deploy Bot
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => onVaultAction(ind.vaultAddr ? "deposit" : "create", ind)}
+                    className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                  >
+                    Vault
+                  </button>
+                  <button
+                    onClick={() => onDeploy(ind)}
+                    className="flex items-center gap-1.5 rounded-lg bg-purple-500 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-purple-400"
+                  >
+                    Deploy Bot
+                  </button>
+                </div>
               )}
             </div>
           );
@@ -862,6 +879,12 @@ export function TradePageClient({
   const [currentPrice, setCurrentPrice] = useState(0);
   const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
   const [deployTarget, setDeployTarget] = useState<GraduatedIndicator | null>(null);
+  const [vaultAction, setVaultAction] = useState<{
+    mode: VaultActionMode;
+    indicator: GraduatedIndicator;
+  } | null>(null);
+  const { signAndSubmitTransaction } = useWallet();
+  const { selectedSubaccount } = useDecibelSubaccounts();
   const { subscribe } = useSubscription();
   const currentPriceRef = useRef(0);
   const positionsRef = useRef<Position[]>([]);
@@ -976,6 +999,15 @@ export function TradePageClient({
   const decibelMarketName =
     selectedPerpMarket?.marketName ??
     market.pair.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
+  const signVaultTransaction = useCallback(
+    async (payload: unknown) => {
+      if (!signAndSubmitTransaction) {
+        throw new Error("Connect a wallet before signing the vault transaction");
+      }
+      return signAndSubmitTransaction({ data: payload as any });
+    },
+    [signAndSubmitTransaction],
+  );
 
   return (
     <div className="min-h-screen pb-24 md:pb-0">
@@ -1062,6 +1094,7 @@ export function TradePageClient({
           <SignalProductsPanel
             onDeploy={(ind) => setDeployTarget(ind)}
             onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}
+            onVaultAction={(mode, ind) => setVaultAction({ mode, indicator: ind })}
           />
         </div>
         </main>
@@ -1098,6 +1131,26 @@ export function TradePageClient({
           isOpen={true}
           onClose={() => setDeployTarget(null)}
           onScheduled={() => setDeployTarget(null)}
+        />
+      )}
+
+      {vaultAction && (
+        <VaultActionModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setVaultAction(null);
+          }}
+          mode={vaultAction.mode}
+          indicator={{
+            id: vaultAction.indicator.address,
+            name: vaultAction.indicator.name,
+            symbol: vaultAction.indicator.symbol,
+            description: vaultAction.indicator.description,
+          }}
+          vaultAddress={vaultAction.indicator.vaultAddr}
+          subaccount={selectedSubaccount}
+          signAndSubmitTransaction={signVaultTransaction}
+          onComplete={() => setVaultAction(null)}
         />
       )}
 

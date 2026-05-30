@@ -100,3 +100,74 @@ model CashRewardTransfer {
   @@index([status])
   @@index([createdAt])
 }
+
+model StrategyVault {
+  id                String                    @id @default(cuid())
+  indicatorAddr     String
+  ownerWallet       String
+  decibelSubaccount String?
+  vaultAddr         String?
+  marketName        String
+  allocationPct     Float
+  status            String                    @default("ACTIVE")
+  latestDecisionId  String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  decisions         IndicatorSignalDecision[]
+  executions        ExecutionAudit[]
+
+  @@unique([indicatorAddr, ownerWallet])
+  @@index([indicatorAddr])
+  @@index([ownerWallet])
+  @@index([status])
+}
+
+model IndicatorSignalDecision {
+  id              String           @id @default(cuid())
+  strategyVaultId String
+  indicatorAddr   String
+  signal          Int
+  prevSignal      Int?
+  price           Float
+  priceTimestamp  DateTime?
+  onChainTxHash   String?
+  observedAt      DateTime         @default(now())
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  source          String           @default("keeper")
+  vault           StrategyVault    @relation(fields: [strategyVaultId], references: [id], onDelete: Cascade)
+  executions      ExecutionAudit[]
+
+  @@index([indicatorAddr, observedAt])
+  @@index([strategyVaultId, observedAt])
+  @@index([expiresAt])
+}
+
+model ExecutionAudit {
+  id              String                   @id @default(cuid())
+  strategyVaultId String
+  decisionId      String?
+  indicatorAddr   String
+  requestedSignal Int
+  onChainSignal   Int?
+  allowed         Boolean
+  status          String
+  reason          String?
+  marketName      String
+  side            String?
+  size            Float?
+  sizeUsdt        Float?
+  orderPrice      Float?
+  decibelTxHash   String?
+  subaccount      String?
+  rawRequest      Json?
+  rawResponse     Json?
+  createdAt       DateTime                 @default(now())
+  vault           StrategyVault            @relation(fields: [strategyVaultId], references: [id], onDelete: Cascade)
+  decision        IndicatorSignalDecision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([strategyVaultId, createdAt])
+  @@index([indicatorAddr, createdAt])
+  @@index([decisionId])
+  @@index([decibelTxHash])
+}

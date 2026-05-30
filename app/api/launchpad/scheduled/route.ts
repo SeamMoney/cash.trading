@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { ScheduledJob } from "@/lib/launchpad/types";
 import { loadState, saveState } from "@/lib/launchpad/persist";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,19 @@ export async function GET(req: Request) {
     jobs = jobs.filter(j => j.indicatorAddr.toLowerCase() === indicator.toLowerCase());
   }
 
-  return NextResponse.json({ jobs, total: jobs.length });
+  const strategyVaults = await prisma.strategyVault.findMany({
+    where: {
+      ...(owner ? { ownerWallet: owner } : {}),
+      ...(indicator ? { indicatorAddr: indicator } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  }).catch((error) => {
+    console.warn("[scheduled] strategy vault lookup failed:", error);
+    return [];
+  });
+
+  return NextResponse.json({ jobs, strategyVaults, total: jobs.length });
 }
 
 export async function POST(req: Request) {
@@ -109,7 +122,64 @@ export async function POST(req: Request) {
     saveState("scheduled-jobs", scheduledJobRegistry);
     console.log(`[scheduled] created job #${job.jobId}: triggerType=${triggerType} owner=${owner.slice(0, 10)}...`);
 
-    return NextResponse.json({ success: true, job });
+    let strategyVault = null;
+    if (triggerType === "signal" && indicatorAddr) {
+      let parsedActionData: Record<string, unknown> = {};
+      if (actionData) {
+        try {
+          parsedActionData = JSON.parse(actionData);
+        } catch {
+          parsedActionData = {};
+        }
+      }
+
+      const marketName =
+        typeof parsedActionData.market === "string" && parsedActionData.market
+          ? parsedActionData.market
+          : "BTC/USD";
+      const allocationPctRaw =
+        typeof parsedActionData.allocationPct === "number"
+          ? parsedActionData.allocationPct
+          : actionAmount > 0
+            ? actionAmount * 100
+            : 5;
+      const allocationPct = Math.min(100, Math.max(0.1, allocationPctRaw));
+      const vaultAddr =
+        typeof parsedActionData.vaultAddr === "string" && parsedActionData.vaultAddr
+          ? parsedActionData.vaultAddr
+          : undefined;
+      const decibelSubaccount =
+        typeof parsedActionData.decibelSubaccount === "string" && parsedActionData.decibelSubaccount
+          ? parsedActionData.decibelSubaccount
+          : vaultAddr;
+
+      strategyVault = await prisma.strategyVault.upsert({
+        where: {
+          indicatorAddr_ownerWallet: {
+            indicatorAddr,
+            ownerWallet: owner,
+          },
+        },
+        create: {
+          indicatorAddr,
+          ownerWallet: owner,
+          marketName,
+          allocationPct,
+          vaultAddr,
+          decibelSubaccount,
+          status: "ACTIVE",
+        },
+        update: {
+          marketName,
+          allocationPct,
+          vaultAddr,
+          decibelSubaccount,
+          status: "ACTIVE",
+        },
+      });
+    }
+
+    return NextResponse.json({ success: true, job, strategyVault });
   } catch (err) {
     console.error("[scheduled] POST error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

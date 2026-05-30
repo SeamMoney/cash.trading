@@ -210,6 +210,14 @@ function formatVolume(value: number | null): string {
   return `$${value.toFixed(0)}`;
 }
 
+function actionErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (/anonymous requests|authorization:\s*bearer|http error 401|unauthorized/i.test(message)) {
+    return "Decibel market data auth failed on a server read. Refresh and retry; close orders use chain fallback when the market address is available.";
+  }
+  return message;
+}
+
 /**
  * Positions component — reads Decibel account state from chain-first API routes.
  * Open-order listing is REST-enriched when Decibel's indexer is available.
@@ -445,10 +453,7 @@ export function Positions() {
       } catch (error) {
         setActionStatus({
           tone: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to close ${position.market}.`,
+          message: actionErrorMessage(error, `Failed to close ${position.market}.`),
         });
       } finally {
         setClosingPosition(key, false);
@@ -525,10 +530,7 @@ export function Positions() {
       } catch (error) {
         setActionStatus({
           tone: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to cancel order ${orderId}.`,
+          message: actionErrorMessage(error, `Failed to cancel order ${orderId}.`),
         });
       } finally {
         setCancelingOrder(orderId, false);
@@ -785,7 +787,126 @@ export function Positions() {
             No open positions
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="md:hidden">
+              {positions.map((p, i) => {
+                const pnl = p.estimatedPnl;
+                const pnlPct =
+                  pnl !== null && p.marginUsed > 0
+                    ? (pnl / p.marginUsed) * 100
+                    : null;
+                const pnlColor =
+                  pnl === null
+                    ? "text-zinc-500"
+                    : pnl >= 0
+                    ? "text-success"
+                    : "text-danger";
+                const fundingColor =
+                  p.unrealizedFunding === null
+                    ? "text-zinc-500"
+                    : p.unrealizedFunding > 0
+                    ? "text-success"
+                    : p.unrealizedFunding < 0
+                    ? "text-danger"
+                    : "text-zinc-500";
+                const actionKey = positionKey(p);
+                const isClosing = closingPositionKeys.has(actionKey);
+                const canClose = Boolean(
+                  selectedSubaccount &&
+                    !isClosing &&
+                    Number.isFinite(Math.abs(p.size)) &&
+                    Math.abs(p.size) > 0 &&
+                    Number.isFinite(p.markPrice ?? p.entryPrice) &&
+                    (p.markPrice ?? p.entryPrice) > 0
+                );
+
+                return (
+                  <div
+                    key={`${p.marketAddress ?? p.market}:${p.isLong ? "L" : "S"}:${i}`}
+                    className="border-b border-white/5 px-4 py-3 last:border-b-0"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold text-zinc-100">
+                          {p.market}
+                        </div>
+                        <div
+                          className={`mt-1 text-[11px] font-semibold uppercase ${
+                            p.isLong ? "text-success" : "text-danger"
+                          }`}
+                        >
+                          {p.isLong ? "Long" : "Short"} {p.leverage}x
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleClosePosition(p)}
+                        disabled={!canClose}
+                        className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isClosing ? "Closing" : "Close"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                      <div>
+                        <div className="text-zinc-600">Size</div>
+                        <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                          {Math.abs(p.size).toLocaleString(undefined, {
+                            maximumFractionDigits: 6,
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Value</div>
+                        <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                          {p.value !== null ? formatUsd(p.value) : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-zinc-600">Entry / Mark</div>
+                        <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                          {formatPrice(p.entryPrice)} / {p.markPrice !== null ? formatPrice(p.markPrice) : "—"}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Est. PnL</div>
+                        <div className={`mt-0.5 font-mono tabular-nums ${pnlColor}`}>
+                          {pnl !== null ? formatUsd(pnl, { signed: true }) : "—"}
+                          {pnlPct !== null && (
+                            <span className="ml-1 text-zinc-500">
+                              ({pnlPct >= 0 ? "+" : ""}
+                              {pnlPct.toFixed(1)}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-zinc-600">Liq.</div>
+                        <div className="mt-0.5 font-mono tabular-nums text-zinc-400">
+                          {p.estimatedLiquidationPrice !== null
+                            ? formatPrice(p.estimatedLiquidationPrice)
+                            : "—"}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Margin / Funding</div>
+                        <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                          {p.marginUsed > 0 ? formatUsd(p.marginUsed) : "—"}
+                          <span className={`ml-2 ${fundingColor}`}>
+                            {p.unrealizedFunding !== null
+                              ? formatUsd(p.unrealizedFunding, { signed: true })
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-white/5 text-zinc-500">
@@ -915,6 +1036,7 @@ export function Positions() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
@@ -926,7 +1048,60 @@ export function Positions() {
               Open Orders ({openOrders.length})
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="md:hidden">
+            {openOrders.map((o) => {
+              const orderId = String(o.orderId);
+              const isCanceling = cancelingOrderIds.has(orderId);
+              const canCancel = Boolean(
+                selectedSubaccount &&
+                  o.marketAddress &&
+                  !isCanceling
+              );
+
+              return (
+                <div key={orderId} className="border-b border-white/5 px-4 py-3 last:border-b-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold text-zinc-100">
+                        {o.market}
+                      </div>
+                      <div
+                        className={`mt-1 text-[11px] font-semibold uppercase ${
+                          o.isBuy ? "text-success" : "text-danger"
+                        }`}
+                      >
+                        {o.isBuy ? "Buy" : "Sell"} · {o.status ?? "Open"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelOrder(o)}
+                      disabled={!canCancel}
+                      className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {isCanceling ? "Canceling" : "Cancel"}
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                    <div>
+                      <div className="text-zinc-600">Price</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                        ${Number(o.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-zinc-600">Remaining / Original</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
+                        {Number(o.remainingSize).toFixed(4)} / {Number(o.origSize).toFixed(4)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-white/5 text-zinc-500">

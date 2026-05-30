@@ -362,17 +362,17 @@ export function usePriceCandles(
         || priceRef.current > 0
       );
 
-    if (initialBootstrap) {
+    if (preserveStateOnResume && hasLocalState) {
+      setLiveCandle(liveCandleRef.current);
+      setPrice(priceRef.current);
+      setTicks(ticksRef.current);
+      setCandles(candlesRef.current);
+    } else if (initialBootstrap) {
       liveCandleRef.current = initialBootstrap.liveCandle;
       setLiveCandle(initialBootstrap.liveCandle);
       setPrice(initialBootstrap.price);
       setTicks(initialBootstrap.ticks);
       setCandles(initialBootstrap.candles);
-    } else if (preserveStateOnResume && hasLocalState) {
-      setLiveCandle(liveCandleRef.current);
-      setPrice(priceRef.current);
-      setTicks(ticksRef.current);
-      setCandles(candlesRef.current);
     } else if (cachedP > 0) {
       const s = makeSeed(cachedP, candleSecs);
       liveCandleRef.current = s.candle;

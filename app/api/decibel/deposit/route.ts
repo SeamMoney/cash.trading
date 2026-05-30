@@ -10,7 +10,7 @@ import { buildDecibelCollateralPayload } from "@/lib/decibel";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { subaccount, amount } = await req.json();
+    const { subaccount, amount, network } = await req.json();
 
     if (!subaccount || !amount) {
       return NextResponse.json(
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       action: "deposit",
       subaccount,
       amount,
+      network,
     });
 
     return NextResponse.json({ payload });

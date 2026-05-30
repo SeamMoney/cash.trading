@@ -559,11 +559,12 @@ export function buildDecibelCollateralPayload(args: {
   action: "deposit" | "withdraw";
   subaccount: string;
   amount: string | number;
+  network?: DecibelNetwork;
 }): DecibelEntryPayload {
   if (!args.subaccount) throw new Error("subaccount is required");
   const amountRaw = toRawAmount(args.amount, 0);
-  const pkg = getDecibelPackage();
-  const collateralMetadata = getDecibelCollateralMetadata();
+  const pkg = getDecibelPackage(args.network);
+  const collateralMetadata = getDecibelCollateralMetadata(args.network);
   return {
     function:
       args.action === "deposit"

@@ -74,9 +74,16 @@ async function fetchPythPrice(asset: string): Promise<{ price: bigint; timestamp
 // ── Build keeper account from env ────────────────────────────────────────────
 
 function getKeeperAccount(): Account {
-  const keyHex = process.env.LAUNCHPAD_KEEPER_KEY;
-  if (!keyHex) throw new Error("LAUNCHPAD_KEEPER_KEY not configured");
-  return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(keyHex) });
+  const keyHex = process.env.LAUNCHPAD_KEEPER_KEY ?? process.env.BOT_OPERATOR_PRIVATE_KEY;
+  if (!keyHex) {
+    throw new Error("LAUNCHPAD_KEEPER_KEY or BOT_OPERATOR_PRIVATE_KEY not configured");
+  }
+  const cleanKey = keyHex
+    .replace("ed25519-priv-", "")
+    .replace(/\\n/g, "")
+    .replace(/\n/g, "")
+    .trim();
+  return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(cleanKey) });
 }
 
 // ── Push a single price on-chain, return new signal ─────────────────────────
@@ -92,6 +99,10 @@ async function pushPriceOnChain(
     data: {
       function: `${CONTRACT}::indicator::push_price` as `${string}::${string}::${string}`,
       functionArguments: [indicatorAddr, price.toString(), timestamp.toString()],
+    },
+    options: {
+      maxGasAmount: 100_000,
+      gasUnitPrice: 100,
     },
   });
 

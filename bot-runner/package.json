@@ -1,7 +1,7 @@
 {
-  "name": "decibrrr-bot-runner",
+  "name": "cash-trading-bot-runner",
   "version": "1.0.0",
-  "description": "Persistent bot execution service for Decibrrr",
+  "description": "Persistent bot execution service for cash.trading",
   "main": "runner.js",
   "type": "module",
   "scripts": {

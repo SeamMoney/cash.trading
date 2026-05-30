@@ -13,7 +13,7 @@ interface WatchedWallet {
   lastUpdated: number
 }
 
-const STORAGE_KEY = 'decibrrr_watched_wallets'
+const STORAGE_KEY = 'cash_trading_watched_wallets'
 
 export function WalletWatcher() {
   const [watchedWallets, setWatchedWallets] = useState<WatchedWallet[]>([])

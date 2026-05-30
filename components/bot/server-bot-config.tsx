@@ -37,7 +37,7 @@ export function ServerBotConfig() {
   // Check delegation status when subaccount is available
   // Uses localStorage cache to avoid showing delegation prompt on every reload
   useEffect(() => {
-    const DELEGATION_CACHE_KEY = 'decibrrr_delegation_status'
+    const DELEGATION_CACHE_KEY = 'cash_trading_delegation_status'
 
     const checkDelegation = async () => {
       if (!subaccount) return
@@ -284,7 +284,7 @@ export function ServerBotConfig() {
 
       // Cache delegation status in localStorage
       if (typeof window !== 'undefined' && subaccount) {
-        const cacheKey = `decibrrr_delegation_status_${subaccount}`
+        const cacheKey = `cash_trading_delegation_status_${subaccount}`
         localStorage.setItem(cacheKey, 'delegated')
         console.log('💾 Cached delegation status for subaccount')
       }

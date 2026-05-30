@@ -20,7 +20,7 @@ const FARMING_STRATEGIES = [
   },
   {
     id: 'use-bot',
-    title: 'Use Decibrrr Bot',
+    title: 'Use cash.trading Bot',
     description: 'Automated volume generation earns trading points on top of predeposit points.',
     icon: Zap,
     priority: 'medium',

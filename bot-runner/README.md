@@ -1,4 +1,4 @@
-# Decibrrr Bot Runner (Digital Ocean)
+# cash.trading Bot Runner (Digital Ocean)
 
 A standalone bot execution service that runs persistently on a Digital Ocean droplet.
 
@@ -6,7 +6,7 @@ A standalone bot execution service that runs persistently on a Digital Ocean dro
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Decibrrr UI   │────▶│   Neon Postgres │◀────│  Bot Runner VM  │
+│   cash.trading UI   │────▶│   Neon Postgres │◀────│  Bot Runner VM  │
 │   (Vercel)      │     │   (Database)    │     │  (Digital Ocean)│
 └─────────────────┘     └─────────────────┘     └─────────────────┘
         │                                               │
@@ -18,7 +18,7 @@ A standalone bot execution service that runs persistently on a Digital Ocean dro
 
 ## How It Works
 
-1. **User starts bot** via Decibrrr UI → Creates `BotInstance` in database
+1. **User starts bot** via cash.trading UI → Creates `BotInstance` in database
 2. **Bot Runner** polls database every 3 seconds for active bots
 3. **Executes trades** using the same `VolumeBotEngine` logic
 4. **Updates database** with trade results, volume, PnL
@@ -56,8 +56,8 @@ apt-get install -y nodejs
 npm install -g pm2
 
 # Clone and setup
-git clone https://github.com/SeamMoney/decibrrr.git
-cd decibrrr/bot-runner
+git clone https://github.com/SeamMoney/cash.trading.git
+cd cash.trading/bot-runner
 npm install
 ```
 
@@ -76,10 +76,10 @@ EOF
 
 ```bash
 # Start with PM2 (auto-restart on crash)
-pm2 start runner.js --name decibrrr-bot
+pm2 start runner.js --name cash-trading-bot
 
 # View logs
-pm2 logs decibrrr-bot
+pm2 logs cash-trading-bot
 
 # Auto-start on server reboot
 pm2 startup
@@ -99,11 +99,11 @@ The `runner.js` script:
 
 ```bash
 # View live logs
-pm2 logs decibrrr-bot --lines 100
+pm2 logs cash-trading-bot --lines 100
 
 # Check status
 pm2 status
 
 # Restart
-pm2 restart decibrrr-bot
+pm2 restart cash-trading-bot
 ```

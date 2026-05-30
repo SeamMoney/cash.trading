@@ -1,4 +1,4 @@
-# Decibrrr - Decibel Volume Generation Bot
+# cash.trading - Decibel Volume Generation Bot
 
 An automated volume generation bot for Decibel DEX on Aptos blockchain. Features a custom-built Decibel SDK for on-chain trading since Decibel's REST API is read-only.
 
@@ -84,8 +84,8 @@ Authorization: Bearer <CASH_REWARD_ADMIN_SECRET or CRON_SECRET>
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/decibrrr.git
-cd decibrrr
+git clone https://github.com/SeamMoney/cash.trading.git
+cd cash.trading
 
 # Install dependencies
 pnpm install
@@ -312,7 +312,7 @@ npm install -g neonctl
 neonctl auth
 
 # 3. Create project
-neonctl projects create --name decibrrr
+neonctl projects create --name cash-trading
 
 # 4. Get connection string
 neonctl connection-string
@@ -327,10 +327,10 @@ vercel deploy
 
 ### Alternative: Vercel Postgres
 
-1. Go to https://vercel.com/your-username/decibrrr
+1. Go to https://vercel.com/SeamMoney/cash.trading
 2. Click "Storage" tab
 3. Click "Create Database" → "Postgres"
-4. Check "Connect to project: decibrrr"
+4. Check "Connect to project: cash.trading"
 5. Click "Create & Continue"
 
 Vercel automatically:

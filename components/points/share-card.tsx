@@ -61,12 +61,12 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
 
     const link = document.createElement('a')
     link.href = imageUrl
-    link.download = `decibrrr-season0-${account?.address?.toString().slice(0, 8) || 'stats'}.png`
+    link.download = `cash-trading-season0-${account?.address?.toString().slice(0, 8) || 'stats'}.png`
     link.click()
   }
 
   const handleCopyLink = () => {
-    const shareText = `I'm ranked #${rank || '?'} in Decibel Season 0 with ${points.toLocaleString()} points! 🏆\n\nTrack your predeposit points: https://decibrrr.vercel.app/points`
+    const shareText = `I'm ranked #${rank || '?'} in Decibel Season 0 with ${points.toLocaleString()} points! 🏆\n\nTrack your predeposit points: https://cash.trading/points`
     navigator.clipboard.writeText(shareText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -119,7 +119,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
                   {/* Header */}
                   <div className="flex items-center gap-2 mb-4">
                     <span className="text-2xl">🔊💵</span>
-                    <span className="text-xl font-bold text-primary">DECIBRRR</span>
+                    <span className="text-xl font-bold text-primary">CASH.TRADING</span>
                     <span className="text-xs text-zinc-500 ml-auto">Season 0</span>
                   </div>
 
@@ -158,7 +158,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
 
                   {/* Footer */}
                   <div className="text-[10px] text-zinc-600 text-center pt-2 border-t border-white/10">
-                    decibrrr.vercel.app
+                    cash.trading
                   </div>
                 </div>
               </div>

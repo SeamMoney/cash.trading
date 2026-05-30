@@ -71,7 +71,7 @@ const PointsDataContext = createContext<PointsDataContextType>({
 })
 
 // localStorage cache helpers
-const CACHE_KEY = 'decibrrr_points_cache'
+const CACHE_KEY = 'cash_trading_points_cache'
 
 interface CachedData {
   globalStats: GlobalStats | null

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Decibrrr Bot Runner
+ * cash.trading Bot Runner
  *
  * Persistent bot execution service for Digital Ocean
  * Polls database for active bots and executes trades autonomously
@@ -27,7 +27,7 @@ const lastTickTime = new Map();
 // Track if a bot is currently executing (prevent overlap)
 const executingBots = new Set();
 
-console.log('🚀 Decibrrr Bot Runner starting...');
+console.log('🚀 cash.trading Bot Runner starting...');
 console.log(`   Database: ${process.env.DATABASE_URL?.slice(0, 30)}...`);
 
 /**

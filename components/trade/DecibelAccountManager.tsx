@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
@@ -12,6 +12,39 @@ import {
 } from "@/hooks/useDecibelSubaccounts";
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 
+interface AccountOverview {
+  equity: number;
+  unrealizedPnl: number;
+  realizedPnl: number | null;
+  marginRatio: number;
+  maintenanceMargin: number;
+  leverage: number | null;
+  totalMargin: number;
+  totalNotional: number;
+  collateral: number;
+  crossWithdrawable: number;
+  volume30d: number | null;
+}
+
+interface AccountStateResponse {
+  overview?: AccountOverview | null;
+  error?: string;
+}
+
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatUsd(value: number | null | undefined, signed = false) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
+  const formatted = USD_FORMATTER.format(Math.abs(value));
+  if (!signed) return value < 0 ? `-${formatted}` : formatted;
+  return `${value >= 0 ? "+" : "-"}${formatted}`;
+}
+
 export function DecibelAccountManager({ className }: { className?: string }) {
   const { account, connected, signAndSubmitTransaction } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
@@ -20,6 +53,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   >("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusHash, setStatusHash] = useState("");
+  const [overview, setOverview] = useState<AccountOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState("");
   const {
     decibelNetwork,
     hasDecibelAccount,
@@ -62,14 +98,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       : "Setup required";
 
   const accountStateTone = hasDecibelAccount
-    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+    ? "bg-emerald-500/10 text-emerald-300"
     : isLoadingSubaccounts
-      ? "border-sky-500/20 bg-sky-500/10 text-sky-300"
+      ? "bg-sky-500/10 text-sky-300"
       : lookupIncomplete
-        ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-300"
+        ? "bg-yellow-500/10 text-yellow-300"
     : connected
-      ? "border-accent/20 bg-accent/10 text-accent"
-      : "border-white/[0.08] bg-white/[0.04] text-zinc-500";
+      ? "bg-accent/10 text-accent"
+      : "bg-white/[0.04] text-zinc-500";
 
   const accountHelpText = !connected
     ? "Connect a wallet to create a Decibel trading account."
@@ -77,8 +113,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       ? "Checking Decibel account state on-chain and through the Decibel API."
     : hasDecibelAccount
       ? "USDC collateral, orders, and positions route through this account."
-      : lookupIncomplete
-        ? "Could not verify this wallet's Decibel trading accounts. Refresh or reconnect the wallet."
+    : lookupIncomplete
+      ? "Could not verify this wallet's Decibel trading accounts. Refresh or reconnect the wallet."
+      : isMainnet
+        ? "Mainnet account creation requires a Decibel referrer or allowlist entry. Refresh if this wallet already has an account."
       : "Create one Decibel trading account before depositing collateral or placing orders.";
 
   const canCreateAccount =
@@ -87,6 +125,52 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     !isLoadingSubaccounts &&
     !lookupIncomplete &&
     status !== "submitting";
+
+  const refreshAccountState = useCallback(async (signal?: AbortSignal) => {
+    if (!selectedSubaccount || !hasDecibelAccount) {
+      setOverview(null);
+      setOverviewError("");
+      setOverviewLoading(false);
+      return;
+    }
+
+    setOverviewLoading(true);
+    setOverviewError("");
+    try {
+      const params = new URLSearchParams({
+        address: selectedSubaccount,
+        openOrders: "false",
+        network: decibelNetwork,
+      });
+      const res = await fetch(`/api/decibel/positions?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      const data = (await res.json()) as AccountStateResponse;
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Decibel account state failed (${res.status})`);
+      }
+      if (signal?.aborted) return;
+      setOverview(data.overview ?? null);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setOverview(null);
+      setOverviewError(err instanceof Error ? err.message : "Decibel account state unavailable.");
+    } finally {
+      if (!signal?.aborted) setOverviewLoading(false);
+    }
+  }, [decibelNetwork, hasDecibelAccount, selectedSubaccount]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshAccountState(controller.signal);
+    return () => controller.abort();
+  }, [refreshAccountState]);
+
+  const handleRefreshAccount = useCallback(() => {
+    void refreshSubaccounts();
+    void refreshAccountState();
+  }, [refreshAccountState, refreshSubaccounts]);
 
   const handleCreateSubaccount = useCallback(async () => {
     if (!connected || !account) return;
@@ -117,7 +201,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           : "Account confirmed. Decibel indexer may take a moment to show it."
       );
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Account creation failed");
+      const message = err instanceof Error ? err.message : "Account creation failed";
+      setStatusMessage(
+        decibelNetwork === "mainnet" &&
+          (message.includes("EACCOUNT_WITHOUT_REFERRER_OR_IN_ALLOW_LIST") ||
+            message.includes("Move abort 0xe"))
+          ? "Decibel mainnet rejected account creation because this wallet is not referred or allowlisted yet. Refresh if you already created an account on Decibel."
+          : message
+      );
       setStatus("error");
     }
   }, [
@@ -182,6 +273,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatusMessage("Deposit submitted. Waiting for confirmation...");
       await waitForTransactionConfirmation(hash);
       emitDecibelPositionsRefresh();
+      void refreshAccountState();
       setStatusMessage("USDC collateral deposited to Decibel.");
       setStatus("success");
     } catch (err) {
@@ -194,6 +286,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     decibelNetwork,
     depositValue,
     hasDepositAmount,
+    refreshAccountState,
     selectedSubaccount,
     signAndSubmitTransaction,
     subaccounts,
@@ -202,7 +295,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   return (
     <section
       className={cn(
-        "rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4",
+        "space-y-4",
         className
       )}
     >
@@ -217,7 +310,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         </div>
         <span
           className={cn(
-            "shrink-0 rounded-md border px-2 py-1 text-[10px] font-mono",
+            "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
             accountStateTone
           )}
         >
@@ -225,24 +318,53 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         </span>
       </div>
 
-      <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/20 p-3">
-        <p className="text-[11px] font-display font-semibold text-zinc-300">
-          Account status
-        </p>
-        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
-          {accountHelpText}
-        </p>
-      </div>
+      <p className="text-[12px] leading-relaxed text-zinc-500 text-pretty">
+        {accountHelpText}
+      </p>
+
+      {connected && hasDecibelAccount && (
+        <div className="grid grid-cols-2 gap-x-5 gap-y-3 tabular-nums">
+          {[
+            { label: "Equity", value: overviewLoading ? "..." : formatUsd(overview?.equity) },
+            { label: "Available USDC", value: overviewLoading ? "..." : formatUsd(overview?.crossWithdrawable) },
+            { label: "Collateral", value: overviewLoading ? "..." : formatUsd(overview?.collateral) },
+            {
+              label: "Unrealized P&L",
+              value: overviewLoading ? "..." : formatUsd(overview?.unrealizedPnl, true),
+              tone:
+                overview?.unrealizedPnl == null
+                  ? "text-white"
+                  : overview.unrealizedPnl >= 0
+                    ? "text-accent"
+                    : "text-danger",
+            },
+          ].map((item) => (
+            <div key={item.label} className="min-w-0">
+              <p className="text-[10px] font-display font-semibold uppercase text-zinc-600">
+                {item.label}
+              </p>
+              <p className={cn("mt-1 truncate text-[14px] font-semibold text-white", item.tone)}>
+                {item.value}
+              </p>
+            </div>
+          ))}
+          {overviewError && (
+            <p className="col-span-2 text-[11px] text-yellow-300">
+              Balance unavailable. Refresh account.
+            </p>
+          )}
+        </div>
+      )}
 
       {connected && hasDecibelAccount ? (
-        <div className="mt-4 space-y-1.5">
+        <div className="space-y-1.5">
           <label className="text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-zinc-600">
             Active account
           </label>
           <select
             value={selectedSubaccount}
             onChange={(e) => selectSubaccount(e.target.value)}
-            className="w-full rounded-[10px] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[12px] font-mono text-zinc-300 outline-none focus:border-white/[0.16]"
+            className="w-full rounded-[10px] bg-white/[0.04] px-3 py-2 text-[12px] font-mono text-zinc-300 outline-none focus:bg-white/[0.07]"
           >
             {subaccounts.map((s) => (
               <option key={s.address} value={s.address}>
@@ -256,18 +378,18 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         <button
           type="button"
           onClick={handleCreateSubaccount}
-          className="mt-4 w-full rounded-[10px] border border-accent/25 bg-accent/10 px-3 py-2.5 text-[12px] font-display font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-[10px] bg-accent/15 px-3 py-2.5 text-[12px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Create Trading Account
         </button>
       ) : null}
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className={cn("grid gap-2", isMainnet ? "grid-cols-1" : "grid-cols-2")}>
         <button
           type="button"
-          onClick={refreshSubaccounts}
+          onClick={handleRefreshAccount}
           disabled={!connected || status === "submitting" || isLoadingSubaccounts}
-          className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-[10px] bg-white/[0.04] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoadingSubaccounts ? "Checking..." : "Refresh account"}
         </button>
@@ -276,15 +398,15 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             type="button"
             onClick={handleMintTestnetUsdc}
             disabled={!connected || status === "submitting"}
-            className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-[10px] bg-white/[0.04] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mint testnet USDC
           </button>
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-        <label className="flex items-center gap-2 rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <label className="flex items-center gap-2 rounded-[10px] bg-white/[0.04] px-3 py-2">
           <TokenLogo token="USDC" size={18} />
           <input
             type="text"
@@ -304,10 +426,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           onClick={handleDeposit}
           disabled={!canDeposit}
           className={cn(
-            "rounded-[10px] border px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            "rounded-[10px] px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
             canDeposit
-              ? "border-white/[0.12] bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
-              : "border-white/[0.06] bg-white/[0.02] text-zinc-600"
+              ? "bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
+              : "bg-white/[0.03] text-zinc-600"
           )}
         >
           Deposit
@@ -317,10 +439,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       {statusMessage && (
         <div
           className={cn(
-            "mt-3 rounded-[10px] border px-3 py-2 text-[11px]",
+            "rounded-[10px] px-3 py-2 text-[11px]",
             status === "error"
-              ? "border-red-500/25 bg-red-500/10 text-red-300"
-              : "border-white/[0.08] bg-white/[0.03] text-zinc-400"
+              ? "bg-red-500/10 text-red-300"
+              : "bg-white/[0.04] text-zinc-400"
           )}
         >
           <p>{statusMessage}</p>

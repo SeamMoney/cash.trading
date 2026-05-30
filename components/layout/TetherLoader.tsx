@@ -27,7 +27,7 @@ export function TetherLoader({
         <div className="absolute inset-[14%] rounded-full border border-white/6" />
         <div className="absolute inset-[22%] flex items-center justify-center rounded-full bg-[#0b1110] ring-1 ring-white/8">
           <img
-            src="/usdt.svg"
+            src="/tokens/usdt.png"
             alt=""
             aria-hidden="true"
             className="size-[68%] rounded-full"

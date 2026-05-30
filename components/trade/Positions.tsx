@@ -678,7 +678,7 @@ export function Positions() {
     <div className="space-y-4">
       {/* Account Overview */}
       {overview && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="hidden md:grid md:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             {
               label: "Equity",

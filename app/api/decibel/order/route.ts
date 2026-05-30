@@ -4,6 +4,7 @@ import {
   buildDecibelOrderPayload,
   getDecibelPackage,
   getDecibelMarketConfigFromRegistry,
+  PRICE_DECIMALS,
   TAKER_FEE,
   MAKER_REBATE,
   type DecibelNetwork,
@@ -32,6 +33,80 @@ function moveVariantName(value: unknown): string {
     return String((value as { __variant__?: unknown }).__variant__);
   }
   return String(value ?? "unknown");
+}
+
+function toNumber(value: unknown): number | null {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function asMoveFunction(functionId: string) {
+  return functionId as `${string}::${string}::${string}`;
+}
+
+async function viewFirst(
+  network: DecibelNetwork,
+  functionId: string,
+  functionArguments: unknown[]
+) {
+  const aptos = getAptos(network);
+  const [value] = await aptos.view({
+    payload: {
+      function: asMoveFunction(functionId),
+      functionArguments: functionArguments as string[],
+    },
+  });
+  return value;
+}
+
+async function readMarketConfigFromChainAddress(
+  marketAddress: string,
+  network: DecibelNetwork,
+  fallbackName?: string | null
+): Promise<{ marketName: string; config: MarketConfig }> {
+  const pkg = getDecibelPackage(network);
+  const args = [marketAddress];
+  const [maxLeverage, minSize, lotSize, tickSize, sizeDecimals] =
+    await Promise.all([
+      viewFirst(network, `${pkg}::perp_engine::market_max_leverage`, args),
+      viewFirst(network, `${pkg}::perp_engine::market_min_size`, args),
+      viewFirst(network, `${pkg}::perp_engine::market_lot_size`, args),
+      viewFirst(network, `${pkg}::perp_engine::market_ticker_size`, args),
+      viewFirst(network, `${pkg}::perp_engine::market_sz_decimals`, args),
+    ]);
+
+  return {
+    marketName:
+      fallbackName && !fallbackName.startsWith("0x") ? fallbackName : marketAddress,
+    config: {
+      address: marketAddress,
+      maxLeverage: toNumber(maxLeverage) ?? 1,
+      minSizeRaw: toNumber(minSize) ?? 1,
+      sizeDecimals: toNumber(sizeDecimals) ?? 8,
+      priceDecimals: PRICE_DECIMALS,
+      tickSize: toNumber(tickSize) ?? 1,
+      lotSize: toNumber(lotSize) ?? 1,
+    },
+  };
+}
+
+async function resolveMarketConfig(
+  lookupKey: string,
+  network: DecibelNetwork,
+  signal?: AbortSignal,
+  fallbackName?: string | null
+) {
+  try {
+    return await getDecibelMarketConfigFromRegistry(lookupKey, {
+      network,
+      signal,
+    });
+  } catch (error) {
+    if (lookupKey.startsWith("0x")) {
+      return readMarketConfigFromChainAddress(lookupKey, network, fallbackName);
+    }
+    throw error;
+  }
 }
 
 async function readMarketState(marketConfig: MarketConfig, network: DecibelNetwork): Promise<{
@@ -101,10 +176,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { marketName: resolvedMarketName, config } =
-      await getDecibelMarketConfigFromRegistry(lookupKey, {
-        network,
-        signal: req.signal,
-      });
+      await resolveMarketConfig(lookupKey, network, req.signal, marketName);
     const marketStatus = await readMarketState(config, network);
 
     return NextResponse.json(
@@ -180,10 +252,12 @@ export async function POST(req: NextRequest) {
     }
 
     const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
-      await getDecibelMarketConfigFromRegistry(marketAddress || marketName, {
+      await resolveMarketConfig(
+        marketAddress || marketName,
         network,
-        signal: req.signal,
-      });
+        req.signal,
+        marketName,
+      );
     const marketState = await readMarketState(resolvedMarketConfig, network);
     if (!marketState.isOpen && !reduceOnly) {
       const code = classifyMarketDenial(marketState.mode);

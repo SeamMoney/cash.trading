@@ -16,6 +16,9 @@ const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "X-Accel-Buffering": "no",
 };
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 const MARKET_TOPIC_PATTERN =
   /^(all_market_prices|market_price:0x[a-fA-F0-9]+|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
@@ -49,16 +52,13 @@ export async function GET(req: NextRequest) {
   const apiKey = getAptosFullnodeApiKey(network);
 
   if (!apiKey) {
-    return NextResponse.json(
-      { error: "Missing Decibel API key for WebSocket stream proxy" },
-      { status: 503, headers: SSE_HEADERS }
-    );
+    return new Response(null, { status: 204, headers: NO_STORE_HEADERS });
   }
 
   if (topics.length === 0) {
     return NextResponse.json(
       { error: "No valid Decibel stream topics requested" },
-      { status: 400, headers: SSE_HEADERS }
+      { status: 400, headers: NO_STORE_HEADERS }
     );
   }
 

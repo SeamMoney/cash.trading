@@ -19,6 +19,7 @@ import {
   Ed25519PrivateKey,
 } from "@aptos-labs/ts-sdk";
 import { PYTH_HERMES_URL, PYTH_FEED_IDS } from "@/lib/launchpad/constants";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -179,6 +180,16 @@ export async function GET(req: Request) {
 
   let totalPushed = 0;
   let signalChanges = 0;
+  let decisionsCreated = 0;
+  const freshDecisions: Array<{
+    strategyVaultId: string;
+    decisionId: string;
+    indicatorAddr: string;
+    signal: number;
+    marketName: string;
+    allocationPct: number;
+    priceUsd: number;
+  }> = [];
 
   for (const addr of indicatorAddrs) {
     let name = addr.slice(0, 10) + "...";
@@ -249,6 +260,46 @@ export async function GET(req: Request) {
       console.log(
         `[keeper] *** SIGNAL CHANGE *** ${name} (${asset}): ${direction} @ $${(Number(priceData.price) / 1e8).toFixed(2)} | tx=${txHash}`,
       );
+
+      const priceUsd = Number(priceData.price) / 1e8;
+      const activeVaults = await prisma.strategyVault.findMany({
+        where: {
+          indicatorAddr: addr,
+          status: "ACTIVE",
+        },
+      }).catch((error) => {
+        console.warn(`[keeper] strategy vault lookup failed for ${addr}:`, error);
+        return [];
+      });
+
+      for (const vault of activeVaults) {
+        const decision = await prisma.indicatorSignalDecision.create({
+          data: {
+            strategyVaultId: vault.id,
+            indicatorAddr: addr,
+            signal: newSignal,
+            prevSignal,
+            price: priceUsd,
+            priceTimestamp: new Date(priceData.timestamp * 1000),
+            onChainTxHash: txHash,
+            expiresAt: new Date(Date.now() + 5 * 60_000),
+          },
+        });
+        await prisma.strategyVault.update({
+          where: { id: vault.id },
+          data: { latestDecisionId: decision.id },
+        });
+        decisionsCreated++;
+        freshDecisions.push({
+          strategyVaultId: vault.id,
+          decisionId: decision.id,
+          indicatorAddr: addr,
+          signal: newSignal,
+          marketName: vault.marketName,
+          allocationPct: vault.allocationPct,
+          priceUsd,
+        });
+      }
     } else {
       console.log(
         `[keeper] pushed ${name} (${asset}) price=$${(Number(priceData.price) / 1e8).toFixed(2)} signal=${newSignal} tx=${txHash.slice(0, 12)}...`,
@@ -272,15 +323,7 @@ export async function GET(req: Request) {
 
   console.log(`[keeper] sweep complete — pushed=${totalPushed}/${indicatorAddrs.length} signalChanges=${signalChanges}`);
 
-  // ── Phase 2: Execute due scheduled jobs ──────────────────────────────────
-  // Build a price map (asset → USD) from the data we just collected
-  const priceMap = new Map<string, number>();
-  for (const r of results) {
-    if (!r.error && r.priceUsd > 0) {
-      priceMap.set(r.indicatorAddr, r.priceUsd);
-    }
-  }
-
+  // ── Phase 2: Execute fresh persisted strategy decisions ──────────────────
   let jobsExecuted = 0;
   let jobsFailed = 0;
   let jobsRecurringReset = 0;
@@ -288,97 +331,50 @@ export async function GET(req: Request) {
   const origin = getOrigin();
 
   try {
-    // Fetch jobs and indicators via HTTP to avoid module isolation issues in dev
-    const [jobsRes, indRes] = await Promise.all([
-      fetch(`${origin}/api/launchpad/scheduled`).then(r => r.json()),
-      fetch(`${origin}/api/launchpad/indicators`).then(r => r.json()),
-    ]);
+    console.log(`[keeper] Phase 2: ${freshDecisions.length} fresh strategy decisions`);
 
-    const pendingJobs: Array<Record<string, unknown>> = (jobsRes.jobs ?? []).filter(
-      (j: Record<string, unknown>) => j.status === "pending",
-    );
-    const indicators: Array<Record<string, unknown>> = indRes.indicators ?? [];
-
-    console.log(`[keeper] Phase 2: ${pendingJobs.length} pending jobs, ${indicators.length} indicators`);
-
-    for (const job of pendingJobs) {
-      let shouldExecute = false;
-      const triggerType = job.triggerType as string;
-      const expectedSignal = job.expectedSignal as number;
-      const indicatorAddr = job.indicatorAddr as string;
-
-      if (triggerType === "time" && job.scheduledTimeMs && Date.now() >= (job.scheduledTimeMs as number)) {
-        shouldExecute = true;
-      } else if (triggerType === "signal" && indicatorAddr) {
-        // Only fire when the signal actually CHANGED during this sweep.
-        // Look up what Phase 1 recorded as the current signal and compare
-        // against the previous signal captured before the price push.
-        const sweepResult = results.find((r) => r.indicatorAddr === indicatorAddr);
-        if (sweepResult) {
-          const prevSig = sweepResult.prevSignal;
-          const currSig = sweepResult.signal;
-          // Fire only on a genuine crossover to a non-zero signal
-          if (prevSig !== currSig && currSig !== 0) {
-            // If the job expects a specific signal, also check that
-            if (expectedSignal === 0 || currSig === expectedSignal) {
-              shouldExecute = true;
-            }
-          }
-        }
-      } else if (triggerType === "price" && job.priceThreshold !== undefined) {
-        const price = priceMap.get(indicatorAddr) ?? 0;
-        shouldExecute = job.isPriceAbove
-          ? price >= (job.priceThreshold as number)
-          : price <= (job.priceThreshold as number);
+    for (const decision of freshDecisions) {
+      const notionalBalance = Number(process.env.LAUNCHPAD_STRATEGY_NOTIONAL_USD ?? "100");
+      if (!Number.isFinite(notionalBalance) || notionalBalance <= 0) {
+        console.warn("[keeper] LAUNCHPAD_STRATEGY_NOTIONAL_USD must be positive");
+        jobsFailed++;
+        continue;
+      }
+      if (decision.priceUsd <= 0) {
+        console.warn(`[keeper] decision ${decision.decisionId} has no usable price`);
+        jobsFailed++;
+        continue;
       }
 
-      if (!shouldExecute) continue;
-
-      // Parse action data for market info and allocation
-      let actionMarket = "BTC/USD";
-      let allocationPct = 0;
-      try {
-        if (job.actionData) {
-          const ad = JSON.parse(job.actionData as string);
-          if (ad.market) actionMarket = ad.market;
-          if (ad.allocationPct) allocationPct = Number(ad.allocationPct);
-        }
-      } catch { /* ignore */ }
-
-      // Use the current signal from the Phase 1 sweep result
-      const sweepEntry = results.find((r) => r.indicatorAddr === indicatorAddr);
-      const currentSignal = sweepEntry?.signal ?? 1;
-      const currentPrice = sweepEntry?.priceUsd ?? 0;
-
-      // Calculate real position size from allocation % and current price
-      // allocationPct of a notional $10,000 balance → convert to asset units
-      // e.g., 19% of $10,000 = $1,900 / $68,000 BTC = 0.0279 BTC
-      let execSize: number | undefined;
-      let sizeUsdt = 0;
-      if (allocationPct > 0 && currentPrice > 0) {
-        const notionalBalance = 10_000; // TODO: read actual keeper USDT balance
-        sizeUsdt = notionalBalance * allocationPct / 100;
-        execSize = sizeUsdt / currentPrice;
-        console.log(`[keeper] Position sizing: ${allocationPct}% of $${notionalBalance} = $${sizeUsdt.toFixed(2)} = ${execSize.toFixed(6)} ${actionMarket.split("/")[0]} at $${currentPrice.toFixed(2)}`);
-      } else {
-        execSize = (job.actionAmount as number) > 0 ? (job.actionAmount as number) : 0.001;
-      }
+      const allocationPct = Math.min(100, Math.max(0.1, decision.allocationPct));
+      const sizeUsdt = notionalBalance * allocationPct / 100;
+      const execSize = sizeUsdt / decision.priceUsd;
+      console.log(
+        `[keeper] Position sizing: ${allocationPct}% of $${notionalBalance} = ` +
+        `$${sizeUsdt.toFixed(2)} = ${execSize.toFixed(6)} ${decision.marketName.split("/")[0]} ` +
+        `at $${decision.priceUsd.toFixed(2)}`,
+      );
 
       try {
         const execRes = await fetch(`${origin}/api/launchpad/execute`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            indicatorAddr,
-            signal: currentSignal,
-            marketName: actionMarket,
+            strategyVaultId: decision.strategyVaultId,
+            decisionId: decision.decisionId,
+            indicatorAddr: decision.indicatorAddr,
+            signal: decision.signal,
+            marketName: decision.marketName,
             size: execSize,
             sizeUsdt,
-            reduceOnly: currentSignal === 2, // signal 2 = SELL → close position
+            reduceOnly: decision.signal === 2,
           }),
         });
         const execBody = await execRes.json() as Record<string, unknown>;
-        console.log(`[keeper] executed job #${job.jobId}: signal=${currentSignal}`, execBody);
+        if (!execRes.ok || execBody.error) {
+          throw new Error(String(execBody.error || `Execution returned ${execRes.status}`));
+        }
+        console.log(`[keeper] executed decision ${decision.decisionId}: signal=${decision.signal}`, execBody);
         jobsExecuted++;
 
         // Post a signal to the signal feed
@@ -386,35 +382,15 @@ export async function GET(req: Request) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            indicatorAddr,
-            signal: currentSignal,
-            price: priceMap.get(indicatorAddr) ?? 0,
+            indicatorAddr: decision.indicatorAddr,
+            signal: decision.signal,
+            price: decision.priceUsd,
             confidence: 5000,
-            asset: actionMarket,
+            asset: decision.marketName,
           }),
         }).catch(() => {});
-
-        // Mark job as executed via PATCH on the scheduled route
-        const now = Date.now();
-        await fetch(`${origin}/api/launchpad/scheduled`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobId: job.jobId, status: "executed", executedAt: now }),
-        });
-        console.log(`[keeper] job #${job.jobId} marked as executed`);
-
-        // For recurring jobs, immediately reset back to pending so it fires again on the next signal change
-        if (job.recurring) {
-          await fetch(`${origin}/api/launchpad/scheduled`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jobId: job.jobId, status: "pending" }),
-          });
-          jobsRecurringReset++;
-          console.log(`[keeper] recurring job #${job.jobId} reset to pending`);
-        }
       } catch (jobErr) {
-        console.error(`[keeper] job #${job.jobId} execute failed:`, jobErr);
+        console.error(`[keeper] decision ${decision.decisionId} execute failed:`, jobErr);
         jobsFailed++;
       }
     }
@@ -431,6 +407,7 @@ export async function GET(req: Request) {
     totalPushed,
     totalIndicators: indicatorAddrs.length,
     signalChanges,
+    decisionsCreated,
     jobsExecuted,
     jobsFailed,
     jobsRecurringReset,
@@ -490,18 +467,58 @@ export async function POST(req: Request) {
     let decibelResult: Record<string, unknown> | null = null;
     if (executeOnDecibel && decibelMarket && signalChanged && (signal === 1 || signal === 2)) {
       try {
-        const execRes = await fetch(`${getOrigin()}/api/launchpad/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const strategyVault = await prisma.strategyVault.findFirst({
+          where: {
             indicatorAddr,
-            signal,
             marketName: decibelMarket,
-            size: decibelSize,
-            reduceOnly: signal === 2,
-          }),
+            status: "ACTIVE",
+          },
+          orderBy: { updatedAt: "desc" },
         });
-        decibelResult = await execRes.json() as Record<string, unknown>;
+        if (!strategyVault) {
+          decibelResult = {
+            error: "No active strategy vault is configured for this indicator and market",
+          };
+        } else {
+          const decision = await prisma.indicatorSignalDecision.create({
+            data: {
+              strategyVaultId: strategyVault.id,
+              indicatorAddr,
+              signal,
+              prevSignal,
+              price: Number(price) / 1e8,
+              priceTimestamp: new Date(timestamp * 1000),
+              onChainTxHash: txHash,
+              expiresAt: new Date(Date.now() + 5 * 60_000),
+              source: "manual-keeper",
+            },
+          });
+          await prisma.strategyVault.update({
+            where: { id: strategyVault.id },
+            data: { latestDecisionId: decision.id },
+          });
+
+          const sizeUsdt = Number(process.env.LAUNCHPAD_STRATEGY_NOTIONAL_USD ?? "100") *
+            Math.min(100, Math.max(0.1, strategyVault.allocationPct)) / 100;
+          const sizedFromAllocation =
+            Number(price) > 0 ? sizeUsdt / (Number(price) / 1e8) : decibelSize;
+
+          const execRes = await fetch(`${getOrigin()}/api/launchpad/execute`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              strategyVaultId: strategyVault.id,
+              decisionId: decision.id,
+              indicatorAddr,
+              signal,
+              marketName: decibelMarket,
+              size: sizedFromAllocation || decibelSize,
+              sizeUsdt,
+              reduceOnly: signal === 2,
+            }),
+          });
+          decibelResult = await execRes.json() as Record<string, unknown>;
+        }
       } catch (execErr) {
         decibelResult = { error: String(execErr) };
       }

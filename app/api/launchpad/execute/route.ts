@@ -22,13 +22,13 @@ import {
   Account,
   Ed25519PrivateKey,
 } from "@aptos-labs/ts-sdk";
+import type { Prisma } from "@prisma/client";
 import {
   getActiveNetwork,
-  getReadDex,
   buildDecibelOrderPayload,
-  getDecibelPackage,
 } from "@/lib/decibel";
 import { indicatorRegistry } from "@/app/api/launchpad/indicators/route";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -71,41 +71,61 @@ async function submitTx(aptos: Aptos, account: Account, payload: {
   return committed.hash;
 }
 
-async function ensureSubaccount(aptos: Aptos, account: Account): Promise<string> {
-  const dex = getReadDex();
-  const ownerAddr = account.accountAddress.toString();
-
-  // Check existing subaccounts
-  const subaccounts = await dex.userSubaccounts
-    .getByAddr({ ownerAddr })
-    .catch(() => [] as Array<{ subaccount_address: string; is_primary: boolean }>);
-
-  if (subaccounts.length > 0) {
-    const primary = subaccounts.find((s) => s.is_primary) ?? subaccounts[0];
-    return primary.subaccount_address;
-  }
-
-  // No subaccount — create one
-  const pkg = getDecibelPackage();
-  await submitTx(aptos, account, {
-    function: `${pkg}::dex_accounts_entry::create_new_subaccount`,
-    typeArguments: [],
-    functionArguments: [],
+async function auditExecution(args: {
+  strategyVaultId: string;
+  decisionId?: string | null;
+  indicatorAddr: string;
+  requestedSignal: number;
+  onChainSignal?: number | null;
+  allowed: boolean;
+  status: string;
+  reason?: string;
+  marketName: string;
+  side?: string;
+  size?: number;
+  sizeUsdt?: number;
+  orderPrice?: number;
+  decibelTxHash?: string;
+  subaccount?: string;
+  rawRequest?: Record<string, unknown>;
+  rawResponse?: Record<string, unknown>;
+}) {
+  return prisma.executionAudit.create({
+    data: {
+      strategyVaultId: args.strategyVaultId,
+      decisionId: args.decisionId,
+      indicatorAddr: args.indicatorAddr,
+      requestedSignal: args.requestedSignal,
+      onChainSignal: args.onChainSignal,
+      allowed: args.allowed,
+      status: args.status,
+      reason: args.reason,
+      marketName: args.marketName,
+      side: args.side,
+      size: args.size,
+      sizeUsdt: args.sizeUsdt,
+      orderPrice: args.orderPrice,
+      decibelTxHash: args.decibelTxHash,
+      subaccount: args.subaccount,
+      rawRequest: args.rawRequest ? compactJson(args.rawRequest) : undefined,
+      rawResponse: args.rawResponse ? compactJson(args.rawResponse) : undefined,
+    },
   });
+}
 
-  // Re-fetch after creation
-  const created = await dex.userSubaccounts
-    .getByAddr({ ownerAddr })
-    .catch(() => [] as Array<{ subaccount_address: string; is_primary: boolean }>);
-
-  if (created.length === 0) throw new Error("Subaccount creation failed or not yet indexed");
-  const primary = created.find((s) => s.is_primary) ?? created[0];
-  return primary.subaccount_address;
+function compactJson<T extends Record<string, unknown>>(value: T): Prisma.InputJsonObject {
+  const result: Record<string, Prisma.InputJsonValue> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) result[key] = entry as Prisma.InputJsonValue;
+  }
+  return result as Prisma.InputJsonObject;
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json() as {
+      strategyVaultId?: string;
+      decisionId?: string;
       indicatorAddr: string;
       signal: number;
       marketName: string;
@@ -116,12 +136,15 @@ export async function POST(req: Request) {
       entryPrice?: number;  // previous entry price (for P&L calc on close)
     };
 
-    const { indicatorAddr, signal, marketName, reduceOnly = false, sizeUsdt } = body;
+    const { strategyVaultId, decisionId, indicatorAddr, signal, marketName, sizeUsdt } = body;
     const size = body.size ?? 0.001; // default 0.001 BTC
 
-    // Platform fee: 10 bps (0.10%) of sizeUsdt
-    const platformFee = Math.round((sizeUsdt ?? 0) * 0.001 * 100) / 100;
-    platformRevenueUsdt += platformFee;
+    if (!strategyVaultId || !decisionId) {
+      return NextResponse.json(
+        { error: "strategyVaultId and decisionId are required for launchpad execution" },
+        { status: 400 },
+      );
+    }
 
     if (!indicatorAddr || !signal || !marketName) {
       return NextResponse.json({ error: "indicatorAddr, signal, marketName required" }, { status: 400 });
@@ -130,12 +153,96 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "signal must be 1 (BUY) or 2 (SELL)" }, { status: 400 });
     }
 
+    const rawRequest = {
+      strategyVaultId,
+      decisionId,
+      indicatorAddr,
+      signal,
+      marketName,
+      size,
+      sizeUsdt,
+      price: body.price,
+      reduceOnly: body.reduceOnly,
+    };
+
+    const deny = async (
+      reason: string,
+      status = 409,
+      onChainSignal?: number | null,
+    ) => {
+      await auditExecution({
+        strategyVaultId,
+        decisionId,
+        indicatorAddr,
+        requestedSignal: signal,
+        onChainSignal,
+        allowed: false,
+        status: "DENIED",
+        reason,
+        marketName,
+        size,
+        sizeUsdt,
+        rawRequest,
+      }).catch((auditErr) => {
+        console.error("[launchpad/execute] audit deny failed:", auditErr);
+      });
+      return NextResponse.json({ error: reason }, { status });
+    };
+
+    const strategyVault = await prisma.strategyVault.findUnique({
+      where: { id: strategyVaultId },
+    });
+    if (!strategyVault) {
+      return NextResponse.json({ error: "Strategy vault not found" }, { status: 404 });
+    }
+    if (strategyVault.status !== "ACTIVE") {
+      return deny("Strategy vault is not active", 409);
+    }
+    if (strategyVault.indicatorAddr.toLowerCase() !== indicatorAddr.toLowerCase()) {
+      return deny("Indicator does not match strategy vault", 409);
+    }
+    if (strategyVault.marketName !== marketName) {
+      return deny("Market does not match strategy vault policy", 409);
+    }
+    if (!strategyVault.decibelSubaccount && !strategyVault.vaultAddr) {
+      return deny("Strategy vault has no Decibel execution account configured", 409);
+    }
+
+    const decision = await prisma.indicatorSignalDecision.findUnique({
+      where: { id: decisionId },
+    });
+    if (!decision) {
+      return deny("Indicator decision not found", 404);
+    }
+    if (decision.strategyVaultId !== strategyVaultId) {
+      return deny("Decision does not belong to strategy vault", 409);
+    }
+    if (decision.indicatorAddr.toLowerCase() !== indicatorAddr.toLowerCase()) {
+      return deny("Decision indicator mismatch", 409);
+    }
+    if (strategyVault.latestDecisionId !== decision.id) {
+      return deny("Decision is not the latest strategy vault decision", 409);
+    }
+    if (decision.consumedAt) {
+      return deny("Decision has already been consumed", 409);
+    }
+    if (decision.expiresAt.getTime() <= Date.now()) {
+      return deny("Decision has expired", 409);
+    }
+    if (decision.signal !== signal) {
+      return deny("Requested signal does not match persisted indicator decision", 409);
+    }
+    if (decision.signal !== 1 && decision.signal !== 2) {
+      return deny("Neutral indicator decisions cannot execute", 409);
+    }
+
+    // Platform fee: 10 bps (0.10%) of sizeUsdt, recorded only after policy checks pass.
+    const platformFee = Math.round((sizeUsdt ?? 0) * 0.001 * 100) / 100;
+    platformRevenueUsdt += platformFee;
+
     const aptos = getAptos();
     const keeper = getKeeperAccount();
     const net = getActiveNetwork();
-
-    // ── Get or create subaccount ──────────────────────────────────────────
-    const subaccount = await ensureSubaccount(aptos, keeper);
 
     // ── Read current on-chain signal to confirm ───────────────────────────
     const [onChainSig, , , lastPrice] = await aptos.view({
@@ -144,10 +251,16 @@ export async function POST(req: Request) {
         functionArguments: [indicatorAddr],
       },
     }) as [number, string, string, string];
+    const liveSignal = Number(onChainSig);
+    if (liveSignal !== decision.signal) {
+      return deny("Live on-chain signal no longer matches decision", 409, liveSignal);
+    }
 
     // Use actual on-chain price for the order if not provided
     const orderPrice = body.price ?? (Number(lastPrice) / 1e8);
-    const isBuy = signal === 1; // BUY signal → LONG; SELL signal → close/SHORT
+    const isBuy = decision.signal === 1;
+    const reduceOnly = decision.signal === 2;
+    const subaccount = strategyVault.decibelSubaccount ?? strategyVault.vaultAddr!;
 
     // ── Build Decibel order payload ───────────────────────────────────────
     const {
@@ -165,7 +278,40 @@ export async function POST(req: Request) {
       subaccount,
     });
 
-    const decibelTxHash = await submitTx(aptos, keeper, orderPayload);
+    let decibelTxHash: string;
+    try {
+      decibelTxHash = await submitTx(aptos, keeper, orderPayload);
+    } catch (submitErr) {
+      await auditExecution({
+        strategyVaultId,
+        decisionId,
+        indicatorAddr,
+        requestedSignal: signal,
+        onChainSignal: liveSignal,
+        allowed: true,
+        status: "FAILED_SUBMIT",
+        reason: submitErr instanceof Error ? submitErr.message : String(submitErr),
+        marketName,
+        side: isBuy ? "long" : "reduce-only sell",
+        size,
+        sizeUsdt,
+        orderPrice,
+        subaccount,
+        rawRequest,
+        rawResponse: {
+          sizeRaw,
+          priceRaw,
+          marketAddress: marketConfig.address,
+        },
+      }).catch((auditErr) => {
+        console.error("[launchpad/execute] audit submit failure failed:", auditErr);
+      });
+      throw submitErr;
+    }
+    await prisma.indicatorSignalDecision.update({
+      where: { id: decision.id },
+      data: { consumedAt: new Date() },
+    });
 
     // ── Creator fee collection on profitable close ────────────────────────
     let creatorFeePaid = 0;
@@ -210,6 +356,33 @@ export async function POST(req: Request) {
       }
     }
 
+    const audit = await auditExecution({
+      strategyVaultId,
+      decisionId,
+      indicatorAddr,
+      requestedSignal: signal,
+      onChainSignal: liveSignal,
+      allowed: true,
+      status: "SUBMITTED",
+      marketName,
+      side: isBuy ? "long" : "reduce-only sell",
+      size,
+      sizeUsdt,
+      orderPrice,
+      decibelTxHash,
+      subaccount,
+      rawRequest,
+      rawResponse: {
+        decibelTxHash,
+        sizeRaw,
+        priceRaw,
+        marketAddress: marketConfig.address,
+      },
+    }).catch((auditErr) => {
+      console.error("[launchpad/execute] audit success failed:", auditErr);
+      return null;
+    });
+
     return NextResponse.json({
       success: true,
       decibelTxHash,
@@ -227,6 +400,9 @@ export async function POST(req: Request) {
       creatorFeePaid,
       creatorFeeBps,
       platformFeePaid: platformFee,
+      decisionId: decision.id,
+      strategyVaultId: strategyVault.id,
+      auditId: audit?.id ?? null,
     });
   } catch (err) {
     console.error("[launchpad/execute]", err);

@@ -44,9 +44,16 @@ function getAptos() {
 }
 
 function getKeeperAccount(): Account {
-  const keyHex = process.env.LAUNCHPAD_KEEPER_KEY;
-  if (!keyHex) throw new Error("LAUNCHPAD_KEEPER_KEY not configured");
-  return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(keyHex) });
+  const keyHex = process.env.LAUNCHPAD_KEEPER_KEY ?? process.env.BOT_OPERATOR_PRIVATE_KEY;
+  if (!keyHex) {
+    throw new Error("LAUNCHPAD_KEEPER_KEY or BOT_OPERATOR_PRIVATE_KEY not configured");
+  }
+  const cleanKey = keyHex
+    .replace("ed25519-priv-", "")
+    .replace(/\\n/g, "")
+    .replace(/\n/g, "")
+    .trim();
+  return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(cleanKey) });
 }
 
 async function submitTx(aptos: Aptos, account: Account, payload: {
@@ -60,6 +67,10 @@ async function submitTx(aptos: Aptos, account: Account, payload: {
       function: payload.function as `${string}::${string}::${string}`,
       typeArguments: payload.typeArguments,
       functionArguments: payload.functionArguments as (string | boolean | number | null)[],
+    },
+    options: {
+      maxGasAmount: 100_000,
+      gasUnitPrice: 100,
     },
   });
   const auth = aptos.transaction.sign({ signer: account, transaction: txn });
@@ -247,10 +258,10 @@ export async function POST(req: Request) {
     // ── Read current on-chain signal to confirm ───────────────────────────
     const [onChainSig, , , lastPrice] = await aptos.view({
       payload: {
-        function: `${CONTRACT}::indicator::get_signal` as `${string}::${string}::${string}`,
+        function: `${CONTRACT}::indicator::get_signal_view` as `${string}::${string}::${string}`,
         functionArguments: [indicatorAddr],
       },
-    }) as [number, string, string, string];
+    }) as [number, string, string, string, string];
     const liveSignal = Number(onChainSig);
     if (liveSignal !== decision.signal) {
       return deny("Live on-chain signal no longer matches decision", 409, liveSignal);

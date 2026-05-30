@@ -5,13 +5,16 @@ export type VaultIndicatorInfo = {
   name: string;
   symbol?: string;
   description?: string;
+  assets?: string[];
 };
 
 export type VaultActionResult = {
   mode: VaultActionMode;
   hash?: string;
+  vaultAddress?: string;
   payload?: unknown;
   response?: unknown;
+  extractResponse?: unknown;
 };
 
 export type SignAndSubmitTransaction = (payload: unknown) => Promise<{

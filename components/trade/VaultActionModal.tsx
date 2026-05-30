@@ -34,11 +34,15 @@ type VaultActionModalProps = {
   onError?: (error: Error) => void;
   vaultAddress?: string | null;
   subaccount?: string | null;
+  ownerWallet?: string | null;
+  marketName?: string | null;
+  strategyVaultId?: string | null;
+  allocationPct?: number;
   defaultAmount?: string;
   className?: string;
 };
 
-type ActionState = "idle" | "building" | "signing" | "submitted" | "error";
+type ActionState = "idle" | "building" | "signing" | "extracting" | "submitted" | "error";
 
 const ACTION_COPY: Record<
   VaultActionMode,
@@ -90,6 +94,10 @@ export function VaultActionModal({
   indicator,
   vaultAddress,
   subaccount,
+  ownerWallet,
+  marketName,
+  strategyVaultId,
+  allocationPct = 5,
   defaultAmount = "",
   signAndSubmitTransaction,
   onOpenChange,
@@ -101,6 +109,7 @@ export function VaultActionModal({
   const [state, setState] = useState<ActionState>("idle");
   const [error, setError] = useState("");
   const [txHash, setTxHash] = useState("");
+  const [extractedVaultAddress, setExtractedVaultAddress] = useState("");
   const [statusResponse, setStatusResponse] = useState<unknown>(null);
 
   const copy = ACTION_COPY[mode];
@@ -114,13 +123,14 @@ export function VaultActionModal({
     return "";
   }, [amount, requiresAmount, requiresSubaccount, requiresVault, subaccount, vaultAddress]);
 
-  const isWorking = state === "building" || state === "signing";
+  const isWorking = state === "building" || state === "signing" || state === "extracting";
   const canSubmit = !isWorking && !disabledReason;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setTxHash("");
+    setExtractedVaultAddress("");
     setStatusResponse(null);
     setState("building");
 
@@ -172,9 +182,41 @@ export function VaultActionModal({
       const result = await signAndSubmitTransaction(payload);
       const hash = typeof result.hash === "string" ? result.hash : "";
 
+      let extractResponse: Record<string, unknown> | undefined;
+      let nextVaultAddress: string | undefined;
+      if (mode === "create" && hash) {
+        setState("extracting");
+        const extractRes = await fetch("/api/decibel/vaults/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            txHash: hash,
+            strategyVaultId: strategyVaultId || undefined,
+            indicatorAddr: indicator.id ? String(indicator.id) : undefined,
+            ownerWallet: ownerWallet || undefined,
+            marketName: marketName || indicator.assets?.[0],
+            allocationPct,
+          }),
+        });
+        extractResponse = (await extractRes.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!extractRes.ok || extractResponse.error) {
+          throw new Error(String(extractResponse.error || `Vault extraction returned ${extractRes.status}`));
+        }
+        nextVaultAddress =
+          typeof extractResponse.vaultAddress === "string" ? extractResponse.vaultAddress : undefined;
+        if (nextVaultAddress) setExtractedVaultAddress(nextVaultAddress);
+      }
+
       setTxHash(hash);
       setState("submitted");
-      onComplete?.({ mode, hash, payload, response: json });
+      onComplete?.({
+        mode,
+        hash,
+        vaultAddress: nextVaultAddress,
+        payload,
+        response: json,
+        extractResponse,
+      });
     } catch (err) {
       const message = getErrorMessage(err);
       const nextError = new Error(message);
@@ -252,6 +294,11 @@ export function VaultActionModal({
             {txHash ? (
               <p className="truncate font-mono text-xs tabular-nums text-green-400">Submitted {shortAddress(txHash)}</p>
             ) : null}
+            {extractedVaultAddress ? (
+              <p className="truncate font-mono text-xs tabular-nums text-green-400">
+                Vault {shortAddress(extractedVaultAddress)}
+              </p>
+            ) : null}
             {statusResponse ? (
               <pre className="max-h-32 overflow-auto rounded-md border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
                 {JSON.stringify(statusResponse, null, 2)}
@@ -273,7 +320,13 @@ export function VaultActionModal({
               ) : (
                 <Send className="size-4" aria-hidden="true" />
               )}
-              {state === "building" ? "Building" : state === "signing" ? "Sign in wallet" : copy.submit}
+              {state === "building"
+                ? "Building"
+                : state === "signing"
+                  ? "Sign in wallet"
+                  : state === "extracting"
+                    ? "Saving vault"
+                    : copy.submit}
             </Button>
           </DialogFooter>
         </form>

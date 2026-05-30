@@ -742,12 +742,27 @@ interface GraduatedIndicator {
   isProprietary?: boolean;
 }
 
+interface StrategyVaultSummary {
+  id: string;
+  indicatorAddr: string;
+  ownerWallet: string;
+  decibelSubaccount?: string | null;
+  vaultAddr?: string | null;
+  marketName: string;
+  allocationPct: number;
+  status: string;
+}
+
 const SIG_LABEL_TRADE = ["HOLD", "BUY", "SELL"];
 const SIG_COLOR = [
   { text: "text-zinc-500", bg: "bg-zinc-800 border-zinc-700" },
   { text: "text-emerald-400", bg: "bg-emerald-500/15 border-emerald-500/30" },
   { text: "text-red-400",    bg: "bg-red-500/15 border-red-500/30" },
 ];
+
+function isRealAptosAddress(value?: string | null) {
+  return typeof value === "string" && /^0x[0-9a-fA-F]{1,64}$/.test(value);
+}
 
 function useGraduatedIndicators() {
   const [indicators, setIndicators] = useState<GraduatedIndicator[]>([]);
@@ -774,10 +789,17 @@ function SignalProductsPanel({
   onDeploy,
   onUnlock,
   onVaultAction,
+  strategyVaultsByIndicator,
 }: {
   onDeploy: (ind: GraduatedIndicator) => void;
   onUnlock: (ind: GraduatedIndicator) => void;
-  onVaultAction: (mode: VaultActionMode, ind: GraduatedIndicator) => void;
+  onVaultAction: (
+    mode: VaultActionMode,
+    ind: GraduatedIndicator,
+    strategyVault?: StrategyVaultSummary,
+    vaultAddress?: string | null,
+  ) => void;
+  strategyVaultsByIndicator: Record<string, StrategyVaultSummary>;
 }) {
   const indicators = useGraduatedIndicators();
   const { isSubscribed } = useSubscription();
@@ -803,6 +825,10 @@ function SignalProductsPanel({
           const sharpe = (ind.meanSharpe / 1000).toFixed(2);
           const subscriberCount = Math.max(1, Math.round(ind.simsFunded / 100));
           const showUnlock = ind.isProprietary && !isSubscribed(ind.address);
+          const strategyVault = strategyVaultsByIndicator[ind.address.toLowerCase()];
+          const vaultAddress =
+            strategyVault?.vaultAddr ??
+            (isRealAptosAddress(ind.vaultAddr) ? ind.vaultAddr : null);
 
           return (
             <div
@@ -846,7 +872,7 @@ function SignalProductsPanel({
               ) : (
                 <div className="flex shrink-0 items-center gap-2">
                   <button
-                    onClick={() => onVaultAction(ind.vaultAddr ? "deposit" : "create", ind)}
+                    onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
                     className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
                   >
                     Vault
@@ -882,13 +908,43 @@ export function TradePageClient({
   const [vaultAction, setVaultAction] = useState<{
     mode: VaultActionMode;
     indicator: GraduatedIndicator;
+    strategyVault?: StrategyVaultSummary;
+    vaultAddress?: string | null;
   } | null>(null);
-  const { signAndSubmitTransaction } = useWallet();
+  const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
+  const { account, signAndSubmitTransaction } = useWallet();
   const { selectedSubaccount } = useDecibelSubaccounts();
   const { subscribe } = useSubscription();
   const currentPriceRef = useRef(0);
   const positionsRef = useRef<Position[]>([]);
   const liquidatedIdsRef = useRef(new Set<string>());
+  const ownerWallet = account?.address?.toString() ?? "";
+
+  const fetchStrategyVaults = useCallback(async () => {
+    if (!ownerWallet) {
+      setStrategyVaultsByIndicator({});
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/launchpad/strategy-vaults?owner=${encodeURIComponent(ownerWallet)}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { strategyVaults?: StrategyVaultSummary[] };
+      const next: Record<string, StrategyVaultSummary> = {};
+      for (const vault of data.strategyVaults ?? []) {
+        next[vault.indicatorAddr.toLowerCase()] = vault;
+      }
+      setStrategyVaultsByIndicator(next);
+    } catch {
+      // Keep the trade page usable if the local strategy vault table is unavailable.
+    }
+  }, [ownerWallet]);
+
+  useEffect(() => {
+    void fetchStrategyVaults();
+  }, [fetchStrategyVaults]);
 
   const handlePriceUpdate = useCallback((price: number) => {
     currentPriceRef.current = price;
@@ -1094,7 +1150,10 @@ export function TradePageClient({
           <SignalProductsPanel
             onDeploy={(ind) => setDeployTarget(ind)}
             onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}
-            onVaultAction={(mode, ind) => setVaultAction({ mode, indicator: ind })}
+            onVaultAction={(mode, ind, strategyVault, vaultAddress) =>
+              setVaultAction({ mode, indicator: ind, strategyVault, vaultAddress })
+            }
+            strategyVaultsByIndicator={strategyVaultsByIndicator}
           />
         </div>
         </main>
@@ -1146,11 +1205,23 @@ export function TradePageClient({
             name: vaultAction.indicator.name,
             symbol: vaultAction.indicator.symbol,
             description: vaultAction.indicator.description,
+            assets: vaultAction.indicator.assets,
           }}
-          vaultAddress={vaultAction.indicator.vaultAddr}
+          vaultAddress={
+            vaultAction.vaultAddress ??
+            vaultAction.strategyVault?.vaultAddr ??
+            (isRealAptosAddress(vaultAction.indicator.vaultAddr) ? vaultAction.indicator.vaultAddr : null)
+          }
           subaccount={selectedSubaccount}
+          ownerWallet={ownerWallet}
+          marketName={vaultAction.strategyVault?.marketName ?? vaultAction.indicator.assets[0] ?? decibelMarketName}
+          strategyVaultId={vaultAction.strategyVault?.id}
+          allocationPct={vaultAction.strategyVault?.allocationPct ?? 5}
           signAndSubmitTransaction={signVaultTransaction}
-          onComplete={() => setVaultAction(null)}
+          onComplete={() => {
+            void fetchStrategyVaults();
+            setVaultAction(null);
+          }}
         />
       )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Liveline } from "liveline";
 import { Check, ChevronDown, X } from "lucide-react";
@@ -55,6 +55,8 @@ const CANDLE_SECS = 2;
 const CANDLE_WINDOW_BUFFER = 0.05;
 
 type LiquidationLine = { id: string; price: number; side: "long" | "short" };
+const EMPTY_HISTORY: MarketHistoryCandle[] = [];
+const EMPTY_LIQUIDATION_LINES: LiquidationLine[] = [];
 
 function computeCandleRange(candles: Candle[]) {
   let min = Infinity;
@@ -473,8 +475,8 @@ export { MARKETS as DEFAULT_MARKETS, CATEGORIES as DEFAULT_CATEGORIES };
 export type { Market };
 
 export function BTCChart({
-  initialHistory = [],
-  liquidationLines = [],
+  initialHistory = EMPTY_HISTORY,
+  liquidationLines = EMPTY_LIQUIDATION_LINES,
   onMarketChange,
   onPriceUpdate,
   markets: marketsProp,
@@ -570,6 +572,13 @@ export function BTCChart({
   useEffect(() => {
     if (!isPerpsMarket && price > 0) priceCallbackRef.current?.(price);
   }, [isPerpsMarket, price]);
+
+  const handlePerpsSnapshotChange = useCallback((nextSnapshot: PerpMarketSnapshot) => {
+    setPerpsSnapshot(nextSnapshot);
+    if (nextSnapshot.price > 0) {
+      priceCallbackRef.current?.(nextSnapshot.price);
+    }
+  }, []);
 
   useEffect(() => {
     if (!marketConfig || !onMarketChange) return;
@@ -758,12 +767,7 @@ export function BTCChart({
             liquidationLines={liquidationLines}
             market={perpData}
             mode={perpsMode}
-            onSnapshotChange={(nextSnapshot) => {
-              setPerpsSnapshot(nextSnapshot);
-              if (nextSnapshot.price > 0) {
-                priceCallbackRef.current?.(nextSnapshot.price);
-              }
-            }}
+            onSnapshotChange={handlePerpsSnapshotChange}
           />
         ) : (
           <Liveline

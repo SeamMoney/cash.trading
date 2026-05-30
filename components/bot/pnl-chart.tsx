@@ -14,12 +14,11 @@ interface PnLChartProps {
 }
 
 export function PnLChart({ orders }: PnLChartProps) {
-  if (!orders || orders.length === 0) {
-    return null
-  }
-
   // Filter orders that have PNL data
-  const ordersWithPnL = orders.filter(order => order.pnl !== undefined && order.pnl !== 0)
+  const ordersWithPnL = useMemo(
+    () => (orders || []).filter(order => order.pnl !== undefined && order.pnl !== 0),
+    [orders],
+  )
 
   // Prepare chart data with cumulative PNL
   const chartData = useMemo((): DataPoint[] => {
@@ -32,6 +31,10 @@ export function PnLChart({ orders }: PnLChartProps) {
       }
     })
   }, [ordersWithPnL])
+
+  if (!orders || orders.length === 0) {
+    return null
+  }
 
   if (ordersWithPnL.length === 0) {
     return (

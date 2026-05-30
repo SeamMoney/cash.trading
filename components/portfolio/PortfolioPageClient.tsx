@@ -275,9 +275,15 @@ export function PortfolioPageClient() {
       ].join(","),
     });
     stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
-    stream.addEventListener("message", () => void fetchAccountState());
-    stream.addEventListener("error", () => stream?.close());
-    return () => stream?.close();
+    const handleMessage = () => void fetchAccountState();
+    const handleError = () => stream?.close();
+    stream.addEventListener("message", handleMessage);
+    stream.addEventListener("error", handleError);
+    return () => {
+      stream?.removeEventListener("message", handleMessage);
+      stream?.removeEventListener("error", handleError);
+      stream?.close();
+    };
   }, [connected, decibelNetwork, fetchAccountState, selectedSubaccount]);
 
   const chartData = useMemo(

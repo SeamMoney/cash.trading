@@ -76,8 +76,6 @@ export function TradePanel({
   const [statusMessage, setStatusMessage] = useState("");
   const [statusHash, setStatusHash] = useState("");
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
-  const [marketStatusLoading, setMarketStatusLoading] = useState(false);
-  const [marketStatusError, setMarketStatusError] = useState<string | null>(null);
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
@@ -122,14 +120,10 @@ export function TradePanel({
   useEffect(() => {
     if (!supportedDecibelMarket) {
       setMarketStatus(null);
-      setMarketStatusError(null);
-      setMarketStatusLoading(false);
       return;
     }
 
     const controller = new AbortController();
-    setMarketStatusLoading(true);
-    setMarketStatusError(null);
 
     const params = new URLSearchParams({ network: decibelNetwork });
     if (marketAddress) params.set("marketAddress", marketAddress);
@@ -149,12 +143,6 @@ export function TradePanel({
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setMarketStatus(null);
-        setMarketStatusError(
-          error instanceof Error ? error.message : "Could not read market status"
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setMarketStatusLoading(false);
       });
 
     return () => controller.abort();
@@ -388,37 +376,6 @@ export function TradePanel({
       : isLong
         ? `Long ${market}`
         : `Short ${market}`;
-  const lifecycleLabel: Record<OrderLifecycle, string> = {
-    idle: "Ready",
-    building: "Building",
-    wallet: "Wallet",
-    submitted: "Submitted",
-    open: "Open",
-    filled: "Filled",
-    canceled: "Canceled",
-    "stale-oracle-denied": "Stale oracle denied",
-    denied: "Denied",
-    error: "Error",
-  };
-  const marketStatusText = marketStatusLoading
-    ? "Checking market"
-    : marketStatusError
-    ? "Status unavailable"
-    : !supportedDecibelMarket
-    ? "Unsupported"
-    : marketStatus?.isOpen === false
-    ? /stale|oracle/i.test(marketStatus.mode)
-      ? "Stale oracle"
-      : marketStatus.mode || "Closed"
-    : "Open";
-  const marketStatusClass = marketStatusLoading
-    ? "border-white/10 bg-white/[0.04] text-zinc-400"
-    : marketStatusError
-    ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-300"
-    : marketStatus?.isOpen === false || !supportedDecibelMarket
-    ? "border-red-500/25 bg-red-500/10 text-red-300"
-    : "border-accent/20 bg-accent/10 text-accent";
-
   return (
     <div>
       {/* Header row */}
@@ -641,26 +598,6 @@ export function TradePanel({
           </div>
         );
       })()}
-
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono uppercase">
-        <div className={cn("rounded-[10px] border px-3 py-2", marketStatusClass)}>
-          <div className="text-[9px] text-zinc-500">Market</div>
-          <div className="mt-0.5 font-semibold">{marketStatusText}</div>
-        </div>
-        <div
-          className={cn(
-            "rounded-[10px] border px-3 py-2",
-            orderLifecycle === "filled" || orderLifecycle === "open"
-              ? "border-accent/20 bg-accent/10 text-accent"
-              : orderLifecycle === "error" || orderLifecycle === "denied" || orderLifecycle === "stale-oracle-denied"
-              ? "border-red-500/25 bg-red-500/10 text-red-300"
-              : "border-white/10 bg-white/[0.04] text-zinc-400"
-          )}
-        >
-          <div className="text-[9px] text-zinc-500">Order</div>
-          <div className="mt-0.5 font-semibold">{lifecycleLabel[orderLifecycle]}</div>
-        </div>
-      </div>
 
       {/* Submit button */}
       <button

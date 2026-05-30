@@ -7,7 +7,8 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && next build",
+    "db:migrate:deploy": "prisma migrate deploy",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",

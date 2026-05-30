@@ -26,6 +26,9 @@ import type { Prisma } from "@prisma/client";
 import {
   getActiveNetwork,
   buildDecibelOrderPayload,
+  getDecibelPackage,
+  getDecibelMarketConfigFromRegistry,
+  type MarketConfig,
 } from "@/lib/decibel";
 import { indicatorRegistry } from "@/app/api/launchpad/indicators/route";
 import { prisma } from "@/lib/prisma";
@@ -80,6 +83,55 @@ async function submitTx(aptos: Aptos, account: Account, payload: {
   });
   await aptos.waitForTransaction({ transactionHash: committed.hash });
   return committed.hash;
+}
+
+function moveVariantName(value: unknown): string {
+  if (value && typeof value === "object" && "__variant__" in value) {
+    return String((value as { __variant__?: unknown }).__variant__);
+  }
+  return String(value ?? "unknown");
+}
+
+async function readDecibelMarketState(
+  aptos: Aptos,
+  marketConfig: MarketConfig,
+  network: ReturnType<typeof getActiveNetwork>,
+): Promise<{ isOpen: boolean; mode: string; markPrice: number | null }> {
+  const pkg = getDecibelPackage(network);
+  const marketAddress = marketConfig.address;
+  const [isOpenRaw, modeRaw, markAndOracle] = await Promise.all([
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::is_market_open` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }).then(([value]) => value),
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::get_market_mode` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }).then(([value]) => value),
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::get_mark_and_oracle_price` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }),
+  ]);
+  const markRaw = Array.isArray(markAndOracle) ? markAndOracle[0] : null;
+  const markPrice = markRaw === null || markRaw === undefined
+    ? null
+    : Number(markRaw) / Math.pow(10, marketConfig.priceDecimals);
+
+  return {
+    isOpen: Boolean(isOpenRaw),
+    mode: moveVariantName(modeRaw),
+    markPrice:
+      markPrice !== null && Number.isFinite(markPrice) && markPrice > 0
+        ? markPrice
+        : null,
+  };
 }
 
 async function auditExecution(args: {
@@ -247,10 +299,6 @@ export async function POST(req: Request) {
       return deny("Neutral indicator decisions cannot execute", 409);
     }
 
-    // Platform fee: 10 bps (0.10%) of sizeUsdt, recorded only after policy checks pass.
-    const platformFee = Math.round((sizeUsdt ?? 0) * 0.001 * 100) / 100;
-    platformRevenueUsdt += platformFee;
-
     const aptos = getAptos();
     const keeper = getKeeperAccount();
     const net = getActiveNetwork();
@@ -267,11 +315,36 @@ export async function POST(req: Request) {
       return deny("Live on-chain signal no longer matches decision", 409, liveSignal);
     }
 
-    // Use actual on-chain price for the order if not provided
-    const orderPrice = body.price ?? (Number(lastPrice) / 1e8);
     const isBuy = decision.signal === 1;
     const reduceOnly = decision.signal === 2;
     const subaccount = strategyVault.decibelSubaccount ?? strategyVault.vaultAddr!;
+    const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
+      await getDecibelMarketConfigFromRegistry(marketName);
+    const marketState = await readDecibelMarketState(
+      aptos,
+      resolvedMarketConfig,
+      net,
+    );
+
+    if (!marketState.isOpen && !reduceOnly) {
+      return deny(
+        `Decibel market ${resolvedMarketName} is not open (${marketState.mode})`,
+        409,
+        liveSignal,
+      );
+    }
+
+    // Use the Decibel market mark price for protective IOC pricing. The
+    // indicator's last price only validates the signal; it can be a different
+    // asset from the market a strategy vault chooses to trade.
+    const orderPrice = body.price ?? marketState.markPrice ?? (Number(lastPrice) / 1e8);
+    const orderNotionalUsdt = Number.isFinite(size * orderPrice)
+      ? size * orderPrice
+      : sizeUsdt;
+    // Platform fee: 10 bps (0.10%) of submitted order notional, recorded only
+    // after policy and live-market checks pass.
+    const platformFee = Math.round((orderNotionalUsdt ?? 0) * 0.001 * 100) / 100;
+    platformRevenueUsdt += platformFee;
 
     // ── Build Decibel order payload ───────────────────────────────────────
     const {
@@ -280,7 +353,8 @@ export async function POST(req: Request) {
       sizeRaw,
       priceRaw,
     } = buildDecibelOrderPayload({
-      marketName,
+      marketName: resolvedMarketName,
+      marketConfig: resolvedMarketConfig,
       price: orderPrice,
       size,
       isBuy,
@@ -305,7 +379,7 @@ export async function POST(req: Request) {
         marketName,
         side: isBuy ? "long" : "reduce-only sell",
         size,
-        sizeUsdt,
+        sizeUsdt: orderNotionalUsdt,
         orderPrice,
         subaccount,
         rawRequest,
@@ -313,6 +387,9 @@ export async function POST(req: Request) {
           sizeRaw,
           priceRaw,
           marketAddress: marketConfig.address,
+          marketName: resolvedMarketName,
+          marketMode: marketState.mode,
+          markPrice: marketState.markPrice,
         },
       }).catch((auditErr) => {
         console.error("[launchpad/execute] audit submit failure failed:", auditErr);
@@ -375,10 +452,10 @@ export async function POST(req: Request) {
       onChainSignal: liveSignal,
       allowed: true,
       status: "SUBMITTED",
-      marketName,
+      marketName: resolvedMarketName,
       side: isBuy ? "long" : "reduce-only sell",
       size,
-      sizeUsdt,
+      sizeUsdt: orderNotionalUsdt,
       orderPrice,
       decibelTxHash,
       subaccount,
@@ -388,6 +465,9 @@ export async function POST(req: Request) {
         sizeRaw,
         priceRaw,
         marketAddress: marketConfig.address,
+        marketName: resolvedMarketName,
+        marketMode: marketState.mode,
+        markPrice: marketState.markPrice,
       },
     }).catch((auditErr) => {
       console.error("[launchpad/execute] audit success failed:", auditErr);
@@ -402,7 +482,7 @@ export async function POST(req: Request) {
       size,
       sizeRaw,
       priceRaw,
-      marketName,
+      marketName: resolvedMarketName,
       marketAddress: marketConfig.address,
       signal: onChainSig,
       entryPrice: orderPrice,

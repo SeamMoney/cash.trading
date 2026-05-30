@@ -1,12 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import {
   buildDecibelOrderPayload,
+  getActiveNetwork,
+  getDecibelPackage,
   getDecibelMarketConfigFromRegistry,
   TAKER_FEE,
   MAKER_REBATE,
+  type MarketConfig,
 } from "@/lib/decibel";
 
 export const runtime = "nodejs";
+
+function getAptos() {
+  const net = getActiveNetwork();
+  return new Aptos(new AptosConfig({
+    network: net === "mainnet" ? Network.MAINNET : Network.TESTNET,
+  }));
+}
+
+function moveVariantName(value: unknown): string {
+  if (value && typeof value === "object" && "__variant__" in value) {
+    return String((value as { __variant__?: unknown }).__variant__);
+  }
+  return String(value ?? "unknown");
+}
+
+async function readMarketState(marketConfig: MarketConfig): Promise<{
+  isOpen: boolean;
+  mode: string;
+  markPrice: number | null;
+}> {
+  const aptos = getAptos();
+  const pkg = getDecibelPackage();
+  const marketAddress = marketConfig.address;
+  const [isOpenRaw, modeRaw, markAndOracle] = await Promise.all([
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::is_market_open` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }).then(([value]) => value),
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::get_market_mode` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }).then(([value]) => value),
+    aptos.view({
+      payload: {
+        function: `${pkg}::perp_engine::get_mark_and_oracle_price` as `${string}::${string}::${string}`,
+        functionArguments: [marketAddress],
+      },
+    }),
+  ]);
+  const markRaw = Array.isArray(markAndOracle) ? markAndOracle[0] : null;
+  const markPrice = markRaw === null || markRaw === undefined
+    ? null
+    : Number(markRaw) / Math.pow(10, marketConfig.priceDecimals);
+
+  return {
+    isOpen: Boolean(isOpenRaw),
+    mode: moveVariantName(modeRaw),
+    markPrice:
+      markPrice !== null && Number.isFinite(markPrice) && markPrice > 0
+        ? markPrice
+        : null,
+  };
+}
 
 /**
  * POST /api/decibel/order
@@ -58,23 +119,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (orderType !== "limit" && !price) {
-      return NextResponse.json(
-        { error: "Market orders require a reference price for protective IOC execution" },
-        { status: 400 }
-      );
-    }
-
     const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
       await getDecibelMarketConfigFromRegistry(marketAddress || marketName, {
         signal: req.signal,
       });
+    const marketState = await readMarketState(resolvedMarketConfig);
+    if (!marketState.isOpen && !reduceOnly) {
+      return NextResponse.json(
+        {
+          error: `Decibel market ${resolvedMarketName} is not open (${marketState.mode})`,
+          marketMode: marketState.mode,
+        },
+        { status: 409 }
+      );
+    }
+    const orderPrice =
+      orderType === "limit" ? price : marketState.markPrice ?? price;
+    if (!orderPrice) {
+      return NextResponse.json(
+        { error: "Market orders require a Decibel mark price or reference price" },
+        { status: 400 }
+      );
+    }
 
     const { payload, marketConfig, sizeRaw, priceRaw } =
       buildDecibelOrderPayload({
         marketName: resolvedMarketName,
         marketConfig: resolvedMarketConfig,
-        price,
+        price: orderPrice,
         size,
         isBuy,
         orderType: orderType === "limit" ? "limit" : "market",
@@ -109,6 +181,8 @@ export async function POST(req: NextRequest) {
         requestedPrice: price || "market",
         price: adjustedPrice ?? "market",
         priceRaw,
+        markPrice: marketState.markPrice,
+        marketMode: marketState.mode,
         estimatedFee: estimatedFee.toFixed(4),
         feeType: orderType === "market" ? "taker" : "maker (rebate)",
         maxLeverage: marketConfig.maxLeverage,

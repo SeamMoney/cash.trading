@@ -202,29 +202,29 @@ const MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
 };
 
 const TESTNET_MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
-  "BTC/USD": { maxLeverage: 40, minSizeRaw: 20000, sizeDecimals: 9, priceDecimals: 6, tickSize: 1000000, lotSize: 10000 },
-  "ETH/USD": { maxLeverage: 20, minSizeRaw: 50000, sizeDecimals: 8, priceDecimals: 6, tickSize: 100000, lotSize: 10000 },
-  "SOL/USD": { maxLeverage: 10, minSizeRaw: 200000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
-  "APT/USD": { maxLeverage: 10, minSizeRaw: 100000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
-  "XRP/USD": { maxLeverage: 10, minSizeRaw: 100000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
-  "DOGE/USD": { maxLeverage: 5, minSizeRaw: 200000, sizeDecimals: 4, priceDecimals: 6, tickSize: 10, lotSize: 10000 },
-  "HYPE/USD": { maxLeverage: 5, minSizeRaw: 50000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10000 },
-  "SUI/USD": { maxLeverage: 5, minSizeRaw: 100000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
-  "BNB/USD": { maxLeverage: 5, minSizeRaw: 20000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
-  "ZEC/USD": { maxLeverage: 5, minSizeRaw: 50000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
+  "BTC/USD": { maxLeverage: 40, minSizeRaw: 100000, sizeDecimals: 8, priceDecimals: 6, tickSize: 100000, lotSize: 10 },
+  "ETH/USD": { maxLeverage: 20, minSizeRaw: 100000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10 },
+  "SOL/USD": { maxLeverage: 10, minSizeRaw: 100000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10 },
+  "APT/USD": { maxLeverage: 10, minSizeRaw: 100000, sizeDecimals: 4, priceDecimals: 6, tickSize: 10, lotSize: 10 },
+  "XRP/USD": { maxLeverage: 10, minSizeRaw: 100000, sizeDecimals: 4, priceDecimals: 6, tickSize: 10, lotSize: 10 },
+  "DOGE/USD": { maxLeverage: 5, minSizeRaw: 100000, sizeDecimals: 3, priceDecimals: 6, tickSize: 1, lotSize: 10 },
+  "HYPE/USD": { maxLeverage: 3, minSizeRaw: 100000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10 },
+  "SUI/USD": { maxLeverage: 3, minSizeRaw: 100000, sizeDecimals: 4, priceDecimals: 6, tickSize: 10, lotSize: 10 },
+  "BNB/USD": { maxLeverage: 3, minSizeRaw: 100000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10 },
+  "ZEC/USD": { maxLeverage: 5, minSizeRaw: 100000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10 },
 };
 
 const TESTNET_MARKET_ADDRESSES: Record<string, string> = {
-  "BTC/USD": "0x161b7b3f58327d057ee5824de0c1a4fc4fa3d121b847c138e921a255768a0dca",
-  "ETH/USD": "0x12cf0b34f9ba0a1144f1e7c6f7d0aa28e4a7815a55bf637ba96d66256becc559",
-  "SOL/USD": "0xc2f9b548d2b75afa0aa449ec36c7b1279b2c88022233b4c44965b5b27507ed7c",
-  "APT/USD": "0x2bfe28c0de988afd44843ddd8ddf9a81d0e106eb8d85d9275d330b2d93a02bb6",
-  "XRP/USD": "0xe11411f3e859b19745c699598c218076728e2f0fd397bf12cd7d8e75cc70c2c9",
-  "DOGE/USD": "0x90d20af890b0672cae552fc74e8a870241b106e91f0287dbd34fc2114bf1ebcb",
-  "HYPE/USD": "0x944547402c4cc6dba3d7724354ba7280f648d4d856613a8479fec40b2c252179",
-  "SUI/USD": "0x4cdee0065ed00b281c6979d425a6ead15f357a2c83d785e56693eb566b54d02e",
-  "BNB/USD": "0x7a38c627803df2198bebdc8d7e78ba9070da702e4dd3691ef48c528f0e12ad28",
-  "ZEC/USD": "0xe8b091045020f58f2ab4acdbf609bfec50444fbe02d3a23f849322dc21af3ffd",
+  "BTC/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "BTC/USD"),
+  "ETH/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "ETH/USD"),
+  "SOL/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "SOL/USD"),
+  "APT/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "APT/USD"),
+  "XRP/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "XRP/USD"),
+  "DOGE/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "DOGE/USD"),
+  "HYPE/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "HYPE/USD"),
+  "SUI/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "SUI/USD"),
+  "BNB/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "BNB/USD"),
+  "ZEC/USD": getMarketObjectAddress(DECIBEL_PACKAGE, "ZEC/USD"),
 };
 
 const MAINNET_MARKET_ADDRESSES: Record<string, string> = {
@@ -368,43 +368,146 @@ function getStaticDecibelMarketConfig(
   return config ? { marketName: marketNameOrAddress, config } : null;
 }
 
+type DecibelMarketRegistryEntry = {
+  market_addr: string;
+  market_name: string;
+  max_leverage: number;
+  min_size: number;
+  sz_decimals: number;
+  px_decimals: number;
+  tick_size: number;
+  lot_size: number;
+};
+
+const MARKET_REGISTRY_TTL_MS = 60_000;
+const marketRegistryCache = new Map<
+  DecibelNetwork,
+  {
+    loadedAt: number;
+    byName: Map<string, { marketName: string; config: MarketConfig }>;
+    byAddress: Map<string, { marketName: string; config: MarketConfig }>;
+    inflight: Promise<void> | null;
+  }
+>();
+
+function getMarketRegistryBucket(network: DecibelNetwork) {
+  let bucket = marketRegistryCache.get(network);
+  if (!bucket) {
+    bucket = {
+      loadedAt: 0,
+      byName: new Map(),
+      byAddress: new Map(),
+      inflight: null,
+    };
+    marketRegistryCache.set(network, bucket);
+  }
+  return bucket;
+}
+
+function registryEntryToConfig(entry: DecibelMarketRegistryEntry): {
+  marketName: string;
+  config: MarketConfig;
+} {
+  return {
+    marketName: entry.market_name,
+    config: {
+      address: entry.market_addr,
+      maxLeverage: entry.max_leverage,
+      minSizeRaw: entry.min_size,
+      sizeDecimals: entry.sz_decimals,
+      priceDecimals: entry.px_decimals,
+      tickSize: entry.tick_size,
+      lotSize: entry.lot_size,
+    },
+  };
+}
+
+function cacheMarketRegistry(
+  network: DecibelNetwork,
+  entries: DecibelMarketRegistryEntry[]
+) {
+  const bucket = getMarketRegistryBucket(network);
+  bucket.byName.clear();
+  bucket.byAddress.clear();
+  for (const entry of entries) {
+    const normalized = registryEntryToConfig(entry);
+    bucket.byName.set(entry.market_name.toLowerCase(), normalized);
+    const baseName = entry.market_name.split("/")[0]?.toLowerCase();
+    if (baseName) bucket.byName.set(baseName, normalized);
+    bucket.byAddress.set(entry.market_addr.toLowerCase(), normalized);
+  }
+  bucket.loadedAt = Date.now();
+}
+
+function getCachedMarketRegistryConfig(
+  marketNameOrAddress: string,
+  network: DecibelNetwork
+) {
+  const bucket = getMarketRegistryBucket(network);
+  const normalized = marketNameOrAddress.toLowerCase();
+  if (marketNameOrAddress.startsWith("0x")) {
+    return bucket.byAddress.get(normalized) ?? null;
+  }
+  return bucket.byName.get(normalized) ?? null;
+}
+
+async function loadMarketRegistry(
+  network: DecibelNetwork,
+  signal?: AbortSignal
+) {
+  const bucket = getMarketRegistryBucket(network);
+  if (Date.now() - bucket.loadedAt < MARKET_REGISTRY_TTL_MS) return;
+  if (bucket.inflight) return bucket.inflight;
+
+  bucket.inflight = (async () => {
+    const dex = getReadDex(network);
+    const markets = (await dex.markets.getAll({
+      fetchOptions: { signal },
+    })) as DecibelMarketRegistryEntry[];
+    cacheMarketRegistry(network, markets);
+  })().finally(() => {
+    bucket.inflight = null;
+  });
+
+  return bucket.inflight;
+}
+
 export async function getDecibelMarketConfigFromRegistry(
   marketNameOrAddress: string,
   options: { signal?: AbortSignal; network?: DecibelNetwork } = {}
 ): Promise<{ marketName: string; config: MarketConfig }> {
+  const network = options.network ?? getActiveNetwork();
   const staticConfig = getStaticDecibelMarketConfig(marketNameOrAddress);
   if (staticConfig) return staticConfig;
 
-  const dex = getReadDex(options.network);
-  const markets = await dex.markets.getAll({
-    fetchOptions: { signal: options.signal },
-  });
+  const cachedConfig = getCachedMarketRegistryConfig(
+    marketNameOrAddress,
+    network
+  );
+  if (cachedConfig) return cachedConfig;
+
+  try {
+    await loadMarketRegistry(network, options.signal);
+    const refreshedConfig = getCachedMarketRegistryConfig(
+      marketNameOrAddress,
+      network
+    );
+    if (refreshedConfig) return refreshedConfig;
+  } catch (error) {
+    throw error;
+  }
+
+  const bucket = getMarketRegistryBucket(network);
   const normalized = marketNameOrAddress.toLowerCase();
-  const market = markets.find((entry) => {
-    const byAddress = entry.market_addr.toLowerCase() === normalized;
-    const byName = entry.market_name.toLowerCase() === normalized;
-    const byBaseName =
-      !marketNameOrAddress.includes("/") &&
-      entry.market_name.toLowerCase().startsWith(`${normalized}/`);
-    return byAddress || byName || byBaseName;
-  });
+  const market = marketNameOrAddress.startsWith("0x")
+    ? bucket.byAddress.get(normalized)
+    : bucket.byName.get(normalized);
 
   if (!market) {
     throw new Error(`Unknown Decibel market: ${marketNameOrAddress}`);
   }
 
-  return {
-    marketName: market.market_name,
-    config: {
-      address: market.market_addr,
-      maxLeverage: market.max_leverage,
-      minSizeRaw: market.min_size,
-      sizeDecimals: market.sz_decimals,
-      priceDecimals: market.px_decimals,
-      tickSize: market.tick_size,
-      lotSize: market.lot_size,
-    },
-  };
+  return market;
 }
 
 export function getDecibelMarketNameForAddress(address: string): string | null {

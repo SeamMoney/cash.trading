@@ -1,0 +1,21 @@
+{
+  "name": "decibrrr-decibel-indexer",
+  "version": "0.1.0",
+  "description": "Persistent Decibel market/account indexer for cash.trading",
+  "main": "runner.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx runner.js",
+    "dev": "tsx watch runner.js",
+    "once": "DECIBEL_INDEXER_RUN_ONCE=true tsx runner.js"
+  },
+  "dependencies": {
+    "@decibeltrade/sdk": "^0.4.0",
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^16.3.1",
+    "tsx": "^4.20.6"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

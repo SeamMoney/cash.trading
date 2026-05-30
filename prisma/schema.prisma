@@ -171,3 +171,198 @@ model ExecutionAudit {
   @@index([decisionId])
   @@index([decibelTxHash])
 }
+
+model DecibelIndexerCheckpoint {
+  id                     String   @id @default(cuid())
+  network                String
+  source                 String
+  lastTransactionVersion BigInt?
+  lastEventIndex         Int?
+  lastUnixMs             BigInt?
+  status                 String   @default("idle")
+  error                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([network, source])
+  @@index([updatedAt])
+}
+
+model DecibelWatchedSubaccount {
+  id          String   @id @default(cuid())
+  network     String
+  subaccount  String
+  ownerWallet String?
+  source      String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([network, subaccount, source])
+  @@index([network, enabled])
+  @@index([ownerWallet])
+}
+
+model DecibelMarket {
+  id            String   @id @default(cuid())
+  network       String
+  marketAddress String
+  marketName    String
+  tickSize      Float?
+  lotSize       Float?
+  maxLeverage   Float?
+  sizeDecimals  Int?
+  priceDecimals Int?
+  mode          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([network, marketAddress])
+  @@index([network, marketName])
+}
+
+model DecibelMarketPrice {
+  id              String   @id @default(cuid())
+  network         String
+  marketAddress   String
+  marketName      String?
+  markPrice       Float?
+  midPrice        Float?
+  oraclePrice     Float?
+  fundingRateBps  Float?
+  isFundingPositive Boolean?
+  openInterest    Float?
+  transactionUnixMs BigInt?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([network, marketAddress])
+  @@index([network, updatedAt])
+}
+
+model DecibelMarketTrade {
+  id                 String   @id @default(cuid())
+  network            String
+  eventKey           String
+  marketAddress      String
+  marketName         String?
+  account            String?
+  side               String?
+  size               Float?
+  price              Float?
+  pnl                Float?
+  funding            Float?
+  fee                Float?
+  orderId            String?
+  tradeId            String?
+  transactionVersion BigInt?
+  transactionUnixMs  BigInt?
+  raw                Json?
+  createdAt          DateTime @default(now())
+
+  @@unique([network, eventKey])
+  @@index([network, marketAddress, transactionUnixMs])
+  @@index([account])
+}
+
+model DecibelAccountOverview {
+  id                 String   @id @default(cuid())
+  network            String
+  subaccount         String
+  equity             Float?
+  unrealizedPnl      Float?
+  realizedPnl        Float?
+  marginRatio        Float?
+  maintenanceMargin  Float?
+  leverage           Float?
+  totalMargin        Float?
+  totalNotional      Float?
+  collateral         Float?
+  crossWithdrawable  Float?
+  volume30d          Float?
+  raw                Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([network, subaccount])
+  @@index([network, updatedAt])
+}
+
+model DecibelPosition {
+  id                        String   @id @default(cuid())
+  network                   String
+  subaccount                String
+  marketKey                 String
+  marketAddress             String?
+  marketName                String?
+  isLong                    Boolean?
+  size                      Float?
+  leverage                  Float?
+  entryPrice                Float?
+  markPrice                 Float?
+  value                     Float?
+  estimatedPnl              Float?
+  marginUsed                Float?
+  unrealizedFunding         Float?
+  estimatedLiquidationPrice Float?
+  tpTriggerPrice            Float?
+  slTriggerPrice            Float?
+  transactionVersion        BigInt?
+  raw                       Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([network, subaccount, marketKey])
+  @@index([network, subaccount])
+  @@index([marketAddress])
+}
+
+model DecibelOpenOrder {
+  id                 String   @id @default(cuid())
+  network            String
+  subaccount         String
+  marketAddress      String?
+  marketName         String?
+  orderId            String
+  clientOrderId      String?
+  side               String?
+  price              Float?
+  originalSize       Float?
+  remainingSize      Float?
+  orderType          String?
+  status             String   @default("Open")
+  transactionVersion BigInt?
+  timestampUnixMs    BigInt?
+  raw                Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([network, subaccount, orderId])
+  @@index([network, subaccount])
+  @@index([marketAddress])
+}
+
+model DecibelOrderEvent {
+  id                 String   @id @default(cuid())
+  network            String
+  eventKey           String
+  subaccount         String
+  marketAddress      String?
+  marketName         String?
+  orderId            String?
+  clientOrderId      String?
+  side               String?
+  price              Float?
+  originalSize       Float?
+  remainingSize      Float?
+  orderType          String?
+  status             String?
+  transactionVersion BigInt?
+  timestampUnixMs    BigInt?
+  raw                Json?
+  createdAt          DateTime @default(now())
+
+  @@unique([network, eventKey])
+  @@index([network, subaccount, timestampUnixMs])
+  @@index([orderId])
+}

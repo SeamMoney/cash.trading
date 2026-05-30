@@ -12,7 +12,7 @@
   /* ---------------------------------------------------------------------------
      CORE COLORS
      Using OKLch for perceptually uniform color space
-     Primary: Electric Yellow (#fff600)
+     Primary: Neon CASH Green (#39ff14)
      --------------------------------------------------------------------------- */
 
   /* Base */
@@ -25,8 +25,8 @@
   --popover: oklch(0.1 0.005 285);
   --popover-foreground: oklch(1 0 0);
 
-  /* Primary - Decibel Yellow */
-  --primary: oklch(0.95 0.2 102);                /* #fff600 equivalent */
+  /* Primary - CASH Green */
+  --primary: oklch(0.9 0.29 142);                /* #39ff14 equivalent */
   --primary-foreground: oklch(0 0 0);
 
   /* Secondary */
@@ -48,7 +48,7 @@
   /* Utility */
   --border: oklch(0.25 0.005 285);
   --input: oklch(0.12 0.005 285);
-  --ring: oklch(0.95 0.2 102);                   /* Matches primary */
+  --ring: oklch(0.9 0.29 142);                   /* Matches primary */
 
   /* ---------------------------------------------------------------------------
      SEMANTIC COLORS
@@ -63,9 +63,9 @@
   /* ---------------------------------------------------------------------------
      CHART COLORS (bklit-ui compatible)
      --------------------------------------------------------------------------- */
-  --chart-1: oklch(0.95 0.2 102);                /* Primary yellow */
-  --chart-2: oklch(0.7 0.2 300);                 /* Purple */
-  --chart-3: oklch(0.7 0.15 250);                /* Blue */
+  --chart-1: oklch(0.9 0.29 142);                /* Primary green */
+  --chart-2: oklch(0.75 0.16 150);               /* Light green */
+  --chart-3: oklch(0.65 0.16 160);               /* Deep green */
   --chart-4: oklch(0.7 0.2 145);                 /* Green */
   --chart-5: oklch(0.8 0.15 50);                 /* Orange */
 
@@ -73,12 +73,12 @@
   --chart-background: oklch(0.05 0.005 285);
   --chart-foreground: oklch(0.6 0 0);
   --chart-grid: oklch(0.2 0.005 285);
-  --chart-line-primary: oklch(0.95 0.2 102);
-  --chart-line-secondary: oklch(0.7 0.15 250);
+  --chart-line-primary: oklch(0.9 0.29 142);
+  --chart-line-secondary: oklch(0.75 0.16 150);
   --chart-crosshair: oklch(0.4 0 0);
   --chart-tooltip-background: oklch(0.1 0.01 285 / 0.9);
   --chart-tooltip-foreground: oklch(1 0 0);
-  --chart-area-fill: oklch(0.95 0.2 102 / 0.1);
+  --chart-area-fill: oklch(0.9 0.29 142 / 0.1);
 
   /* ---------------------------------------------------------------------------
      RADIUS TOKENS
@@ -453,34 +453,34 @@
   --card-solid: #181818;
   --card-border: rgba(255, 255, 255, 0.08);
   --card-hover: rgba(255, 255, 255, 0.10);
-  --accent: #fa4616;
-  --accent-dim: #e03d12;
-  --accent-foreground: #ffffff;
-  --secondary: #fa4616;
-  --secondary-dim: #b8cc04;
-  --brand-blue: #1754d8;
+  --accent: #39ff14;
+  --accent-dim: #22c55e;
+  --accent-foreground: #0a0a0a;
+  --secondary: #39ff14;
+  --secondary-dim: #16a34a;
+  --brand-blue: #39ff14;
   --muted: #7f7f7f;
   --muted-foreground: #999999;
   --success: #0da726;
   --danger: #f21a1a;
   --warning: #f5a623;
   --border: rgba(255, 255, 255, 0.08);
-  --border-accent: rgba(250, 70, 22, 0.25);
+  --border-accent: rgba(57, 255, 20, 0.25);
   --border-strong: rgba(255, 255, 255, 0.18);
   --radius: 16px;
   --radius-sm: 10px;
   --radius-xs: 6px;
   --radius-full: 9999px;
-  --chart-1: #fa4616;
-  --chart-2: #ff7a4a;
-  --chart-3: #e03d12;
-  --chart-4: #ff9966;
-  --chart-5: #cc3311;
+  --chart-1: #39ff14;
+  --chart-2: #86efac;
+  --chart-3: #22c55e;
+  --chart-4: #bbf7d0;
+  --chart-5: #16a34a;
   --chart-background: #0a0a0a;
   --chart-foreground: #eeeeee;
   --chart-foreground-muted: #7f7f7f;
-  --chart-line-primary: #fa4616;
-  --chart-line-secondary: #ff7a4a;
+  --chart-line-primary: #39ff14;
+  --chart-line-secondary: #86efac;
   --chart-crosshair: rgba(255, 255, 255, 0.15);
   --chart-grid: rgba(255, 255, 255, 0.06);
   --chart-tooltip-background: rgba(15, 15, 15, 0.9);
@@ -489,13 +489,13 @@
   --chart-marker-background: #181818;
   --chart-marker-border: rgba(255, 255, 255, 0.1);
   --chart-marker-foreground: #eeeeee;
-  --chart-marker-badge-background: #fa4616;
+  --chart-marker-badge-background: #39ff14;
   --chart-marker-badge-foreground: #0a0a0a;
-  --chart-ring-background: rgba(250, 70, 22, 0.15);
+  --chart-ring-background: rgba(57, 255, 20, 0.15);
   --chart-label: #7f7f7f;
-  --chart-segment-background: rgba(250, 70, 22, 0.08);
-  --chart-segment-line: rgba(250, 70, 22, 0.4);
-  --chart-indicator-color: #fa4616;
+  --chart-segment-background: rgba(57, 255, 20, 0.08);
+  --chart-segment-line: rgba(57, 255, 20, 0.4);
+  --chart-indicator-color: #39ff14;
   --chart-indicator-secondary-color: rgba(255, 255, 255, 0.3);
   background: var(--background);
   color: var(--foreground);
@@ -513,7 +513,7 @@
 }
 
 .cash-trade-theme ::selection {
-  background: rgba(250, 70, 22, 0.3);
+  background: rgba(57, 255, 20, 0.3);
   color: #fff;
 }
 
@@ -614,32 +614,32 @@
   }
 
   .glow-accent {
-    box-shadow: 0 0 20px rgba(250, 70, 22, 0.15), 0 0 60px rgba(250, 70, 22, 0.05);
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.12), 0 0 60px rgba(57, 255, 20, 0.04);
   }
 
-  .btn-whop {
-    background: #fa4616;
+  .btn-cash {
+    background: #39ff14;
     color: #0a0a0a;
     font-weight: 600;
-    border: 1px solid rgba(250, 70, 22, 0.3);
+    border: 1px solid rgba(57, 255, 20, 0.35);
     border-radius: var(--radius-sm);
     transition: all 0.2s ease-out;
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(250, 70, 22, 0.1),
+      0 0 0 1px rgba(57, 255, 20, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.15);
   }
 
-  .btn-whop:hover {
-    background: #ff5a2e;
+  .btn-cash:hover {
+    background: #5dff3f;
     box-shadow:
-      0 4px 20px rgba(250, 70, 22, 0.3),
-      0 0 0 1px rgba(250, 70, 22, 0.2),
+      0 4px 20px rgba(57, 255, 20, 0.22),
+      0 0 0 1px rgba(57, 255, 20, 0.2),
       inset 0 1px 0 rgba(255, 255, 255, 0.2);
     transform: translateY(-1px);
   }
 
-  .input-whop {
+  .input-cash {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-sm);
@@ -647,10 +647,10 @@
     transition: all 0.2s ease-out;
   }
 
-  .input-whop:focus {
+  .input-cash:focus {
     outline: none;
-    border-color: rgba(250, 70, 22, 0.4);
-    box-shadow: 0 0 0 3px rgba(250, 70, 22, 0.08), 0 0 20px rgba(250, 70, 22, 0.06);
+    border-color: rgba(57, 255, 20, 0.45);
+    box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.08), 0 0 20px rgba(57, 255, 20, 0.05);
     background: rgba(255, 255, 255, 0.06);
   }
 

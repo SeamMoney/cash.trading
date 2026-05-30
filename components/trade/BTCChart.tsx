@@ -3,12 +3,18 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Liveline } from "liveline";
+import { Check, ChevronDown, X } from "lucide-react";
 import { usePriceCandles } from "@/hooks/useBtcCandles";
 import { useInViewport } from "@/hooks/useInViewport";
 import { usePageVisible } from "@/hooks/usePageVisible";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import { BtcPerpsChart, type PerpMarketSnapshot } from "@/components/trade/BtcPerpsChart";
 import { PERP_MARKET_DATA, type PerpMarketData } from "@/components/trade/perpMarketConfig";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import type { Candle } from "@/hooks/useBtcCandles";
 
@@ -132,48 +138,13 @@ interface Market {
   chartKind?: "classic" | "perps";
   perpData?: PerpMarketData;
   category: string;
+  marketAddr?: string;
+  marketName?: string;
+  mode?: string;
 }
 
-const MARKETS: Market[] = [
-  // Crypto
-  { ...PERP_MARKET_DATA["BTC-PERP/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["BTC-PERP/USD"] },
-  { id: "BTC/USD",  label: "Bitcoin",       pair: "BTC/USDT",   leverage: 40, color: "#f7931a", category: "crypto" },
-  { ...PERP_MARKET_DATA["APT/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["APT/USD"] },
-  { ...PERP_MARKET_DATA["HYPE/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["HYPE/USD"] },
-  { ...PERP_MARKET_DATA["ETH/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["ETH/USD"] },
-  { ...PERP_MARKET_DATA["XRP/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["XRP/USD"] },
-  { ...PERP_MARKET_DATA["SOL/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["SOL/USD"] },
-  { ...PERP_MARKET_DATA["ZEC/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["ZEC/USD"] },
-  { ...PERP_MARKET_DATA["SUI/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["SUI/USD"] },
-  { ...PERP_MARKET_DATA["DOGE/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["DOGE/USD"] },
-  { ...PERP_MARKET_DATA["BNB/USD"], chartKind: "perps", category: "crypto", perpData: PERP_MARKET_DATA["BNB/USD"] },
-  // Tokenized Stocks
-  { id: "AAPL/USD", label: "Apple",         pair: "AAPL/USDT",  leverage: 20, color: "#555555", category: "equities" },
-  { id: "TSLA/USD", label: "Tesla",         pair: "TSLA/USDT",  leverage: 20, color: "#cc0000", category: "equities" },
-  { id: "NVDA/USD", label: "NVIDIA",        pair: "NVDA/USDT",  leverage: 20, color: "#76b900", category: "equities" },
-  { id: "SNAP/USD", label: "Snap Inc.",     pair: "SNAP/USDT",  leverage: 10, color: "#FFFC00", category: "equities" },
-  // Commodities
-  { id: "XAU/USD",  label: "Gold",          pair: "XAU/USDT",   leverage: 50, color: "#d4a017", category: "commodities" },
-  { id: "OIL/USD",  label: "Crude Oil",     pair: "OIL/USDT",   leverage: 30, color: "#8B6914", category: "commodities" },
-  // Forex
-  { id: "EUR/USD",  label: "Euro",          pair: "EUR/USD",    leverage: 100, color: "#003399", category: "forex" },
-  { id: "GBP/USD",  label: "British Pound", pair: "GBP/USD",    leverage: 100, color: "#012169", category: "forex" },
-  { id: "USD/JPY",  label: "Japanese Yen",  pair: "USD/JPY",    leverage: 100, color: "#BC002D", category: "forex" },
-  { id: "AUD/USD",  label: "Aussie Dollar", pair: "AUD/USD",    leverage: 50,  color: "#00008B", category: "forex" },
-  { id: "USD/CAD",  label: "Canadian Dollar",pair: "USD/CAD",   leverage: 50,  color: "#FF0000", category: "forex" },
-  // Emojicoins
-  { id: "GLOBE/USD",    label: "Globe",          pair: "🌐/USDT",   leverage: 0, color: "#4A90D9", category: "emojicoin" },
-  { id: "MONEY/USD",    label: "Dollar",         pair: "💵/USDT",   leverage: 0, color: "#85BB65", category: "emojicoin" },
-  { id: "HONGBAO/USD",  label: "Hongbao",        pair: "🧧/USDT",   leverage: 0, color: "#DE2910", category: "emojicoin" },
-  { id: "BEE/USD",      label: "Bee",            pair: "🐝/USDT",   leverage: 0, color: "#FFD700", category: "emojicoin" },
-];
-
 const CATEGORIES = [
-  { key: "crypto",      label: "Crypto" },
-  { key: "equities",    label: "Tokenized Stocks" },
-  { key: "commodities", label: "Commodities" },
-  { key: "forex",       label: "Forex" },
-  { key: "emojicoin",   label: "Isolated Margin" },
+  { key: "decibel", label: "Decibel Markets" },
 ] as const;
 
 /* ─── Token logos ──────────────────────────────────── */
@@ -192,6 +163,147 @@ const TOKEN_LOGOS: Record<string, string> = {
   "ZEC/USD": "/tokens/zec.svg",
 };
 
+const MARKET_LABELS: Record<string, string> = {
+  AAPL: "Apple",
+  APT: "Aptos",
+  BTC: "Bitcoin",
+  BNB: "BNB",
+  DOGE: "Dogecoin",
+  ETH: "Ethereum",
+  GOLD: "Gold",
+  HYPE: "Hyperliquid",
+  SILVER: "Silver",
+  SOL: "Solana",
+  SUI: "Sui",
+  XRP: "XRP",
+  ZEC: "Zcash",
+};
+
+const MARKET_COLORS: Record<string, string> = {
+  APT: "#39ff14",
+  BTC: "#f7931a",
+  BNB: "#f3ba2f",
+  DOGE: "#c2a633",
+  ETH: "#627eea",
+  GOLD: "#d4a017",
+  HYPE: "#50e3c2",
+  SILVER: "#c0c0c0",
+  SOL: "#9945ff",
+  SUI: "#6dd6ff",
+  XRP: "#d9d9d9",
+  ZEC: "#f4b728",
+};
+
+interface DecibelApiMarket {
+  name: string;
+  address: string;
+  markPrice: number | null;
+  midPrice: number | null;
+  oraclePrice: number | null;
+  fundingRateBps: number | null;
+  isFundingPositive: boolean | null;
+  openInterest: number | null;
+  priceUpdatedAt: number | null;
+  maxLeverage: number | null;
+  tickSize: number | null;
+  minSize: number | null;
+  lotSize: number | null;
+  mode: string;
+  szDecimals: number | null;
+  pxDecimals: number | null;
+}
+
+type MarketChangePayload = {
+  id: string;
+  pair: string;
+  leverage: number;
+  marketAddr?: string;
+  marketName?: string;
+};
+
+function getBaseSymbol(marketName: string) {
+  return marketName.split("/")[0]?.toUpperCase() || marketName.toUpperCase();
+}
+
+function getMarketLabel(marketName: string) {
+  const base = getBaseSymbol(marketName);
+  return MARKET_LABELS[base] ?? base;
+}
+
+function getMarketColor(marketName: string) {
+  return MARKET_COLORS[getBaseSymbol(marketName)] ?? "#39ff14";
+}
+
+function getDisplayDecimals(price: number | null | undefined) {
+  const value = Number(price ?? 0);
+  if (value >= 1_000) return 2;
+  if (value >= 100) return 2;
+  if (value >= 1) return 4;
+  if (value >= 0.01) return 5;
+  return 6;
+}
+
+function toPerpMarketData(market: DecibelApiMarket): PerpMarketData {
+  const seedPrice = market.markPrice ?? market.midPrice ?? market.oraclePrice ?? 1;
+  const leverage = Math.max(1, Number(market.maxLeverage ?? 1));
+  const openInterestUsd =
+    market.openInterest != null && seedPrice > 0
+      ? fmtStatUsd(market.openInterest * seedPrice)
+      : "—";
+
+  return {
+    id: market.name,
+    label: getMarketLabel(market.name),
+    pair: market.name,
+    marketAddr: market.address,
+    marketName: market.name,
+    leverage,
+    color: getMarketColor(market.name),
+    seedPrice,
+    priceDecimals: getDisplayDecimals(seedPrice),
+    change24h: "—",
+    volume24h: "—",
+    openInterestLabel: openInterestUsd,
+    volatility: 0.0028,
+  };
+}
+
+function apiMarketToMarket(market: DecibelApiMarket): Market {
+  const perpData = toPerpMarketData(market);
+  return {
+    id: market.name,
+    label: perpData.label,
+    pair: market.name,
+    leverage: perpData.leverage,
+    color: perpData.color,
+    chartKind: "perps",
+    perpData,
+    category: "decibel",
+    marketAddr: market.address,
+    marketName: market.name,
+    mode: market.mode,
+  };
+}
+
+const FALLBACK_MARKETS: Market[] = Object.values(PERP_MARKET_DATA).map((market) => ({
+  id: market.marketName,
+  label: getMarketLabel(market.marketName),
+  pair: market.marketName,
+  leverage: market.leverage,
+  color: market.color,
+  chartKind: "perps",
+  perpData: {
+    ...market,
+    id: market.marketName,
+    label: getMarketLabel(market.marketName),
+    pair: market.marketName,
+  },
+  category: "decibel",
+  marketAddr: market.marketAddr,
+  marketName: market.marketName,
+}));
+const MARKETS = FALLBACK_MARKETS;
+
 function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
   const logo = TOKEN_LOGOS[market];
   if (logo) {
@@ -200,115 +312,15 @@ function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
       <img src={logo} alt="" width={size} height={size} loading="eager" decoding="async" className="shrink-0 rounded-full object-contain" style={{ width: size, height: size, minWidth: size, minHeight: size }} />
     );
   }
-  const EMOJI_MAP: Record<string, string> = {
-    "GLOBE/USD": "🌐", "MONEY/USD": "💵", "HONGBAO/USD": "🧧", "BEE/USD": "🐝",
-  };
-  if (EMOJI_MAP[market]) {
-    return <span style={{ fontSize: size * 0.85, lineHeight: 1 }}>{EMOJI_MAP[market]}</span>;
-  }
-  const r = size / 2;
-  switch (market) {
-    case "AAPL/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#555" />
-          <path d="M21.3 22.5c-.7 1-1.5 2-2.6 2-1.2 0-1.5-.7-2.8-.7-1.3 0-1.7.7-2.8.7-1.1 0-2-1.1-2.7-2.1-1.5-2.1-2.6-6-.5-8.6.7-1 2-1.6 3.2-1.6 1.2 0 1.9.7 2.8.7.9 0 1.5-.7 2.9-.7 1.1 0 2.1.5 2.8 1.4-2.5 1.4-2.1 4.9.4 5.8-.5 1.2-1 2.1-1.7 3.1zM18 9.5c-.7-.1-1.5.3-2 .7-.5.4-.9 1.1-.8 1.8.8.1 1.5-.2 2-.7.5-.4.8-1.1.8-1.8z" fill="white" />
-        </svg>
-      );
-    case "TSLA/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#cc0000" />
-          <path d="M16 10c3.5 0 6.5.7 8 1.5-.3.5-.8 1-1.5 1.3-1.5-.5-3.8-.8-6.5-.8s-5 .3-6.5.8c-.7-.3-1.2-.8-1.5-1.3C9.5 10.7 12.5 10 16 10zm-1 3h2v10h-2V13z" fill="white" />
-        </svg>
-      );
-    case "NVDA/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#76B900" />
-          <path d="M12.5 14.5v3.2c1.1-.1 2.1-.1 3-.2v-4.3c-1.5.2-2.4.6-3 1.3zm3-3.3v1.3c1.5-.1 3.2 0 5 .5v-1.4c-1.8-.5-3.5-.6-5-.4zm0 5.5c-.9.1-1.9.1-3 .2v2.6h3v-2.8zm5-3.5c1.3.6 2.2 1.4 2.5 2.3v4.5h-2.5v-3c0-.4 0-.9-.3-1.3-.2-.3-.5-.5-.9-.7v5h-3.8v-7.3c1.8.1 3.5.2 5 .5z" fill="white" />
-        </svg>
-      );
-    case "SNAP/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#FFFC00" />
-          <path d="M16 9c1.8 0 3.2.8 3.8 2.2.3.7.3 1.8.2 2.8l-.1 1.5c.5.2 1 .3 1.3.5.2.1.3.3.3.5 0 .3-.3.5-.8.7-.3.1-.7.2-1.1.3 0 0-.1.5-.3.9-.3.5-.7 1-1.3 1.3-.6.4-1.3.5-2 .5s-1.4-.2-2-.5c-.6-.3-1-.8-1.3-1.3-.2-.4-.3-.9-.3-.9-.4-.1-.8-.2-1.1-.3-.5-.2-.8-.4-.8-.7 0-.2.1-.4.3-.5.3-.2.8-.3 1.3-.5l-.1-1.5c-.1-1-.1-2.1.2-2.8C12.8 9.8 14.2 9 16 9z" fill="#333" />
-        </svg>
-      );
-    case "XAU/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#d4a017" />
-          <rect x="10" y="13" width="12" height="8" rx="1" fill="#fff" fillOpacity="0.9" />
-          <rect x="10" y="13" width="12" height="8" rx="1" fill="url(#gold-grad)" />
-          <line x1="16" y1="13" x2="16" y2="21" stroke="#d4a017" strokeWidth="0.5" />
-          <line x1="10" y1="17" x2="22" y2="17" stroke="#d4a017" strokeWidth="0.5" />
-          <defs><linearGradient id="gold-grad" x1="10" y1="13" x2="22" y2="21"><stop stopColor="#f5d76e" /><stop offset="1" stopColor="#d4a017" /></linearGradient></defs>
-        </svg>
-      );
-    case "OIL/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#8B6914" />
-          <path d="M16 8c0 0-5 6-5 10a5 5 0 0 0 10 0c0-4-5-10-5-10z" fill="#222" />
-          <path d="M16 10c0 0-3.5 4.5-3.5 7.5a3.5 3.5 0 0 0 7 0c0-3-3.5-7.5-3.5-7.5z" fill="#444" />
-        </svg>
-      );
-    case "EUR/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#003399" />
-          <text x="16" y="21" textAnchor="middle" fill="#FFD700" fontSize="14" fontWeight="bold" fontFamily="system-ui">€</text>
-        </svg>
-      );
-    case "GBP/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#012169" />
-          <text x="16" y="21" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold" fontFamily="system-ui">£</text>
-        </svg>
-      );
-    case "USD/JPY":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="white" />
-          <circle cx="16" cy="16" r="6" fill="#BC002D" />
-        </svg>
-      );
-    case "AUD/USD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#00008B" />
-          <text x="16" y="21" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold" fontFamily="system-ui">A$</text>
-        </svg>
-      );
-    case "USD/CAD":
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#FF0000" />
-          <path d="M16 9l1 3h-1l2 2-1 1 2 1-3 5h-1l-1 2-1-2h-1l-3-5 2-1-1-1 2-2h-1l1-3z" fill="white" />
-        </svg>
-      );
-    default:
-      const initials = market.split("/")[0]?.slice(0, 3).toUpperCase() || "?";
-      return (
-        <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-          <circle cx={r} cy={r} r={r} fill="#2a2a2a" />
-          <text
-            x="16"
-            y="20"
-            textAnchor="middle"
-            fill="white"
-            fontSize="10"
-            fontWeight="700"
-            fontFamily="system-ui"
-          >
-            {initials}
-          </text>
-        </svg>
-      );
-  }
+  const initials = getBaseSymbol(market).slice(0, 3) || "?";
+  return (
+    <span
+      className="shrink-0 inline-flex items-center justify-center rounded-full bg-[#242424] text-[9px] font-black text-zinc-200"
+      style={{ width: size, height: size, minWidth: size, minHeight: size }}
+    >
+      {initials}
+    </span>
+  );
 }
 
 /* ─── Market selector modal ────────────────────────── */
@@ -320,6 +332,8 @@ function MarketModal({
   onClose,
   markets: marketsList = MARKETS,
   categories: categoriesList = CATEGORIES,
+  loading = false,
+  network,
 }: {
   open: boolean;
   selected: string;
@@ -327,6 +341,8 @@ function MarketModal({
   onClose: () => void;
   markets?: Market[];
   categories?: readonly { key: string; label: string }[];
+  loading?: boolean;
+  network: DecibelPublicNetwork;
 }) {
   // Lock body scroll + escape key
   useEffect(() => {
@@ -365,15 +381,16 @@ function MarketModal({
                 <span className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
               </span>
               <span>SELECT MARKET</span>
+              <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
+                {network}
+              </span>
             </span>
             <button
               onClick={onClose}
               aria-label="Close market selector"
               className="text-[#666] hover:text-white transition-colors"
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </header>
 
@@ -386,61 +403,51 @@ function MarketModal({
               <span className="font-bold text-xs text-right whitespace-nowrap">LEV.</span>
             </div>
 
+            {loading && (
+              <div className="px-5 pb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-green-500/70">
+                Updating market registry...
+              </div>
+            )}
+
             {/* Category groups */}
             {categoriesList.map((cat) => {
               const items = marketsList.filter((m) => m.category === cat.key);
               if (items.length === 0) return null;
-              const comingSoon = cat.key !== "crypto";
               return (
                 <div key={cat.key}>
                   <div className="px-5 pt-2 pb-1 flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#555]">
                       {cat.label}
                     </span>
-                    {comingSoon && (
-                      <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-yellow-500/70">
-                        <span className="relative h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-500">
-                          <span className="absolute inset-0 animate-ping rounded-full bg-yellow-500 opacity-75" />
-                        </span>
-                        Coming Soon
-                      </span>
-                    )}
                   </div>
                   <div className="flex flex-col gap-0.5 px-3">
                     {items.map((m) => {
-                      const isActive = !comingSoon && m.id === selected;
+                      const isActive = m.id === selected;
                       return (
                         <button
                           key={m.id}
-                          disabled={comingSoon}
-                          onClick={() => { if (!comingSoon) { onSelect(m.id); onClose(); } }}
+                          onClick={() => { onSelect(m.id); onClose(); }}
                           className={`w-full grid grid-cols-[1fr_auto_auto] items-center gap-x-2 px-2 py-2 rounded-md transition-colors ${
-                            comingSoon
-                              ? "text-[#333] cursor-not-allowed opacity-50"
-                              : isActive
+                            isActive
                               ? "bg-white/[0.05] text-white"
                               : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
                           }`}
                         >
                           <span className="flex items-center gap-2 min-w-0">
-                            <span className={`shrink-0 flex items-center justify-center w-5 h-5 ${comingSoon ? "opacity-40" : ""}`}>
+                            <span className="shrink-0 flex items-center justify-center w-5 h-5">
                               <MarketLogo market={m.id} size={20} />
                             </span>
                             <span className="text-[13px] font-semibold truncate">{m.label}</span>
                             <span className="text-[11px] text-[#555] shrink-0">{m.pair.replace(/ PERPS$/, "")}</span>
                             {isActive && (
-                              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" className="shrink-0">
-                                <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-400" />
-                              </svg>
+                              <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
                             )}
                           </span>
-                          <span className={`text-[10px] tabular-nums text-right shrink-0 ${
-                            comingSoon ? "text-[#333]" : "text-[#555]"
-                          }`}>
+                          <span className="text-[10px] tabular-nums text-right shrink-0 text-[#555]">
                             {m.perpData?.openInterestLabel ?? "—"}
                           </span>
                           <span className={`text-xs font-bold tabular-nums text-right shrink-0 ${
-                            comingSoon ? "text-[#333]" : isActive ? "text-green-400" : "text-[#666]"
+                            isActive ? "text-green-400" : "text-[#666]"
                           }`}>
                             {m.leverage > 0 ? `${m.leverage}x` : "Spot"}
                           </span>
@@ -476,27 +483,81 @@ export function BTCChart({
 }: {
   initialHistory?: MarketHistoryCandle[];
   liquidationLines?: LiquidationLine[];
-  onMarketChange?: (m: { id: string; pair: string; leverage: number }) => void;
+  onMarketChange?: (m: MarketChangePayload) => void;
   onPriceUpdate?: (price: number) => void;
   markets?: Market[];
   categories?: readonly { key: string; label: string }[];
   defaultMarket?: string;
 }) {
-  const activeMarkets = marketsProp ?? MARKETS;
+  const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
+  const [liveMarkets, setLiveMarkets] = useState<Market[]>(MARKETS);
+  const [marketsLoading, setMarketsLoading] = useState(false);
+  const activeMarkets = marketsProp ?? liveMarkets;
   const activeCategories = categoriesProp ?? CATEGORIES;
   const chartRef = useRef<HTMLDivElement>(null);
   const pageVisible = usePageVisible();
   const inViewport = useInViewport(chartRef, { rootMargin: "160px" });
   const chartActive = pageVisible && inViewport;
-  const [market, setMarket] = useState(defaultMarket ?? activeMarkets[0]?.id ?? "BTC-PERP/USD");
+  const [market, setMarket] = useState(defaultMarket ?? activeMarkets[0]?.id ?? "BTC/USD");
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<"line" | "candle">("line");
   const [perpsMode, setPerpsMode] = useState<"line" | "candle">("line");
   const [windowSecs, setWindowSecs] = useState(60);
-  const marketConfig = activeMarkets.find((m) => m.id === market) || activeMarkets[0];
+  const marketConfig = activeMarkets.find((m) => m.id === market) || activeMarkets[0] || MARKETS[0];
   const isPerpsMarket = marketConfig.chartKind === "perps";
   const perpData = marketConfig.perpData ?? null;
   const [perpsSnapshot, setPerpsSnapshot] = useState<PerpMarketSnapshot | null>(null);
+  const lastEmittedMarketRef = useRef("");
+
+  useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
+
+  useEffect(() => {
+    if (marketsProp) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const loadMarkets = async () => {
+      setMarketsLoading(true);
+      try {
+        const res = await fetch(`/api/decibel/markets?network=${network}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) {
+          throw new Error(json.error || "Could not load Decibel markets");
+        }
+        const next = (Array.isArray(json.markets) ? json.markets : [])
+          .map(apiMarketToMarket)
+          .sort((a: Market, b: Market) => {
+            if (a.id === "BTC/USD") return -1;
+            if (b.id === "BTC/USD") return 1;
+            return a.id.localeCompare(b.id);
+          });
+        if (!cancelled && next.length > 0) setLiveMarkets(next);
+      } catch {
+        if (!cancelled) setLiveMarkets((current) => current.length > 0 ? current : MARKETS);
+      } finally {
+        if (!cancelled) {
+          setMarketsLoading(false);
+          timer = setTimeout(loadMarkets, 3_000);
+        }
+      }
+    };
+
+    void loadMarkets();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [marketsProp, network]);
+
+  useEffect(() => {
+    if (activeMarkets.length === 0) return;
+    setMarket((current) => activeMarkets.some((entry) => entry.id === current)
+      ? current
+      : activeMarkets[0].id);
+  }, [activeMarkets]);
   // Always stream BTC data — other markets use BTC feed as demo
   const { ticks, candles, liveCandle, price, connected } = usePriceCandles(
     "BTC/USD",
@@ -509,6 +570,20 @@ export function BTCChart({
   useEffect(() => {
     if (!isPerpsMarket && price > 0) priceCallbackRef.current?.(price);
   }, [isPerpsMarket, price]);
+
+  useEffect(() => {
+    if (!marketConfig || !onMarketChange) return;
+    const key = `${marketConfig.id}:${marketConfig.marketAddr ?? ""}`;
+    if (lastEmittedMarketRef.current === key) return;
+    lastEmittedMarketRef.current = key;
+    onMarketChange({
+      id: marketConfig.id,
+      pair: marketConfig.pair,
+      leverage: marketConfig.leverage,
+      marketAddr: marketConfig.marketAddr ?? marketConfig.perpData?.marketAddr,
+      marketName: marketConfig.marketName ?? marketConfig.perpData?.marketName,
+    });
+  }, [marketConfig, onMarketChange]);
 
   const visibleRange = getVisibleCandleRange(candles, liveCandle, windowSecs);
   const chartLoading = !isPerpsMarket && candles.length === 0 && ticks.length <= 1;
@@ -539,7 +614,13 @@ export function BTCChart({
     setPerpsSnapshot(null);
     const m = activeMarkets.find((mk) => mk.id === id);
     if (m?.chartKind === "perps") setPerpsMode("line");
-    if (m && onMarketChange) onMarketChange({ id: m.id, pair: m.pair, leverage: m.leverage });
+    if (m && onMarketChange) onMarketChange({
+      id: m.id,
+      pair: m.pair,
+      leverage: m.leverage,
+      marketAddr: m.marketAddr ?? m.perpData?.marketAddr,
+      marketName: m.marketName ?? m.perpData?.marketName,
+    });
   };
 
   return (
@@ -560,9 +641,7 @@ export function BTCChart({
             <span className="text-[10px] font-mono font-bold text-zinc-500 bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               {marketConfig.leverage > 0 ? `${marketConfig.leverage}x` : "Spot"}
             </span>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-zinc-500">
-              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
           </button>
 
           <div className="flex items-center gap-1">
@@ -573,6 +652,9 @@ export function BTCChart({
             />
             <span className="text-[11px] text-zinc-500">
               {displayConnected ? "Live" : "..."}
+            </span>
+            <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-zinc-500">
+              {network}
             </span>
           </div>
         </div>
@@ -798,6 +880,8 @@ export function BTCChart({
         onClose={() => setModalOpen(false)}
         markets={activeMarkets}
         categories={activeCategories}
+        loading={marketsLoading}
+        network={network}
       />
     </div>
   );

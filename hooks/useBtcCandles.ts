@@ -69,7 +69,7 @@ function ensureBody(c: Candle, candleSecs = DEFAULT_CANDLE_SECS): Candle {
 
 function readCachedPrice(market: string): { price: number; ts: number } | null {
   try {
-    const raw = localStorage.getItem(`whop-price-${market}`);
+    const raw = localStorage.getItem(`cash-price-${market}`);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as { price?: unknown; ts?: unknown } | number;
@@ -91,7 +91,7 @@ function readCachedPrice(market: string): { price: number; ts: number } | null {
     }
   } catch {
     try {
-      const raw = localStorage.getItem(`whop-price-${market}`);
+      const raw = localStorage.getItem(`cash-price-${market}`);
       const price = parseFloat(raw || "0");
       if (price > 0) return { price, ts: 0 };
     } catch {}
@@ -113,7 +113,7 @@ function getFreshSeedPrice(market: string): number {
 
 function cachePrice(market: string, p: number) {
   try {
-    localStorage.setItem(`whop-price-${market}`, JSON.stringify({ price: p, ts: Date.now() }));
+    localStorage.setItem(`cash-price-${market}`, JSON.stringify({ price: p, ts: Date.now() }));
   } catch {}
 }
 

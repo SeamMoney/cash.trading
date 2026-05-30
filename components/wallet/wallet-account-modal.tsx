@@ -3,8 +3,15 @@
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { createPortal } from "react-dom";
 import { useState, useEffect } from "react";
+import { ExternalLink, X } from "lucide-react";
 import { explorerAccountUrl } from "@/lib/constants";
 import { DecibelAccountManager } from "@/components/trade/DecibelAccountManager";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  setDecibelPublicNetwork,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 
 interface WalletAccountModalProps {
   open: boolean;
@@ -15,8 +22,10 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   const { account, wallet, disconnect, connected } = useWallet();
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
 
   useEffect(() => { setMounted(true); }, []);
+  useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   useEffect(() => {
     if (open) {
@@ -61,9 +70,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
             aria-label="Close account modal"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -105,6 +112,35 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
             </div>
           </div>
 
+          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-4 mb-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
+                  Decibel Network
+                </p>
+                <p className="mt-1 text-[12px] text-zinc-500">
+                  Market data, orders, and positions
+                </p>
+              </div>
+              <div className="grid grid-cols-2 rounded-lg border border-white/[0.06] bg-black/20 p-0.5">
+                {(["mainnet", "testnet"] as const).map((network) => (
+                  <button
+                    key={network}
+                    type="button"
+                    onClick={() => setDecibelPublicNetwork(network)}
+                    className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold uppercase transition-colors ${
+                      decibelNetwork === network
+                        ? "bg-accent text-black"
+                        : "text-zinc-500 hover:text-zinc-200"
+                    }`}
+                  >
+                    {network}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <DecibelAccountManager className="mb-4" />
 
           {/* Actions */}
@@ -115,9 +151,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
               rel="noopener noreferrer"
               className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-medium text-zinc-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-              </svg>
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               Explorer
             </a>
             <button

@@ -8,6 +8,11 @@ import {
   pickDecibelSubaccount,
   storeDecibelSubaccount,
 } from "@/lib/decibel-selection";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 
 export interface DecibelSubaccount {
   address: string;
@@ -41,6 +46,7 @@ export function useDecibelSubaccounts() {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupIncomplete, setLookupIncomplete] = useState(false);
   const [lookupSource, setLookupSource] = useState("");
+  const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
 
   const selectSubaccount = useCallback(
     (next: string | null) => {
@@ -66,7 +72,7 @@ export function useDecibelSubaccounts() {
     setLookupIncomplete(false);
 
     try {
-      const res = await fetch(`/api/decibel/subaccount?address=${owner}`);
+      const res = await fetch(`/api/decibel/subaccount?address=${owner}&network=${decibelNetwork}`);
       const data = (await res.json()) as DecibelSubaccountResponse;
       if (!res.ok) {
         throw new Error(data.lookupError || `Decibel account lookup failed (${res.status})`);
@@ -96,7 +102,7 @@ export function useDecibelSubaccounts() {
     } finally {
       setIsLoadingSubaccounts(false);
     }
-  }, [connected, owner]);
+  }, [connected, decibelNetwork, owner]);
 
   const waitForSubaccounts = useCallback(async () => {
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -113,6 +119,8 @@ export function useDecibelSubaccounts() {
       setSelectedSubaccount("");
     });
   }, [refreshSubaccounts]);
+
+  useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   useEffect(() => {
     return onDecibelSubaccountChange(() => {
@@ -140,6 +148,7 @@ export function useDecibelSubaccounts() {
     lookupError,
     lookupIncomplete,
     lookupSource,
+    decibelNetwork,
     owner,
     refreshSubaccounts,
     selectSubaccount,

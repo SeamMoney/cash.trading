@@ -529,7 +529,7 @@ export function TradeForm({
             <button
               onClick={handleCreateSubaccount}
               disabled={isPending}
-              className="btn-whop px-4 py-2 rounded-[10px] text-[12px] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-cash px-4 py-2 rounded-[10px] text-[12px] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isPending ? "Creating..." : "Create Subaccount"}
             </button>
@@ -559,7 +559,7 @@ export function TradeForm({
 	                setSelectedSubaccount(next);
 	                storeDecibelSubaccount(next, account?.address?.toString());
 	              }}
-	              className="w-full input-whop text-[12px] font-mono"
+	              className="w-full input-cash text-[12px] font-mono"
 	            >
               {subaccounts.map((s) => (
                 <option key={s.address} value={s.address}>
@@ -569,7 +569,7 @@ export function TradeForm({
               ))}
             </select>
           ) : (
-            <div className="w-full input-whop text-[12px] font-mono text-zinc-300">
+            <div className="w-full input-cash text-[12px] font-mono text-zinc-300">
               {subaccounts[0].name || shortAddress(subaccounts[0].address)}
               {subaccounts[0].isPrimary ? " (primary)" : ""}
             </div>
@@ -594,7 +594,7 @@ export function TradeForm({
               placeholder="0.00 USDC"
               min="0"
               step="0.000001"
-              className="flex-1 input-whop text-[12px] font-mono"
+              className="flex-1 input-cash text-[12px] font-mono"
             />
             <button
               onClick={handleDeposit}
@@ -678,7 +678,7 @@ export function TradeForm({
             onChange={(e) => setPrice(e.target.value)}
             placeholder={currentPrice?.toFixed(2) || "0.00"}
             step="0.01"
-            className="w-full input-whop text-[13px] font-mono"
+            className="w-full input-cash text-[13px] font-mono"
           />
         </div>
       )}
@@ -694,7 +694,7 @@ export function TradeForm({
           onChange={(e) => setSize(e.target.value)}
           placeholder="0.00"
           step="0.0001"
-          className="w-full input-whop text-[13px] font-mono"
+          className="w-full input-cash text-[13px] font-mono"
         />
       </div>
 

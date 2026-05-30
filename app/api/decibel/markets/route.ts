@@ -1,50 +1,49 @@
 import { NextResponse } from "next/server";
 import { getFastMarkets } from "@/lib/decibel-chain";
-import { MARKETS, getReadDex } from "@/lib/decibel";
+import { getReadDex, type DecibelNetwork } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const REST_MARKETS_TIMEOUT_MS = 750;
+const REST_MARKETS_TIMEOUT_MS = 2_500;
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
 
-function fallbackMarkets(error: string) {
+function getRequestNetwork(req: Request): DecibelNetwork {
+  const url = new URL(req.url);
+  return url.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+}
+
+function asNumber(value: unknown): number | null {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function fallbackMarkets(error: string, network: DecibelNetwork) {
   return {
     degraded: true,
+    network,
     error,
-    markets: Object.entries(MARKETS).map(([name, config]) => ({
-      name,
-      address: config.address,
-      markPrice: null,
-      midPrice: null,
-      oraclePrice: null,
-      fundingRateBps: null,
-      isFundingPositive: null,
-      openInterest: null,
-      priceUpdatedAt: null,
-      maxLeverage: config.maxLeverage,
-      tickSize: config.tickSize,
-      minSize: config.minSizeRaw,
-      lotSize: config.lotSize,
-      mode: "Unavailable",
-      szDecimals: config.sizeDecimals,
-      pxDecimals: config.priceDecimals,
-      source: "static",
-    })),
+    markets: [],
   };
 }
 
-async function fetchRestMarketPriceMap() {
+async function fetchSdkMarkets(network: DecibelNetwork) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REST_MARKETS_TIMEOUT_MS);
   try {
-    const dex = getReadDex();
-    const prices = await dex.marketPrices.getAll({
-      fetchOptions: { signal: controller.signal },
-    });
+    const dex = getReadDex(network);
+    const [markets, prices] = await Promise.all([
+      dex.markets.getAll({ fetchOptions: { signal: controller.signal } }),
+      dex.marketPrices.getAll({ fetchOptions: { signal: controller.signal } }),
+    ]);
+
     const priceMap = new Map<string, Record<string, unknown>>();
     for (const price of prices) {
       const market = (price as Record<string, unknown>).market;
@@ -52,9 +51,37 @@ async function fetchRestMarketPriceMap() {
         priceMap.set(market.toLowerCase(), price as Record<string, unknown>);
       }
     }
-    return priceMap;
-  } catch {
-    return null;
+
+    return markets.map((rawMarket) => {
+      const market = rawMarket as Record<string, unknown>;
+      const address = asString(market.market_addr);
+      const rest = priceMap.get(address.toLowerCase());
+      const markPrice =
+        asNumber(rest?.mark_px) ?? asNumber(rest?.mid_px) ?? asNumber(rest?.oracle_px);
+
+      return {
+        name: asString(market.market_name),
+        address,
+        markPrice,
+        midPrice: asNumber(rest?.mid_px),
+        oraclePrice: asNumber(rest?.oracle_px),
+        fundingRateBps: asNumber(rest?.funding_rate_bps),
+        isFundingPositive:
+          rest?.is_funding_positive == null
+            ? null
+            : Boolean(rest.is_funding_positive),
+        openInterest: asNumber(rest?.open_interest),
+        priceUpdatedAt: asNumber(rest?.transaction_unix_ms),
+        maxLeverage: asNumber(market.max_leverage),
+        tickSize: asNumber(market.tick_size),
+        minSize: asNumber(market.min_size),
+        lotSize: asNumber(market.lot_size),
+        mode: asString(market.mode) || "Unknown",
+        szDecimals: asNumber(market.sz_decimals),
+        pxDecimals: asNumber(market.px_decimals),
+        source: rest ? "sdk+rest" : "sdk",
+      };
+    }).filter((market) => market.name && market.address);
   } finally {
     clearTimeout(timer);
   }
@@ -66,59 +93,38 @@ async function fetchRestMarketPriceMap() {
  * Fullnode-first market config and mark/oracle prices. Decibel REST prices are
  * used only as a short-timeout enrichment for mid price, funding, and timestamps.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const network = getRequestNetwork(req);
   const startedAt = Date.now();
 
   try {
-    const [chainMarkets, restPrices] = await Promise.all([
-      getFastMarkets(),
-      fetchRestMarketPriceMap(),
-    ]);
+    let markets = await fetchSdkMarkets(network);
+    let sources = {
+      config: "sdk",
+      markOracle: "rest",
+      enrichment: "rest",
+    };
 
-    const markets = chainMarkets.map((market) => {
-      const rest = restPrices?.get(market.address.toLowerCase());
-      return {
-        ...market,
-        markPrice:
-          rest?.mark_px == null ? market.markPrice : Number(rest.mark_px),
-        midPrice: rest?.mid_px == null ? market.midPrice : Number(rest.mid_px),
-        oraclePrice:
-          rest?.oracle_px == null
-            ? market.oraclePrice
-            : Number(rest.oracle_px),
-        fundingRateBps:
-          rest?.funding_rate_bps == null
-            ? market.fundingRateBps
-            : Number(rest.funding_rate_bps),
-        isFundingPositive:
-          rest?.is_funding_positive == null
-            ? market.isFundingPositive
-            : Boolean(rest.is_funding_positive),
-        openInterest:
-          rest?.open_interest == null
-            ? market.openInterest
-            : Number(rest.open_interest),
-        priceUpdatedAt:
-          rest?.transaction_unix_ms == null
-            ? market.priceUpdatedAt
-            : Number(rest.transaction_unix_ms),
-        source: rest ? "chain+rest" : market.source,
-      };
-    });
-
-    return NextResponse.json({
-      markets,
-      latencyMs: Date.now() - startedAt,
-      sources: {
+    if (markets.length === 0) {
+      const chainMarkets = await getFastMarkets(network);
+      markets = chainMarkets.map((market) => ({ ...market, source: market.source }));
+      sources = {
         config: "chain",
         markOracle: "chain",
-        enrichment: restPrices ? "rest" : "unavailable",
-      },
+        enrichment: "unavailable",
+      };
+    }
+
+    return NextResponse.json({
+      network,
+      markets,
+      latencyMs: Date.now() - startedAt,
+      sources,
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch Decibel markets";
-    return NextResponse.json(fallbackMarkets(message), {
+    return NextResponse.json(fallbackMarkets(message, network), {
       headers: NO_STORE_HEADERS,
     });
   }

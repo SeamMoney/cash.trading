@@ -1,6 +1,6 @@
 "use client";
 
-export const PORTFOLIO_ACTIVITY_EVENT = "whop:portfolio-activity";
+export const PORTFOLIO_ACTIVITY_EVENT = "cash:portfolio-activity";
 
 export interface PortfolioActivityDetail {
   amount: number;
@@ -15,7 +15,7 @@ export function dispatchPortfolioActivity(detail: PortfolioActivityDetail) {
 }
 
 // ── Yield sync: vault tells the sheet what deposit/APY to track ──
-export const YIELD_SYNC_EVENT = "whop:yield-sync";
+export const YIELD_SYNC_EVENT = "cash:yield-sync";
 export interface YieldSyncDetail {
   depositAmount: number;
   apy: number;
@@ -27,7 +27,7 @@ export function dispatchYieldSync(detail: YieldSyncDetail) {
 }
 
 // ── Yield claim: vault tells the sheet to bump balance and reset counter ──
-export const YIELD_CLAIM_EVENT = "whop:yield-claim";
+export const YIELD_CLAIM_EVENT = "cash:yield-claim";
 export interface YieldClaimDetail {
   claimed: number;
 }
@@ -37,7 +37,7 @@ export function dispatchYieldClaim(detail: YieldClaimDetail) {
 }
 
 // ── Balance update: adjusts the portfolio sheet balance (e.g. realized PnL) ──
-export const BALANCE_UPDATE_EVENT = "whop:balance-update";
+export const BALANCE_UPDATE_EVENT = "cash:balance-update";
 export interface BalanceUpdateDetail {
   delta: number;
 }

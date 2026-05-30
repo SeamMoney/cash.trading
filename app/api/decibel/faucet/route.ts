@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getActiveNetwork,
+  type DecibelNetwork,
   getDecibelPackage,
   getReadDex,
   USDC_DECIMALS,
@@ -14,16 +14,21 @@ import {
  *
  * Body: { amount?: string } where amount is raw USDC units.
  */
+function getBodyNetwork(value: unknown): DecibelNetwork {
+  return value === "mainnet" ? "mainnet" : "testnet";
+}
+
 export async function POST(req: NextRequest) {
   try {
-    if (getActiveNetwork() === "mainnet") {
+    const body = await req.json().catch(() => ({}));
+    const network = getBodyNetwork(body.network);
+    if (network === "mainnet") {
       return NextResponse.json(
         { error: "Decibel USDC faucet is testnet-only" },
         { status: 403 },
       );
     }
 
-    const body = await req.json().catch(() => ({}));
     const amount = String(body.amount ?? "1000000000"); // 1,000 USDC
     if (!/^\d+$/.test(amount) || BigInt(amount) <= 0n) {
       return NextResponse.json(
@@ -52,8 +57,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
-  if (getActiveNetwork() === "mainnet") {
+export async function GET(req: NextRequest) {
+  const network = req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  if (network === "mainnet") {
     return NextResponse.json({
       enabled: false,
       reason: "Decibel USDC faucet is testnet-only",

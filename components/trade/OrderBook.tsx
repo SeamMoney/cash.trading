@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { getDecibelPublicNetwork } from "@/lib/decibel-public";
+import { memo, useEffect, useCallback, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 
 interface OrderBookProps {
@@ -16,10 +21,105 @@ interface Level {
   size: number;
 }
 
+interface CumulativeLevel extends Level {
+  cumulative: number;
+}
+
 interface OrderBookData {
   bids: Level[];
   asks: Level[];
   timestamp: number | null;
+}
+
+const DISPLAY_LEVELS = 16;
+
+function priceDecimals(price: number) {
+  if (price >= 1_000) return 1;
+  if (price >= 10) return 2;
+  return 4;
+}
+
+function usePriceFlash<T extends HTMLElement = HTMLElement>(
+  price: number,
+): RefObject<T> {
+  const ref = useRef<T>(null);
+  const prevRef = useRef(price);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || price === prevRef.current) return;
+
+    const isUp = price > prevRef.current;
+    prevRef.current = price;
+    element.getAnimations().forEach((animation) => animation.cancel());
+    element.animate(
+      [
+        { backgroundColor: isUp ? "rgba(57, 255, 20, 0.16)" : "rgba(242, 26, 26, 0.16)" },
+        { backgroundColor: "transparent" },
+      ],
+      { duration: 180, easing: "ease-out", fill: "none" },
+    );
+  }, [price]);
+
+  return ref;
+}
+
+const OrderBookRow = memo(function OrderBookRow({
+  level,
+  side,
+  maxTotal,
+  onPriceClick,
+}: {
+  level: CumulativeLevel;
+  side: "bid" | "ask";
+  maxTotal: number;
+  onPriceClick?: (price: number) => void;
+}) {
+  const flashRef = usePriceFlash<HTMLButtonElement>(level.price);
+  const depthPct = maxTotal > 0 ? (level.cumulative / maxTotal) * 100 : 0;
+  const formattedPrice = level.price.toLocaleString("en-US", {
+    minimumFractionDigits: priceDecimals(level.price),
+    maximumFractionDigits: priceDecimals(level.price),
+  });
+
+  return (
+    <button
+      ref={flashRef}
+      type="button"
+      onClick={() => onPriceClick?.(level.price)}
+      className={`relative grid w-full grid-cols-3 px-4 py-[2.5px] text-[11px] transition-colors ${
+        side === "bid" ? "hover:bg-green-500/10" : "hover:bg-red-500/10"
+      }`}
+    >
+      <div
+        className={`absolute inset-y-0 ${side === "bid" ? "left-0 bg-green-500/8" : "right-0 bg-red-500/8"}`}
+        style={{ width: `${depthPct.toFixed(1)}%` }}
+      />
+      <span className="relative text-left font-mono tabular-nums text-zinc-400">
+        {level.size.toFixed(4)}
+      </span>
+      <span
+        className={`relative text-right font-mono font-medium tabular-nums ${
+          side === "bid" ? "text-success" : "text-danger"
+        }`}
+      >
+        {formattedPrice}
+      </span>
+      <span className="relative text-right font-mono tabular-nums text-zinc-500">
+        {level.cumulative.toFixed(4)}
+      </span>
+    </button>
+  );
+});
+
+function withCumulative(levels: Level[], reverse = false): CumulativeLevel[] {
+  let cumulative = 0;
+  const source = reverse ? [...levels].reverse() : levels;
+  const next = source.map((level) => {
+    cumulative += level.size;
+    return { ...level, cumulative };
+  });
+  return reverse ? next.reverse() : next;
 }
 
 /**
@@ -28,6 +128,7 @@ interface OrderBookData {
  * REST reader, so this is the primary depth path.
  */
 export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBookProps) {
+  const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [book, setBook] = useState<OrderBookData>({
     bids: [],
     asks: [],
@@ -41,14 +142,16 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
     Object.values(PERP_MARKET_DATA).find((market) => market.marketName === marketName)
       ?.marketAddr;
 
+  useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
+
   const ingestDepth = useCallback((message: any) => {
     const bids = Array.isArray(message?.bids) ? message.bids : message?.depth?.bids;
     const asks = Array.isArray(message?.asks) ? message.asks : message?.depth?.asks;
     if (!Array.isArray(bids) || !Array.isArray(asks)) return;
 
     setBook({
-      bids: bids.slice(0, 15),
-      asks: asks.slice(0, 15),
+      bids: bids.slice(0, DISPLAY_LEVELS),
+      asks: asks.slice(0, DISPLAY_LEVELS),
       timestamp: message.unix_ms ?? message.timestamp ?? Date.now(),
     });
     setError(null);
@@ -68,11 +171,13 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
     let reconnectAttempt = 0;
 
     setLoading(true);
+    setBook({ bids: [], asks: [], timestamp: null });
+    setError(null);
 
     const connect = () => {
       if (cancelled) return;
       const params = new URLSearchParams({
-        network: getDecibelPublicNetwork(),
+        network,
         topics: `depth:${resolvedMarketAddress}:1`,
       });
       stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
@@ -113,7 +218,26 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
       if (reconnectTimer) clearTimeout(reconnectTimer);
       stream?.close();
     };
-  }, [ingestDepth, resolvedMarketAddress]);
+  }, [ingestDepth, network, resolvedMarketAddress]);
+
+  const asksWithCumulative = useMemo(
+    () => withCumulative(book.asks.slice(0, DISPLAY_LEVELS), true),
+    [book.asks],
+  );
+  const bidsWithCumulative = useMemo(
+    () => withCumulative(book.bids.slice(0, DISPLAY_LEVELS)),
+    [book.bids],
+  );
+  const maxAskTotal = asksWithCumulative[0]?.cumulative ?? 0;
+  const maxBidTotal = bidsWithCumulative[bidsWithCumulative.length - 1]?.cumulative ?? 0;
+
+  const bestBid = book.bids[0]?.price;
+  const bestAsk = book.asks[0]?.price;
+  const midPrice =
+    bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
+  const spread = bestBid && bestAsk ? bestAsk - bestBid : null;
+  const spreadPct =
+    spread && midPrice ? ((spread / midPrice) * 100).toFixed(3) : null;
 
   if (loading) {
     return (
@@ -143,33 +267,6 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
     );
   }
 
-  // Calculate cumulative totals and max for depth visualization
-  let askCumulative = 0;
-  const asksWithCumulative = [...book.asks]
-    .reverse() // lowest ask at bottom
-    .map((level) => {
-      askCumulative += level.size;
-      return { ...level, cumulative: askCumulative };
-    })
-    .reverse();
-
-  let bidCumulative = 0;
-  const bidsWithCumulative = book.bids.map((level) => {
-    bidCumulative += level.size;
-    return { ...level, cumulative: bidCumulative };
-  });
-
-  const maxCumulative = Math.max(askCumulative, bidCumulative, 1);
-
-  // Midpoint = average of best bid and best ask
-  const bestBid = book.bids[0]?.price;
-  const bestAsk = book.asks[0]?.price;
-  const midPrice =
-    bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
-  const spread = bestBid && bestAsk ? bestAsk - bestBid : null;
-  const spreadPct =
-    spread && midPrice ? ((spread / midPrice) * 100).toFixed(3) : null;
-
   return (
     <div className="rounded-[16px] bg-[#0e0e0e] border border-white/[0.06] overflow-hidden">
       <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
@@ -185,75 +282,47 @@ export function OrderBook({ marketName, marketAddress, onPriceClick }: OrderBook
 
       {/* Column Headers */}
       <div className="grid grid-cols-3 px-4 py-1.5 text-[10px] text-zinc-600 font-semibold border-b border-white/[0.06]">
-        <span>Price</span>
-        <span className="text-right">Size</span>
+        <span>Size ({marketName.split("/")[0]})</span>
+        <span className="text-right">Price</span>
         <span className="text-right">Total</span>
       </div>
 
       {/* Asks (sells) — displayed highest price at top, lowest near spread */}
       <div className="max-h-52 overflow-y-auto no-scrollbar flex flex-col-reverse">
-        {asksWithCumulative.map((level, i) => {
-          const depthPct = (level.cumulative / maxCumulative) * 100;
-          return (
-            <button
-              key={`ask-${i}`}
-              onClick={() => onPriceClick?.(level.price)}
-              className="relative grid grid-cols-3 px-4 py-[2.5px] text-[11px] w-full hover:bg-red-500/10 transition-colors"
-            >
-              <div
-                className="absolute right-0 top-0 bottom-0 bg-red-500/8"
-                style={{ width: `${depthPct}%` }}
-              />
-              <span className="relative text-danger font-mono tabular-nums">
-                {level.price.toFixed(2)}
-              </span>
-              <span className="relative text-right font-mono tabular-nums">
-                {level.size.toFixed(4)}
-              </span>
-              <span className="relative text-right text-zinc-500 font-mono tabular-nums">
-                {level.cumulative.toFixed(4)}
-              </span>
-            </button>
-          );
-        })}
+        {asksWithCumulative.map((level, i) => (
+          <OrderBookRow
+            key={`ask-${i}`}
+            level={level}
+            side="ask"
+            maxTotal={maxAskTotal}
+            onPriceClick={onPriceClick}
+          />
+        ))}
       </div>
 
       {/* Spread / Mid Price */}
-      <div className="px-4 py-1.5 border-y border-white/[0.06] bg-[#141414] flex items-center justify-between">
-        <span className="text-[11px] text-zinc-500">Spread</span>
+      <div className="border-y border-white/[0.06] bg-[#141414] px-4 py-2">
+        <div className="text-center font-mono text-[17px] font-bold tabular-nums text-white">
+          {midPrice ? `$${midPrice.toLocaleString("en-US", { minimumFractionDigits: priceDecimals(midPrice), maximumFractionDigits: priceDecimals(midPrice) })}` : "—"}
+        </div>
         {spread !== null && (
-          <span className="text-[11px] text-zinc-400 font-mono tabular-nums">
-            {spread.toFixed(2)} ({spreadPct}%)
-          </span>
+          <div className="mt-0.5 text-center text-[10px] font-mono tabular-nums text-zinc-500">
+            Spread {spread.toFixed(2)} ({spreadPct}%)
+          </div>
         )}
       </div>
 
       {/* Bids (buys) — highest bid at top, descending */}
       <div className="max-h-52 overflow-y-auto no-scrollbar">
-        {bidsWithCumulative.map((level, i) => {
-          const depthPct = (level.cumulative / maxCumulative) * 100;
-          return (
-            <button
-              key={`bid-${i}`}
-              onClick={() => onPriceClick?.(level.price)}
-              className="relative grid grid-cols-3 px-4 py-[2.5px] text-[11px] w-full hover:bg-green-500/10 transition-colors"
-            >
-              <div
-                className="absolute right-0 top-0 bottom-0 bg-green-500/8"
-                style={{ width: `${depthPct}%` }}
-              />
-              <span className="relative text-success font-mono tabular-nums">
-                {level.price.toFixed(2)}
-              </span>
-              <span className="relative text-right font-mono tabular-nums">
-                {level.size.toFixed(4)}
-              </span>
-              <span className="relative text-right text-zinc-500 font-mono tabular-nums">
-                {level.cumulative.toFixed(4)}
-              </span>
-            </button>
-          );
-        })}
+        {bidsWithCumulative.map((level, i) => (
+          <OrderBookRow
+            key={`bid-${i}`}
+            level={level}
+            side="bid"
+            maxTotal={maxBidTotal}
+            onPriceClick={onPriceClick}
+          />
+        ))}
       </div>
 
       {/* Timestamp */}

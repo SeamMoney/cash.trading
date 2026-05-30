@@ -9,7 +9,11 @@ import {
   onDecibelSubaccountChange,
   pickDecibelSubaccount,
 } from "@/lib/decibel-selection";
-import { getDecibelPublicNetwork } from "@/lib/decibel-public";
+import {
+  getDecibelPublicNetwork,
+  onDecibelPublicNetworkChange,
+  type DecibelPublicNetwork,
+} from "@/lib/decibel-public";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 
 const POSITION_POLL_MS = 1000;
@@ -45,6 +49,7 @@ interface OpenOrder {
   origSize: number;
   remainingSize: number;
   details: string;
+  status?: string;
   timestamp: number;
 }
 
@@ -230,8 +235,11 @@ export function Positions() {
   const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const chainControllerRef = useRef<AbortController | null>(null);
   const indexedControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   const loadSelectedSubaccount = useCallback(async (signal?: AbortSignal) => {
     if (!ownerAddress) {
@@ -277,7 +285,7 @@ export function Positions() {
 
     try {
       const res = await fetch(
-        `/api/decibel/positions?address=${subaccount}&chainOnly=true`,
+        `/api/decibel/positions?address=${subaccount}&chainOnly=true&network=${decibelNetwork}`,
         { cache: "no-store", signal: controller.signal }
       );
       const data = await res.json();
@@ -298,7 +306,7 @@ export function Positions() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [decibelNetwork]);
 
   const fetchIndexedState = useCallback(async (subaccount: string) => {
     if (!subaccount) return;
@@ -309,7 +317,7 @@ export function Positions() {
 
     try {
       const res = await fetch(
-        `/api/decibel/positions?address=${subaccount}&openOrders=true`,
+        `/api/decibel/positions?address=${subaccount}&openOrders=true&network=${decibelNetwork}`,
         { cache: "no-store", signal: controller.signal }
       );
       const data = await res.json();
@@ -339,7 +347,7 @@ export function Positions() {
         indexedControllerRef.current = null;
       }
     }
-  }, []);
+  }, [decibelNetwork]);
 
   const setClosingPosition = useCallback((key: string, pending: boolean) => {
     setClosingPositionKeys((prev) => {
@@ -412,6 +420,7 @@ export function Positions() {
             orderType: "market",
             reduceOnly: true,
             subaccount: selectedSubaccount,
+            network: decibelNetwork,
           },
           signAndSubmitTransaction
         );
@@ -443,6 +452,7 @@ export function Positions() {
     },
     [
       selectedSubaccount,
+      decibelNetwork,
       setClosingPosition,
       signAndSubmitTransaction,
     ]
@@ -487,6 +497,7 @@ export function Positions() {
             marketName: order.market,
             marketAddress: order.marketAddress,
             orderId,
+            network: decibelNetwork,
           },
           signAndSubmitTransaction
         );
@@ -519,7 +530,7 @@ export function Positions() {
         setCancelingOrder(orderId, false);
       }
     },
-    [selectedSubaccount, setCancelingOrder, signAndSubmitTransaction]
+    [decibelNetwork, selectedSubaccount, setCancelingOrder, signAndSubmitTransaction]
   );
 
   useEffect(() => {
@@ -602,7 +613,7 @@ export function Positions() {
     const connect = () => {
       if (closed) return;
       const params = new URLSearchParams({
-        network: getDecibelPublicNetwork(),
+        network: decibelNetwork,
         topics: [
           `account_positions:${selectedSubaccount}`,
           `account_overview:${selectedSubaccount}`,
@@ -649,7 +660,7 @@ export function Positions() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (refreshTimer) clearTimeout(refreshTimer);
     };
-  }, [connected, fetchChainState, fetchIndexedState, selectedSubaccount]);
+  }, [connected, decibelNetwork, fetchChainState, fetchIndexedState, selectedSubaccount]);
 
   if (!connected) {
     return (
@@ -922,6 +933,7 @@ export function Positions() {
                     Size (Remaining)
                   </th>
                   <th className="text-right px-4 py-2 font-medium">Type</th>
+                  <th className="text-right px-4 py-2 font-medium">Status</th>
                   <th className="text-right px-4 py-2 font-medium">Action</th>
                 </tr>
               </thead>
@@ -956,6 +968,11 @@ export function Positions() {
                       </td>
                       <td className="px-4 py-3 text-right text-zinc-500">
                         {o.details}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                          {o.status ?? "Open"}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button

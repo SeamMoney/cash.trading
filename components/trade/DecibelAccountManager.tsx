@@ -20,9 +20,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   >("idle");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusHash, setStatusHash] = useState("");
-  const isMainnet = process.env.NEXT_PUBLIC_APTOS_NETWORK === "mainnet";
-
   const {
+    decibelNetwork,
     hasDecibelAccount,
     isLoadingSubaccounts,
     lookupIncomplete,
@@ -33,6 +32,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     subaccounts,
     waitForSubaccounts,
   } = useDecibelSubaccounts();
+  const isMainnet = decibelNetwork === "mainnet";
 
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
@@ -68,7 +68,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       : lookupIncomplete
         ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-300"
     : connected
-      ? "border-orange-500/20 bg-orange-500/10 text-orange-300"
+      ? "border-accent/20 bg-accent/10 text-accent"
       : "border-white/[0.08] bg-white/[0.04] text-zinc-500";
 
   const accountHelpText = !connected
@@ -102,7 +102,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       }
       const { hash } = await buildAndSign(
         "/api/decibel/create-subaccount",
-        { owner: account.address.toString() },
+        { owner: account.address.toString(), network: decibelNetwork },
         signAndSubmitTransaction
       );
       setStatusHash(hash);
@@ -123,6 +123,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   }, [
     account,
     connected,
+    decibelNetwork,
     refreshSubaccounts,
     signAndSubmitTransaction,
     waitForSubaccounts,
@@ -136,7 +137,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     try {
       const { hash } = await buildAndSign(
         "/api/decibel/faucet",
-        {},
+        { network: decibelNetwork },
         signAndSubmitTransaction
       );
       setStatusHash(hash);
@@ -148,7 +149,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatusMessage(err instanceof Error ? err.message : "Decibel USDC mint failed");
       setStatus("error");
     }
-  }, [account, connected, isMainnet, signAndSubmitTransaction]);
+  }, [account, connected, decibelNetwork, isMainnet, signAndSubmitTransaction]);
 
   const handleDeposit = useCallback(async () => {
     if (!connected || !account) {
@@ -174,7 +175,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const raw = String(Math.floor(depositValue * 1_000_000));
       const { hash } = await buildAndSign(
         "/api/decibel/deposit",
-        { subaccount: selectedSubaccount, amount: raw },
+        { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
         signAndSubmitTransaction
       );
       setStatusHash(hash);
@@ -190,6 +191,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   }, [
     account,
     connected,
+    decibelNetwork,
     depositValue,
     hasDepositAmount,
     selectedSubaccount,
@@ -254,7 +256,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         <button
           type="button"
           onClick={handleCreateSubaccount}
-          className="mt-4 w-full rounded-[10px] border border-orange-500/25 bg-orange-500/10 px-3 py-2.5 text-[12px] font-display font-semibold text-orange-300 transition-colors hover:bg-orange-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 w-full rounded-[10px] border border-accent/25 bg-accent/10 px-3 py-2.5 text-[12px] font-display font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Create Trading Account
         </button>

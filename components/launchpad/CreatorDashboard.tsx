@@ -165,8 +165,8 @@ export function CreatorDashboard({ creatorAddr }: Props) {
   if (!creatorAddr) {
     return (
       <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-10 text-center">
-        <div className="w-10 h-10 rounded-xl bg-[#FA4616]/10 flex items-center justify-center mx-auto mb-3">
-          <svg className="w-5 h-5 text-[#FA4616]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <div className="w-10 h-10 rounded-xl bg-[#39ff14]/10 flex items-center justify-center mx-auto mb-3">
+          <svg className="w-5 h-5 text-[#39ff14]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
@@ -185,7 +185,7 @@ export function CreatorDashboard({ creatorAddr }: Props) {
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest">Creator Dashboard</span>
-              <span className="px-1.5 py-0.5 rounded text-[8px] font-bold font-mono bg-[#FA4616]/10 text-[#FA4616] border border-[#FA4616]/20 uppercase tracking-wide">Pro</span>
+              <span className="px-1.5 py-0.5 rounded text-[8px] font-bold font-mono bg-[#39ff14]/10 text-[#39ff14] border border-[#39ff14]/20 uppercase tracking-wide">Pro</span>
             </div>
             <p className="text-[11px] text-zinc-500 font-mono">{creatorAddr.slice(0, 10)}…{creatorAddr.slice(-8)}</p>
           </div>
@@ -314,12 +314,12 @@ export function CreatorDashboard({ creatorAddr }: Props) {
               <BarChart data={chartData} barGap={1} barCategoryGap={chartData.length > 30 ? "8%" : "18%"}>
                 <defs>
                   <linearGradient id="barGradActive" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FA4616" stopOpacity="1" />
-                    <stop offset="100%" stopColor="#FA4616" stopOpacity="0.55" />
+                    <stop offset="0%" stopColor="#39ff14" stopOpacity="1" />
+                    <stop offset="100%" stopColor="#39ff14" stopOpacity="0.55" />
                   </linearGradient>
                   <linearGradient id="barGradDim" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FA4616" stopOpacity="0.45" />
-                    <stop offset="100%" stopColor="#FA4616" stopOpacity="0.12" />
+                    <stop offset="0%" stopColor="#39ff14" stopOpacity="0.45" />
+                    <stop offset="100%" stopColor="#39ff14" stopOpacity="0.12" />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.035)" />

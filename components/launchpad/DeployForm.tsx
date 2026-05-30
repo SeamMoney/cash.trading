@@ -488,10 +488,10 @@ strategy.close("Long",  when=bearBoS or downTrend)
 strategy.close("Short", when=bullBoS or upTrend)
 
 // ── Plots ─────────────────────────────────────────────────────────────
-plot(asa,         "Adaptive Structure Avg", color=upTrend ? color.new(#00c9a7, 0) : color.new(#FA4616, 0), linewidth=2)
+plot(asa,         "Adaptive Structure Avg", color=upTrend ? color.new(#39ff14, 0) : color.new(#F21A1A, 0), linewidth=2)
 plot(emaF,        "EMA Fast",               color=color.new(color.white, 70), linewidth=1)
 plot(emaS,        "EMA Slow",               color=color.new(color.white, 85), linewidth=1)
-plot(lastSwingHigh, "Last Swing High",      color=color.new(#FA4616, 60),  linewidth=1, style=plot.style_circles)
+plot(lastSwingHigh, "Last Swing High",      color=color.new(#F21A1A, 60),  linewidth=1, style=plot.style_circles)
 plot(lastSwingLow,  "Last Swing Low",       color=color.new(#00c9a7, 60),  linewidth=1, style=plot.style_circles)`,
   },
 };
@@ -1487,7 +1487,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 cursor-default"
                   : "text-white hover:opacity-90 active:scale-[0.98]"
               )}
-              style={step !== "done" ? { background: "#FA4616" } : undefined}
+              style={step !== "done" ? { background: "#39ff14", color: "#050505" } : undefined}
             >
               {step === "done" ? "Deployed ✓" : "Transpile & Deploy"}
             </button>

@@ -120,6 +120,14 @@ function formatPct(value: number | null | undefined, digits = 2) {
   return `${sign}${value.toFixed(digits)}%`;
 }
 
+function actionErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (/anonymous requests|authorization:\s*bearer|http error 401|unauthorized/i.test(message)) {
+    return "Decibel market data auth failed on a server read. Refresh and retry; portfolio actions use chain fallback when the market address is available.";
+  }
+  return message;
+}
+
 function formatVolume(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -188,6 +196,7 @@ export function PortfolioPageClient() {
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
   const [closingKeys, setClosingKeys] = useState<Set<string>>(() => new Set());
+  const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
 
   const overview = state.overview;
@@ -358,7 +367,7 @@ export function PortfolioPageClient() {
     } catch (err) {
       setActionStatus({
         tone: "error",
-        message: err instanceof Error ? err.message : "USDC withdrawal failed.",
+        message: actionErrorMessage(err, "USDC withdrawal failed."),
       });
     }
   }, [
@@ -418,12 +427,68 @@ export function PortfolioPageClient() {
     } catch (err) {
       setActionStatus({
         tone: "error",
-        message: err instanceof Error ? err.message : `Failed to close ${position.market}.`,
+        message: actionErrorMessage(err, `Failed to close ${position.market}.`),
       });
     } finally {
       setClosingKeys((prev) => {
         const next = new Set(prev);
         next.delete(key);
+        return next;
+      });
+    }
+  }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
+
+  const handleCancelOrder = useCallback(async (order: OpenOrder) => {
+    const orderId = String(order.orderId);
+    if (!signAndSubmitTransaction || !selectedSubaccount) {
+      setActionStatus({ tone: "error", message: "Connect a wallet and Decibel account first." });
+      return;
+    }
+    if (!order.marketAddress) {
+      setActionStatus({ tone: "error", message: `Missing market address for order ${orderId}.` });
+      return;
+    }
+
+    setCancelingOrderIds((prev) => new Set(prev).add(orderId));
+    setActionStatus({ tone: "pending", message: `Sign cancel for ${order.market} order.` });
+    try {
+      const cancel = await buildAndSign(
+        "/api/decibel/cancel-order",
+        {
+          subaccount: selectedSubaccount,
+          marketName: order.market,
+          marketAddress: order.marketAddress,
+          orderId,
+          network: decibelNetwork,
+        },
+        signAndSubmitTransaction,
+      );
+      setState((prev) => ({
+        ...prev,
+        openOrders: prev.openOrders.filter((item) => String(item.orderId) !== orderId),
+      }));
+      setActionStatus({
+        tone: "pending",
+        message: "Cancel submitted. Waiting for confirmation...",
+        hash: cancel.hash,
+      });
+      await waitForTransactionConfirmation(cancel.hash);
+      setActionStatus({
+        tone: "success",
+        message: `Canceled ${order.market} order.`,
+        hash: cancel.hash,
+      });
+      emitDecibelPositionsRefresh();
+      void fetchAccountState();
+    } catch (err) {
+      setActionStatus({
+        tone: "error",
+        message: actionErrorMessage(err, `Failed to cancel order ${orderId}.`),
+      });
+    } finally {
+      setCancelingOrderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(orderId);
         return next;
       });
     }
@@ -599,7 +664,51 @@ export function PortfolioPageClient() {
               </table>
             </div>
           ) : activeTab === "Open Orders" ? (
-            <div className="overflow-x-auto">
+            <>
+            <div className="md:hidden">
+              {openOrders.length === 0 ? (
+                <div className="px-4 py-12 text-center text-zinc-600">No open orders</div>
+              ) : openOrders.map((order) => {
+                const orderId = String(order.orderId);
+                const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
+                return (
+                <div key={orderId} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-zinc-100">{order.market}</div>
+                      <div className={cn("mt-1 text-[11px] font-semibold uppercase", order.isBuy ? "text-green-400" : "text-[#e8774f]")}>
+                        {order.isBuy ? "Buy" : "Sell"} · {order.status ?? "Open"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelOrder(order)}
+                      disabled={!canCancel}
+                      className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                    >
+                      {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                    <div>
+                      <div className="text-zinc-600">Remaining / Original</div>
+                      <div className="mt-0.5 font-mono tabular-nums">
+                        {formatNumber(order.remainingSize)} / {formatNumber(order.origSize)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-zinc-600">Price</div>
+                      <div className="mt-0.5 font-mono tabular-nums">
+                        {formatPrice(order.price)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[820px] text-left text-[13px]">
                 <thead className="text-zinc-500">
                   <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
@@ -610,27 +719,129 @@ export function PortfolioPageClient() {
                     <th>Price</th>
                     <th>Status</th>
                     <th>Order ID</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {openOrders.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center text-zinc-600">No open orders</td></tr>
-                  ) : openOrders.map((order) => (
-                    <tr key={order.orderId} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
+                    <tr><td colSpan={8} className="px-4 py-12 text-center text-zinc-600">No open orders</td></tr>
+                  ) : openOrders.map((order) => {
+                    const orderId = String(order.orderId);
+                    const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
+                    return (
+                    <tr key={orderId} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
                       <td>{order.market}</td>
                       <td className={order.isBuy ? "text-green-400" : "text-[#e8774f]"}>{order.isBuy ? "Buy" : "Sell"}</td>
                       <td>{formatNumber(order.remainingSize)}</td>
                       <td>{formatNumber(order.origSize)}</td>
                       <td>{formatPrice(order.price)}</td>
                       <td>{order.status ?? "Open"}</td>
-                      <td className="font-mono text-zinc-500">{String(order.orderId).slice(-8)}</td>
+                      <td className="font-mono text-zinc-500">{orderId.slice(-8)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => void handleCancelOrder(order)}
+                          disabled={!canCancel}
+                          className="underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                        >
+                          {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
+            </>
           ) : activeTab === "Positions" ? (
-            <div className="overflow-x-auto">
+            <>
+            <div className="md:hidden">
+              {positions.length === 0 ? (
+                <div className="px-4 py-12 text-center text-zinc-600">No open positions</div>
+              ) : positions.map((position) => {
+                const key = positionKey(position);
+                const pnl = position.estimatedPnl ?? 0;
+                const pnlPct = position.marginUsed > 0 ? (pnl / position.marginUsed) * 100 : null;
+                return (
+                  <div key={key} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-zinc-100">
+                          {position.market.replace("/USD", "")} {position.leverage.toFixed(0)}x
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-1 text-[11px] font-semibold uppercase",
+                            position.isLong ? "text-green-400" : "text-[#e8774f]",
+                          )}
+                        >
+                          {position.isLong ? "Long" : "Short"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleClosePosition(position)}
+                        disabled={closingKeys.has(key)}
+                        className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                      >
+                        {closingKeys.has(key) ? "Closing" : "Close"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                      <div>
+                        <div className="text-zinc-600">Size</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
+                          {formatNumber(Math.abs(position.size))} {position.market.split("/")[0]}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Value</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
+                          {formatUsd(position.value)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-zinc-600">Entry / Mark</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
+                          {formatPrice(position.entryPrice)} / {formatPrice(position.markPrice)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Est. PnL</div>
+                        <div className={cn("mt-0.5 font-mono tabular-nums", pnl >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                          {formatUsd(pnl, true)}
+                          {pnlPct !== null && (
+                            <span className="ml-1 text-zinc-500">
+                              ({pnlPct >= 0 ? "+" : ""}
+                              {pnlPct.toFixed(1)}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-zinc-600">Liq.</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
+                          {formatPrice(position.estimatedLiquidationPrice)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-600">Margin / Funding</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
+                          {formatUsd(position.marginUsed)}
+                          <span className={cn("ml-2", (position.unrealizedFunding ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                            {formatUsd(position.unrealizedFunding, true)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[1160px] text-left text-[13px]">
                 <thead className="text-zinc-500">
                   <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
@@ -686,6 +897,7 @@ export function PortfolioPageClient() {
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
             <div className="px-4 py-12 text-center text-[13px] text-zinc-600">
               {activeTab} will appear here when Decibel returns rows for this account.

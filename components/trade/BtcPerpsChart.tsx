@@ -990,7 +990,7 @@ function BtcPerpsChartComponent({
         const start = end - Math.max(Math.floor(MINUTE_HISTORY_MS / 1000), 120 * 60);
         const [candlesResponse, tradesResponse] = await Promise.all([
           fetch(
-            `https://api.exchange.coinbase.com/products/${productId}/candles?granularity=60&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}`,
+            `/api/coinbase/candles?productId=${encodeURIComponent(productId)}&granularity=60&start=${start}&end=${end}`,
             { cache: "no-store" },
           ),
           fetch(
@@ -998,9 +998,10 @@ function BtcPerpsChartComponent({
             { cache: "no-store" },
           ),
         ]);
-        const rawCandles = candlesResponse.ok
-          ? (await candlesResponse.json()) as Array<[number, number, number, number, number, number]>
-          : [];
+        const candlesPayload = candlesResponse.ok
+          ? (await candlesResponse.json()) as { candles?: Array<[number, number, number, number, number, number]> }
+          : { candles: [] };
+        const rawCandles = Array.isArray(candlesPayload.candles) ? candlesPayload.candles : [];
         const tradesPayload = tradesResponse.ok
           ? (await tradesResponse.json()) as { trades?: TradeSample[] }
           : { trades: [] };

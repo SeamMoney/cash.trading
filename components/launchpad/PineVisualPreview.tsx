@@ -84,6 +84,7 @@ export function PineVisualPreview({ pineScript }: Props) {
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
     let disposed = false;
+    let cleanupChart: (() => void) | null = null;
 
     import("lightweight-charts").then(({ createChart, ColorType }) => {
       if (disposed || !chartRef.current) return;
@@ -126,6 +127,7 @@ export function PineVisualPreview({ pineScript }: Props) {
         colors: string[];
         lineWidth: number;
       }> = [];
+      const overlayCleanups: Array<() => void> = [];
 
       if (pineTSResult) {
       // Render PineTS plots
@@ -440,10 +442,16 @@ export function PineVisualPreview({ pineScript }: Props) {
       };
 
       // Delay initial draw to let chart layout settle
-      setTimeout(drawFills, 150);
-      setTimeout(drawFills, 600);
+      const initialDrawTimer = setTimeout(drawFills, 150);
+      const settledDrawTimer = setTimeout(drawFills, 600);
       chart.timeScale().subscribeVisibleLogicalRangeChange(drawFills);
       chart.subscribeCrosshairMove(drawFills);
+      overlayCleanups.push(() => {
+        clearTimeout(initialDrawTimer);
+        clearTimeout(settledDrawTimer);
+        chart.timeScale().unsubscribeVisibleLogicalRangeChange(drawFills);
+        chart.unsubscribeCrosshairMove(drawFills);
+      });
 
       // Render labels as markers — filter carefully
       const firstCandleTime = candles[0]?.timestamp ?? 0;
@@ -499,10 +507,17 @@ export function PineVisualPreview({ pineScript }: Props) {
       });
       ro.observe(chartRef.current);
 
-      return () => { disposed = true; ro.disconnect(); chart.remove(); };
+      cleanupChart = () => {
+        for (const cleanup of overlayCleanups) cleanup();
+        ro.disconnect();
+        chart.remove();
+      };
     });
 
-    return () => { disposed = true; };
+    return () => {
+      disposed = true;
+      cleanupChart?.();
+    };
   }, [candles, pineTSResult]);
 
   if (!pineScript.trim()) return null;

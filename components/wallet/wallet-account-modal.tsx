@@ -59,7 +59,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm modal-backdrop" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-h-[calc(100dvh-24px)] overflow-y-auto sm:max-w-[460px] sm:mx-4 bg-[var(--background-secondary)] border border-white/[0.08] sm:rounded-2xl rounded-t-2xl modal-panel">
+      <div className="relative w-full max-h-[calc(100dvh-24px)] overflow-y-auto sm:max-w-[460px] sm:mx-4 bg-[var(--background-secondary)] sm:rounded-xl rounded-t-xl modal-panel">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <h2 className="font-display font-semibold text-[18px] tracking-tight">
@@ -74,10 +74,10 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
           </button>
         </div>
 
-        <div className="px-5 pb-5">
+        <div className="px-6 pb-6">
           {/* Wallet identity */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 rounded-lg overflow-hidden shrink-0">
               {wallet?.icon ? (
                 <img src={wallet.icon} alt="" className="w-11 h-11" />
               ) : (
@@ -94,25 +94,24 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
             </div>
           </div>
 
-          {/* Address card */}
-          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-4 mb-4">
-            <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider mb-2">
+          <div className="mb-6">
+            <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
               Address
             </p>
-            <div className="flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-2">
               <p className="text-[13px] font-mono text-zinc-300 flex-1 min-w-0 truncate">
                 {shortAddress}
               </p>
               <button
                 onClick={copyAddress}
-                className="shrink-0 text-[11px] font-medium px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-zinc-400 hover:text-zinc-200 transition-colors"
+                className="shrink-0 text-[11px] font-medium px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.10] text-zinc-400 hover:text-zinc-200 transition-colors"
               >
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
           </div>
 
-          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-4 mb-4">
+          <div className="mb-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
@@ -122,7 +121,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
                   Market data, orders, and positions
                 </p>
               </div>
-              <div className="grid grid-cols-2 rounded-lg border border-white/[0.06] bg-black/20 p-0.5">
+              <div className="grid grid-cols-2 rounded-lg bg-white/[0.05] p-0.5">
                 {(["mainnet", "testnet"] as const).map((network) => (
                   <button
                     key={network}
@@ -141,7 +140,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
             </div>
           </div>
 
-          <DecibelAccountManager className="mb-4" />
+          <DecibelAccountManager className="mb-6" />
 
           {/* Actions */}
           <div className="flex gap-2">
@@ -149,14 +148,14 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
               href={explorerUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-medium text-zinc-400 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[13px] font-medium text-zinc-400 bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               Explorer
             </a>
             <button
               onClick={handleDisconnect}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-medium text-danger bg-danger/[0.06] border border-danger/[0.10] hover:bg-danger/[0.12] transition-colors"
+              className="flex-1 py-2.5 rounded-lg text-[13px] font-medium text-danger bg-danger/[0.06] hover:bg-danger/[0.12] transition-colors"
             >
               Disconnect
             </button>

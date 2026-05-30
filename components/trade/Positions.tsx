@@ -248,8 +248,12 @@ export function Positions() {
     }
 
     try {
+      const params = new URLSearchParams({
+        address: ownerAddress,
+        network: decibelNetwork,
+      });
       const subaccountRes = await fetch(
-        `/api/decibel/subaccount?address=${ownerAddress}`,
+        `/api/decibel/subaccount?${params.toString()}`,
         { cache: "no-store", signal }
       );
       const subaccountData = await subaccountRes.json();
@@ -273,7 +277,7 @@ export function Positions() {
       setSelectedSubaccount(null);
       return null;
     }
-  }, [ownerAddress]);
+  }, [decibelNetwork, ownerAddress]);
 
   const fetchChainState = useCallback(async (subaccount: string) => {
     if (!subaccount) return;

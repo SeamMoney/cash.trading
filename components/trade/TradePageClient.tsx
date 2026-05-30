@@ -2,9 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { ChevronLeft } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
@@ -1068,13 +1066,6 @@ export function TradePageClient({
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 w-full">
-        {/* Back button */}
-        <Link
-          href="/"
-          className="absolute top-4 right-5 z-40 w-9 h-9 rounded-full bg-white/[0.06] backdrop-blur-sm flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.1] transition-colors"
-        >
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" strokeWidth={2.5} />
-        </Link>
         {/* ── Hero ─────────────── */}
         <div className="mb-4 sm:mb-6 lg:mb-4 animate-enter">
           <div className="flex items-center gap-4 mb-2">

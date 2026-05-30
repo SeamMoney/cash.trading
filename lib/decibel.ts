@@ -1,7 +1,7 @@
 /**
  * Decibel SDK Singleton + Constants
  *
- * Mirrors patterns from decibrrr/lib/decibel-sdk.ts and decibel-client.ts.
+ * Mirrors patterns from cash.trading/lib/decibel-sdk.ts and decibel-client.ts.
  * Uses @decibeltrade/sdk v0.3.1 with real DecibelReadDex for market data,
  * orderbook depth, positions, and account overview.
  */

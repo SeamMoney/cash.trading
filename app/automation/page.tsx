@@ -7,7 +7,7 @@ import { PointsView } from "@/components/points/points-view"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Decibrrr - Farm Decibel Points",
+  title: "cash.trading - Farm Decibel Points",
   description: "Automated volume generation bot for Decibel DEX on Aptos.",
 }
 

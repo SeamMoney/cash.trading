@@ -22,7 +22,7 @@ DECIBEL_INDEXER_MARKETS=ALL
 DECIBEL_INDEXER_EXTRA_SUBACCOUNTS=0x...,0x...
 DECIBEL_INDEXER_BACKFILL_INTERVAL_MS=30000
 DECIBEL_INDEXER_ACCOUNT_REFRESH_MS=3000
-DECIBEL_INDEXER_INSTANCE_ID=decibrrr-mainnet-1
+DECIBEL_INDEXER_INSTANCE_ID=cash-trading-mainnet-1
 ```
 
 ## Run
@@ -37,8 +37,8 @@ npm start
 For a droplet:
 
 ```bash
-pm2 start runner.js --name decibrrr-decibel-indexer
-pm2 logs decibrrr-decibel-indexer
+pm2 start runner.js --name cash-trading-decibel-indexer
+pm2 logs cash-trading-decibel-indexer
 pm2 save
 ```
 

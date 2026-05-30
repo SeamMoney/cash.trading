@@ -1,5 +1,5 @@
 {
-  "name": "decibrrr-decibel-indexer",
+  "name": "cash-trading-decibel-indexer",
   "version": "0.1.0",
   "description": "Persistent Decibel market/account indexer for cash.trading",
   "main": "runner.js",

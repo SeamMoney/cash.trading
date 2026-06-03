@@ -19,6 +19,49 @@ import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
 
+type DecibelWsPosition = {
+  market: string;
+  size: number;
+  user_leverage: number;
+  entry_price: number;
+  is_isolated: boolean;
+  unrealized_funding: number;
+  estimated_liquidation_price: number;
+  tp_trigger_price: number | null;
+  sl_trigger_price: number | null;
+};
+
+type DecibelWsOverview = {
+  perp_equity_balance: number;
+  unrealized_pnl: number;
+  cross_margin_ratio: number;
+  maintenance_margin: number;
+  cross_account_leverage_ratio: number | null;
+  cross_account_position: number;
+  total_margin: number;
+  usdc_cross_withdrawable_balance: number;
+  usdc_isolated_withdrawable_balance: number;
+  realized_pnl: number | null;
+};
+
+type DecibelWsOpenOrder = {
+  market: string;
+  order_id: string;
+  client_order_id: string | null;
+  orig_size: number | null;
+  remaining_size: number | null;
+  size_delta: number | null;
+  price: number | null;
+  is_buy: boolean;
+  details: string;
+  unix_ms: number;
+};
+
+type DecibelWsMarketPrice = {
+  market: string;
+  mark_px: number;
+};
+
 interface Position {
   market: string;
   marketAddress: string | null;
@@ -81,6 +124,175 @@ type ActionStatus = {
 function positionKey(p: Pick<Position, "marketAddress" | "market" | "isLong">) {
   if (p.marketAddress) return p.marketAddress.toLowerCase();
   return `${p.market}:${p.isLong ? "L" : "S"}`;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function getKnownMarketName(
+  marketAddress: string,
+  refs: {
+    positions: Position[];
+    orders: OpenOrder[];
+  }
+) {
+  const lower = marketAddress.toLowerCase();
+  const position = refs.positions.find(
+    (item) => item.marketAddress?.toLowerCase() === lower && item.market !== "Unknown"
+  );
+  if (position) return position.market;
+  const order = refs.orders.find(
+    (item) => item.marketAddress?.toLowerCase() === lower && item.market !== "Unknown"
+  );
+  return order?.market ?? marketAddress;
+}
+
+function applyMarkCarry(position: Position, previous: Position | null): Position {
+  if (!previous || previous.isLong !== position.isLong) return position;
+  const mark = position.markPrice ?? previous.markPrice;
+  const absSize = Math.abs(position.size);
+  const value = mark !== null ? absSize * mark : null;
+  const estimatedPnl =
+    mark !== null
+      ? position.isLong
+        ? (mark - position.entryPrice) * absSize
+        : (position.entryPrice - mark) * absSize
+      : null;
+
+  return {
+    ...position,
+    markPrice: mark,
+    value,
+    estimatedPnl,
+    market:
+      position.market !== position.marketAddress && position.market !== "Unknown"
+        ? position.market
+        : previous.market,
+  };
+}
+
+function decibelWsPositionToPosition(
+  row: DecibelWsPosition,
+  previousByMarket: Map<string, Position>,
+  refs: { positions: Position[]; orders: OpenOrder[] }
+): Position | null {
+  if (!row.market || !isFiniteNumber(row.size) || row.size === 0) return null;
+  const marketAddress = row.market;
+  const isLong = row.size > 0;
+  const absSize = Math.abs(row.size);
+  const entryPrice = isFiniteNumber(row.entry_price) ? row.entry_price : 0;
+  const leverage =
+    isFiniteNumber(row.user_leverage) && row.user_leverage > 0
+      ? row.user_leverage
+      : 1;
+  const notionalEntry = absSize * entryPrice;
+  const marginUsed = leverage > 0 ? notionalEntry / leverage : 0;
+  const previous = previousByMarket.get(marketAddress.toLowerCase()) ?? null;
+  const liq =
+    isFiniteNumber(row.estimated_liquidation_price) &&
+    row.estimated_liquidation_price !== 0
+      ? row.estimated_liquidation_price
+      : null;
+
+  const position: Position = {
+    market: getKnownMarketName(marketAddress, refs),
+    marketAddress,
+    size: row.size,
+    isLong,
+    leverage,
+    entryPrice,
+    markPrice: null,
+    notionalEntry,
+    value: null,
+    estimatedPnl: null,
+    marginUsed,
+    isIsolated: Boolean(row.is_isolated),
+    unrealizedFunding: isFiniteNumber(row.unrealized_funding)
+      ? row.unrealized_funding
+      : null,
+    estimatedLiquidationPrice: liq,
+    tpTriggerPrice: row.tp_trigger_price,
+    slTriggerPrice: row.sl_trigger_price,
+    source: "indexed",
+    decimalsKnown: true,
+  };
+
+  return applyMarkCarry(position, previous);
+}
+
+function decibelWsOverviewToOverview(
+  row: DecibelWsOverview,
+  previous: Overview | null
+): Overview {
+  const equity = isFiniteNumber(row.perp_equity_balance)
+    ? row.perp_equity_balance
+    : 0;
+  const unrealizedPnl = isFiniteNumber(row.unrealized_pnl)
+    ? row.unrealized_pnl
+    : 0;
+  const crossWithdrawable = isFiniteNumber(row.usdc_cross_withdrawable_balance)
+    ? row.usdc_cross_withdrawable_balance
+    : 0;
+  const isolatedWithdrawable = isFiniteNumber(row.usdc_isolated_withdrawable_balance)
+    ? row.usdc_isolated_withdrawable_balance
+    : 0;
+
+  return {
+    equity,
+    unrealizedPnl,
+    realizedPnl: isFiniteNumber(row.realized_pnl) ? row.realized_pnl : null,
+    marginRatio: isFiniteNumber(row.cross_margin_ratio) ? row.cross_margin_ratio : 0,
+    maintenanceMargin: isFiniteNumber(row.maintenance_margin)
+      ? row.maintenance_margin
+      : 0,
+    leverage: isFiniteNumber(row.cross_account_leverage_ratio)
+      ? row.cross_account_leverage_ratio
+      : null,
+    totalMargin: isFiniteNumber(row.total_margin) ? row.total_margin : 0,
+    totalNotional: isFiniteNumber(row.cross_account_position)
+      ? row.cross_account_position
+      : 0,
+    collateral: previous?.collateral ?? equity - unrealizedPnl,
+    crossWithdrawable: crossWithdrawable + isolatedWithdrawable,
+    volume30d: previous?.volume30d ?? null,
+  };
+}
+
+function decibelWsOpenOrderToOpenOrder(
+  row: DecibelWsOpenOrder,
+  refs: { positions: Position[]; orders: OpenOrder[] }
+): OpenOrder | null {
+  if (!row.market || !row.order_id) return null;
+  return {
+    orderId: row.order_id,
+    market: getKnownMarketName(row.market, refs),
+    marketAddress: row.market,
+    isBuy: Boolean(row.is_buy),
+    price: isFiniteNumber(row.price) ? row.price : 0,
+    origSize:
+      isFiniteNumber(row.orig_size) ? row.orig_size : isFiniteNumber(row.size_delta) ? row.size_delta : 0,
+    remainingSize: isFiniteNumber(row.remaining_size) ? row.remaining_size : 0,
+    details: row.details ?? "Open",
+    status: "Open",
+    timestamp: isFiniteNumber(row.unix_ms) ? row.unix_ms : Date.now(),
+  };
+}
+
+function applyLiveMark(position: Position, mark: number): Position {
+  if (!Number.isFinite(mark) || mark <= 0) return position;
+  const absSize = Math.abs(position.size);
+  const value = absSize * mark;
+  const estimatedPnl = position.isLong
+    ? (mark - position.entryPrice) * absSize
+    : (position.entryPrice - mark) * absSize;
+
+  return {
+    ...position,
+    markPrice: mark,
+    value,
+    estimatedPnl,
+  };
 }
 
 /**
@@ -246,8 +458,23 @@ export function Positions() {
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const chainControllerRef = useRef<AbortController | null>(null);
   const indexedControllerRef = useRef<AbortController | null>(null);
+  const positionsRef = useRef<Position[]>([]);
+  const openOrdersRef = useRef<OpenOrder[]>([]);
+  const overviewRef = useRef<Overview | null>(null);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
+
+  useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
+
+  useEffect(() => {
+    openOrdersRef.current = openOrders;
+  }, [openOrders]);
+
+  useEffect(() => {
+    overviewRef.current = overview;
+  }, [overview]);
 
   const loadSelectedSubaccount = useCallback(async (signal?: AbortSignal) => {
     if (!ownerAddress) {
@@ -604,16 +831,82 @@ export function Positions() {
     let closed = false;
     let stream: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let indexedRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
 
-    const scheduleRefresh = () => {
-      if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => {
+    const scheduleIndexedRefresh = (delay = 250) => {
+      if (indexedRefreshTimer) clearTimeout(indexedRefreshTimer);
+      indexedRefreshTimer = setTimeout(() => {
         if (closed) return;
-        void fetchChainState(selectedSubaccount);
         void fetchIndexedState(selectedSubaccount);
-      }, 150);
+      }, delay);
+    };
+
+    const applyPositionsFrame = (rows: unknown) => {
+      if (!Array.isArray(rows)) return false;
+      const previousByMarket = new Map<string, Position>();
+      for (const item of positionsRef.current) {
+        if (item.marketAddress) {
+          previousByMarket.set(item.marketAddress.toLowerCase(), item);
+        }
+      }
+      const refs = {
+        positions: positionsRef.current,
+        orders: openOrdersRef.current,
+      };
+      const next = rows
+        .map((row) =>
+          decibelWsPositionToPosition(
+            row as DecibelWsPosition,
+            previousByMarket,
+            refs
+          )
+        )
+        .filter((row): row is Position => row !== null);
+      setPositions(next);
+      setLoading(false);
+      setRefreshing(false);
+      return true;
+    };
+
+    const applyOverviewFrame = (row: unknown) => {
+      if (!row || typeof row !== "object") return false;
+      setOverview(decibelWsOverviewToOverview(row as DecibelWsOverview, overviewRef.current));
+      setLoading(false);
+      setRefreshing(false);
+      return true;
+    };
+
+    const applyOpenOrdersFrame = (rows: unknown) => {
+      if (!Array.isArray(rows)) return false;
+      const refs = {
+        positions: positionsRef.current,
+        orders: openOrdersRef.current,
+      };
+      const next = rows
+        .map((row) => decibelWsOpenOrderToOpenOrder(row as DecibelWsOpenOrder, refs))
+        .filter((row): row is OpenOrder => row !== null);
+      setOpenOrders(next);
+      return true;
+    };
+
+    const applyMarketPricesFrame = (rows: unknown) => {
+      if (!Array.isArray(rows)) return false;
+      const marks = new Map<string, number>();
+      for (const row of rows as DecibelWsMarketPrice[]) {
+        if (row.market && isFiniteNumber(row.mark_px)) {
+          marks.set(row.market.toLowerCase(), row.mark_px);
+        }
+      }
+      if (marks.size === 0) return false;
+      setPositions((prev) =>
+        prev.map((position) => {
+          const market = position.marketAddress?.toLowerCase();
+          const mark = market ? marks.get(market) : undefined;
+          return mark === undefined ? position : applyLiveMark(position, mark);
+        })
+      );
+      return true;
     };
 
     const connect = () => {
@@ -621,6 +914,7 @@ export function Positions() {
       const params = new URLSearchParams({
         network: decibelNetwork,
         topics: [
+          "all_market_prices",
           `account_positions:${selectedSubaccount}`,
           `account_overview:${selectedSubaccount}`,
           `account_open_orders:${selectedSubaccount}`,
@@ -635,17 +929,41 @@ export function Positions() {
       };
       stream.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data) as { topic?: string; type?: string };
+          const message = JSON.parse(event.data) as {
+            topic?: string;
+            type?: string;
+            positions?: unknown;
+            account_overview?: unknown;
+            orders?: unknown;
+            prices?: unknown;
+          };
           if (message.type === "connected" || message.type === "closed") return;
-          if (
-            message.topic?.startsWith("account_") ||
-            message.topic?.startsWith("order_updates:") ||
-            message.topic?.startsWith("user_trades:")
-          ) {
-            scheduleRefresh();
+          if (message.topic === "all_market_prices") {
+            applyMarketPricesFrame(message.prices);
+            return;
+          }
+          if (message.topic === `account_positions:${selectedSubaccount}`) {
+            if (applyPositionsFrame(message.positions)) {
+              scheduleIndexedRefresh(1_500);
+              return;
+            }
+          }
+          if (message.topic === `account_overview:${selectedSubaccount}`) {
+            if (applyOverviewFrame(message.account_overview)) return;
+          }
+          if (message.topic === `account_open_orders:${selectedSubaccount}`) {
+            if (applyOpenOrdersFrame(message.orders)) return;
+          }
+          if (message.topic?.startsWith("order_updates:")) {
+            scheduleIndexedRefresh(100);
+            return;
+          }
+          if (message.topic?.startsWith("user_trades:")) {
+            void fetchChainState(selectedSubaccount);
+            scheduleIndexedRefresh(250);
           }
         } catch {
-          scheduleRefresh();
+          scheduleIndexedRefresh();
         }
       };
       stream.onerror = () => {
@@ -664,7 +982,7 @@ export function Positions() {
       closed = true;
       stream?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (refreshTimer) clearTimeout(refreshTimer);
+      if (indexedRefreshTimer) clearTimeout(indexedRefreshTimer);
     };
   }, [connected, decibelNetwork, fetchChainState, fetchIndexedState, selectedSubaccount]);
 

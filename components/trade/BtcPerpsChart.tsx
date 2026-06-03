@@ -56,6 +56,8 @@ const MAX_LINE_VERTICAL_PAD = 72;
 const INITIAL_REQUEST_TIMEOUT_MS = 9000;
 const COINBASE_BOOTSTRAP_TARGET_SECS = 12 * 60;
 const COINBASE_RESUME_REFRESH_COOLDOWN_MS = 1500;
+const ENABLE_EXTERNAL_PRICE_FALLBACKS =
+  process.env.NEXT_PUBLIC_ENABLE_EXTERNAL_PRICE_FALLBACKS === "true";
 
 const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "1s": 1,
@@ -715,9 +717,11 @@ function BtcPerpsChartComponent({
 
   snapshotRef.current = snapshot;
 
-  const btcFallbackEnabled = market.marketName === "BTC/USD";
-  // Always use Coinbase feed when available so line & candle views share the same data
-  const useCoinbaseLineFeed = supportsPriceCandleMarket(market.marketName);
+  // Decibel is the product source of truth. External feeds are only an
+  // explicit degraded-mode fallback, never the default chart source.
+  const btcFallbackEnabled = ENABLE_EXTERNAL_PRICE_FALLBACKS && market.marketName === "BTC/USD";
+  const useCoinbaseLineFeed =
+    ENABLE_EXTERNAL_PRICE_FALLBACKS && supportsPriceCandleMarket(market.marketName);
 
   const {
     candles: coinbaseCandles,

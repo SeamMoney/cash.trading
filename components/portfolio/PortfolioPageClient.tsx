@@ -20,6 +20,7 @@ import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
+import { NumberTicker } from "@/components/ui/number-ticker";
 
 type Position = {
   market: string;
@@ -807,15 +808,39 @@ export function PortfolioPageClient() {
 
         <section className="grid gap-px overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#1a1a1a] md:grid-cols-4">
           {[
-            ["Portfolio Value", formatUsd(overview?.equity ?? 0)],
-            ["PnL", formatUsd(totalPnl, true), totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]"],
-            ["30 Day Volume", formatVolume(overview?.volume30d)],
-            ["Fees (Taker / Maker)", "0.0340% / 0.0110%"],
-          ].map(([label, value, tone]) => (
-            <div key={label} className="bg-[#050505] px-6 py-5">
-              <p className="text-[13px] text-zinc-500">{label}</p>
-              <p className={cn("mt-2 font-mono text-[26px] font-semibold tabular-nums text-zinc-200", tone)}>
-                {value}
+            {
+              label: "Portfolio Value",
+              value: formatUsd(overview?.equity ?? 0),
+              raw: overview?.equity ?? 0,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
+            },
+            {
+              label: "PnL",
+              value: formatUsd(totalPnl, true),
+              raw: totalPnl,
+              tone: totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]",
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
+            },
+            {
+              label: "30 Day Volume",
+              value: formatVolume(overview?.volume30d),
+              raw: overview?.volume30d,
+              format: { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 },
+            },
+            { label: "Fees (Taker / Maker)", value: "0.0340% / 0.0110%" },
+          ].map((item) => (
+            <div key={item.label} className="bg-[#050505] px-6 py-5">
+              <p className="text-[13px] text-zinc-500">{item.label}</p>
+              <p className={cn("mt-2 font-mono text-[26px] font-semibold tabular-nums text-zinc-200", "tone" in item && item.tone)}>
+                {"raw" in item && item.raw != null ? (
+                  <NumberTicker
+                    value={item.raw}
+                    fallback={item.value}
+                    format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
+                  />
+                ) : (
+                  item.value
+                )}
               </p>
             </div>
           ))}
@@ -844,9 +869,17 @@ export function PortfolioPageClient() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Profit/Loss</h2>
-                <p className={cn("mt-3 font-mono text-[28px] font-semibold tabular-nums", totalPnl >= 0 ? "text-zinc-200" : "text-zinc-200")}>
-                  {formatUsd(chartMetric === "pnl" ? totalPnl : overview?.equity ?? 0, true)}
-                </p>
+                <NumberTicker
+                  value={chartMetric === "pnl" ? totalPnl : overview?.equity ?? 0}
+                  format={{
+                    style: "currency",
+                    currency: "USD",
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                    signDisplay: chartMetric === "pnl" ? "always" : "auto",
+                  }}
+                  className="mt-3 block font-mono text-[28px] font-semibold text-zinc-200"
+                />
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[12px]">
                 <div className="rounded-[4px] bg-[#1d1d1d] p-1">

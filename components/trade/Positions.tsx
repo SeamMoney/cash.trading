@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { AnimatePresence, motion } from "motion/react";
 import { explorerTxUrl } from "@/lib/constants";
 import {
   emitDecibelPositionsRefresh,
@@ -15,6 +16,7 @@ import {
   type DecibelPublicNetwork,
 } from "@/lib/decibel-public";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
+import { NumberTicker } from "@/components/ui/number-ticker";
 
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
@@ -1003,18 +1005,26 @@ export function Positions() {
             {
               label: "Equity",
               value: formatUsd(overview.equity),
+              raw: overview.equity,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "Available",
               value: formatUsd(overview.crossWithdrawable),
+              raw: overview.crossWithdrawable,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "Cross Position",
               value: formatUsd(overview.totalNotional),
+              raw: overview.totalNotional,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "Unrealized P&L",
               value: formatUsd(overview.unrealizedPnl, { signed: true }),
+              raw: overview.unrealizedPnl,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
               color:
                 overview.unrealizedPnl >= 0
                   ? "text-success"
@@ -1026,6 +1036,8 @@ export function Positions() {
                 overview.realizedPnl !== null
                   ? formatUsd(overview.realizedPnl, { signed: true })
                   : "—",
+              raw: overview.realizedPnl,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
               color:
                 overview.realizedPnl === null
                   ? undefined
@@ -1038,29 +1050,48 @@ export function Positions() {
             {
               label: "Margin Ratio",
               value: `${(overview.marginRatio * 100).toFixed(1)}%`,
+              raw: overview.marginRatio * 100,
+              format: { minimumFractionDigits: 1, maximumFractionDigits: 1 },
+              suffix: "%",
             },
             {
               label: "Leverage",
               value: overview.leverage
                 ? `${overview.leverage.toFixed(1)}x`
                 : "—",
+              raw: overview.leverage,
+              format: { minimumFractionDigits: 1, maximumFractionDigits: 1 },
+              suffix: "x",
             },
             {
               label: "30d Volume",
               value: formatVolume(overview.volume30d),
             },
           ].map((item) => (
-            <div
+            <motion.div
               key={item.label}
+              layout
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
               className="surface-1 rounded-[12px] p-3"
             >
               <div className="text-[11px] text-zinc-500 mb-1">{item.label}</div>
               <div
                 className={`text-[13px] font-semibold font-mono tabular-nums ${"color" in item && item.color ? item.color : ""}`}
               >
-                {item.value}
+                {"raw" in item && item.raw != null ? (
+                  <NumberTicker
+                    value={item.raw}
+                    fallback={item.value}
+                    format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
+                    suffix={"suffix" in item ? item.suffix : undefined}
+                  />
+                ) : (
+                  item.value
+                )}
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       )}
@@ -1107,7 +1138,8 @@ export function Positions() {
         ) : (
           <>
             <div className="md:hidden">
-              {positions.map((p, i) => {
+              <AnimatePresence initial={false}>
+              {positions.map((p) => {
                 const pnl = p.estimatedPnl;
                 const pnlPct =
                   pnl !== null && p.marginUsed > 0
@@ -1139,8 +1171,13 @@ export function Positions() {
                 );
 
                 return (
-                  <div
-                    key={`${p.marketAddress ?? p.market}:${p.isLong ? "L" : "S"}:${i}`}
+                  <motion.div
+                    key={actionKey}
+                    layout
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.16, ease: "easeOut" }}
                     className="border-b border-white/5 px-4 py-3 last:border-b-0"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -1219,9 +1256,10 @@ export function Positions() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
+              </AnimatePresence>
             </div>
 
           <div className="hidden overflow-x-auto md:block">
@@ -1367,6 +1405,7 @@ export function Positions() {
             </h3>
           </div>
           <div className="md:hidden">
+            <AnimatePresence initial={false}>
             {openOrders.map((o) => {
               const orderId = String(o.orderId);
               const isCanceling = cancelingOrderIds.has(orderId);
@@ -1377,7 +1416,15 @@ export function Positions() {
               );
 
               return (
-                <div key={orderId} className="border-b border-white/5 px-4 py-3 last:border-b-0">
+                <motion.div
+                  key={orderId}
+                  layout
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="border-b border-white/5 px-4 py-3 last:border-b-0"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold text-zinc-100">
@@ -1414,9 +1461,10 @@ export function Positions() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
+            </AnimatePresence>
           </div>
 
           <div className="hidden overflow-x-auto md:block">

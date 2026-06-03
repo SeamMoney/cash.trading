@@ -6,6 +6,7 @@ import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
+import { NumberTicker } from "@/components/ui/number-ticker";
 import {
   shortAddress,
   useDecibelSubaccounts,
@@ -29,20 +30,6 @@ interface AccountOverview {
 interface AccountStateResponse {
   overview?: AccountOverview | null;
   error?: string;
-}
-
-const USD_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatUsd(value: number | null | undefined, signed = false) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
-  const formatted = USD_FORMATTER.format(Math.abs(value));
-  if (!signed) return value < 0 ? `-${formatted}` : formatted;
-  return `${value >= 0 ? "+" : "-"}${formatted}`;
 }
 
 export function DecibelAccountManager({ className }: { className?: string }) {
@@ -325,12 +312,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       {connected && hasDecibelAccount && (
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 tabular-nums">
           {[
-            { label: "Equity", value: overviewLoading ? "..." : formatUsd(overview?.equity) },
-            { label: "Available USDC", value: overviewLoading ? "..." : formatUsd(overview?.crossWithdrawable) },
-            { label: "Collateral", value: overviewLoading ? "..." : formatUsd(overview?.collateral) },
+            { label: "Equity", value: overview?.equity, signed: false },
+            { label: "Available USDC", value: overview?.crossWithdrawable, signed: false },
+            { label: "Collateral", value: overview?.collateral, signed: false },
             {
               label: "Unrealized P&L",
-              value: overviewLoading ? "..." : formatUsd(overview?.unrealizedPnl, true),
+              value: overview?.unrealizedPnl,
+              signed: true,
               tone:
                 overview?.unrealizedPnl == null
                   ? "text-white"
@@ -344,7 +332,21 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 {item.label}
               </p>
               <p className={cn("mt-1 truncate text-[14px] font-semibold text-white", item.tone)}>
-                {item.value}
+                {overviewLoading ? (
+                  "..."
+                ) : (
+                  <NumberTicker
+                    value={item.value}
+                    fallback="--"
+                    format={{
+                      style: "currency",
+                      currency: "USD",
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                      signDisplay: item.signed ? "always" : "auto",
+                    }}
+                  />
+                )}
               </p>
             </div>
           ))}
@@ -389,7 +391,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           type="button"
           onClick={handleRefreshAccount}
           disabled={!connected || status === "submitting" || isLoadingSubaccounts}
-          className="rounded-[10px] bg-white/[0.04] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoadingSubaccounts ? "Checking..." : "Refresh account"}
         </button>
@@ -398,7 +400,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             type="button"
             onClick={handleMintTestnetUsdc}
             disabled={!connected || status === "submitting"}
-            className="rounded-[10px] bg-white/[0.04] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mint testnet USDC
           </button>
@@ -406,7 +408,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       </div>
 
       <div className="grid grid-cols-[1fr_auto] gap-2">
-        <label className="flex items-center gap-2 rounded-[10px] bg-white/[0.04] px-3 py-2">
+        <label className="flex items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
           <TokenLogo token="USDC" size={18} />
           <input
             type="text"
@@ -426,7 +428,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           onClick={handleDeposit}
           disabled={!canDeposit}
           className={cn(
-            "rounded-[10px] px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            "rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
             canDeposit
               ? "bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
               : "bg-white/[0.03] text-zinc-600"

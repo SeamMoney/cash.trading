@@ -379,7 +379,7 @@ export function TradePanel({
   return (
     <div>
       {/* Header row */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
@@ -405,15 +405,15 @@ export function TradePanel({
             {!isLong ? "You are SHORTING" : "Short"}
           </button>
         </div>
-        <span className="text-[12px] font-mono text-zinc-500 px-3 py-1.5 rounded-[10px] border border-white/8 bg-white/[0.03]">
+        <span className="rounded-md bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
           0.045% Fee
         </span>
       </div>
 
       {/* Amount input card */}
-      <div className="rounded-[16px] bg-[#0e0e0e] border border-white/[0.06]">
+      <div className="rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
         {/* Input row */}
-        <div className="flex items-center justify-between px-5 py-4 rounded-[16px] bg-[#141414] relative z-[1]">
+        <div className="relative z-[1] flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3 sm:px-5 sm:py-4">
           <input
             ref={inputRef}
             type="text"
@@ -441,7 +441,7 @@ export function TradePanel({
             <button
               type="button"
               onClick={() => setCollateralOpen((open) => !open)}
-              className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
+              className="flex items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]"
             >
               <TokenLogo token={collateralToken} size={22} />
               <span className="text-[14px] font-display font-semibold text-white">
@@ -451,7 +451,7 @@ export function TradePanel({
             </button>
 
             {collateralOpen && (
-              <div className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[12px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
+              <div className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[10px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
                 {COLLATERAL_TOKENS.map((token) => {
                   const active = token.symbol === collateralToken;
                   return (
@@ -570,7 +570,8 @@ export function TradePanel({
         const marginRequired = orderValue;
         const estLiqPrice = getEstimatedLiquidationPrice(currentPrice, side, leverage);
         return (
-          <div className="mt-3 rounded-[12px] bg-[#0e0e0e] border border-white/[0.06] p-4 space-y-2.5 text-[11px] font-mono tabular-nums animate-enter">
+          <div className="mt-3 hidden rounded-[10px] bg-[#0e0e0e] p-4 text-[11px] font-mono tabular-nums animate-enter sm:block sm:border sm:border-white/[0.06]">
+            <div className="space-y-2.5">
             <div className="flex justify-between">
               <span className="text-zinc-500">Leverage</span>
               <span className="text-white font-semibold">{leverage.toFixed(1)}x</span>
@@ -595,6 +596,7 @@ export function TradePanel({
               <span className="text-zinc-500">Fees</span>
               <span className="text-zinc-400">0.0340% / 0.0110%</span>
             </div>
+            </div>
           </div>
         );
       })()}
@@ -604,7 +606,7 @@ export function TradePanel({
         onClick={handleSubmit}
         disabled={!canSubmitDecibel}
         className={cn(
-          "mt-4 w-full rounded-[12px] py-3.5 text-[14px] font-display font-bold uppercase tracking-wider transition-all disabled:cursor-not-allowed",
+          "mt-3 w-full rounded-[10px] py-3.5 text-[14px] font-display font-bold uppercase tracking-wider transition-all disabled:cursor-not-allowed sm:mt-4",
           canSubmitDecibel && "active:scale-[0.98]",
           isOrderSuccess
             ? "bg-success text-white"
@@ -632,10 +634,10 @@ export function TradePanel({
 
       {statusMessage && (
         <div
-          className={`mt-3 rounded-[10px] border px-3 py-2 text-[11px] ${
+          className={`mt-3 rounded-md px-3 py-2 text-[11px] ${
             tradeStatus === "error"
-              ? "border-red-500/25 bg-red-500/10 text-red-300"
-              : "border-white/[0.08] bg-white/[0.03] text-zinc-400"
+              ? "bg-red-500/10 text-red-300"
+              : "bg-white/[0.03] text-zinc-400"
           }`}
         >
           <p>{statusMessage}</p>

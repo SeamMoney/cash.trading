@@ -21,7 +21,7 @@ const NO_STORE_HEADERS = {
 };
 
 const MARKET_TOPIC_PATTERN =
-  /^(all_market_prices|market_price:0x[a-fA-F0-9]+|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
+  /^(all_market_prices|market_price:0x[a-fA-F0-9]+|market_candlestick:0x[a-fA-F0-9]+:(?:1m|5m|15m|30m|1h|2h|4h|8h|12h|1d|3d|1w|1mo)|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
 const ACCOUNT_TOPIC_PATTERN =
   /^(account_open_orders|order_updates|account_positions|account_overview|user_trades|notifications|withdraw_queue|bulk_orders|bulk_order_fills|bulk_order_rejections|twap_order_updates|twap_fills|twap_rejections):0x[a-fA-F0-9]+$/;
 

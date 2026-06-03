@@ -5,7 +5,7 @@
  *
  * Background: the chart's "live line" is a `LivelinePoint[]` series rendered
  * by the Liveline component. The trailing point follows the most recent
- * Coinbase tick (or websocket snapshot). When the page is hidden and later
+ * market tick or websocket snapshot. When the page is hidden and later
  * restored, an in-flight live tick can arrive with a timestamp that is at or
  * before the last *committed* historical point (e.g. a candle close just
  * captured before tab-hide). The previous `syncLineTail` implementation

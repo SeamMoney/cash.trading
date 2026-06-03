@@ -55,6 +55,7 @@ const BASE_LINE_VERTICAL_PAD = 14;
 const MAX_LINE_VERTICAL_PAD = 72;
 const INITIAL_REQUEST_TIMEOUT_MS = 9000;
 const COINBASE_BOOTSTRAP_TARGET_SECS = 12 * 60;
+const COINBASE_RESUME_REFRESH_COOLDOWN_MS = 1500;
 
 const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "1s": 1,
@@ -436,6 +437,49 @@ function getLineIntervalForWindow(windowSecs: number): ChartInterval {
   return "1m";
 }
 
+function getMaxLineGapSecs(interval: ChartInterval) {
+  return Math.max(4, INTERVAL_SECONDS[interval] * 4);
+}
+
+function fillShortLineGaps(points: LivelinePoint[], interval: ChartInterval) {
+  if (points.length < 2) return points;
+
+  const stepSecs = INTERVAL_SECONDS[interval];
+  const maxGapSecs = getMaxLineGapSecs(interval);
+  const filled: LivelinePoint[] = [points[0]];
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = filled[filled.length - 1];
+    const point = points[index];
+    const gapSecs = point.time - previous.time;
+
+    if (gapSecs > stepSecs * 1.5 && gapSecs <= maxGapSecs) {
+      for (let time = previous.time + stepSecs; time < point.time - stepSecs * 0.25; time += stepSecs) {
+        filled.push({ time, value: previous.value });
+      }
+    }
+
+    filled.push(point);
+  }
+
+  return filled;
+}
+
+function trimAfterLargeLineGap(points: LivelinePoint[], interval: ChartInterval) {
+  if (points.length < 2) return points;
+
+  const maxGapSecs = getMaxLineGapSecs(interval);
+  let segmentStart = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    if (points[index].time - points[index - 1].time > maxGapSecs) {
+      segmentStart = index;
+    }
+  }
+
+  return segmentStart === 0 ? points : points.slice(segmentStart);
+}
+
 function buildLinePoints(candles: CandlePoint[], interval: ChartInterval) {
   if (candles.length === 0) return [];
 
@@ -650,6 +694,7 @@ function BtcPerpsChartComponent({
   const [coinbaseHistorySecondCandles, setCoinbaseHistorySecondCandles] = useState<CandlePoint[]>([]);
   const [coinbaseHistoryTicks, setCoinbaseHistoryTicks] = useState<LivelinePoint[]>([]);
   const [coinbaseBootstrapReady, setCoinbaseBootstrapReady] = useState(false);
+  const [coinbaseHistoryRefreshNonce, setCoinbaseHistoryRefreshNonce] = useState(0);
   const [hasInitialHistory, setHasInitialHistory] = useState(false);
   const [useBtcFallback, setUseBtcFallback] = useState(false);
   const [lineWindowSecs, setLineWindowSecs] = useState(DEFAULT_LINE_WINDOW_SECS);
@@ -666,6 +711,7 @@ function BtcPerpsChartComponent({
   const snapshotRef = useRef(snapshot);
   const decibelLiveAtRef = useRef(0);
   const coinbaseHistoryLoadedKeyRef = useRef<string | null>(null);
+  const lastCoinbaseResumeRefreshAtRef = useRef(0);
 
   snapshotRef.current = snapshot;
 
@@ -779,7 +825,7 @@ function BtcPerpsChartComponent({
         // (acceptance #4: resume must rebuild from sorted arrays, not from
         // animated path state). Then attach the live tick via withLiveTail,
         // which never mutates a committed point.
-        return withLiveTail(
+        const pointsWithTail = withLiveTail(
           dedupeAndSort([
             ...buildHybridVisibleLinePoints(
               activeMinuteCandles,
@@ -793,13 +839,15 @@ function BtcPerpsChartComponent({
           liveValue,
           liveTime,
         );
+        return trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval);
       }
 
-      return withLiveTail(
+      const pointsWithTail = withLiveTail(
         dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval)),
         liveValue,
         liveTime,
       );
+      return trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval);
     },
     [
       activeMinuteCandles,
@@ -958,6 +1006,31 @@ function BtcPerpsChartComponent({
   }, [onSnapshotChange, snapshot]);
 
   useEffect(() => {
+    if (!active || !useCoinbaseLineFeed || typeof document === "undefined") return;
+
+    const refreshOnResume = () => {
+      if (document.visibilityState !== "visible") return;
+
+      const now = Date.now();
+      if (now - lastCoinbaseResumeRefreshAtRef.current < COINBASE_RESUME_REFRESH_COOLDOWN_MS) {
+        return;
+      }
+
+      lastCoinbaseResumeRefreshAtRef.current = now;
+      setLineEndTime(null);
+      setCoinbaseHistoryRefreshNonce((value) => value + 1);
+    };
+
+    document.addEventListener("visibilitychange", refreshOnResume);
+    window.addEventListener("focus", refreshOnResume);
+
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnResume);
+      window.removeEventListener("focus", refreshOnResume);
+    };
+  }, [active, useCoinbaseLineFeed]);
+
+  useEffect(() => {
     if (!useCoinbaseLineFeed) {
       setCoinbaseBootstrapReady(false);
       return () => {};
@@ -974,7 +1047,8 @@ function BtcPerpsChartComponent({
     }
 
     let cancelled = false;
-    if (coinbaseHistoryLoadedKeyRef.current === marketKey) {
+    const historyLoadKey = `${marketKey}:${coinbaseHistoryRefreshNonce}`;
+    if (coinbaseHistoryLoadedKeyRef.current === historyLoadKey) {
       setCoinbaseBootstrapReady(true);
       return () => {
         cancelled = true;
@@ -1068,7 +1142,7 @@ function BtcPerpsChartComponent({
       } finally {
         if (!cancelled) {
           if (historyLoaded) {
-            coinbaseHistoryLoadedKeyRef.current = marketKey;
+            coinbaseHistoryLoadedKeyRef.current = historyLoadKey;
           }
           setCoinbaseBootstrapReady(true);
         }
@@ -1080,7 +1154,7 @@ function BtcPerpsChartComponent({
     return () => {
       cancelled = true;
     };
-  }, [active, market.marketName, marketKey, useCoinbaseLineFeed]);
+  }, [active, coinbaseHistoryRefreshNonce, market.marketName, marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
     setUseBtcFallback(false);

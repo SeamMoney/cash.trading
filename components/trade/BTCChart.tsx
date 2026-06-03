@@ -10,6 +10,7 @@ import { usePageVisible } from "@/hooks/usePageVisible";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import { BtcPerpsChart, type PerpMarketSnapshot } from "@/components/trade/BtcPerpsChart";
 import { PERP_MARKET_DATA, type PerpMarketData } from "@/components/trade/perpMarketConfig";
+import { NumberTicker } from "@/components/ui/number-ticker";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -460,19 +461,19 @@ function MarketModal({
 
   return createPortal(
     <div
-      className="cash-trade-theme fixed inset-0 z-[9999] flex items-center justify-center px-3 py-3 sm:px-4"
+      className="cash-trade-theme fixed inset-0 z-[9999] flex items-end justify-center px-0 sm:items-center sm:px-4 sm:py-4"
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-black/85" />
 
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[760px] overflow-hidden rounded-[12px] bg-[#141414] p-1 shadow-sm"
+        className="relative max-h-[calc(100dvh-0.75rem)] w-full overflow-hidden rounded-t-[14px] border-t border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70 sm:max-w-[900px] sm:rounded-[12px] sm:border"
         style={{ animation: "market-modal-in 0.2s ease-out" }}
       >
-        <div className="overflow-hidden rounded-[10px] border border-[#303030]">
+        <div className="overflow-hidden">
           {/* Header — same style as PAYMENT_LOGS / APTOS_MAINNET */}
-          <header className="border-b border-[#2a2a2a] text-[#888] bg-[#202020] flex items-center justify-between px-5 py-4 font-mono text-sm font-semibold">
+          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-4 py-3 font-mono text-[13px] font-semibold text-[#888] sm:px-5">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
               <span>SELECT MARKET</span>
@@ -481,9 +482,10 @@ function MarketModal({
               </span>
             </span>
             <button
+              type="button"
               onClick={onClose}
               aria-label="Close market selector"
-              className="text-[#666] hover:text-white transition-colors"
+              className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
@@ -491,7 +493,7 @@ function MarketModal({
 
           {/* Content — grid rows matching table style */}
           <div className="bg-[#101010] p-3 font-mono text-sm font-medium sm:p-4">
-            <label className="flex h-11 items-center gap-3 rounded-[8px] border border-[#303030] bg-[#0d0d0d] px-4 text-[#777] focus-within:border-[#484848]">
+            <label className="flex h-10 items-center gap-3 rounded-md bg-white/[0.04] px-3 text-[#777] focus-within:bg-white/[0.06]">
               <Search className="size-4 shrink-0" aria-hidden="true" />
               <input
                 type="text"
@@ -503,7 +505,7 @@ function MarketModal({
               />
             </label>
 
-            <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-[#252525]">
+            <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
               {PRIMARY_MARKET_TABS.map((tab) => (
                 <button
                   key={tab.key}
@@ -521,7 +523,7 @@ function MarketModal({
             </div>
 
             {primaryTab === "tradfi" && (
-              <div className="mt-3 flex items-center gap-5 overflow-x-auto border-b border-[#252525]">
+              <div className="mt-3 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
                 {TRADFI_MARKET_TABS.map((tab) => (
                   <button
                     key={tab.key}
@@ -540,7 +542,7 @@ function MarketModal({
             )}
 
             {/* Column headers */}
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-3 pt-5 pb-2 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
               <span className="text-xs font-bold">Symbol</span>
               <span className="hidden text-right text-xs font-bold sm:block">Price</span>
               <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
@@ -555,12 +557,12 @@ function MarketModal({
             )}
 
             {/* Category groups */}
-            <div className="max-h-[min(62dvh,560px)] overflow-y-auto pr-1">
+            <div className="max-h-[calc(100dvh-230px)] overflow-y-auto overscroll-contain pr-1 scrollbar-thin sm:max-h-[min(62dvh,600px)]">
             {visibleCategories.map((cat) => {
               const items = cat.items;
               return (
                 <div key={cat.key}>
-                  <div className="px-3 pt-3 pb-1 flex items-center gap-2">
+                  <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
                     <span className="text-[10px] font-bold uppercase text-[#555]">
                       {cat.label}
                     </span>
@@ -574,7 +576,7 @@ function MarketModal({
                         <button
                           key={m.id}
                           onClick={() => { onSelect(m.id); onClose(); }}
-                          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-[8px] px-3 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 ${
+                          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
                             isActive
                               ? "bg-white/[0.05] text-white"
                               : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
@@ -784,6 +786,8 @@ export function BTCChart({
   const displayFunding = isPerpsMarket
     ? fmtFundingRate(perpsSnapshot?.fundingRateBps ?? null)
     : "0.0010%";
+  const displayPriceDecimals = isPerpsMarket && perpData ? perpData.priceDecimals : 2;
+  const displayStatDecimals = isPerpsMarket && perpData ? perpData.priceDecimals : 0;
 
   const handleMarketSelect = (id: string) => {
     setMarket(id);
@@ -836,13 +840,17 @@ export function BTCChart({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[15px] font-mono font-bold tabular-nums">
-            {displayPrice > 0
-              ? isPerpsMarket && perpData
-                ? fmtPerpPrice(displayPrice, perpData.priceDecimals)
-                : fmtPrice(displayPrice)
-              : "\u2014"}
-          </span>
+          <NumberTicker
+            value={displayPrice > 0 ? displayPrice : null}
+            fallback="—"
+            format={{
+              style: "currency",
+              currency: "USD",
+              minimumFractionDigits: displayPriceDecimals,
+              maximumFractionDigits: displayPriceDecimals,
+            }}
+            className="font-mono text-[15px] font-bold text-zinc-100"
+          />
         </div>
       </div>
 
@@ -851,25 +859,27 @@ export function BTCChart({
         <div className="px-4 py-2 flex items-center gap-4 sm:gap-6 overflow-x-auto no-scrollbar text-[11px] font-mono tabular-nums pr-10">
           <div className="flex flex-col shrink-0 min-w-[72px]">
             <span className="text-zinc-600 text-[9px]">Mark Price</span>
-            <span className="text-white font-semibold">
-              {displayPrice > 0
-                ? displayPrice.toLocaleString("en-US", {
-                    minimumFractionDigits: isPerpsMarket && perpData ? perpData.priceDecimals : 0,
-                    maximumFractionDigits: isPerpsMarket && perpData ? perpData.priceDecimals : 0,
-                  })
-                : "—"}
-            </span>
+            <NumberTicker
+              value={displayPrice > 0 ? displayPrice : null}
+              fallback="—"
+              format={{
+                minimumFractionDigits: displayStatDecimals,
+                maximumFractionDigits: displayStatDecimals,
+              }}
+              className="font-semibold text-white"
+            />
           </div>
           <div className="flex flex-col shrink-0 min-w-[64px]">
             <span className="text-zinc-600 text-[9px]">Oracle</span>
-            <span className="text-white font-semibold">
-              {displayOracle > 0
-                ? displayOracle.toLocaleString("en-US", {
-                    minimumFractionDigits: isPerpsMarket && perpData ? perpData.priceDecimals : 0,
-                    maximumFractionDigits: isPerpsMarket && perpData ? perpData.priceDecimals : 0,
-                  })
-                : "—"}
-            </span>
+            <NumberTicker
+              value={displayOracle > 0 ? displayOracle : null}
+              fallback="—"
+              format={{
+                minimumFractionDigits: displayStatDecimals,
+                maximumFractionDigits: displayStatDecimals,
+              }}
+              className="font-semibold text-white"
+            />
           </div>
           <div className="flex flex-col shrink-0 min-w-[64px]">
             <span className="text-zinc-600 text-[9px]">24h Change</span>

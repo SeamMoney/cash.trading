@@ -897,6 +897,7 @@ export function TradePageClient({
   }>({ id: "BTC/USD", pair: "BTC/USD", leverage: 40 });
   const [positions, setPositions] = useState<Position[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
+  const [mobileOrderBookOpen, setMobileOrderBookOpen] = useState(false);
   const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
   const [deployTarget, setDeployTarget] = useState<GraduatedIndicator | null>(null);
   const [vaultAction, setVaultAction] = useState<{
@@ -1067,7 +1068,7 @@ export function TradePageClient({
       <div className="relative" style={{ overflow: "clip" }}>
         <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 w-full">
         {/* ── Hero ─────────────── */}
-        <div className="mb-4 sm:mb-6 lg:mb-4 animate-enter">
+        <div className="mb-4 hidden sm:block sm:mb-6 lg:mb-4 animate-enter">
           <div className="flex items-center gap-4 mb-2">
             <span className="inline-block text-[11px] font-display font-medium px-2.5 py-1 rounded-[10px] bg-accent/10 text-accent uppercase tracking-wider">
               cash.trading
@@ -1100,7 +1101,7 @@ export function TradePageClient({
           </div>
 
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="mt-6 max-w-xl mx-auto lg:mt-0 lg:mx-0 lg:w-[340px] lg:shrink-0 animate-enter animate-enter-delay-2">
+          <div className="mt-3 max-w-xl mx-auto lg:mt-0 lg:mx-0 lg:w-[340px] lg:shrink-0 animate-enter animate-enter-delay-2">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1110,7 +1111,25 @@ export function TradePageClient({
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
             />
-            <div className="mt-4">
+            <div className="mt-3 overflow-hidden rounded-[10px] bg-[#0b0b0b] lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileOrderBookOpen((open) => !open)}
+                className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase text-zinc-500 transition-colors hover:text-zinc-300"
+              >
+                <span>Order Book</span>
+                <span className="text-[10px] text-zinc-600">{mobileOrderBookOpen ? "Hide" : "Show"}</span>
+              </button>
+              {mobileOrderBookOpen && (
+                <OrderBook
+                  key={decibelMarketAddress ?? decibelMarketName}
+                  marketName={decibelMarketName}
+                  marketAddress={decibelMarketAddress}
+                  currentPrice={currentPrice}
+                />
+              )}
+            </div>
+            <div className="mt-4 hidden lg:block">
               <OrderBook
                 key={decibelMarketAddress ?? decibelMarketName}
                 marketName={decibelMarketName}

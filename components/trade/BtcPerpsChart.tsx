@@ -18,7 +18,12 @@ import { dedupeAndSort, withLiveTail } from "@/lib/trade/lineData";
 
 type TradeSample = {
   price: number;
+  size?: number;
   transaction_unix_ms: number;
+};
+
+type ChartCandlePoint = CandlePoint & {
+  volume?: number;
 };
 
 type LiquidationLine = {
@@ -33,6 +38,8 @@ export interface PerpMarketSnapshot {
   openInterest: number | null;
   oraclePrice: number;
   price: number;
+  volume24h?: number | null;
+  volumeWindowMs?: number | null;
 }
 
 type ChartInterval = "1s" | "5s" | "15s" | "1m";
@@ -42,6 +49,8 @@ const TRADE_POLL_MS = 4000;
 const PRICE_POLL_MS = 1000;
 const ONE_SECOND_WINDOW_SECS = 12 * 60;
 const MINUTE_HISTORY_MS = 12 * 60 * 60 * 1000;
+const DECIBEL_VOLUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_DECIBEL_MINUTE_CANDLES = Math.ceil(DECIBEL_VOLUME_WINDOW_MS / 60_000) + 5;
 const SECOND_TRADE_LIMIT = 1800;
 const INITIAL_TRADE_LIMIT = 900;
 const BTC_FALLBACK_ACTIVATE_MS = 3500;
@@ -70,15 +79,20 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function toCandlePoints(candles: DecibelRestCandle[]) {
+function toCandlePoint(candle: DecibelRestCandle): ChartCandlePoint {
+  return {
+    time: Math.floor(candle.t / 1000),
+    open: candle.o,
+    high: candle.h,
+    low: candle.l,
+    close: candle.c,
+    volume: candle.v,
+  };
+}
+
+function toCandlePoints(candles: DecibelRestCandle[]): ChartCandlePoint[] {
   return candles
-    .map((candle) => ({
-      time: Math.floor(candle.t / 1000),
-      open: candle.o,
-      high: candle.h,
-      low: candle.l,
-      close: candle.c,
-    }))
+    .map(toCandlePoint)
     .sort((a, b) => a.time - b.time);
 }
 
@@ -97,9 +111,10 @@ function toHistoryCandlePoints(candles: MarketHistoryCandle[]) {
 function aggregateCandles(candles: CandlePoint[], bucketSecs: number) {
   if (candles.length === 0 || bucketSecs <= 1) return candles;
 
-  const grouped = new Map<number, CandlePoint>();
+  const grouped = new Map<number, ChartCandlePoint>();
 
   for (const candle of candles) {
+    const candleVolume = (candle as ChartCandlePoint).volume ?? 0;
     const bucket = Math.floor(candle.time / bucketSecs) * bucketSecs;
     const existing = grouped.get(bucket);
 
@@ -110,6 +125,7 @@ function aggregateCandles(candles: CandlePoint[], bucketSecs: number) {
         high: candle.high,
         low: candle.low,
         close: candle.close,
+        volume: candleVolume,
       });
       continue;
     }
@@ -119,6 +135,7 @@ function aggregateCandles(candles: CandlePoint[], bucketSecs: number) {
       high: Math.max(existing.high, candle.high),
       low: Math.min(existing.low, candle.low),
       close: candle.close,
+      volume: (existing.volume ?? 0) + candleVolume,
     });
   }
 
@@ -151,7 +168,7 @@ function buildSecondCandlesFromTrades(
 
   const firstTradePrice = sorted.length > 0 ? sorted[0].price : fallbackPrice;
   let lastClose = Number.isFinite(firstTradePrice) && firstTradePrice > 0 ? firstTradePrice : fallbackPrice;
-  const candles: CandlePoint[] = [];
+  const candles: ChartCandlePoint[] = [];
 
   for (let sec = startSec; sec <= currentSec; sec += 1) {
     const bucket = tradesBySecond.get(sec) ?? [];
@@ -163,6 +180,7 @@ function buildSecondCandlesFromTrades(
         high: lastClose,
         low: lastClose,
         close: lastClose,
+        volume: 0,
       });
       continue;
     }
@@ -171,10 +189,12 @@ function buildSecondCandlesFromTrades(
     const close = bucket[bucket.length - 1].price;
     let high = open;
     let low = open;
+    let volume = 0;
 
     for (const trade of bucket) {
       if (trade.price > high) high = trade.price;
       if (trade.price < low) low = trade.price;
+      if (Number.isFinite(trade.size ?? NaN)) volume += Math.abs(trade.size ?? 0);
     }
 
     candles.push({
@@ -183,6 +203,7 @@ function buildSecondCandlesFromTrades(
       high,
       low,
       close,
+      volume,
     });
     lastClose = close;
   }
@@ -198,13 +219,14 @@ function mergeTradesIntoSecondCandles(
 ) {
   if (trades.length === 0) return candles;
 
-  const next = candles.slice().sort((a, b) => a.time - b.time);
+  const next = candles.slice().sort((a, b) => a.time - b.time) as ChartCandlePoint[];
   const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
   let latestTime = next[next.length - 1]?.time ?? 0;
   let latestClose = next[next.length - 1]?.close ?? fallbackPrice;
 
   for (const trade of sorted) {
     const price = trade.price;
+    const tradeSize = Number.isFinite(trade.size ?? NaN) ? Math.abs(trade.size ?? 0) : 0;
     const sec = Math.floor(trade.transaction_unix_ms / 1000);
     if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(sec)) continue;
 
@@ -223,6 +245,7 @@ function mergeTradesIntoSecondCandles(
         high: Math.max(candle.high, price),
         low: Math.min(candle.low, price),
         close: price,
+        volume: ((candle as ChartCandlePoint).volume ?? 0) + tradeSize,
       };
       if (sec >= latestTime) {
         latestTime = sec;
@@ -238,6 +261,7 @@ function mergeTradesIntoSecondCandles(
         high: price,
         low: price,
         close: price,
+        volume: tradeSize,
       });
       latestTime = sec;
       latestClose = price;
@@ -251,6 +275,7 @@ function mergeTradesIntoSecondCandles(
         high: latestClose,
         low: latestClose,
         close: latestClose,
+        volume: 0,
       });
     }
 
@@ -260,6 +285,7 @@ function mergeTradesIntoSecondCandles(
       high: Math.max(latestClose, price),
       low: Math.min(latestClose, price),
       close: price,
+      volume: tradeSize,
     });
     latestTime = sec;
     latestClose = price;
@@ -276,7 +302,7 @@ function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number,
   if (!Number.isFinite(nextPrice) || nextPrice <= 0) return candles;
 
   const currentSec = Math.floor(nowMs / 1000);
-  const next = candles.slice();
+  const next = candles.slice() as ChartCandlePoint[];
   const last = next[next.length - 1];
 
   if (!last) {
@@ -286,6 +312,7 @@ function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number,
       high: nextPrice,
       low: nextPrice,
       close: nextPrice,
+      volume: 0,
     }];
   }
 
@@ -311,6 +338,7 @@ function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number,
       high: prevClose,
       low: prevClose,
       close: prevClose,
+      volume: 0,
     });
   }
 
@@ -320,9 +348,43 @@ function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number,
     high: Math.max(prevClose, nextPrice),
     low: Math.min(prevClose, nextPrice),
     close: nextPrice,
+    volume: 0,
   });
 
   return next.slice(-ONE_SECOND_WINDOW_SECS);
+}
+
+function upsertMinuteCandle(candles: CandlePoint[], candle: DecibelRestCandle) {
+  const point = toCandlePoint(candle);
+  const next = candles.slice() as ChartCandlePoint[];
+  const index = next.findIndex((existing) => existing.time === point.time);
+
+  if (index >= 0) {
+    next[index] = point;
+  } else {
+    next.push(point);
+  }
+
+  return next
+    .sort((a, b) => a.time - b.time)
+    .slice(-MAX_DECIBEL_MINUTE_CANDLES);
+}
+
+function estimateQuoteVolume(candles: CandlePoint[], windowMs = DECIBEL_VOLUME_WINDOW_MS) {
+  if (candles.length === 0) return null;
+
+  const latestTime = candles[candles.length - 1].time;
+  const cutoff = latestTime - windowMs / 1000;
+  let volume = 0;
+
+  for (const candle of candles) {
+    if (candle.time < cutoff) continue;
+    const baseVolume = (candle as ChartCandlePoint).volume;
+    if (!Number.isFinite(baseVolume ?? NaN) || !Number.isFinite(candle.close)) continue;
+    volume += Math.abs(baseVolume ?? 0) * candle.close;
+  }
+
+  return volume > 0 ? volume : null;
 }
 
 function mergeMinuteCandlesWithLive(minuteCandles: CandlePoint[], secondCandles: CandlePoint[]) {
@@ -899,6 +961,20 @@ function BtcPerpsChartComponent({
     MAX_LINE_VERTICAL_PAD,
   );
 
+  const volume24h = useMemo(
+    () => (useCoinbaseLineFeed ? null : estimateQuoteVolume(activeMinuteCandles)),
+    [activeMinuteCandles, useCoinbaseLineFeed],
+  );
+
+  const snapshotWithVolume = useMemo(
+    () => ({
+      ...snapshot,
+      volume24h,
+      volumeWindowMs: volume24h === null ? null : DECIBEL_VOLUME_WINDOW_MS,
+    }),
+    [snapshot, volume24h],
+  );
+
   const linePadding = useMemo(
     () => ({
       top: CHART_PADDING.top + lineVerticalPad,
@@ -1006,8 +1082,8 @@ function BtcPerpsChartComponent({
   };
 
   useEffect(() => {
-    onSnapshotChange?.(snapshot);
-  }, [onSnapshotChange, snapshot]);
+    onSnapshotChange?.(snapshotWithVolume);
+  }, [onSnapshotChange, snapshotWithVolume]);
 
   useEffect(() => {
     if (!active || !useCoinbaseLineFeed || typeof document === "undefined") return;
@@ -1339,7 +1415,7 @@ function BtcPerpsChartComponent({
           fetchDecibelMainnetCandles(
             currentMarket.marketAddr,
             "1m",
-            now - MINUTE_HISTORY_MS,
+            now - Math.max(MINUTE_HISTORY_MS, DECIBEL_VOLUME_WINDOW_MS),
             now,
             INITIAL_REQUEST_TIMEOUT_MS,
           ),
@@ -1491,7 +1567,11 @@ function BtcPerpsChartComponent({
       if (cancelled) return;
       const params = new URLSearchParams({
         network: getDecibelPublicNetwork(),
-        topics: [`market_price:${marketAddress}`, `trades:${marketAddress}`].join(","),
+        topics: [
+          `market_price:${marketAddress}`,
+          `trades:${marketAddress}`,
+          `market_candlestick:${marketAddress}:1m`,
+        ].join(","),
       });
       stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
 
@@ -1514,6 +1594,7 @@ function BtcPerpsChartComponent({
               oracle_px: number;
             };
             trades?: DecibelRestTrade[];
+            candle?: DecibelRestCandle;
           };
 
           if (!message.topic || message.success) return;
@@ -1539,6 +1620,11 @@ function BtcPerpsChartComponent({
             setSecondCandles((prev) =>
               mergeTradesIntoSecondCandles(prev, message.trades ?? [], snapshotRef.current.price, Date.now())
             );
+            setHasInitialHistory(true);
+          }
+
+          if (message.topic === `market_candlestick:${marketAddress}:1m` && message.candle) {
+            setMinuteCandles((prev) => upsertMinuteCandle(prev, message.candle!));
             setHasInitialHistory(true);
           }
         } catch {

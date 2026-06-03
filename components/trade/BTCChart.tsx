@@ -771,7 +771,11 @@ export function BTCChart({
       ? price + Math.round(price * 0.0004)
       : 0;
   const displayChange = isPerpsMarket ? perpData?.change24h ?? "-3.41%" : "-3.41%";
-  const displayVolume = isPerpsMarket ? perpData?.volume24h ?? "$29.3M" : "$29.3M";
+  const displayVolume = isPerpsMarket
+    ? perpsSnapshot?.volume24h != null
+      ? fmtStatUsd(perpsSnapshot.volume24h)
+      : perpData?.volume24h ?? "$29.3M"
+    : "$29.3M";
   const displayOpenInterest = isPerpsMarket
     ? perpsSnapshot?.openInterest != null
       ? fmtStatUsd(perpsSnapshot.openInterest * Math.max(displayPrice, perpData?.seedPrice ?? 0))

@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactP
 import { Liveline, type CandlePoint, type LivelinePoint } from "liveline";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
+import { useIsMobile } from "@/components/ui/use-mobile";
 import { getPriceCandleProductId, supportsPriceCandleMarket, usePriceCandles } from "@/hooks/useBtcCandles";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import {
@@ -55,7 +56,8 @@ const SECOND_TRADE_LIMIT = 1800;
 const INITIAL_TRADE_LIMIT = 900;
 const BTC_FALLBACK_ACTIVATE_MS = 3500;
 const DEFAULT_LINE_WINDOW_SECS = 5 * 60;
-const MOBILE_DEFAULT_LINE_WINDOW_SECS = 3 * 60;
+const MOBILE_BTC_LINE_WINDOW_SECS = 3 * 60;
+const MOBILE_SPARSE_MARKET_LINE_WINDOW_SECS = 2 * 60 * 60;
 const MIN_LINE_WINDOW_SECS = 60;
 const MAX_LINE_WINDOW_SECS = MINUTE_HISTORY_MS / 1000;
 const LIVE_EDGE_HEADROOM_SECS = 2;
@@ -680,20 +682,7 @@ function fillLineWindowStart(points: LivelinePoint[], startTime: number) {
   const first = points[0];
   if (first.time <= startTime + 2) return points;
 
-  const gap = first.time - startTime;
-  const steps = clamp(Math.ceil(gap / 6), 8, 48);
-  const second = points[1] ?? first;
-  const prefix: LivelinePoint[] = [];
-
-  for (let index = 0; index < steps; index += 1) {
-    const progress = index / steps;
-    prefix.push({
-      time: startTime + gap * progress,
-      value: first.value + (second.value - first.value) * progress * 0.18,
-    });
-  }
-
-  return [...prefix, ...points];
+  return [{ time: startTime, value: first.value }, ...points];
 }
 
 function sliceCandlesForWindow(candles: CandlePoint[], startTime: number, endTime: number) {
@@ -752,6 +741,7 @@ function BtcPerpsChartComponent({
   marketRef.current = market;
   const marketKey = `${market.marketName}:${market.marketAddr ?? ""}`;
   const marketAddress = market.marketAddr;
+  const isMobile = useIsMobile();
   const [secondCandles, setSecondCandles] = useState<CandlePoint[]>([]);
   const [minuteCandles, setMinuteCandles] = useState<CandlePoint[]>([]);
   const [coinbaseMinuteCandles, setCoinbaseMinuteCandles] = useState<CandlePoint[]>([]);
@@ -776,6 +766,13 @@ function BtcPerpsChartComponent({
   const decibelLiveAtRef = useRef(0);
   const coinbaseHistoryLoadedKeyRef = useRef<string | null>(null);
   const lastCoinbaseResumeRefreshAtRef = useRef(0);
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const touchGestureRef = useRef<{
+    startAnchorRatio: number;
+    startDistance: number;
+    startEndTime: number;
+    startWindowSecs: number;
+  } | null>(null);
 
   snapshotRef.current = snapshot;
 
@@ -844,6 +841,13 @@ function BtcPerpsChartComponent({
     spanSecs: number;
   } | null>(null);
 
+  const defaultLineWindowSecs = useMemo(() => {
+    if (!isMobile) return DEFAULT_LINE_WINDOW_SECS;
+    return market.marketName === "BTC/USD"
+      ? MOBILE_BTC_LINE_WINDOW_SECS
+      : MOBILE_SPARSE_MARKET_LINE_WINDOW_SECS;
+  }, [isMobile, market.marketName]);
+
   const lineBounds = useMemo(() => {
     const earliest = activeMinuteCandles[0]?.time ?? activeSecondCandles[0]?.time ?? null;
     const latest = activeSecondCandles[activeSecondCandles.length - 1]?.time
@@ -879,14 +883,15 @@ function BtcPerpsChartComponent({
 
   const lineData = useMemo(
     () => {
+      if (lineResolvedEndTime == null) return [];
+      const startTime = lineResolvedEndTime - lineWindowSecs;
       const latestCoinbaseTick = useCoinbaseLineFeed
         ? coinbaseTicks[coinbaseTicks.length - 1] ?? coinbaseHistoryTicks[coinbaseHistoryTicks.length - 1]
         : null;
       const liveTime = latestCoinbaseTick?.time ?? Math.max(Date.now() / 1000, lineBounds.latest ?? 0);
       const liveValue = latestCoinbaseTick?.value ?? snapshot.price;
 
-      if (useCoinbaseLineFeed && lineInterval === "1s" && lineResolvedEndTime != null) {
-        const startTime = lineResolvedEndTime - lineWindowSecs;
+      if (useCoinbaseLineFeed && lineInterval === "1s") {
         // Reconstruct committed history from canonical sources every render
         // (acceptance #4: resume must rebuild from sorted arrays, not from
         // animated path state). Then attach the live tick via withLiveTail,
@@ -905,7 +910,10 @@ function BtcPerpsChartComponent({
           liveValue,
           liveTime,
         );
-        return trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval);
+        return fillLineWindowStart(
+          trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
+          startTime,
+        );
       }
 
       const pointsWithTail = withLiveTail(
@@ -913,7 +921,10 @@ function BtcPerpsChartComponent({
         liveValue,
         liveTime,
       );
-      return trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval);
+      return fillLineWindowStart(
+        trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
+        startTime,
+      );
     },
     [
       activeMinuteCandles,
@@ -1038,7 +1049,38 @@ function BtcPerpsChartComponent({
   };
 
   const handleLinePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch" || lineResolvedEndTime == null) return;
+    if (lineResolvedEndTime == null) return;
+
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      if (touchPointersRef.current.size === 1) {
+        dragStateRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startEndTime: lineResolvedEndTime,
+          spanSecs: lineWindowSecs,
+        };
+        touchGestureRef.current = null;
+      } else if (touchPointersRef.current.size === 2) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const [first, second] = Array.from(touchPointersRef.current.values());
+        const centerX = (first.x + second.x) / 2;
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        touchGestureRef.current = {
+          startAnchorRatio: rect.width > 0
+            ? clamp((centerX - rect.left) / rect.width, 0.08, 0.92)
+            : 0.5,
+          startDistance: Math.max(distance, 1),
+          startEndTime: lineResolvedEndTime,
+          startWindowSecs: lineWindowSecs,
+        };
+        dragStateRef.current = null;
+      }
+      return;
+    }
 
     dragStateRef.current = {
       pointerId: event.pointerId,
@@ -1050,6 +1092,36 @@ function BtcPerpsChartComponent({
   };
 
   const handleLinePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+      if (!touchPointersRef.current.has(event.pointerId)) return;
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      if (touchPointersRef.current.size >= 2 && touchGestureRef.current) {
+        const [first, second] = Array.from(touchPointersRef.current.values());
+        const centerX = (first.x + second.x) / 2;
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        const gesture = touchGestureRef.current;
+        const nextWindowSecs = clamp(
+          gesture.startWindowSecs * (gesture.startDistance / Math.max(distance, 1)),
+          MIN_LINE_WINDOW_SECS,
+          MAX_LINE_WINDOW_SECS,
+        );
+        const currentAnchorRatio = clamp((centerX - rect.left) / rect.width, 0.08, 0.92);
+        const gestureStartTime = gesture.startEndTime - gesture.startWindowSecs;
+        const anchorTime = gestureStartTime + gesture.startWindowSecs * gesture.startAnchorRatio;
+        const nextStart = anchorTime - nextWindowSecs * currentAnchorRatio;
+        const nextEnd = nextStart + nextWindowSecs;
+
+        setLineWindowSecs(nextWindowSecs);
+        setLineEndTime(normalizeLineEndTime(nextEnd, nextWindowSecs));
+        return;
+      }
+    }
+
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -1061,6 +1133,29 @@ function BtcPerpsChartComponent({
   };
 
   const handleLinePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+      touchPointersRef.current.delete(event.pointerId);
+      touchGestureRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      if (touchPointersRef.current.size === 1 && lineResolvedEndTime != null) {
+        const [remainingId, remainingPoint] = Array.from(touchPointersRef.current.entries())[0];
+        dragStateRef.current = {
+          pointerId: remainingId,
+          startX: remainingPoint.x,
+          startEndTime: lineResolvedEndTime,
+          spanSecs: lineWindowSecs,
+        };
+        return;
+      }
+
+      dragStateRef.current = null;
+      return;
+    }
+
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
@@ -1369,7 +1464,7 @@ function BtcPerpsChartComponent({
     if (useCoinbaseLineFeed) {
       coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+      setLineWindowSecs(defaultLineWindowSecs);
       setLineEndTime(null);
       setManualLineVerticalPad(0);
       setSecondCandles([]);
@@ -1394,7 +1489,7 @@ function BtcPerpsChartComponent({
       const currentMarket = marketRef.current;
       coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+      setLineWindowSecs(defaultLineWindowSecs);
       setLineEndTime(null);
       setManualLineVerticalPad(0);
       setSecondCandles([]);
@@ -1479,7 +1574,7 @@ function BtcPerpsChartComponent({
     return () => {
       cancelled = true;
     };
-  }, [marketKey, useCoinbaseLineFeed]);
+  }, [defaultLineWindowSecs, marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
     if (!marketAddress || useCoinbaseLineFeed) {
@@ -1671,7 +1766,7 @@ function BtcPerpsChartComponent({
         onPointerUp={handleLinePointerUp}
         onPointerCancel={handleLinePointerUp}
         onWheel={handleLineWheel}
-        style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}
+        style={{ touchAction: "none", overscrollBehavior: "contain" }}
       >
         <Liveline
           mode="candle"

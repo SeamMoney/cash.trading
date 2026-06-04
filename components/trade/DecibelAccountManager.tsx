@@ -32,6 +32,16 @@ interface AccountStateResponse {
   error?: string;
 }
 
+interface WalletBalanceResponse {
+  balance?: number;
+  error?: string;
+}
+
+function formatDepositInputAmount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return value.toFixed(6).replace(/\.?0+$/, "");
+}
+
 export function DecibelAccountManager({ className }: { className?: string }) {
   const { account, connected, signAndSubmitTransaction } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
@@ -43,6 +53,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState("");
+  const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
+  const [walletUsdcLoading, setWalletUsdcLoading] = useState(false);
+  const [walletUsdcError, setWalletUsdcError] = useState("");
   const {
     decibelNetwork,
     hasDecibelAccount,
@@ -59,11 +72,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
+  const depositExceedsWallet =
+    walletUsdcBalance !== null && depositValue > walletUsdcBalance + 0.000001;
   const canDeposit =
     connected &&
     account &&
     hasDecibelAccount &&
     hasDepositAmount &&
+    !depositExceedsWallet &&
     status !== "submitting";
 
   const selectedSubaccountLabel = selectedSubaccountRecord
@@ -148,16 +164,57 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     }
   }, [decibelNetwork, hasDecibelAccount, selectedSubaccount]);
 
+  const refreshWalletUsdcBalance = useCallback(async (signal?: AbortSignal) => {
+    if (!connected || !account) {
+      setWalletUsdcBalance(null);
+      setWalletUsdcError("");
+      setWalletUsdcLoading(false);
+      return;
+    }
+
+    setWalletUsdcLoading(true);
+    setWalletUsdcError("");
+    try {
+      const params = new URLSearchParams({
+        address: account.address.toString(),
+        network: decibelNetwork,
+      });
+      const res = await fetch(`/api/decibel/wallet-balance?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      const data = (await res.json()) as WalletBalanceResponse;
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `USDC balance lookup failed (${res.status})`);
+      }
+      if (signal?.aborted) return;
+      setWalletUsdcBalance(typeof data.balance === "number" ? data.balance : null);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setWalletUsdcBalance(null);
+      setWalletUsdcError(err instanceof Error ? err.message : "USDC balance unavailable.");
+    } finally {
+      if (!signal?.aborted) setWalletUsdcLoading(false);
+    }
+  }, [account, connected, decibelNetwork]);
+
   useEffect(() => {
     const controller = new AbortController();
     void refreshAccountState(controller.signal);
     return () => controller.abort();
   }, [refreshAccountState]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshWalletUsdcBalance(controller.signal);
+    return () => controller.abort();
+  }, [refreshWalletUsdcBalance]);
+
   const handleRefreshAccount = useCallback(() => {
     void refreshSubaccounts();
     void refreshAccountState();
-  }, [refreshAccountState, refreshSubaccounts]);
+    void refreshWalletUsdcBalance();
+  }, [refreshAccountState, refreshSubaccounts, refreshWalletUsdcBalance]);
 
   const handleCreateSubaccount = useCallback(async () => {
     if (!connected || !account) return;
@@ -222,6 +279,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatusMessage("USDC mint submitted. Waiting for confirmation...");
       await waitForTransactionConfirmation(hash);
       setStatusMessage("Decibel testnet USDC minted.");
+      void refreshWalletUsdcBalance();
       setStatus("success");
     } catch (err) {
       setStatusMessage(err instanceof Error ? err.message : "Decibel USDC mint failed");
@@ -245,6 +303,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatus("error");
       return;
     }
+    if (depositExceedsWallet) {
+      setStatusMessage("Deposit amount exceeds wallet USDC balance.");
+      setStatus("error");
+      return;
+    }
 
     setStatus("submitting");
     setStatusMessage(`Deposit ${depositValue.toFixed(2)} USDC collateral to Decibel...`);
@@ -261,6 +324,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       await waitForTransactionConfirmation(hash);
       emitDecibelPositionsRefresh();
       void refreshAccountState();
+      void refreshWalletUsdcBalance();
       setStatusMessage("USDC collateral deposited to Decibel.");
       setStatus("success");
     } catch (err) {
@@ -272,8 +336,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     connected,
     decibelNetwork,
     depositValue,
+    depositExceedsWallet,
     hasDepositAmount,
     refreshAccountState,
+    refreshWalletUsdcBalance,
     selectedSubaccount,
     signAndSubmitTransaction,
     subaccounts,
@@ -407,35 +473,61 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         )}
       </div>
 
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <label className="flex items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
-          <TokenLogo token="USDC" size={18} />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={depositAmount}
-            onChange={(e) => {
-              const next = e.target.value.replace(/[^0-9.]/g, "");
-              if (next.split(".").length <= 2) setDepositAmount(next);
+      <div className="space-y-1.5">
+        <div className="flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
+          <span className={walletUsdcError ? "text-yellow-300/80" : ""}>
+            Wallet{" "}
+            {walletUsdcLoading
+              ? "..."
+              : walletUsdcBalance !== null
+                ? `${walletUsdcBalance.toLocaleString("en-US", {
+                    maximumFractionDigits: 6,
+                  })} USDC`
+                : "-- USDC"}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (walletUsdcBalance !== null) {
+                setDepositAmount(formatDepositInputAmount(walletUsdcBalance));
+              }
             }}
-            className="min-w-0 flex-1 bg-transparent text-[13px] font-mono font-semibold text-white outline-none placeholder:text-zinc-700"
-            placeholder="0.00"
-          />
-          <span className="text-[11px] font-mono text-zinc-500">USDC</span>
-        </label>
-        <button
-          type="button"
-          onClick={handleDeposit}
-          disabled={!canDeposit}
-          className={cn(
-            "rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-            canDeposit
-              ? "bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
-              : "bg-white/[0.03] text-zinc-600"
-          )}
-        >
-          Deposit
-        </button>
+            disabled={walletUsdcBalance === null || walletUsdcBalance <= 0 || status === "submitting"}
+            className="text-accent/80 transition-colors hover:text-accent disabled:cursor-not-allowed disabled:text-zinc-700"
+          >
+            Max
+          </button>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
+            <TokenLogo token="USDC" size={18} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={depositAmount}
+              onChange={(e) => {
+                const next = e.target.value.replace(/[^0-9.]/g, "");
+                if (next.split(".").length <= 2) setDepositAmount(next);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-[13px] font-mono font-semibold text-white outline-none placeholder:text-zinc-700"
+              placeholder="0.00"
+            />
+            <span className="text-[11px] font-mono text-zinc-500">USDC</span>
+          </label>
+          <button
+            type="button"
+            onClick={handleDeposit}
+            disabled={!canDeposit}
+            className={cn(
+              "rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+              canDeposit
+                ? "bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
+                : "bg-white/[0.03] text-zinc-600"
+            )}
+          >
+            Deposit
+          </button>
+        </div>
       </div>
 
       {statusMessage && (

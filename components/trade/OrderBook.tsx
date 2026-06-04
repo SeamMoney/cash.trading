@@ -1,14 +1,13 @@
 "use client";
 
-import { memo, useEffect, useCallback, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CircleSlash2, Minus, Plus } from "lucide-react";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
   type DecibelPublicNetwork,
 } from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
-import { NumberTicker } from "@/components/ui/number-ticker";
 
 interface OrderBookProps {
   marketName: string;
@@ -22,133 +21,197 @@ interface Level {
   size: number;
 }
 
-interface CumulativeLevel extends Level {
-  cumulative: number;
-}
-
 interface OrderBookData {
   bids: Level[];
   asks: Level[];
   timestamp: number | null;
 }
 
-const DISPLAY_LEVELS = 16;
+interface LadderRow {
+  price: number;
+  bidSize: number;
+  askSize: number;
+}
+
+const DISPLAY_LEVELS = 20;
+const LADDER_ROWS = 39;
+const POSITIVE = "#52c83f";
+const NEGATIVE = "#ff5b22";
 
 function priceDecimals(price: number) {
-  if (price >= 1_000) return 1;
-  if (price >= 10) return 2;
-  return 4;
+  if (price >= 10_000) return 2;
+  if (price >= 1_000) return 2;
+  if (price >= 100) return 2;
+  if (price >= 10) return 3;
+  if (price >= 1) return 4;
+  if (price >= 0.1) return 5;
+  return 6;
 }
 
-function usePriceFlash<T extends HTMLElement = HTMLElement>(
-  price: number,
-): RefObject<T> {
-  const ref = useRef<T>(null);
-  const prevRef = useRef(price);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || price === prevRef.current) return;
-
-    const isUp = price > prevRef.current;
-    prevRef.current = price;
-    element.getAnimations().forEach((animation) => animation.cancel());
-    element.animate(
-      [
-        { backgroundColor: isUp ? "rgba(57, 255, 20, 0.16)" : "rgba(242, 26, 26, 0.16)" },
-        { backgroundColor: "transparent" },
-      ],
-      { duration: 180, easing: "ease-out", fill: "none" },
-    );
-  }, [price]);
-
-  return ref;
+function formatPrice(price: number) {
+  const decimals = priceDecimals(price);
+  return `$${price.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
 }
 
-const OrderBookRow = memo(function OrderBookRow({
-  level,
-  side,
-  maxTotal,
+function formatSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size >= 1_000_000) return `${(size / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  if (size >= 1_000) return `${(size / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  if (size >= 100) return size.toFixed(0);
+  if (size >= 1) return size.toFixed(2).replace(/\.00$/, "");
+  return size.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function snapStep(price: number, step: number) {
+  return Math.round(price / step) * step;
+}
+
+function inferFallbackStep(price: number) {
+  if (price >= 10_000) return 2.5;
+  if (price >= 1_000) return 0.5;
+  if (price >= 100) return 0.25;
+  if (price >= 10) return 0.05;
+  if (price >= 1) return 0.005;
+  if (price >= 0.1) return 0.0005;
+  return 0.00005;
+}
+
+function inferStep(book: OrderBookData, center: number) {
+  const prices = [...book.bids, ...book.asks]
+    .map((level) => level.price)
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
+  const diffs: number[] = [];
+  for (let i = 1; i < prices.length; i += 1) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff > 0) diffs.push(diff);
+  }
+  if (diffs.length === 0) return inferFallbackStep(center);
+  diffs.sort((a, b) => a - b);
+  const median = diffs[Math.floor(diffs.length / 2)] ?? inferFallbackStep(center);
+  const fallback = inferFallbackStep(center);
+  return Math.max(Math.min(median, fallback * 12), fallback);
+}
+
+function addToBucket(map: Map<number, number>, price: number, size: number, step: number) {
+  if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) return;
+  const snapped = Number(snapStep(price, step).toFixed(8));
+  map.set(snapped, (map.get(snapped) ?? 0) + size);
+}
+
+function buildLadderRows(book: OrderBookData, centerPrice: number, step: number): LadderRow[] {
+  const half = Math.floor(LADDER_ROWS / 2);
+  const center = Number(snapStep(centerPrice, step).toFixed(8));
+  const bidMap = new Map<number, number>();
+  const askMap = new Map<number, number>();
+
+  book.bids.slice(0, DISPLAY_LEVELS * 2).forEach((level) => {
+    addToBucket(bidMap, level.price, level.size, step);
+  });
+  book.asks.slice(0, DISPLAY_LEVELS * 2).forEach((level) => {
+    addToBucket(askMap, level.price, level.size, step);
+  });
+
+  return Array.from({ length: LADDER_ROWS }, (_, index) => {
+    const offset = half - index;
+    const price = Number((center + offset * step).toFixed(8));
+    return {
+      price,
+      bidSize: bidMap.get(price) ?? 0,
+      askSize: askMap.get(price) ?? 0,
+    };
+  });
+}
+
+function isDepthMessage(value: unknown): value is { bids?: Level[]; asks?: Level[]; depth?: { bids?: Level[]; asks?: Level[] }; unix_ms?: number; timestamp?: number } {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeLevels(levels: unknown): Level[] {
+  if (!Array.isArray(levels)) return [];
+  return levels
+    .map((level) => {
+      const record = level as Record<string, unknown>;
+      return {
+        price: Number(record.price),
+        size: Number(record.size),
+      };
+    })
+    .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.size) && level.price > 0 && level.size > 0);
+}
+
+function LadderRowView({
+  row,
+  center,
+  maxSize,
   onPriceClick,
 }: {
-  level: CumulativeLevel;
-  side: "bid" | "ask";
-  maxTotal: number;
+  row: LadderRow;
+  center: number;
+  maxSize: number;
   onPriceClick?: (price: number) => void;
 }) {
-  const flashRef = usePriceFlash<HTMLButtonElement>(level.price);
-  const depthPct = maxTotal > 0 ? (level.cumulative / maxTotal) * 100 : 0;
-  const formattedPrice = level.price.toLocaleString("en-US", {
-    minimumFractionDigits: priceDecimals(level.price),
-    maximumFractionDigits: priceDecimals(level.price),
-  });
+  const isCenter = Math.abs(row.price - center) < 1e-8;
+  const bidPct = maxSize > 0 ? Math.min(100, (row.bidSize / maxSize) * 100) : 0;
+  const askPct = maxSize > 0 ? Math.min(100, (row.askSize / maxSize) * 100) : 0;
 
   return (
     <button
-      ref={flashRef}
       type="button"
-      onClick={() => onPriceClick?.(level.price)}
-      className={`group relative grid h-[20px] w-full grid-cols-[1fr_92px_1fr] items-center overflow-hidden px-3 text-[10px] transition-colors sm:h-[22px] sm:grid-cols-[1fr_96px_1fr] sm:text-[11px] ${
-        side === "bid" ? "hover:bg-[#17c964]/10" : "hover:bg-[#ff8a00]/10"
-      }`}
+      onClick={() => onPriceClick?.(row.price)}
+      className="group relative grid h-[22px] w-full grid-cols-[minmax(0,1fr)_116px_minmax(0,1fr)] items-center overflow-hidden font-mono text-[12px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.04]"
     >
-      <div className="pointer-events-none absolute inset-y-0 left-3 right-[calc(50%+46px)] sm:right-[calc(50%+48px)]">
-        {side === "bid" && (
-          <div
-            className="ml-auto h-full bg-[#17c964]/20 group-hover:bg-[#17c964]/25"
-            style={{ width: `${depthPct.toFixed(1)}%` }}
-          />
-        )}
-      </div>
-      <div className="pointer-events-none absolute inset-y-0 left-[calc(50%+46px)] right-3 sm:left-[calc(50%+48px)]">
-        {side === "ask" && (
-          <div
-            className="h-full bg-[#ff8a00]/20 group-hover:bg-[#ff8a00]/25"
-            style={{ width: `${depthPct.toFixed(1)}%` }}
-          />
+      <div className="relative h-full">
+        {row.bidSize > 0 && (
+          <>
+            <div
+              className="absolute right-0 top-[3px] h-[16px]"
+              style={{ width: `${bidPct}%`, backgroundColor: "rgba(82, 200, 63, 0.68)" }}
+            />
+            <span
+              className="absolute top-1/2 -translate-y-1/2 font-bold"
+              style={{ right: `calc(${bidPct}% + 5px)`, color: POSITIVE }}
+            >
+              {formatSize(row.bidSize)}
+            </span>
+          </>
         )}
       </div>
 
       <span
-        className={`relative min-w-0 text-left font-mono tabular-nums ${
-          side === "bid" ? "text-[#17c964]" : "text-transparent"
-        }`}
+        className="relative z-[1] flex h-full items-center justify-center text-[13px]"
+        style={{
+          color: isCenter ? "#ffffff" : "rgba(255,255,255,0.62)",
+          backgroundColor: isCenter ? POSITIVE : "transparent",
+          fontWeight: isCenter ? 800 : 500,
+        }}
       >
-        {side === "bid" ? level.size.toFixed(4) : ""}
+        {formatPrice(row.price)}
       </span>
-      <span
-        className={`relative text-center font-mono font-semibold tabular-nums ${
-          side === "bid" ? "text-[#17c964]" : "text-[#ff9b2f]"
-        }`}
-      >
-        {formattedPrice}
-      </span>
-      <span
-        className={`relative min-w-0 text-right font-mono tabular-nums ${
-          side === "ask" ? "text-[#ff9b2f]" : "text-transparent"
-        }`}
-      >
-        {side === "ask" ? level.size.toFixed(4) : ""}
-      </span>
+
+      <div className="relative h-full">
+        {row.askSize > 0 && (
+          <>
+            <div
+              className="absolute left-0 top-[3px] h-[16px]"
+              style={{ width: `${askPct}%`, backgroundColor: "rgba(255, 91, 34, 0.64)" }}
+            />
+            <span
+              className="absolute top-1/2 -translate-y-1/2 font-bold"
+              style={{ left: `calc(${askPct}% + 5px)`, color: NEGATIVE }}
+            >
+              {formatSize(row.askSize)}
+            </span>
+          </>
+        )}
+      </div>
     </button>
   );
-});
-
-function withCumulative(levels: Level[], reverse = false): CumulativeLevel[] {
-  let cumulative = 0;
-  const source = reverse ? [...levels].reverse() : levels;
-  const next = source.map((level) => {
-    cumulative += level.size;
-    return { ...level, cumulative };
-  });
-  return reverse ? next.reverse() : next;
 }
 
-/**
- * Real orderbook component using Decibel's authenticated WebSocket stream
- * through the server-side SSE proxy. SDK 0.4 exposes depth as a stream, not a
- * REST reader, so this is the primary depth path.
- */
 export function OrderBook({
   marketName,
   marketAddress,
@@ -161,8 +224,9 @@ export function OrderBook({
     asks: [],
     timestamp: null,
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
+  const [qty, setQty] = useState(1);
+  const previousPriceRef = useRef(currentPrice ?? 0);
 
   const resolvedMarketAddress =
     marketAddress ??
@@ -171,24 +235,24 @@ export function OrderBook({
 
   useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
 
-  const ingestDepth = useCallback((message: any) => {
-    const bids = Array.isArray(message?.bids) ? message.bids : message?.depth?.bids;
-    const asks = Array.isArray(message?.asks) ? message.asks : message?.depth?.asks;
-    if (!Array.isArray(bids) || !Array.isArray(asks)) return;
+  const ingestDepth = useCallback((message: unknown) => {
+    if (!isDepthMessage(message)) return;
+    const bids = normalizeLevels(Array.isArray(message.bids) ? message.bids : message.depth?.bids);
+    const asks = normalizeLevels(Array.isArray(message.asks) ? message.asks : message.depth?.asks);
+    if (bids.length === 0 && asks.length === 0) return;
 
     setBook({
-      bids: bids.slice(0, DISPLAY_LEVELS),
-      asks: asks.slice(0, DISPLAY_LEVELS),
+      bids: bids.sort((a, b) => b.price - a.price).slice(0, DISPLAY_LEVELS * 2),
+      asks: asks.sort((a, b) => a.price - b.price).slice(0, DISPLAY_LEVELS * 2),
       timestamp: message.unix_ms ?? message.timestamp ?? Date.now(),
     });
-    setError(null);
-    setLoading(false);
+    setStatus("live");
   }, []);
 
   useEffect(() => {
     if (!resolvedMarketAddress) {
-      setLoading(false);
-      setError("Unknown Decibel market");
+      setStatus("unavailable");
+      setBook({ bids: [], asks: [], timestamp: null });
       return;
     }
 
@@ -198,9 +262,8 @@ export function OrderBook({
     let stream: EventSource | null = null;
     let reconnectAttempt = 0;
 
-    setLoading(true);
+    setStatus("loading");
     setBook({ bids: [], asks: [], timestamp: null });
-    setError(null);
 
     const connect = () => {
       if (cancelled) return;
@@ -216,7 +279,6 @@ export function OrderBook({
 
       stream.addEventListener("message", (event) => {
         if (cancelled) return;
-
         try {
           const message = JSON.parse(event.data);
           if (message.success || message.type === "connected") return;
@@ -226,28 +288,22 @@ export function OrderBook({
           }
           ingestDepth(message);
         } catch {
-          // Ignore malformed frames and keep the stream open.
+          // Keep the stream alive on malformed frames.
         }
       });
 
       stream.addEventListener("error", () => {
         if (cancelled) return;
-        setError("Depth stream unavailable");
-        setLoading(false);
+        setStatus((current) => (current === "live" ? "live" : "unavailable"));
         stream?.close();
         reconnectAttempt += 1;
-        reconnectTimer = setTimeout(
-          connect,
-          Math.min(1000 * 1.5 ** reconnectAttempt, 8000)
-        );
+        reconnectTimer = setTimeout(connect, Math.min(1000 * 1.5 ** reconnectAttempt, 8000));
       });
     };
 
     connect();
     noDepthTimer = setTimeout(() => {
-      if (cancelled) return;
-      setLoading(false);
-      setError("Depth stream waiting");
+      if (!cancelled) setStatus((current) => (current === "live" ? "live" : "waiting"));
     }, 2500);
 
     return () => {
@@ -258,124 +314,113 @@ export function OrderBook({
     };
   }, [ingestDepth, network, resolvedMarketAddress]);
 
-  const asksWithCumulative = useMemo(
-    () => withCumulative(book.asks.slice(0, DISPLAY_LEVELS), true),
-    [book.asks],
-  );
-  const bidsWithCumulative = useMemo(
-    () => withCumulative(book.bids.slice(0, DISPLAY_LEVELS)),
-    [book.bids],
-  );
-  const maxAskTotal = asksWithCumulative[0]?.cumulative ?? 0;
-  const maxBidTotal = bidsWithCumulative[bidsWithCumulative.length - 1]?.cumulative ?? 0;
-
   const bestBid = book.bids[0]?.price;
   const bestAsk = book.asks[0]?.price;
-  const midPrice =
-    bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
-  const displayPrice = currentPrice ?? midPrice;
-  const spread = bestBid && bestAsk ? bestAsk - bestBid : null;
-  const spreadPct =
-    spread && midPrice ? ((spread / midPrice) * 100).toFixed(3) : null;
+  const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
+  const displayPrice = currentPrice && currentPrice > 0 ? currentPrice : midPrice ?? previousPriceRef.current;
 
-  if (loading) {
-    return (
-      <div className="bg-[#0b0b0b] px-3 py-3">
-        <div className="mb-2 flex items-center justify-between text-[10px] uppercase text-zinc-600">
-          <span>Order Book</span>
-          <span>Loading</span>
-        </div>
-        <div className="animate-pulse space-y-[3px]">
-          {Array.from({ length: 13 }).map((_, i) => (
-            <div key={i} className="h-[22px] bg-white/[0.04]" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (displayPrice && displayPrice > 0) previousPriceRef.current = displayPrice;
+  }, [displayPrice]);
 
-  // If error and no data, show clean empty state
-  if (error && book.bids.length === 0 && book.asks.length === 0) {
-    return (
-      <div className="overflow-hidden bg-[#0b0b0b]">
-        <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase text-zinc-600">
-          <h3 className="font-display font-semibold text-zinc-500">Order Book</h3>
-          <span>Unavailable</span>
-        </div>
-        <div className="px-3 py-8 text-center">
-          <p className="font-mono text-[11px] text-zinc-600">No depth data for this market</p>
-        </div>
-      </div>
-    );
-  }
+  const step = useMemo(() => inferStep(book, displayPrice || 1), [book, displayPrice]);
+  const center = Number(snapStep(displayPrice || 1, step).toFixed(8));
+  const rows = useMemo(() => buildLadderRows(book, displayPrice || 1, step), [book, displayPrice, step]);
+  const maxSize = useMemo(
+    () => Math.max(1, ...rows.flatMap((row) => [row.bidSize, row.askSize])),
+    [rows],
+  );
+
+  const statusText =
+    status === "live"
+      ? `${book.bids.length + book.asks.length} levels`
+      : status === "loading"
+        ? "loading"
+        : status === "waiting"
+          ? "waiting"
+          : "unavailable";
 
   return (
-    <div className="overflow-hidden bg-[#0b0b0b]">
-      <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase text-zinc-600">
-        <h3 className="font-display font-semibold text-zinc-500">Order Book</h3>
-        {error ? (
-          <span>Unavailable</span>
-        ) : (
-          <span>
-            Live · {book.bids.length + book.asks.length} levels
-          </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-[1fr_92px_1fr] px-3 pb-1 text-[10px] font-medium text-zinc-700 sm:grid-cols-[1fr_96px_1fr]">
-        <span>Size</span>
-        <span className="text-center">Price</span>
-        <span className="text-right">Size</span>
-      </div>
-
-      <div className="max-h-[160px] overflow-y-auto no-scrollbar sm:max-h-[176px]">
-        {asksWithCumulative.map((level, i) => (
-          <OrderBookRow
-            key={`ask-${i}`}
-            level={level}
-            side="ask"
-            maxTotal={maxAskTotal}
-            onPriceClick={onPriceClick}
-          />
-        ))}
-      </div>
-
-      <div className="px-3 py-2">
-        <NumberTicker
-          value={displayPrice || null}
-          fallback="—"
-          format={{
-            style: "currency",
-            currency: "USD",
-            minimumFractionDigits: displayPrice ? priceDecimals(displayPrice) : 2,
-            maximumFractionDigits: displayPrice ? priceDecimals(displayPrice) : 2,
-          }}
-          className="block text-center font-mono text-[18px] font-bold text-white"
-        />
-        {spread !== null && (
-          <div className="mt-0.5 text-center font-mono text-[10px] tabular-nums text-zinc-600">
-            Spread {spread.toFixed(2)} ({spreadPct}%)
+    <section className="overflow-hidden bg-black text-zinc-100">
+      <div className="border-b border-white/[0.08] px-3 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="font-sans text-[15px] leading-tight text-zinc-500">
+            <div>▲ -- Open P&amp;L</div>
+            <div className="mt-1">▲ -- Day P&amp;L</div>
           </div>
-        )}
+          <div className="flex items-start gap-2 text-right">
+            <div className="font-sans text-[15px] leading-tight text-zinc-500">
+              <div>No position</div>
+              <div className="mt-1">0 open orders</div>
+            </div>
+            <button
+              type="button"
+              aria-label="No active position"
+              className="flex size-9 items-center justify-center rounded-md bg-white/[0.08] text-zinc-500"
+            >
+              <CircleSlash2 className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_96px_1fr] gap-2">
+          <button
+            type="button"
+            className="h-9 rounded-md bg-white/[0.1] px-3 text-left font-mono text-[13px] font-black"
+            style={{ color: POSITIVE }}
+          >
+            Buy MKT
+          </button>
+          <div className="grid grid-cols-[30px_1fr_30px] items-center gap-1 rounded-md bg-white/[0.08] p-1">
+            <button
+              type="button"
+              aria-label="Decrease quantity"
+              onClick={() => setQty((value) => Math.max(1, value - 1))}
+              className="flex size-7 items-center justify-center rounded bg-white/[0.08] text-zinc-500"
+            >
+              <Minus className="size-3" aria-hidden="true" />
+            </button>
+            <div className="text-center font-mono text-[18px] font-bold text-zinc-200 tabular-nums">{qty}</div>
+            <button
+              type="button"
+              aria-label="Increase quantity"
+              onClick={() => setQty((value) => Math.min(999, value + 1))}
+              className="flex size-7 items-center justify-center rounded bg-white/[0.08] text-zinc-200"
+            >
+              <Plus className="size-3" aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            type="button"
+            className="h-9 rounded-md bg-white/[0.1] px-3 text-right font-mono text-[13px] font-black"
+            style={{ color: NEGATIVE }}
+          >
+            Short MKT
+          </button>
+        </div>
       </div>
 
-      <div className="max-h-[160px] overflow-y-auto no-scrollbar sm:max-h-[176px]">
-        {bidsWithCumulative.map((level, i) => (
-          <OrderBookRow
-            key={`bid-${i}`}
-            level={level}
-            side="bid"
-            maxTotal={maxBidTotal}
+      <div className="flex items-center justify-between px-3 py-1 font-mono text-[10px] uppercase text-zinc-700">
+        <span>{marketName.replace("/USD", "")}</span>
+        <span>{statusText}</span>
+      </div>
+
+      <div className="h-[520px] overflow-hidden border-y border-white/[0.06] py-1 sm:h-[560px]">
+        {rows.map((row) => (
+          <LadderRowView
+            key={row.price}
+            row={row}
+            center={center}
+            maxSize={maxSize}
             onPriceClick={onPriceClick}
           />
         ))}
       </div>
 
-      {book.timestamp && (
-        <div className="px-3 py-1 text-right font-mono text-[9px] text-zinc-700">
-          {new Date(book.timestamp).toLocaleTimeString()}
-        </div>
-      )}
-    </div>
+      <div className="flex items-center justify-between px-3 py-1 font-mono text-[10px] text-zinc-700">
+        <span>{book.timestamp ? new Date(book.timestamp).toLocaleTimeString() : "--:--:--"}</span>
+        <span>{formatPrice(displayPrice || 0)}</span>
+      </div>
+    </section>
   );
 }

@@ -153,27 +153,55 @@ const CATEGORIES = [
   { key: "commodities", label: "Commodities" },
 ] as const;
 
-const PRIMARY_MARKET_TABS = [
-  { key: "all", label: "All" },
-  { key: "crypto", label: "Crypto" },
-  { key: "tradfi", label: "TradFi" },
-] as const;
+type MarketCategory = (typeof CATEGORIES)[number]["key"];
 
-const TRADFI_MARKET_TABS = [
-  { key: "all", label: "All" },
-  { key: "stocks", label: "Stocks" },
-  { key: "commodities", label: "Commodities" },
-] as const;
+function isMarketCategory(value: string | undefined): value is MarketCategory {
+  return value === "crypto" || value === "stocks" || value === "commodities";
+}
 
 /* ─── Token logos ──────────────────────────────────── */
 
 const TOKEN_LOGOS: Record<string, string> = {
+  AAVE: "/tokens/aave.svg",
+  ADA: "/tokens/ada.svg",
+  AMZN: "/tokens/amzn.svg",
+  APT: "/tokens/apt.svg",
+  BNB: "/tokens/bnb.svg",
+  BTC: "/tokens/btc.svg",
+  CBRS: "/tokens/cbrs.svg",
+  CHIP: "/tokens/chip.svg",
+  DOGE: "/tokens/doge.svg",
+  ENA: "/tokens/ena.svg",
+  ETH: "/tokens/eth.svg",
+  FARTCOIN: "/tokens/fartcoin.svg",
+  GOLD: "/tokens/gold.svg",
+  GOOGL: "/tokens/googl.svg",
+  HYPE: "/tokens/hype.svg",
+  KPEPE: "/tokens/kpepe.svg",
+  LINK: "/tokens/link.svg",
+  MEGA: "/tokens/mega.svg",
+  MU: "/tokens/mu.svg",
+  NEAR: "/tokens/near.svg",
+  NVDA: "/tokens/nvda.svg",
+  SILVER: "/tokens/silver.svg",
+  SNDK: "/tokens/sndk.svg",
+  SOL: "/tokens/sol.svg",
+  SUI: "/tokens/sui.svg",
+  TAO: "/tokens/tao.svg",
+  TRUMP: "/tokens/trump.svg",
+  TSLA: "/tokens/tsla.svg",
+  WLFI: "/tokens/wlfi.svg",
+  WTIOIL: "/tokens/wtioil.svg",
+  XPL: "/tokens/xpl.svg",
+  XRP: "/tokens/xrp.svg",
+  ZEC: "/tokens/zec.svg",
+  ZRO: "/tokens/zro.svg",
   "BTC/USD": "/tokens/btc.svg",
   "BTC-PERP/USD": "/tokens/btc.svg",
   "ETH/USD": "/tokens/eth.svg",
-  "SOL/USD": "/tokens/sol.png",
-  "APT/USD": "/tokens/apt.png",
-  "HYPE/USD": "/tokens/hype.png",
+  "SOL/USD": "/tokens/sol.svg",
+  "APT/USD": "/tokens/apt.svg",
+  "HYPE/USD": "/tokens/hype.svg",
   "BNB/USD": "/tokens/bnb.svg",
   "XRP/USD": "/tokens/xrp.svg",
   "DOGE/USD": "/tokens/doge.svg",
@@ -183,26 +211,38 @@ const TOKEN_LOGOS: Record<string, string> = {
 
 const MARKET_LABELS: Record<string, string> = {
   AAPL: "Apple",
+  ADA: "Cardano",
   AMZN: "Amazon",
+  AAVE: "Aave",
   APT: "Aptos",
   BTC: "Bitcoin",
   BNB: "BNB",
   CBRS: "Chainbase",
+  CHIP: "Chip",
   DOGE: "Dogecoin",
   ETH: "Ethereum",
+  FARTCOIN: "Fartcoin",
   GOLD: "Gold",
   GOOGL: "Google",
   HYPE: "Hyperliquid",
+  KPEPE: "Pepe",
+  LINK: "Chainlink",
   MEGA: "Mega",
   MU: "Micron",
+  NEAR: "Near",
   NVDA: "Nvidia",
   SNDK: "SanDisk",
   SILVER: "Silver",
   SOL: "Solana",
   SUI: "Sui",
+  TAO: "Bittensor",
+  TRUMP: "Trump",
   TSLA: "Tesla",
+  WTIOIL: "WTI Oil",
+  XPL: "Plasma",
   XRP: "XRP",
   ZEC: "Zcash",
+  ZRO: "LayerZero",
 };
 
 const MARKET_COLORS: Record<string, string> = {
@@ -213,41 +253,65 @@ const MARKET_COLORS: Record<string, string> = {
   ETH: "#627eea",
   GOLD: "#d4a017",
   HYPE: "#50e3c2",
+  KPEPE: "#8bc34a",
+  LINK: "#2a5ada",
+  MEGA: "#d9d9d9",
+  NEAR: "#d9d9d9",
   SILVER: "#c0c0c0",
   SOL: "#9945ff",
   SUI: "#6dd6ff",
+  TAO: "#d9d9d9",
+  TRUMP: "#d9d9d9",
+  WTIOIL: "#1f7a1f",
+  XPL: "#d9d9d9",
   XRP: "#d9d9d9",
   ZEC: "#f4b728",
+  ZRO: "#d9d9d9",
 };
+
+const STOCK_SYMBOLS = new Set([
+  "AMZN",
+  "CBRS",
+  "GOOGL",
+  "MU",
+  "NVDA",
+  "SNDK",
+  "TSLA",
+]);
 
 const COMMODITY_SYMBOLS = new Set([
   "GOLD",
   "SILVER",
-  "XAU",
-  "XAG",
-  "OIL",
-  "WTI",
-  "BRENT",
-  "NATGAS",
+  "WTIOIL",
 ]);
 
 const CRYPTO_SYMBOLS = new Set([
   "AAVE",
+  "ADA",
   "APT",
   "BNB",
   "BTC",
+  "CHIP",
   "DOGE",
   "ENA",
   "ETH",
+  "FARTCOIN",
   "HYPE",
+  "KPEPE",
   "LINK",
+  "MEGA",
+  "NEAR",
   "SOL",
   "SUI",
+  "TAO",
+  "TRUMP",
   "USDC",
   "USDT",
   "WLFI",
+  "XPL",
   "XRP",
   "ZEC",
+  "ZRO",
 ]);
 
 interface DecibelApiMarket {
@@ -293,8 +357,9 @@ function getMarketColor(marketName: string) {
 function classifyMarketCategory(marketName: string): "crypto" | "stocks" | "commodities" {
   const base = getBaseSymbol(marketName);
   if (COMMODITY_SYMBOLS.has(base)) return "commodities";
+  if (STOCK_SYMBOLS.has(base)) return "stocks";
   if (CRYPTO_SYMBOLS.has(base)) return "crypto";
-  return "stocks";
+  return "crypto";
 }
 
 function getDisplayDecimals(price: number | null | undefined) {
@@ -370,7 +435,7 @@ const FALLBACK_MARKETS: Market[] = Object.values(PERP_MARKET_DATA).map((market) 
 const MARKETS = FALLBACK_MARKETS;
 
 function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
-  const logo = TOKEN_LOGOS[market];
+  const logo = TOKEN_LOGOS[market] ?? TOKEN_LOGOS[getBaseSymbol(market)];
   if (logo) {
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
@@ -405,23 +470,25 @@ function MarketModal({
   onSelect: (id: string) => void;
   onClose: () => void;
   markets?: Market[];
-  categories?: readonly { key: string; label: string }[];
+  categories?: readonly { key: MarketCategory; label: string }[];
   loading?: boolean;
   network: DecibelPublicNetwork;
 }) {
   const [query, setQuery] = useState("");
-  const [primaryTab, setPrimaryTab] = useState<"all" | "crypto" | "tradfi">("all");
-  const [tradfiTab, setTradfiTab] = useState<"all" | "stocks" | "commodities">("all");
+  const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
+
+  useEffect(() => {
+    if (!open) return;
+    const selectedMarket = marketsList.find((market) => market.id === selected);
+    if (isMarketCategory(selectedMarket?.category)) {
+      setActiveCategory(selectedMarket.category);
+    }
+  }, [marketsList, open, selected]);
 
   const filteredMarkets = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return marketsList.filter((market) => {
-      const isTradFi = market.category === "stocks" || market.category === "commodities";
-      if (primaryTab === "crypto" && market.category !== "crypto") return false;
-      if (primaryTab === "tradfi" && !isTradFi) return false;
-      if (primaryTab === "tradfi" && tradfiTab !== "all" && market.category !== tradfiTab) {
-        return false;
-      }
+      if (market.category !== activeCategory) return false;
       if (!normalizedQuery) return true;
       return [
         market.label,
@@ -431,17 +498,11 @@ function MarketModal({
         getBaseSymbol(market.id),
       ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
     });
-  }, [marketsList, primaryTab, query, tradfiTab]);
+  }, [activeCategory, marketsList, query]);
 
-  const visibleCategories = useMemo(
-    () =>
-      categoriesList
-        .map((category) => ({
-          ...category,
-          items: filteredMarkets.filter((market) => market.category === category.key),
-        }))
-        .filter((category) => category.items.length > 0),
-    [categoriesList, filteredMarkets],
+  const activeCategoryLabel = useMemo(
+    () => categoriesList.find((category) => category.key === activeCategory)?.label ?? "Markets",
+    [activeCategory, categoriesList],
   );
 
   // Lock body scroll + escape key
@@ -500,19 +561,19 @@ function MarketModal({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 autoFocus
-                placeholder="Search coins"
+                placeholder="Search markets"
                 className="min-w-0 flex-1 bg-transparent text-[14px] text-zinc-200 outline-none placeholder:text-zinc-500"
               />
             </label>
 
             <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
-              {PRIMARY_MARKET_TABS.map((tab) => (
+              {categoriesList.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setPrimaryTab(tab.key)}
+                  onClick={() => setActiveCategory(tab.key)}
                   className={`pb-2 text-[13px] transition-colors ${
-                    primaryTab === tab.key
+                    activeCategory === tab.key
                       ? "border-b-2 border-zinc-200 text-zinc-100"
                       : "text-zinc-500 hover:text-zinc-300"
                   }`}
@@ -521,25 +582,6 @@ function MarketModal({
                 </button>
               ))}
             </div>
-
-            {primaryTab === "tradfi" && (
-              <div className="mt-3 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
-                {TRADFI_MARKET_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setTradfiTab(tab.key)}
-                    className={`pb-2 text-[13px] transition-colors ${
-                      tradfiTab === tab.key
-                        ? "border-b-2 border-zinc-200 text-zinc-100"
-                        : "text-zinc-500 hover:text-zinc-300"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
 
             {/* Column headers */}
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
@@ -550,25 +592,21 @@ function MarketModal({
               <span className="text-right text-xs font-bold">Lev.</span>
             </div>
 
-            {loading && (
-              <div className="px-3 pb-2 text-[10px] font-bold uppercase text-green-500/70">
-                Updating market registry...
-              </div>
-            )}
-
-            {/* Category groups */}
+            {/* Market rows */}
             <div className="max-h-[calc(100dvh-230px)] overflow-y-auto overscroll-contain pr-1 scrollbar-thin sm:max-h-[min(62dvh,600px)]">
-            {visibleCategories.map((cat) => {
-              const items = cat.items;
-              return (
-                <div key={cat.key}>
+                <div>
                   <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
                     <span className="text-[10px] font-bold uppercase text-[#555]">
-                      {cat.label}
+                      {activeCategoryLabel}
                     </span>
+                    {loading && (
+                      <span className="text-[10px] font-bold uppercase text-green-500/60">
+                        Syncing
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    {items.map((m) => {
+                    {filteredMarkets.map((m) => {
                       const isActive = m.id === selected;
                       const mark = m.perpData?.seedPrice ?? 0;
                       const fundingText = m.fundingRateBps == null ? "—" : fmtFundingRate(m.fundingRateBps);
@@ -614,11 +652,9 @@ function MarketModal({
                     })}
                   </div>
                 </div>
-              );
-            })}
-            {visibleCategories.length === 0 && (
+            {filteredMarkets.length === 0 && (
               <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
-                No Decibel markets match this search.
+                No {activeCategoryLabel.toLowerCase()} markets match this search.
               </div>
             )}
             <div className="h-3" />
@@ -650,7 +686,7 @@ export function BTCChart({
   onMarketChange?: (m: MarketChangePayload) => void;
   onPriceUpdate?: (price: number) => void;
   markets?: Market[];
-  categories?: readonly { key: string; label: string }[];
+  categories?: readonly { key: MarketCategory; label: string }[];
   defaultMarket?: string;
 }) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
@@ -672,8 +708,16 @@ export function BTCChart({
   const perpData = marketConfig.perpData ?? null;
   const [perpsSnapshot, setPerpsSnapshot] = useState<PerpMarketSnapshot | null>(null);
   const lastEmittedMarketRef = useRef("");
+  const modalOpenRef = useRef(false);
+  const liveMarketsRef = useRef(liveMarkets);
 
   useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
+  useEffect(() => {
+    modalOpenRef.current = modalOpen;
+  }, [modalOpen]);
+  useEffect(() => {
+    liveMarketsRef.current = liveMarkets;
+  }, [liveMarkets]);
 
   useEffect(() => {
     if (marketsProp) return;
@@ -681,7 +725,8 @@ export function BTCChart({
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const loadMarkets = async () => {
-      setMarketsLoading(true);
+      const firstLoad = liveMarketsRef.current.length === 0;
+      setMarketsLoading(firstLoad);
       try {
         const res = await fetch(`/api/decibel/markets?network=${network}`, {
           cache: "no-store",
@@ -697,13 +742,15 @@ export function BTCChart({
             if (b.id === "BTC/USD") return 1;
             return a.id.localeCompare(b.id);
           });
-        if (!cancelled && next.length > 0) setLiveMarkets(next);
+        if (!cancelled && next.length > 0 && !modalOpenRef.current) setLiveMarkets(next);
       } catch {
-        if (!cancelled) setLiveMarkets((current) => current.length > 0 ? current : MARKETS);
+        if (!cancelled && !modalOpenRef.current) {
+          setLiveMarkets((current) => current.length > 0 ? current : MARKETS);
+        }
       } finally {
         if (!cancelled) {
           setMarketsLoading(false);
-          timer = setTimeout(loadMarkets, 3_000);
+          timer = setTimeout(loadMarkets, 15_000);
         }
       }
     };

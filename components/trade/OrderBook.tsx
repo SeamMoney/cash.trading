@@ -1,19 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleSlash2, Minus, Plus } from "lucide-react";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
   type DecibelPublicNetwork,
 } from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
+import { cn } from "@/lib/utils";
 
 interface OrderBookProps {
   marketName: string;
   marketAddress?: string;
   onPriceClick?: (price: number) => void;
   currentPrice?: number;
+  className?: string;
+  rowCount?: number;
 }
 
 interface Level {
@@ -34,7 +36,7 @@ interface LadderRow {
 }
 
 const DISPLAY_LEVELS = 20;
-const LADDER_ROWS = 39;
+const DEFAULT_LADDER_ROWS = 39;
 const POSITIVE = "#52c83f";
 const NEGATIVE = "#ff5b22";
 
@@ -102,8 +104,8 @@ function addToBucket(map: Map<number, number>, price: number, size: number, step
   map.set(snapped, (map.get(snapped) ?? 0) + size);
 }
 
-function buildLadderRows(book: OrderBookData, centerPrice: number, step: number): LadderRow[] {
-  const half = Math.floor(LADDER_ROWS / 2);
+function buildLadderRows(book: OrderBookData, centerPrice: number, step: number, rowCount: number): LadderRow[] {
+  const half = Math.floor(rowCount / 2);
   const center = Number(snapStep(centerPrice, step).toFixed(8));
   const bidMap = new Map<number, number>();
   const askMap = new Map<number, number>();
@@ -115,7 +117,7 @@ function buildLadderRows(book: OrderBookData, centerPrice: number, step: number)
     addToBucket(askMap, level.price, level.size, step);
   });
 
-  return Array.from({ length: LADDER_ROWS }, (_, index) => {
+  return Array.from({ length: rowCount }, (_, index) => {
     const offset = half - index;
     const price = Number((center + offset * step).toFixed(8));
     return {
@@ -162,7 +164,7 @@ function LadderRowView({
     <button
       type="button"
       onClick={() => onPriceClick?.(row.price)}
-      className="group relative grid h-[22px] w-full grid-cols-[minmax(0,1fr)_116px_minmax(0,1fr)] items-center overflow-hidden font-mono text-[12px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.04]"
+      className="group relative grid h-full w-full grid-cols-[minmax(78px,1fr)_118px_minmax(78px,1fr)] items-center overflow-hidden font-mono text-[12px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.035]"
     >
       <div className="relative h-full">
         {row.bidSize > 0 && (
@@ -173,7 +175,10 @@ function LadderRowView({
             />
             <span
               className="absolute top-1/2 -translate-y-1/2 font-bold"
-              style={{ right: `calc(${bidPct}% + 5px)`, color: POSITIVE }}
+              style={{
+                right: `min(calc(${bidPct}% + 5px), calc(100% - 52px))`,
+                color: POSITIVE,
+              }}
             >
               {formatSize(row.bidSize)}
             </span>
@@ -201,7 +206,10 @@ function LadderRowView({
             />
             <span
               className="absolute top-1/2 -translate-y-1/2 font-bold"
-              style={{ left: `calc(${askPct}% + 5px)`, color: NEGATIVE }}
+              style={{
+                left: `min(calc(${askPct}% + 5px), calc(100% - 52px))`,
+                color: NEGATIVE,
+              }}
             >
               {formatSize(row.askSize)}
             </span>
@@ -217,6 +225,8 @@ export function OrderBook({
   marketAddress,
   onPriceClick,
   currentPrice,
+  className,
+  rowCount = DEFAULT_LADDER_ROWS,
 }: OrderBookProps) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [book, setBook] = useState<OrderBookData>({
@@ -225,7 +235,6 @@ export function OrderBook({
     timestamp: null,
   });
   const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
-  const [qty, setQty] = useState(1);
   const previousPriceRef = useRef(currentPrice ?? 0);
 
   const resolvedMarketAddress =
@@ -325,7 +334,10 @@ export function OrderBook({
 
   const step = useMemo(() => inferStep(book, displayPrice || 1), [book, displayPrice]);
   const center = Number(snapStep(displayPrice || 1, step).toFixed(8));
-  const rows = useMemo(() => buildLadderRows(book, displayPrice || 1, step), [book, displayPrice, step]);
+  const rows = useMemo(
+    () => buildLadderRows(book, displayPrice || 1, step, rowCount),
+    [book, displayPrice, rowCount, step],
+  );
   const maxSize = useMemo(
     () => Math.max(1, ...rows.flatMap((row) => [row.bidSize, row.askSize])),
     [rows],
@@ -339,73 +351,19 @@ export function OrderBook({
         : status === "waiting"
           ? "waiting"
           : "unavailable";
+  const symbol = marketName.replace("/USD", "").replace("-PERP", "");
 
   return (
-    <section className="overflow-hidden bg-black text-zinc-100">
-      <div className="border-b border-white/[0.08] px-3 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="font-sans text-[15px] leading-tight text-zinc-500">
-            <div>▲ -- Open P&amp;L</div>
-            <div className="mt-1">▲ -- Day P&amp;L</div>
-          </div>
-          <div className="flex items-start gap-2 text-right">
-            <div className="font-sans text-[15px] leading-tight text-zinc-500">
-              <div>No position</div>
-              <div className="mt-1">0 open orders</div>
-            </div>
-            <button
-              type="button"
-              aria-label="No active position"
-              className="flex size-9 items-center justify-center rounded-md bg-white/[0.08] text-zinc-500"
-            >
-              <CircleSlash2 className="size-4" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-[1fr_96px_1fr] gap-2">
-          <button
-            type="button"
-            className="h-9 rounded-md bg-white/[0.1] px-3 text-left font-mono text-[13px] font-black"
-            style={{ color: POSITIVE }}
-          >
-            Buy MKT
-          </button>
-          <div className="grid grid-cols-[30px_1fr_30px] items-center gap-1 rounded-md bg-white/[0.08] p-1">
-            <button
-              type="button"
-              aria-label="Decrease quantity"
-              onClick={() => setQty((value) => Math.max(1, value - 1))}
-              className="flex size-7 items-center justify-center rounded bg-white/[0.08] text-zinc-500"
-            >
-              <Minus className="size-3" aria-hidden="true" />
-            </button>
-            <div className="text-center font-mono text-[18px] font-bold text-zinc-200 tabular-nums">{qty}</div>
-            <button
-              type="button"
-              aria-label="Increase quantity"
-              onClick={() => setQty((value) => Math.min(999, value + 1))}
-              className="flex size-7 items-center justify-center rounded bg-white/[0.08] text-zinc-200"
-            >
-              <Plus className="size-3" aria-hidden="true" />
-            </button>
-          </div>
-          <button
-            type="button"
-            className="h-9 rounded-md bg-white/[0.1] px-3 text-right font-mono text-[13px] font-black"
-            style={{ color: NEGATIVE }}
-          >
-            Short MKT
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between px-3 py-1 font-mono text-[10px] uppercase text-zinc-700">
-        <span>{marketName.replace("/USD", "")}</span>
+    <section className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] text-zinc-100", className)}>
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
+        <span>{symbol}</span>
         <span>{statusText}</span>
       </div>
 
-      <div className="h-[520px] overflow-hidden border-y border-white/[0.06] py-1 sm:h-[560px]">
+      <div
+        className="grid flex-1 overflow-hidden py-1"
+        style={{ gridTemplateRows: `repeat(${rows.length}, minmax(0, 1fr))` }}
+      >
         {rows.map((row) => (
           <LadderRowView
             key={row.price}
@@ -417,7 +375,7 @@ export function OrderBook({
         ))}
       </div>
 
-      <div className="flex items-center justify-between px-3 py-1 font-mono text-[10px] text-zinc-700">
+      <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-1 font-mono text-[10px] text-zinc-700">
         <span>{book.timestamp ? new Date(book.timestamp).toLocaleTimeString() : "--:--:--"}</span>
         <span>{formatPrice(displayPrice || 0)}</span>
       </div>

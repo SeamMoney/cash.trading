@@ -411,7 +411,7 @@ export function TradePanel({
       </div>
 
       {/* Amount input card */}
-      <div className="rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
+      <div className="overflow-hidden rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
         {/* Input row */}
         <div className="relative z-[1] flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3 sm:px-5 sm:py-4">
           <input

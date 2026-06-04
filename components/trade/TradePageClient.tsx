@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
@@ -65,6 +66,13 @@ interface DecibelVault {
 }
 
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
+const MOBILE_TRADE_NAV = [
+  { label: "Trade", href: "#trade" },
+  { label: "Positions", href: "#positions" },
+  { label: "Vaults", href: "#vaults" },
+  { label: "Signals", href: "#signals" },
+  { label: "Portfolio", href: "/portfolio" },
+] as const;
 
 // Display overrides for vault cards shown beside Decibel protocol vaults.
 // Decibel Protocol Vault uses 100% real API data — no override needed
@@ -897,7 +905,6 @@ export function TradePageClient({
   }>({ id: "BTC/USD", pair: "BTC/USD", leverage: 40 });
   const [positions, setPositions] = useState<Position[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
-  const [mobileOrderBookOpen, setMobileOrderBookOpen] = useState(false);
   const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
   const [deployTarget, setDeployTarget] = useState<GraduatedIndicator | null>(null);
   const [vaultAction, setVaultAction] = useState<{
@@ -1063,10 +1070,10 @@ export function TradePageClient({
   );
 
   return (
-    <div className="min-h-screen pb-24 md:pb-0">
+    <div className="min-h-screen pb-28 lg:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
-        <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 w-full">
+        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 sm:py-6">
         {/* ── Hero ─────────────── */}
         <div className="mb-4 hidden sm:block sm:mb-6 lg:mb-4 animate-enter">
           <div className="flex items-center gap-4 mb-2">
@@ -1089,9 +1096,9 @@ export function TradePageClient({
         </div>
 
         {/* ── Desktop: side-by-side. Mobile: stacked ── */}
-        <div className="lg:flex lg:items-start lg:gap-4">
+        <div id="trade" className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px_340px] lg:items-stretch lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px_360px]">
           {/* BTC Chart */}
-          <div className="animate-enter animate-enter-delay-1 lg:flex-1 lg:min-w-0 lg:self-start">
+          <div className="animate-enter animate-enter-delay-1 lg:min-w-0">
             <BTCChart
               initialHistory={initialBtcCandles}
               liquidationLines={chartLiquidationLines}
@@ -1100,8 +1107,19 @@ export function TradePageClient({
             />
           </div>
 
+          <div className="mt-3 hidden animate-enter animate-enter-delay-2 lg:mt-0 lg:block">
+            <OrderBook
+              key={decibelMarketAddress ?? decibelMarketName}
+              marketName={decibelMarketName}
+              marketAddress={decibelMarketAddress}
+              currentPrice={currentPrice}
+              rowCount={41}
+              className="h-full min-h-[560px]"
+            />
+          </div>
+
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="mt-3 max-w-xl mx-auto lg:mt-0 lg:mx-0 lg:w-[340px] lg:shrink-0 animate-enter animate-enter-delay-2">
+          <div className="mt-3 max-w-xl animate-enter animate-enter-delay-2 lg:mt-0 lg:max-w-none">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1111,51 +1129,37 @@ export function TradePageClient({
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
             />
-            <div className="mt-3 overflow-hidden rounded-[10px] bg-[#0b0b0b] lg:hidden">
-              <button
-                type="button"
-                onClick={() => setMobileOrderBookOpen((open) => !open)}
-                className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase text-zinc-500 transition-colors hover:text-zinc-300"
-              >
-                <span>Order Book</span>
-                <span className="text-[10px] text-zinc-600">{mobileOrderBookOpen ? "Hide" : "Show"}</span>
-              </button>
-              {mobileOrderBookOpen && (
-                <OrderBook
-                  key={decibelMarketAddress ?? decibelMarketName}
-                  marketName={decibelMarketName}
-                  marketAddress={decibelMarketAddress}
-                  currentPrice={currentPrice}
-                />
-              )}
-            </div>
-            <div className="mt-4 hidden lg:block">
+            <div className="mt-3 lg:hidden">
               <OrderBook
                 key={decibelMarketAddress ?? decibelMarketName}
                 marketName={decibelMarketName}
                 marketAddress={decibelMarketAddress}
                 currentPrice={currentPrice}
+                rowCount={27}
+                className="h-[360px]"
               />
             </div>
           </div>
         </div>
 
         {/* ── Open Positions ─────────────────────────── */}
-        {positions.length > 0 && (
-          <div className="mt-6 animate-enter">
-            <PositionsTable positions={positions} currentPrice={currentPrice} onClose={handlePositionClose} />
-          </div>
-        )}
+        <div id="positions" className="scroll-mt-20">
+          {positions.length > 0 && (
+            <div className="mt-6 animate-enter">
+              <PositionsTable positions={positions} currentPrice={currentPrice} onClose={handlePositionClose} />
+            </div>
+          )}
 
-        <div className="mt-6 animate-enter">
-          <DecibelPositions />
+          <div className="mt-6 animate-enter">
+            <DecibelPositions />
+          </div>
         </div>
 
-        <div className="mt-6 hidden lg:block animate-enter">
+        <div id="vaults" className="mt-6 scroll-mt-20 animate-enter">
           <VaultsPanel />
         </div>
 
-        <div className="mt-6 hidden lg:block animate-enter">
+        <div id="signals" className="mt-6 scroll-mt-20 animate-enter">
           <SignalProductsPanel
             onDeploy={(ind) => setDeployTarget(ind)}
             onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}
@@ -1167,6 +1171,23 @@ export function TradePageClient({
         </div>
         </main>
       </div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-black/90 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur-md lg:hidden" aria-label="Trade sections">
+        <div className="mx-auto grid max-w-xl grid-cols-5 rounded-[14px] bg-white/[0.04] p-1">
+          {MOBILE_TRADE_NAV.map((item) => {
+            const classes = "rounded-[10px] px-1.5 py-2 text-center text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-white";
+            return item.href.startsWith("#") ? (
+              <a key={item.href} href={item.href} className={classes}>
+                {item.label}
+              </a>
+            ) : (
+              <Link key={item.href} href={item.href} className={classes}>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
 
       {/* Deploy Bot Modal */}
       {deployTarget && (

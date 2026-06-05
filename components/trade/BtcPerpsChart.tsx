@@ -676,13 +676,39 @@ function buildHybridSecondLinePoints(
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
-function fillLineWindowStart(points: LivelinePoint[], startTime: number) {
-  if (points.length === 0) return points;
+function fitLineWindowBounds(
+  points: LivelinePoint[],
+  startTime: number,
+  endTime: number,
+  fallbackValue: number,
+) {
+  if (points.length === 0) {
+    return Number.isFinite(fallbackValue)
+      ? [
+          { time: startTime, value: fallbackValue },
+          { time: endTime, value: fallbackValue },
+        ]
+      : points;
+  }
 
   const first = points[0];
-  if (first.time <= startTime + 2) return points;
+  const last = points[points.length - 1];
+  const bounded = points.filter((point) => point.time >= startTime && point.time <= endTime);
+  const visibleFirst = bounded[0] ?? first;
+  const visibleLast = bounded[bounded.length - 1] ?? last;
+  const startValue = Number.isFinite(visibleFirst.value) ? visibleFirst.value : fallbackValue;
+  const endValue = Number.isFinite(visibleLast.value) ? visibleLast.value : startValue;
+  const result = [...bounded];
 
-  return [{ time: startTime, value: first.value }, ...points];
+  if (result.length === 0 || result[0].time > startTime + 0.25) {
+    result.unshift({ time: startTime, value: startValue });
+  }
+
+  if (result[result.length - 1].time < endTime - 0.25) {
+    result.push({ time: endTime, value: endValue });
+  }
+
+  return dedupeAndSort(result);
 }
 
 function sliceCandlesForWindow(candles: CandlePoint[], startTime: number, endTime: number) {
@@ -910,9 +936,11 @@ function BtcPerpsChartComponent({
           liveValue,
           liveTime,
         );
-        return fillLineWindowStart(
+        return fitLineWindowBounds(
           trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
           startTime,
+          lineResolvedEndTime,
+          liveValue,
         );
       }
 
@@ -921,9 +949,11 @@ function BtcPerpsChartComponent({
         liveValue,
         liveTime,
       );
-      return fillLineWindowStart(
+      return fitLineWindowBounds(
         trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
         startTime,
+        lineResolvedEndTime,
+        liveValue,
       );
     },
     [

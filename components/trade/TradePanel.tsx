@@ -551,7 +551,6 @@ export function TradePanel({
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
             className="flex w-full flex-col items-center gap-1 px-5 pb-3 pt-2"
           >
-            <div className="w-8 h-[3px] rounded-full bg-zinc-600" />
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-display font-semibold uppercase tracking-[0.2em] text-zinc-500">
                 Leverage
@@ -560,6 +559,7 @@ export function TradePanel({
                 {leverage.toFixed(1)}x
               </span>
             </div>
+            <div className="h-[3px] w-8 rounded-full bg-zinc-600" />
           </button>
         </div>
       </div>

@@ -1182,7 +1182,7 @@ export function TradePageClient({
     <div className="min-h-screen pb-24 lg:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
-        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 sm:py-6">
+        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         {/* ── Hero ─────────────── */}
         <div className="mb-4 hidden sm:block sm:mb-6 lg:mb-4 animate-enter">
           <div className="flex items-center gap-4 mb-2">

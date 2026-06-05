@@ -171,12 +171,11 @@ function LadderRowView({
       type="button"
       onClick={() => onPriceClick?.(row.price)}
       className={cn(
-        "group relative grid w-full shrink-0 grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors sm:text-[13px]",
+        "group relative grid w-full shrink-0 grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
         isCenter ? "h-7" : "h-6",
       )}
-      style={{ background: "transparent" }}
     >
-      <div className="relative h-full min-w-0 group-hover:bg-white/[0.03]">
+      <div className="relative h-full min-w-0">
         {row.bidSize > 0 && (
           <>
             <div
@@ -218,7 +217,7 @@ function LadderRowView({
         )}
       </span>
 
-      <div className="relative h-full min-w-0 group-hover:bg-white/[0.03]">
+      <div className="relative h-full min-w-0">
         {row.askSize > 0 && (
           <>
             <div
@@ -481,18 +480,18 @@ export function OrderBook({
 
       <OrderStrip />
 
-      <div
-        className="flex flex-1 flex-col justify-center overflow-hidden py-1"
-      >
-        {rows.map((row) => (
-          <LadderRowView
-            key={row.price}
-            row={row}
-            center={center}
-            maxSize={maxSize}
-            onPriceClick={onPriceClick}
-          />
-        ))}
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+        <div className="flex min-h-full flex-col justify-center">
+          {rows.map((row) => (
+            <LadderRowView
+              key={row.price}
+              row={row}
+              center={center}
+              maxSize={maxSize}
+              onPriceClick={onPriceClick}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-700">

@@ -29,6 +29,15 @@ interface OrderBookData {
   timestamp: number | null;
 }
 
+interface TradePrint {
+  id: string;
+  price: number;
+  size: number;
+  side: "buy" | "sell" | "unknown";
+  timestamp: number;
+  txRef?: string;
+}
+
 interface LadderRow {
   price: number;
   bidSize: number;
@@ -41,10 +50,8 @@ const POSITIVE = "#00d20c";
 const NEGATIVE = "#ff5000";
 const POSITIVE_ALPHA = "rgba(0, 210, 12, 0.18)";
 const NEGATIVE_ALPHA = "rgba(255, 80, 0, 0.20)";
-const ROW_HOVER = "rgba(255,255,255,0.03)";
 const CENTER_BG = "#1f1f22";
-const BUTTON_BG = "#1f1f22";
-const BUTTON_HOVER = "#2a2a2e";
+const MAX_TRADES = 80;
 
 function priceDecimals(price: number) {
   if (price >= 10_000) return 2;
@@ -138,6 +145,14 @@ function isDepthMessage(value: unknown): value is { bids?: Level[]; asks?: Level
   return typeof value === "object" && value !== null;
 }
 
+function recordValue(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value != null) return value;
+  }
+  return undefined;
+}
+
 function normalizeLevels(levels: unknown): Level[] {
   if (!Array.isArray(levels)) return [];
   return levels
@@ -149,6 +164,87 @@ function normalizeLevels(levels: unknown): Level[] {
       };
     })
     .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.size) && level.price > 0 && level.size > 0);
+}
+
+function normalizeTimestamp(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return Date.now();
+  return n < 10_000_000_000 ? n * 1000 : n;
+}
+
+function normalizeTrade(value: unknown): TradePrint | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const price = Number(recordValue(record, ["price", "px", "fill_price", "execution_price"]));
+  const size = Number(recordValue(record, ["size", "sz", "quantity", "amount"]));
+  if (!Number.isFinite(price) || !Number.isFinite(size) || price <= 0 || size <= 0) return null;
+
+  const rawSide = String(
+    recordValue(record, ["side", "action", "direction", "taker_side", "is_buy"]) ?? ""
+  ).toLowerCase();
+  const side =
+    rawSide.includes("buy") || rawSide.includes("long") || rawSide === "true"
+      ? "buy"
+      : rawSide.includes("sell") || rawSide.includes("short") || rawSide === "false"
+        ? "sell"
+        : "unknown";
+  const timestamp = normalizeTimestamp(
+    recordValue(record, ["transaction_unix_ms", "unix_ms", "timestamp", "time", "created_at"])
+  );
+  const txRefValue = recordValue(record, [
+    "tx_hash",
+    "transaction_hash",
+    "hash",
+    "txn_hash",
+    "transaction_version",
+    "version",
+  ]);
+  const txRef = txRefValue == null ? undefined : String(txRefValue);
+  const rawId = recordValue(record, ["trade_id", "id", "order_id", "fill_id"]) ?? txRef;
+  const id = String(rawId ?? `${timestamp}:${price}:${size}:${side}`);
+
+  return { id, price, size, side, timestamp, txRef };
+}
+
+function collectTrades(value: unknown, out: TradePrint[] = []): TradePrint[] {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectTrades(entry, out));
+    return out;
+  }
+  if (typeof value !== "object" || value === null) return out;
+
+  const trade = normalizeTrade(value);
+  if (trade) {
+    out.push(trade);
+    return out;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["items", "trades", "trade", "data", "payload", "message"]) {
+    if (record[key] != null) collectTrades(record[key], out);
+  }
+  return out;
+}
+
+function mergeTrades(current: TradePrint[], incoming: TradePrint[]) {
+  if (incoming.length === 0) return current;
+  const byKey = new Map<string, TradePrint>();
+  for (const trade of [...incoming, ...current]) {
+    const key = `${trade.id}:${trade.txRef ?? ""}:${trade.price}:${trade.size}:${trade.timestamp}`;
+    if (!byKey.has(key)) byKey.set(key, trade);
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, MAX_TRADES);
+}
+
+function explorerTxnUrl(txRef: string, network: DecibelPublicNetwork) {
+  const suffix = network === "mainnet" ? "" : "?network=testnet";
+  return `https://explorer.aptoslabs.com/txn/${txRef}${suffix}`;
+}
+
+function formatTime(timestamp: number | null) {
+  return timestamp ? new Date(timestamp).toLocaleTimeString() : "--:--:--";
 }
 
 function LadderRowView({
@@ -243,96 +339,58 @@ function LadderRowView({
   );
 }
 
-function OrderStrip() {
-  const [qty, setQty] = useState(1);
-
-  return (
-    <div className="border-b border-white/[0.08] px-3 pb-3 pt-2">
-      <div className="mb-2 flex items-start justify-between text-[13px] leading-tight text-[#85858b]">
-        <div className="space-y-1">
-          <div>▲ -- Open P&amp;L</div>
-          <div>▲ -- Day P&amp;L</div>
-        </div>
-        <div className="flex items-center gap-2 text-right">
-          <div className="space-y-1">
-            <div>No position</div>
-            <div>0 open orders</div>
-          </div>
-          <button
-            type="button"
-            aria-label="No position or open orders to flatten"
-            disabled
-            className="flex size-9 items-center justify-center rounded-[6px] bg-[#1f1f22] text-[20px] text-[#85858b] disabled:opacity-70"
-          >
-            ⊘
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-[1fr_124px_1fr] items-center gap-2">
-        <TradeButton side="buy">Buy MKT</TradeButton>
-        <div className="flex h-9 items-center justify-between rounded-[6px] bg-[#1f1f22] px-1">
-          <button
-            type="button"
-            aria-label="Decrease order size"
-            onClick={() => setQty((value) => Math.max(1, value - 1))}
-            className="flex size-7 items-center justify-center rounded-[5px] bg-white/[0.08] text-[18px] text-zinc-300 transition-colors hover:bg-white/[0.12]"
-          >
-            -
-          </button>
-          <span className="min-w-8 text-center font-mono text-[15px] font-bold tabular-nums text-white">{qty}</span>
-          <button
-            type="button"
-            aria-label="Increase order size"
-            onClick={() => setQty((value) => value + 1)}
-            className="flex size-7 items-center justify-center rounded-[5px] bg-white/[0.12] text-[18px] text-white transition-colors hover:bg-white/[0.16]"
-          >
-            +
-          </button>
-        </div>
-        <TradeButton side="sell">Short MKT</TradeButton>
-      </div>
-    </div>
-  );
-}
-
-function TradeButton({ side, children }: { side: "buy" | "sell"; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      className="h-9 rounded-[6px] bg-[#1f1f22] px-3 text-center font-mono text-[13px] font-bold transition-colors hover:bg-[#2a2a2e]"
-      style={{ color: side === "buy" ? POSITIVE : NEGATIVE }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ZoomButton({
-  children,
-  label,
-  onClick,
+function TradesTable({
+  trades,
+  network,
+  status,
 }: {
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
+  trades: TradePrint[];
+  network: DecibelPublicNetwork;
+  status: "loading" | "live" | "waiting" | "unavailable";
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="flex size-7 items-center justify-center rounded-[6px] text-[16px] transition-colors"
-      style={{ background: BUTTON_BG, color: "#85858b" }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.background = BUTTON_HOVER;
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.background = BUTTON_BG;
-      }}
-    >
-      {children}
-    </button>
+    <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+      <div className="grid grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
+        <span>Time</span>
+        <span className="text-right">Price</span>
+        <span className="text-right">Size</span>
+        <span className="text-right">Tx</span>
+      </div>
+      <div className="pt-1">
+        {trades.map((trade) => (
+          <div
+            key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
+            className="grid h-7 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
+          >
+            <span className="truncate text-zinc-600">{formatTime(trade.timestamp)}</span>
+            <span
+              className="text-right font-semibold"
+              style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
+            >
+              {formatPrice(trade.price)}
+            </span>
+            <span className="truncate text-right text-zinc-400">{formatSize(trade.size)}</span>
+            {trade.txRef ? (
+              <a
+                href={explorerTxnUrl(trade.txRef, network)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-right text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
+              >
+                View
+              </a>
+            ) : (
+              <span className="text-right text-zinc-700">—</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {trades.length === 0 && (
+        <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-[12px] text-zinc-600">
+          {status === "loading" ? "Loading trades..." : "Waiting for live trades"}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -351,7 +409,9 @@ export function OrderBook({
     timestamp: null,
   });
   const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
-  const [rowZoom, setRowZoom] = useState(0);
+  const [trades, setTrades] = useState<TradePrint[]>([]);
+  const [tradesStatus, setTradesStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
+  const [activeTab, setActiveTab] = useState<"book" | "trades">("book");
   const previousPriceRef = useRef(currentPrice ?? 0);
 
   const resolvedMarketAddress =
@@ -362,10 +422,10 @@ export function OrderBook({
   useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
 
   const ingestDepth = useCallback((message: unknown) => {
-    if (!isDepthMessage(message)) return;
+    if (!isDepthMessage(message)) return false;
     const bids = normalizeLevels(Array.isArray(message.bids) ? message.bids : message.depth?.bids);
     const asks = normalizeLevels(Array.isArray(message.asks) ? message.asks : message.depth?.asks);
-    if (bids.length === 0 && asks.length === 0) return;
+    if (bids.length === 0 && asks.length === 0) return false;
 
     setBook({
       bids: bids.sort((a, b) => b.price - a.price).slice(0, DISPLAY_LEVELS * 2),
@@ -373,7 +433,55 @@ export function OrderBook({
       timestamp: message.unix_ms ?? message.timestamp ?? Date.now(),
     });
     setStatus("live");
+    return true;
   }, []);
+
+  const ingestTrades = useCallback((message: unknown) => {
+    const nextTrades = collectTrades(message);
+    if (nextTrades.length === 0) return false;
+    setTrades((current) => mergeTrades(current, nextTrades));
+    setTradesStatus("live");
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!resolvedMarketAddress) {
+      setTrades([]);
+      setTradesStatus("unavailable");
+      return;
+    }
+    let cancelled = false;
+    setTrades([]);
+    setTradesStatus("loading");
+
+    const loadTrades = async () => {
+      try {
+        const params = new URLSearchParams({
+          resource: "trades",
+          network,
+          marketAddr: resolvedMarketAddress,
+          limit: "80",
+          timeoutMs: "3500",
+        });
+        const response = await fetch(`/api/decibel/public?${params.toString()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Could not load trades");
+        const json = await response.json();
+        if (cancelled) return;
+        const nextTrades = collectTrades(json);
+        setTrades(nextTrades.sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_TRADES));
+        setTradesStatus(nextTrades.length > 0 ? "live" : "waiting");
+      } catch {
+        if (!cancelled) setTradesStatus("waiting");
+      }
+    };
+
+    void loadTrades();
+    return () => {
+      cancelled = true;
+    };
+  }, [network, resolvedMarketAddress]);
 
   useEffect(() => {
     if (!resolvedMarketAddress) {
@@ -389,13 +497,14 @@ export function OrderBook({
     let reconnectAttempt = 0;
 
     setStatus("loading");
+    setTradesStatus((current) => (current === "live" ? "live" : "loading"));
     setBook({ bids: [], asks: [], timestamp: null });
 
     const connect = () => {
       if (cancelled) return;
       const params = new URLSearchParams({
         network,
-        topics: `depth:${resolvedMarketAddress}:1`,
+        topics: `depth:${resolvedMarketAddress}:1,trades:${resolvedMarketAddress}`,
       });
       stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
 
@@ -408,11 +517,13 @@ export function OrderBook({
         try {
           const message = JSON.parse(event.data);
           if (message.success || message.type === "connected") return;
-          if (noDepthTimer) {
+          const hasDepth = ingestDepth(message);
+          const hasTrades = ingestTrades(message);
+          if (hasDepth && noDepthTimer) {
             clearTimeout(noDepthTimer);
             noDepthTimer = null;
           }
-          ingestDepth(message);
+          if (hasTrades) setTradesStatus("live");
         } catch {
           // Keep the stream alive on malformed frames.
         }
@@ -421,6 +532,7 @@ export function OrderBook({
       stream.addEventListener("error", () => {
         if (cancelled) return;
         setStatus((current) => (current === "live" ? "live" : "unavailable"));
+        setTradesStatus((current) => (current === "live" ? "live" : "unavailable"));
         stream?.close();
         reconnectAttempt += 1;
         reconnectTimer = setTimeout(connect, Math.min(1000 * 1.5 ** reconnectAttempt, 8000));
@@ -430,6 +542,7 @@ export function OrderBook({
     connect();
     noDepthTimer = setTimeout(() => {
       if (!cancelled) setStatus((current) => (current === "live" ? "live" : "waiting"));
+      if (!cancelled) setTradesStatus((current) => (current === "live" ? "live" : "waiting"));
     }, 2500);
 
     return () => {
@@ -438,7 +551,7 @@ export function OrderBook({
       if (noDepthTimer) clearTimeout(noDepthTimer);
       stream?.close();
     };
-  }, [ingestDepth, network, resolvedMarketAddress]);
+  }, [ingestDepth, ingestTrades, network, resolvedMarketAddress]);
 
   const bestBid = book.bids[0]?.price;
   const bestAsk = book.asks[0]?.price;
@@ -451,7 +564,7 @@ export function OrderBook({
 
   const step = useMemo(() => inferStep(book, displayPrice || 1), [book, displayPrice]);
   const center = Number(snapStep(displayPrice || 1, step).toFixed(8));
-  const visibleRowCount = Math.max(13, Math.min(45, rowCount + rowZoom));
+  const visibleRowCount = Math.max(13, Math.min(45, rowCount));
   const rows = useMemo(
     () => buildLadderRows(book, displayPrice || 1, step, visibleRowCount),
     [book, displayPrice, step, visibleRowCount],
@@ -462,9 +575,17 @@ export function OrderBook({
   );
 
   const statusText =
-    status === "live"
-      ? `${book.bids.length + book.asks.length} levels`
-      : status === "loading"
+    activeTab === "trades"
+      ? tradesStatus === "live"
+        ? `${trades.length} trades`
+        : tradesStatus === "loading"
+          ? "loading"
+          : tradesStatus === "waiting"
+            ? "waiting"
+            : "unavailable"
+      : status === "live"
+        ? `${book.bids.length + book.asks.length} levels`
+        : status === "loading"
         ? "loading"
         : status === "waiting"
           ? "waiting"
@@ -474,43 +595,50 @@ export function OrderBook({
   return (
     <section className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>
       <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
-        <span>{symbol}</span>
+        <div className="flex items-center gap-3">
+          <span>{symbol}</span>
+          <div className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5">
+            {(["book", "trades"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "rounded-[5px] px-2 py-0.5 text-[9px] transition-colors",
+                  activeTab === tab
+                    ? "bg-white/[0.08] text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400",
+                )}
+              >
+                {tab === "book" ? "Book" : "Trades"}
+              </button>
+            ))}
+          </div>
+        </div>
         <span>{statusText}</span>
       </div>
 
-      <OrderStrip />
-
-      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
-        <div className="flex min-h-full flex-col justify-center">
-          {rows.map((row) => (
-            <LadderRowView
-              key={row.price}
-              row={row}
-              center={center}
-              maxSize={maxSize}
-              onPriceClick={onPriceClick}
-            />
-          ))}
+      {activeTab === "book" ? (
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+          <div className="flex min-h-full flex-col justify-center">
+            {rows.map((row) => (
+              <LadderRowView
+                key={row.price}
+                row={row}
+                center={center}
+                maxSize={maxSize}
+                onPriceClick={onPriceClick}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <TradesTable trades={trades} network={network} status={tradesStatus} />
+      )}
 
       <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-700">
-        <span>{book.timestamp ? new Date(book.timestamp).toLocaleTimeString() : "--:--:--"}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="mr-2 hidden sm:inline">{formatPrice(displayPrice || 0)}</span>
-          <ZoomButton
-            label="Zoom order book out"
-            onClick={() => setRowZoom((value) => Math.min(18, value + 4))}
-          >
-            -
-          </ZoomButton>
-          <ZoomButton
-            label="Zoom order book in"
-            onClick={() => setRowZoom((value) => Math.max(-10, value - 4))}
-          >
-            +
-          </ZoomButton>
-        </div>
+        <span>{formatTime(activeTab === "book" ? book.timestamp : trades[0]?.timestamp ?? null)}</span>
+        <span>{formatPrice(displayPrice || 0)}</span>
       </div>
     </section>
   );

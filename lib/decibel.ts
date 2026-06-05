@@ -199,6 +199,9 @@ const MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
   "SUI/USD": { maxLeverage: 5, minSizeRaw: 100000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
   "BNB/USD": { maxLeverage: 5, minSizeRaw: 20000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
   "ZEC/USD": { maxLeverage: 5, minSizeRaw: 50000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
+  "SPY/USD": { maxLeverage: 50, minSizeRaw: 40000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
+  "QQQ/USD": { maxLeverage: 30, minSizeRaw: 40000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
+  "EWY/USD": { maxLeverage: 15, minSizeRaw: 20000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10000 },
 };
 
 const TESTNET_MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
@@ -238,6 +241,9 @@ const MAINNET_MARKET_ADDRESSES: Record<string, string> = {
   "SUI/USD": getMarketObjectAddress(MAINNET_DECIBEL_PACKAGE, "SUI/USD"),
   "BNB/USD": getMarketObjectAddress(MAINNET_DECIBEL_PACKAGE, "BNB/USD"),
   "ZEC/USD": getMarketObjectAddress(MAINNET_DECIBEL_PACKAGE, "ZEC/USD"),
+  "SPY/USD": "0xb4c1717658713ad5cffab87b6921ca51b66e753e2249c58089cf0631248ec6f9",
+  "QQQ/USD": "0x8eef5222689f00c4fcbbaec2ff3f3e92ab41d8b89f1828c2f779700fc0e82eac",
+  "EWY/USD": "0x4aab2fc83d5cee7de9cf4c9b4b90f8c5c47dc56292c31188ce00364d42f2de51",
 };
 
 // Build network-aware MARKETS object

@@ -52,6 +52,7 @@ export function TradePanel({
   maxLeverage = 40,
   currentPrice = 0,
   onPositionOpen,
+  className,
 }: {
   market?: string;
   marketId?: string;
@@ -61,6 +62,7 @@ export function TradePanel({
   currentPrice?: number;
   onPositionOpen?: (pos: { market: string; side: "long" | "short"; collateral: number; leverage: number }) => void;
   chartHeight?: number;
+  className?: string;
 }) {
   const { account, connected, signAndSubmitTransaction } = useWallet();
   const [side, setSide] = useState<"long" | "short">("long");
@@ -384,7 +386,7 @@ export function TradePanel({
         ? `Long ${market}`
         : `Short ${market}`;
   return (
-    <div>
+    <div className={cn(className)}>
       {/* Header row */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">

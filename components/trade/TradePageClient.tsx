@@ -1182,32 +1182,14 @@ export function TradePageClient({
     <div className="min-h-screen pb-24 lg:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
-        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        {/* ── Hero ─────────────── */}
-        <div className="mb-4 hidden sm:block sm:mb-6 lg:mb-4 animate-enter">
-          <div className="flex items-center gap-4 mb-2">
-            <span className="inline-block text-[11px] font-display font-medium px-2.5 py-1 rounded-[10px] bg-accent/10 text-accent uppercase tracking-wider">
-              cash.trading
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
-              </span>
-              <span className="text-[13px] font-medium text-white">
-                Powered by Decibel on Aptos
-              </span>
-            </div>
-          </div>
-          <p className="hidden sm:block text-[13px] font-sans text-zinc-400 max-w-3xl text-pretty leading-relaxed">
-            A self-custodial, fully on-chain orderbook perpetual futures exchange with real-time Decibel execution on Aptos. Trade through the cash.trading frontend, run indicator strategies, and earn direct CASH rewards as the product grows.
-          </p>
-        </div>
-
+        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
         {/* ── Desktop: side-by-side. Mobile: stacked ── */}
-        <div id="trade" className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px_340px] lg:items-stretch lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px_360px]">
+        <div
+          id="trade"
+          className="grid gap-3 xl:grid-cols-[minmax(560px,1fr)_minmax(340px,390px)] xl:items-stretch 2xl:grid-cols-[minmax(700px,1fr)_390px_360px] 2xl:gap-4"
+        >
           {/* BTC Chart */}
-          <div className="animate-enter animate-enter-delay-1 lg:min-w-0">
+          <div className="animate-enter animate-enter-delay-1 xl:min-w-0">
             <BTCChart
               initialHistory={initialBtcCandles}
               liquidationLines={chartLiquidationLines}
@@ -1216,7 +1198,7 @@ export function TradePageClient({
             />
           </div>
 
-          <div className="mt-3 hidden animate-enter animate-enter-delay-2 lg:mt-0 lg:block">
+          <div className="hidden animate-enter animate-enter-delay-2 xl:block">
             <OrderBook
               key={decibelMarketAddress ?? decibelMarketName}
               marketName={decibelMarketName}
@@ -1228,7 +1210,7 @@ export function TradePageClient({
           </div>
 
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="mt-3 max-w-xl animate-enter animate-enter-delay-2 lg:mt-0 lg:max-w-none">
+          <div className="max-w-xl animate-enter animate-enter-delay-2 xl:col-span-2 xl:max-w-none 2xl:col-span-1">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1237,8 +1219,9 @@ export function TradePageClient({
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
+              className="2xl:min-h-[672px]"
             />
-            <div className="mt-3 lg:hidden">
+            <div className="mt-3 xl:hidden">
               <OrderBook
                 key={decibelMarketAddress ?? decibelMarketName}
                 marketName={decibelMarketName}

@@ -1222,7 +1222,7 @@ export function TradePageClient({
               marketName={decibelMarketName}
               marketAddress={decibelMarketAddress}
               currentPrice={currentPrice}
-              rowCount={27}
+              rowCount={21}
               className="h-[672px] min-h-0"
             />
           </div>
@@ -1244,7 +1244,7 @@ export function TradePageClient({
                 marketName={decibelMarketName}
                 marketAddress={decibelMarketAddress}
                 currentPrice={currentPrice}
-                rowCount={17}
+                rowCount={11}
                 className="h-[452px] sm:h-[572px]"
               />
             </div>

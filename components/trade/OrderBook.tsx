@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -38,10 +37,14 @@ interface LadderRow {
 
 const DISPLAY_LEVELS = 20;
 const DEFAULT_LADDER_ROWS = 39;
-const POSITIVE = "#52c83f";
-const NEGATIVE = "#ff5b22";
-const BID_BAR = "rgba(82, 200, 63, 0.52)";
-const ASK_BAR = "rgba(255, 91, 34, 0.52)";
+const POSITIVE = "#00d20c";
+const NEGATIVE = "#ff5000";
+const POSITIVE_ALPHA = "rgba(0, 210, 12, 0.18)";
+const NEGATIVE_ALPHA = "rgba(255, 80, 0, 0.20)";
+const ROW_HOVER = "rgba(255,255,255,0.03)";
+const CENTER_BG = "#1f1f22";
+const BUTTON_BG = "#1f1f22";
+const BUTTON_HOVER = "#2a2a2e";
 
 function priceDecimals(price: number) {
   if (price >= 10_000) return 2;
@@ -167,19 +170,26 @@ function LadderRowView({
     <button
       type="button"
       onClick={() => onPriceClick?.(row.price)}
-      className="group relative grid h-[22px] w-full shrink-0 grid-cols-[minmax(96px,1fr)_112px_minmax(96px,1fr)] items-center overflow-hidden font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.035] sm:grid-cols-[minmax(112px,1fr)_124px_minmax(112px,1fr)] sm:text-[12px]"
+      className={cn(
+        "group relative grid w-full shrink-0 grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors sm:text-[13px]",
+        isCenter ? "h-7" : "h-6",
+      )}
+      style={{ background: "transparent" }}
     >
-      <div className="relative h-full">
+      <div className="relative h-full min-w-0 group-hover:bg-white/[0.03]">
         {row.bidSize > 0 && (
           <>
             <div
-              className="absolute right-0 top-[3px] h-[16px]"
-              style={{ width: `max(2px, calc(${bidPct}% - 4px))`, backgroundColor: BID_BAR }}
+              className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
+              style={{
+                width: `max(1px, calc(${bidPct}% - 4px))`,
+                backgroundColor: POSITIVE_ALPHA,
+              }}
             />
             <span
-              className="absolute top-1/2 w-20 -translate-y-1/2 text-right font-bold"
+              className="absolute top-1/2 w-16 -translate-y-1/2 text-right font-bold leading-none sm:w-20"
               style={{
-                right: `min(calc(${bidPct}% + 6px), calc(100% - 5rem))`,
+                right: `min(calc(${bidPct}% + 4px), calc(100% - 4rem))`,
                 color: POSITIVE,
               }}
             >
@@ -190,16 +200,16 @@ function LadderRowView({
       </div>
 
       <span
-        className="relative z-[1] flex h-full items-center justify-center text-[13px]"
+        className="relative z-[1] flex h-full min-w-0 items-center justify-center px-1"
         style={{
-          color: isCenter ? "#ffffff" : "rgba(255,255,255,0.58)",
-          fontWeight: isCenter ? 800 : 500,
+          color: isCenter ? "#ffffff" : "#85858b",
+          fontWeight: isCenter ? 700 : 400,
         }}
       >
         {isCenter ? (
           <span
-            className="rounded-[4px] bg-[#242426] px-2 py-[1px]"
-            style={{ boxShadow: `0 0 0 1px ${POSITIVE}` }}
+            className="rounded-[4px] px-[10px] py-[2px] leading-none"
+            style={{ backgroundColor: CENTER_BG, boxShadow: `0 0 0 1px ${POSITIVE}` }}
           >
             {formatPrice(row.price)}
           </span>
@@ -208,17 +218,20 @@ function LadderRowView({
         )}
       </span>
 
-      <div className="relative h-full">
+      <div className="relative h-full min-w-0 group-hover:bg-white/[0.03]">
         {row.askSize > 0 && (
           <>
             <div
-              className="absolute left-0 top-[3px] h-[16px]"
-              style={{ width: `max(2px, calc(${askPct}% - 4px))`, backgroundColor: ASK_BAR }}
+              className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
+              style={{
+                width: `max(1px, calc(${askPct}% - 4px))`,
+                backgroundColor: NEGATIVE_ALPHA,
+              }}
             />
             <span
-              className="absolute top-1/2 w-20 -translate-y-1/2 text-left font-bold"
+              className="absolute top-1/2 w-16 -translate-y-1/2 text-left font-bold leading-none sm:w-20"
               style={{
-                left: `min(calc(${askPct}% + 6px), calc(100% - 5rem))`,
+                left: `min(calc(${askPct}% + 4px), calc(100% - 4rem))`,
                 color: NEGATIVE,
               }}
             >
@@ -227,6 +240,99 @@ function LadderRowView({
           </>
         )}
       </div>
+    </button>
+  );
+}
+
+function OrderStrip() {
+  const [qty, setQty] = useState(1);
+
+  return (
+    <div className="border-b border-white/[0.08] px-3 pb-3 pt-2">
+      <div className="mb-2 flex items-start justify-between text-[13px] leading-tight text-[#85858b]">
+        <div className="space-y-1">
+          <div>▲ -- Open P&amp;L</div>
+          <div>▲ -- Day P&amp;L</div>
+        </div>
+        <div className="flex items-center gap-2 text-right">
+          <div className="space-y-1">
+            <div>No position</div>
+            <div>0 open orders</div>
+          </div>
+          <button
+            type="button"
+            aria-label="No position or open orders to flatten"
+            disabled
+            className="flex size-9 items-center justify-center rounded-[6px] bg-[#1f1f22] text-[20px] text-[#85858b] disabled:opacity-70"
+          >
+            ⊘
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1fr_124px_1fr] items-center gap-2">
+        <TradeButton side="buy">Buy MKT</TradeButton>
+        <div className="flex h-9 items-center justify-between rounded-[6px] bg-[#1f1f22] px-1">
+          <button
+            type="button"
+            aria-label="Decrease order size"
+            onClick={() => setQty((value) => Math.max(1, value - 1))}
+            className="flex size-7 items-center justify-center rounded-[5px] bg-white/[0.08] text-[18px] text-zinc-300 transition-colors hover:bg-white/[0.12]"
+          >
+            -
+          </button>
+          <span className="min-w-8 text-center font-mono text-[15px] font-bold tabular-nums text-white">{qty}</span>
+          <button
+            type="button"
+            aria-label="Increase order size"
+            onClick={() => setQty((value) => value + 1)}
+            className="flex size-7 items-center justify-center rounded-[5px] bg-white/[0.12] text-[18px] text-white transition-colors hover:bg-white/[0.16]"
+          >
+            +
+          </button>
+        </div>
+        <TradeButton side="sell">Short MKT</TradeButton>
+      </div>
+    </div>
+  );
+}
+
+function TradeButton({ side, children }: { side: "buy" | "sell"; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="h-9 rounded-[6px] bg-[#1f1f22] px-3 text-center font-mono text-[13px] font-bold transition-colors hover:bg-[#2a2a2e]"
+      style={{ color: side === "buy" ? POSITIVE : NEGATIVE }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ZoomButton({
+  children,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex size-7 items-center justify-center rounded-[6px] text-[16px] transition-colors"
+      style={{ background: BUTTON_BG, color: "#85858b" }}
+      onMouseEnter={(event) => {
+        event.currentTarget.style.background = BUTTON_HOVER;
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = BUTTON_BG;
+      }}
+    >
+      {children}
     </button>
   );
 }
@@ -368,10 +474,12 @@ export function OrderBook({
 
   return (
     <section className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>
-      <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.015] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
+      <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
         <span>{symbol}</span>
         <span>{statusText}</span>
       </div>
+
+      <OrderStrip />
 
       <div
         className="flex flex-1 flex-col justify-center overflow-hidden py-1"
@@ -387,28 +495,22 @@ export function OrderBook({
         ))}
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-1 font-mono text-[10px] text-zinc-700">
+      <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-700">
         <span>{book.timestamp ? new Date(book.timestamp).toLocaleTimeString() : "--:--:--"}</span>
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:inline">{formatPrice(displayPrice || 0)}</span>
-          <div className="flex overflow-hidden rounded-[6px] border border-white/[0.08]">
-            <button
-              type="button"
-              aria-label="Zoom order book out"
-              onClick={() => setRowZoom((value) => Math.min(18, value + 4))}
-              className="flex size-7 items-center justify-center text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-300"
-            >
-              <ZoomOut className="size-3.5" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom order book in"
-              onClick={() => setRowZoom((value) => Math.max(-10, value - 4))}
-              className="flex size-7 items-center justify-center border-l border-white/[0.08] text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-300"
-            >
-              <ZoomIn className="size-3.5" aria-hidden="true" />
-            </button>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <span className="mr-2 hidden sm:inline">{formatPrice(displayPrice || 0)}</span>
+          <ZoomButton
+            label="Zoom order book out"
+            onClick={() => setRowZoom((value) => Math.min(18, value + 4))}
+          >
+            -
+          </ZoomButton>
+          <ZoomButton
+            label="Zoom order book in"
+            onClick={() => setRowZoom((value) => Math.max(-10, value - 4))}
+          >
+            +
+          </ZoomButton>
         </div>
       </div>
     </section>

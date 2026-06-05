@@ -104,6 +104,13 @@ export function TradePanel({
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setLeverageOpen(true);
+    }
+  }, []);
+
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   useEffect(() => {

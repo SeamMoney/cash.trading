@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet } from "@/lib/wallet-utils";
-import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT, type BalanceUpdateDetail, type YieldClaimDetail } from "@/lib/portfolio-events";
+import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
+import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events";
 
 const NAV_ITEMS = [
   { href: "/trade", label: "Trade" },
@@ -28,8 +29,11 @@ function CashWordmark() {
 export function Header() {
   const { connected, account, wallet } = useWallet();
   const pathname = usePathname();
+  const { decibelNetwork, selectedSubaccount } = useDecibelSubaccounts();
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const addressStr = account?.address?.toString() ?? "";
   const shortAddress = addressStr
@@ -38,24 +42,86 @@ export function Header() {
 
   const chain = wallet ? getChainFromWallet(wallet) : null;
   const isXChain = chain === "ethereum" || chain === "solana";
-  const [balance, setBalance] = useState(4218.32);
+
+  const refreshBalance = useCallback(async (signal?: AbortSignal) => {
+    if (!connected || !addressStr) {
+      setBalance(null);
+      setBalanceLoading(false);
+      return;
+    }
+
+    setBalanceLoading(true);
+    try {
+      if (selectedSubaccount) {
+        const params = new URLSearchParams({
+          address: selectedSubaccount,
+          chainOnly: "true",
+          network: decibelNetwork,
+        });
+        const res = await fetch(`/api/decibel/positions?${params.toString()}`, {
+          cache: "no-store",
+          signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        const equity = Number(data?.overview?.equity);
+        if (res.ok && Number.isFinite(equity)) {
+          setBalance(equity);
+          return;
+        }
+      }
+
+      const params = new URLSearchParams({
+        address: addressStr,
+        network: decibelNetwork,
+      });
+      const res = await fetch(`/api/decibel/wallet-balance?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      const walletBalance = Number(data?.balance);
+      setBalance(res.ok && Number.isFinite(walletBalance) ? walletBalance : null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setBalance(null);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [addressStr, connected, decibelNetwork, selectedSubaccount]);
 
   useEffect(() => {
-    const onBalanceUpdate = (e: Event) => {
-      const d = (e as CustomEvent<BalanceUpdateDetail>).detail;
-      setBalance((prev) => prev + d.delta);
-    };
-    const onYieldClaim = (e: Event) => {
-      const d = (e as CustomEvent<YieldClaimDetail>).detail;
-      setBalance((prev) => prev + d.claimed);
-    };
-    window.addEventListener(BALANCE_UPDATE_EVENT, onBalanceUpdate);
-    window.addEventListener(YIELD_CLAIM_EVENT, onYieldClaim);
+    const controller = new AbortController();
+    void refreshBalance(controller.signal);
+    const interval = connected
+      ? setInterval(() => void refreshBalance(), 5_000)
+      : null;
     return () => {
-      window.removeEventListener(BALANCE_UPDATE_EVENT, onBalanceUpdate);
-      window.removeEventListener(YIELD_CLAIM_EVENT, onYieldClaim);
+      controller.abort();
+      if (interval) clearInterval(interval);
     };
-  }, []);
+  }, [connected, refreshBalance]);
+
+  useEffect(() => {
+    const refreshSoon = () => {
+      setTimeout(() => void refreshBalance(), 350);
+    };
+    window.addEventListener(BALANCE_UPDATE_EVENT, refreshSoon);
+    window.addEventListener(YIELD_CLAIM_EVENT, refreshSoon);
+    return () => {
+      window.removeEventListener(BALANCE_UPDATE_EVENT, refreshSoon);
+      window.removeEventListener(YIELD_CLAIM_EVENT, refreshSoon);
+    };
+  }, [refreshBalance]);
+
+  const balanceLabel =
+    balance === null
+      ? balanceLoading
+        ? "..."
+        : "—"
+      : `$${balance.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
 
   const handleWalletClick = () => {
     if (connected) {
@@ -68,7 +134,7 @@ export function Header() {
   return (
     <>
       <header className="relative z-50 isolate border-b border-white/[0.06] bg-[var(--background)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between">
+        <div className="mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
             <Link href="/" className="text-white shrink-0" aria-label="cash.trading home">
@@ -98,15 +164,17 @@ export function Header() {
 
           {/* Right: balance + wallet button */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleWalletClick}
-              className="hidden lg:flex items-center gap-1.5 rounded-[10px] px-2 py-1 text-[13px] font-mono tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-200"
-              aria-label="Open account balance and Decibel settings"
-            >
-              <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-zinc-600">Bal</span>
-              <span className="text-white font-semibold">${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </button>
+            {connected && (
+              <button
+                type="button"
+                onClick={handleWalletClick}
+                className="hidden items-center gap-1.5 rounded-[10px] px-2 py-1 text-[13px] font-mono tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-200 lg:flex"
+                aria-label="Open account balance and Decibel settings"
+              >
+                <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-zinc-600">Bal</span>
+                <span className="font-semibold text-white">{balanceLabel}</span>
+              </button>
+            )}
             {connected ? (
               <button
                 onClick={handleWalletClick}

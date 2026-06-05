@@ -54,6 +54,9 @@ const WINDOWS = [
 const CHART_PADDING = { top: 8, right: 80, bottom: 24, left: 8 } as const;
 const CANDLE_SECS = 2;
 const CANDLE_WINDOW_BUFFER = 0.05;
+const MARKET_REFRESH_MS = 60_000;
+const MARKET_HIDDEN_REFRESH_MS = 180_000;
+const SNAPSHOT_UI_COMMIT_MS = 250;
 
 type LiquidationLine = { id: string; price: number; side: "long" | "short" };
 const EMPTY_HISTORY: MarketHistoryCandle[] = [];
@@ -753,6 +756,9 @@ export function BTCChart({
   const lastEmittedMarketRef = useRef("");
   const modalOpenRef = useRef(false);
   const liveMarketsRef = useRef(liveMarkets);
+  const pendingPerpsSnapshotRef = useRef<PerpMarketSnapshot | null>(null);
+  const perpsSnapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPerpsSnapshotCommitAtRef = useRef(0);
 
   useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
   useEffect(() => {
@@ -773,6 +779,15 @@ export function BTCChart({
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const loadMarkets = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        timer = setTimeout(loadMarkets, MARKET_HIDDEN_REFRESH_MS);
+        return;
+      }
+      if (modalOpenRef.current) {
+        timer = setTimeout(loadMarkets, MARKET_REFRESH_MS);
+        return;
+      }
+
       const firstLoad = liveMarketsRef.current.length === 0;
       setMarketsLoading(firstLoad);
       try {
@@ -794,7 +809,7 @@ export function BTCChart({
       } finally {
         if (!cancelled) {
           setMarketsLoading(false);
-          timer = setTimeout(loadMarkets, 15_000);
+          timer = setTimeout(loadMarkets, MARKET_REFRESH_MS);
         }
       }
     };
@@ -829,10 +844,35 @@ export function BTCChart({
     if (!isPerpsMarket && price > 0) priceCallbackRef.current?.(price);
   }, [isPerpsMarket, price]);
 
+  useEffect(() => {
+    return () => {
+      if (perpsSnapshotTimerRef.current) clearTimeout(perpsSnapshotTimerRef.current);
+    };
+  }, []);
+
   const handlePerpsSnapshotChange = useCallback((nextSnapshot: PerpMarketSnapshot) => {
-    setPerpsSnapshot(nextSnapshot);
-    if (nextSnapshot.price > 0) {
-      priceCallbackRef.current?.(nextSnapshot.price);
+    pendingPerpsSnapshotRef.current = nextSnapshot;
+
+    const commit = () => {
+      perpsSnapshotTimerRef.current = null;
+      const latest = pendingPerpsSnapshotRef.current;
+      if (!latest) return;
+      lastPerpsSnapshotCommitAtRef.current = performance.now();
+      setPerpsSnapshot(latest);
+      if (latest.price > 0) {
+        priceCallbackRef.current?.(latest.price);
+      }
+    };
+
+    const now = performance.now();
+    const elapsed = now - lastPerpsSnapshotCommitAtRef.current;
+    if (elapsed >= SNAPSHOT_UI_COMMIT_MS && !perpsSnapshotTimerRef.current) {
+      commit();
+      return;
+    }
+
+    if (!perpsSnapshotTimerRef.current) {
+      perpsSnapshotTimerRef.current = setTimeout(commit, Math.max(16, SNAPSHOT_UI_COMMIT_MS - elapsed));
     }
   }, []);
 

@@ -28,6 +28,7 @@ import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { curveLinear } from "@visx/curve";
 import { Grid } from "@/components/charts/grid";
 import { useIsMobile } from "@/components/ui/use-mobile";
+import { useInViewport } from "@/hooks/useInViewport";
 
 interface Position {
   id: string;
@@ -67,6 +68,7 @@ interface DecibelVault {
 
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
 const PORTFOLIO_SHEET_PEEK = 74;
+const PRICE_UI_COMMIT_MS = 250;
 
 // Display overrides for vault cards shown beside Decibel protocol vaults.
 // Decibel Protocol Vault uses 100% real API data — no override needed
@@ -140,7 +142,7 @@ function buildPnlCurve(vault: DecibelVault): PnlPoint[] {
   return points;
 }
 
-function useDecibelVaults() {
+function useDecibelVaults(enabled = true) {
   const [vaults, setVaults] = useState<DecibelVault[]>([]);
   const [loading, setLoading] = useState(true);
   const chartDataRef = useRef<Record<string, PnlPoint[]>>({});
@@ -172,16 +174,17 @@ function useDecibelVaults() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     fetchVaults();
     const interval = setInterval(fetchVaults, 30_000);
     return () => clearInterval(interval);
-  }, [fetchVaults]);
+  }, [enabled, fetchVaults]);
 
   return { vaults, loading, chartData: chartDataRef.current };
 }
 
-function VaultsPanel() {
-  const { vaults, loading, chartData } = useDecibelVaults();
+function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
+  const { vaults, loading, chartData } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -754,7 +757,7 @@ function isRealAptosAddress(value?: string | null) {
   return typeof value === "string" && /^0x[0-9a-fA-F]{1,64}$/.test(value);
 }
 
-function useGraduatedIndicators() {
+function useGraduatedIndicators(enabled = true) {
   const [indicators, setIndicators] = useState<GraduatedIndicator[]>([]);
 
   const fetch_ = useCallback(async () => {
@@ -767,20 +770,23 @@ function useGraduatedIndicators() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     fetch_();
     const t = setInterval(fetch_, 30_000);
     return () => clearInterval(t);
-  }, [fetch_]);
+  }, [enabled, fetch_]);
 
   return indicators;
 }
 
 function SignalProductsPanel({
+  enabled = true,
   onDeploy,
   onUnlock,
   onVaultAction,
   strategyVaultsByIndicator,
 }: {
+  enabled?: boolean;
   onDeploy: (ind: GraduatedIndicator) => void;
   onUnlock: (ind: GraduatedIndicator) => void;
   onVaultAction: (
@@ -791,7 +797,7 @@ function SignalProductsPanel({
   ) => void;
   strategyVaultsByIndicator: Record<string, StrategyVaultSummary>;
 }) {
-  const indicators = useGraduatedIndicators();
+  const indicators = useGraduatedIndicators(enabled);
   const { isSubscribed } = useSubscription();
   if (indicators.length === 0) return null;
 
@@ -950,25 +956,25 @@ function MobilePortfolioSheet({ children }: { children: ReactNode }) {
   }, [snapTo]);
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 lg:hidden">
       {open && (
         <button
           type="button"
           aria-label="Close portfolio"
-          className="fixed inset-0 -z-10 bg-black/50"
+          className="pointer-events-auto fixed inset-0 -z-10 bg-black"
           onClick={() => snapTo(false)}
         />
       )}
       <section
         ref={sheetRef}
-        className="surface-1 mx-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden rounded-t-[20px] border-b-0 bg-[#101010]"
+        className="pointer-events-auto mx-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-[#2a2a2a] bg-[#101010] shadow-[0_-16px_40px_rgba(0,0,0,0.72)]"
         style={{
           transform: `translate3d(0, ${offset}px, 0)`,
           transition: dragging ? "none" : "transform 160ms ease-out",
         }}
       >
         <div
-          className="shrink-0 cursor-grab touch-none px-4 pb-3 pt-2 active:cursor-grabbing"
+          className="shrink-0 cursor-grab touch-none bg-[#101010] px-4 pb-3 pt-2 active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -978,18 +984,18 @@ function MobilePortfolioSheet({ children }: { children: ReactNode }) {
             snapTo(!open);
           }}
         >
-          <div className="mx-auto mb-2 h-[4px] w-9 rounded-full bg-white/[0.16]" />
+          <div className="mx-auto mb-2 h-[4px] w-9 rounded-full bg-[#3a3a3a]" />
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[13px] font-display font-semibold text-zinc-100">Portfolio</div>
               <div className="text-[11px] text-zinc-500">Positions, orders, and account state</div>
             </div>
-            <div className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] font-mono uppercase text-zinc-500">
+            <div className="rounded-full bg-[#1f1f1f] px-2 py-1 text-[10px] font-mono uppercase text-zinc-500">
               {open ? "Close" : "Open"}
             </div>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#101010] px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           {children}
         </div>
       </section>
@@ -1027,8 +1033,15 @@ export function TradePageClient({
   const { subscribe } = useSubscription();
   const isMobile = useIsMobile();
   const currentPriceRef = useRef(0);
+  const queuedPriceRef = useRef(0);
+  const priceCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPriceCommitAtRef = useRef(0);
   const positionsRef = useRef<Position[]>([]);
   const liquidatedIdsRef = useRef(new Set<string>());
+  const vaultsSectionRef = useRef<HTMLDivElement>(null);
+  const signalsSectionRef = useRef<HTMLDivElement>(null);
+  const vaultsActive = useInViewport(vaultsSectionRef, { rootMargin: "480px" });
+  const signalsActive = useInViewport(signalsSectionRef, { rootMargin: "480px" });
   const ownerWallet = account?.address?.toString() ?? "";
 
   const fetchStrategyVaults = useCallback(async () => {
@@ -1057,9 +1070,38 @@ export function TradePageClient({
     void fetchStrategyVaults();
   }, [fetchStrategyVaults]);
 
+  useEffect(() => {
+    return () => {
+      if (priceCommitTimerRef.current) clearTimeout(priceCommitTimerRef.current);
+    };
+  }, []);
+
   const handlePriceUpdate = useCallback((price: number) => {
+    if (!Number.isFinite(price) || price <= 0) return;
     currentPriceRef.current = price;
-    setCurrentPrice(price);
+    queuedPriceRef.current = price;
+
+    const commit = () => {
+      priceCommitTimerRef.current = null;
+      lastPriceCommitAtRef.current = performance.now();
+      const nextPrice = queuedPriceRef.current;
+      setCurrentPrice((previous) => {
+        if (!Number.isFinite(nextPrice) || nextPrice <= 0) return previous;
+        const minDelta = Math.max(0.000001, Math.abs(previous) * 0.0000025);
+        return Math.abs(nextPrice - previous) >= minDelta ? nextPrice : previous;
+      });
+    };
+
+    const now = performance.now();
+    const elapsed = now - lastPriceCommitAtRef.current;
+    if (elapsed >= PRICE_UI_COMMIT_MS && !priceCommitTimerRef.current) {
+      commit();
+      return;
+    }
+
+    if (!priceCommitTimerRef.current) {
+      priceCommitTimerRef.current = setTimeout(commit, Math.max(16, PRICE_UI_COMMIT_MS - elapsed));
+    }
   }, []);
 
   useEffect(() => {
@@ -1168,6 +1210,15 @@ export function TradePageClient({
     market.marketName ??
     selectedPerpMarket?.marketName ??
     market.pair.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
+  const handleMarketChange = useCallback((nextMarket: {
+    id: string;
+    pair: string;
+    leverage: number;
+    marketAddr?: string;
+    marketName?: string;
+  }) => {
+    setMarket(nextMarket);
+  }, []);
   const signVaultTransaction = useCallback(
     async (payload: unknown) => {
       if (!signAndSubmitTransaction) {
@@ -1193,7 +1244,7 @@ export function TradePageClient({
             <BTCChart
               initialHistory={initialBtcCandles}
               liquidationLines={chartLiquidationLines}
-              onMarketChange={(m) => setMarket(m)}
+              onMarketChange={handleMarketChange}
               onPriceUpdate={handlePriceUpdate}
             />
           </div>
@@ -1247,12 +1298,13 @@ export function TradePageClient({
           </div>
         </div>
 
-        <div id="vaults" className="mt-6 scroll-mt-20 animate-enter">
-          <VaultsPanel />
+        <div ref={vaultsSectionRef} id="vaults" className="mt-6 scroll-mt-20 animate-enter">
+          <VaultsPanel enabled={vaultsActive} />
         </div>
 
-        <div id="signals" className="mt-6 scroll-mt-20 animate-enter">
+        <div ref={signalsSectionRef} id="signals" className="mt-6 scroll-mt-20 animate-enter">
           <SignalProductsPanel
+            enabled={signalsActive}
             onDeploy={(ind) => setDeployTarget(ind)}
             onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}
             onVaultAction={(mode, ind, strategyVault, vaultAddress) =>

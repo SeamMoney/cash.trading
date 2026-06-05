@@ -885,8 +885,14 @@ function BtcPerpsChartComponent({
 
   const lineResolvedEndTime = useMemo(() => {
     if (lineBounds.latest == null) return null;
-    return lineEndTime ?? (lineBounds.latest + LIVE_EDGE_HEADROOM_SECS);
-  }, [lineBounds.latest, lineEndTime]);
+    if (lineEndTime != null) return lineEndTime;
+
+    // Liveline anchors its visible window to Date.now(). When Decibel has a
+    // sparse market or the tab resumes after being hidden, the latest indexed
+    // point can lag wall-clock time; anchoring the padded data to that older
+    // point leaves the left side of the chart visually empty.
+    return Math.max(Date.now() / 1000, lineBounds.latest + LIVE_EDGE_HEADROOM_SECS);
+  }, [lineBounds.latest, lineEndTime, snapshot.price]);
 
   const lineInterval = useMemo(
     () => (activeSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
@@ -1799,9 +1805,9 @@ function BtcPerpsChartComponent({
         style={{ touchAction: "none", overscrollBehavior: "contain" }}
       >
         <Liveline
-          mode="candle"
+          mode={mode}
           data={lineData}
-          value={displayedCandleValue}
+          value={mode === "line" ? displayedLineValue : displayedCandleValue}
           candles={activeSecondCandles}
           candleWidth={1}
           liveCandle={liveCandle}

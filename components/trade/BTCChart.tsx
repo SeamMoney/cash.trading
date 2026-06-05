@@ -165,48 +165,54 @@ const TOKEN_LOGOS: Record<string, string> = {
   AAVE: "/tokens/aave.svg",
   ADA: "/tokens/ada.svg",
   AMZN: "/tokens/amzn.svg",
-  APT: "/tokens/apt.svg",
-  BNB: "/tokens/bnb.svg",
-  BTC: "/tokens/btc.svg",
+  APT: "/tokens/apt.png",
+  BNB: "/tokens/bnb.png",
+  BTC: "/tokens/btc.png",
   CBRS: "/tokens/cbrs.svg",
   CHIP: "/tokens/chip.svg",
-  DOGE: "/tokens/doge.svg",
+  DOGE: "/tokens/doge.png",
   ENA: "/tokens/ena.svg",
-  ETH: "/tokens/eth.svg",
+  ETH: "/tokens/eth.png",
+  EWY: "/tokens/ewy.png",
   FARTCOIN: "/tokens/fartcoin.svg",
   GOLD: "/tokens/gold.svg",
   GOOGL: "/tokens/googl.svg",
-  HYPE: "/tokens/hype.svg",
+  HYPE: "/tokens/hype.png",
   KPEPE: "/tokens/kpepe.svg",
   LINK: "/tokens/link.svg",
   MEGA: "/tokens/mega.svg",
   MU: "/tokens/mu.svg",
   NEAR: "/tokens/near.svg",
   NVDA: "/tokens/nvda.svg",
+  QQQ: "/tokens/qqq.png",
   SILVER: "/tokens/silver.svg",
   SNDK: "/tokens/sndk.svg",
-  SOL: "/tokens/sol.svg",
-  SUI: "/tokens/sui.svg",
+  SOL: "/tokens/sol.png",
+  SPY: "/tokens/spy.png",
+  SUI: "/tokens/sui.png",
   TAO: "/tokens/tao.svg",
   TRUMP: "/tokens/trump.svg",
   TSLA: "/tokens/tsla.svg",
   WLFI: "/tokens/wlfi.svg",
   WTIOIL: "/tokens/wtioil.svg",
   XPL: "/tokens/xpl.svg",
-  XRP: "/tokens/xrp.svg",
-  ZEC: "/tokens/zec.svg",
+  XRP: "/tokens/xrp.png",
+  ZEC: "/tokens/zec.png",
   ZRO: "/tokens/zro.svg",
-  "BTC/USD": "/tokens/btc.svg",
-  "BTC-PERP/USD": "/tokens/btc.svg",
-  "ETH/USD": "/tokens/eth.svg",
-  "SOL/USD": "/tokens/sol.svg",
-  "APT/USD": "/tokens/apt.svg",
-  "HYPE/USD": "/tokens/hype.svg",
-  "BNB/USD": "/tokens/bnb.svg",
-  "XRP/USD": "/tokens/xrp.svg",
-  "DOGE/USD": "/tokens/doge.svg",
-  "SUI/USD": "/tokens/sui.svg",
-  "ZEC/USD": "/tokens/zec.svg",
+  "BTC/USD": "/tokens/btc.png",
+  "BTC-PERP/USD": "/tokens/btc.png",
+  "ETH/USD": "/tokens/eth.png",
+  "SOL/USD": "/tokens/sol.png",
+  "APT/USD": "/tokens/apt.png",
+  "HYPE/USD": "/tokens/hype.png",
+  "BNB/USD": "/tokens/bnb.png",
+  "XRP/USD": "/tokens/xrp.png",
+  "DOGE/USD": "/tokens/doge.png",
+  "SUI/USD": "/tokens/sui.png",
+  "ZEC/USD": "/tokens/zec.png",
+  "SPY/USD": "/tokens/spy.png",
+  "QQQ/USD": "/tokens/qqq.png",
+  "EWY/USD": "/tokens/ewy.png",
 };
 
 const MARKET_LABELS: Record<string, string> = {
@@ -221,6 +227,7 @@ const MARKET_LABELS: Record<string, string> = {
   CHIP: "Chip",
   DOGE: "Dogecoin",
   ETH: "Ethereum",
+  EWY: "iShares MSCI South Korea",
   FARTCOIN: "Fartcoin",
   GOLD: "Gold",
   GOOGL: "Google",
@@ -231,9 +238,11 @@ const MARKET_LABELS: Record<string, string> = {
   MU: "Micron",
   NEAR: "Near",
   NVDA: "Nvidia",
+  QQQ: "Invesco QQQ",
   SNDK: "SanDisk",
   SILVER: "Silver",
   SOL: "Solana",
+  SPY: "SPDR S&P 500 ETF",
   SUI: "Sui",
   TAO: "Bittensor",
   TRUMP: "Trump",
@@ -259,6 +268,9 @@ const MARKET_COLORS: Record<string, string> = {
   NEAR: "#d9d9d9",
   SILVER: "#c0c0c0",
   SOL: "#9945ff",
+  SPY: "#72ff4b",
+  QQQ: "#72ff4b",
+  EWY: "#72ff4b",
   SUI: "#6dd6ff",
   TAO: "#d9d9d9",
   TRUMP: "#d9d9d9",
@@ -273,9 +285,12 @@ const STOCK_SYMBOLS = new Set([
   "AMZN",
   "CBRS",
   "GOOGL",
+  "EWY",
   "MU",
   "NVDA",
+  "QQQ",
   "SNDK",
+  "SPY",
   "TSLA",
 ]);
 
@@ -433,6 +448,32 @@ const FALLBACK_MARKETS: Market[] = Object.values(PERP_MARKET_DATA).map((market) 
   fundingRateBps: null,
 }));
 const MARKETS = FALLBACK_MARKETS;
+const MAINNET_ONLY_FALLBACK_MARKETS = new Set(["SPY/USD", "QQQ/USD", "EWY/USD"]);
+
+function getFallbackMarketsForNetwork(network: DecibelPublicNetwork) {
+  return network === "mainnet"
+    ? MARKETS
+    : MARKETS.filter((market) => !MAINNET_ONLY_FALLBACK_MARKETS.has(market.id));
+}
+
+function sortMarkets(markets: Market[]) {
+  return markets.sort((a, b) => {
+    if (a.id === "BTC/USD") return -1;
+    if (b.id === "BTC/USD") return 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function mergeMarketsWithFallback(apiMarkets: Market[], network: DecibelPublicNetwork) {
+  const merged = new Map<string, Market>();
+  for (const market of getFallbackMarketsForNetwork(network)) {
+    merged.set(market.id, market);
+  }
+  for (const market of apiMarkets) {
+    merged.set(market.id, market);
+  }
+  return sortMarkets(Array.from(merged.values()));
+}
 
 function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
   const logo = TOKEN_LOGOS[market] ?? TOKEN_LOGOS[getBaseSymbol(market)];
@@ -690,7 +731,9 @@ export function BTCChart({
   defaultMarket?: string;
 }) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
-  const [liveMarkets, setLiveMarkets] = useState<Market[]>(MARKETS);
+  const [liveMarkets, setLiveMarkets] = useState<Market[]>(() =>
+    getFallbackMarketsForNetwork(getDecibelPublicNetwork()),
+  );
   const [marketsLoading, setMarketsLoading] = useState(false);
   const activeMarkets = marketsProp ?? liveMarkets;
   const activeCategories = categoriesProp ?? CATEGORIES;
@@ -721,6 +764,11 @@ export function BTCChart({
 
   useEffect(() => {
     if (marketsProp) return;
+    setLiveMarkets(getFallbackMarketsForNetwork(network));
+  }, [marketsProp, network]);
+
+  useEffect(() => {
+    if (marketsProp) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -735,17 +783,13 @@ export function BTCChart({
         if (!res.ok || json.error) {
           throw new Error(json.error || "Could not load Decibel markets");
         }
-        const next = (Array.isArray(json.markets) ? json.markets : [])
-          .map(apiMarketToMarket)
-          .sort((a: Market, b: Market) => {
-            if (a.id === "BTC/USD") return -1;
-            if (b.id === "BTC/USD") return 1;
-            return a.id.localeCompare(b.id);
-          });
+        const apiMarkets = (Array.isArray(json.markets) ? json.markets : [])
+          .map(apiMarketToMarket);
+        const next = mergeMarketsWithFallback(apiMarkets, network);
         if (!cancelled && next.length > 0 && !modalOpenRef.current) setLiveMarkets(next);
       } catch {
         if (!cancelled && !modalOpenRef.current) {
-          setLiveMarkets((current) => current.length > 0 ? current : MARKETS);
+          setLiveMarkets(getFallbackMarketsForNetwork(network));
         }
       } finally {
         if (!cancelled) {

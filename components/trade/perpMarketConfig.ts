@@ -42,11 +42,16 @@ const DECIBEL_MARKET_ADDRESSES: Record<DecibelNetwork, Record<string, string>> =
     "SUI/USD": "0xe7da11926e61dbd227170d1271f73bfaf9f5aab7605fac1ae62541dd3810ae76",
     "BNB/USD": "0xa0b805baf5e69adbb717e3daefe71f5ebaae708dd480fbb964ad324f9c5e6490",
     "ZEC/USD": "0xaef108ea0590464effd25054e2e1b66b6ea8be088c479da63518983e4728282b",
+    "SPY/USD": "0xb4c1717658713ad5cffab87b6921ca51b66e753e2249c58089cf0631248ec6f9",
+    "QQQ/USD": "0x8eef5222689f00c4fcbbaec2ff3f3e92ab41d8b89f1828c2f779700fc0e82eac",
+    "EWY/USD": "0x4aab2fc83d5cee7de9cf4c9b4b90f8c5c47dc56292c31188ce00364d42f2de51",
   },
 };
 
 function getDecibelNetwork(): DecibelNetwork {
-  return process.env.NEXT_PUBLIC_APTOS_NETWORK === "mainnet"
+  const configuredNetwork =
+    process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.NEXT_PUBLIC_APTOS_NETWORK;
+  return configuredNetwork === "mainnet"
     ? "mainnet"
     : "testnet";
 }
@@ -205,5 +210,50 @@ export const PERP_MARKET_DATA: Record<string, PerpMarketData> = {
     volume24h: "$78.3k",
     openInterestLabel: "$4,732.70",
     volatility: 0.0041,
+  },
+  "SPY/USD": {
+    id: "SPY/USD",
+    label: "SPDR S&P 500 ETF",
+    pair: "SPY/USD",
+    marketAddr: getDecibelMarketAddress("SPY/USD", "0xb4c1717658713ad5cffab87b6921ca51b66e753e2249c58089cf0631248ec6f9"),
+    marketName: "SPY/USD",
+    leverage: 50,
+    color: "#72ff4b",
+    seedPrice: 594.2,
+    priceDecimals: 2,
+    change24h: "—",
+    volume24h: "—",
+    openInterestLabel: "—",
+    volatility: 0.0018,
+  },
+  "QQQ/USD": {
+    id: "QQQ/USD",
+    label: "Invesco QQQ",
+    pair: "QQQ/USD",
+    marketAddr: getDecibelMarketAddress("QQQ/USD", "0x8eef5222689f00c4fcbbaec2ff3f3e92ab41d8b89f1828c2f779700fc0e82eac"),
+    marketName: "QQQ/USD",
+    leverage: 30,
+    color: "#72ff4b",
+    seedPrice: 524.5,
+    priceDecimals: 2,
+    change24h: "—",
+    volume24h: "—",
+    openInterestLabel: "—",
+    volatility: 0.002,
+  },
+  "EWY/USD": {
+    id: "EWY/USD",
+    label: "iShares MSCI South Korea",
+    pair: "EWY/USD",
+    marketAddr: getDecibelMarketAddress("EWY/USD", "0x4aab2fc83d5cee7de9cf4c9b4b90f8c5c47dc56292c31188ce00364d42f2de51"),
+    marketName: "EWY/USD",
+    leverage: 15,
+    color: "#72ff4b",
+    seedPrice: 71.2,
+    priceDecimals: 2,
+    change24h: "—",
+    volume24h: "—",
+    openInterestLabel: "—",
+    volatility: 0.0024,
   },
 };

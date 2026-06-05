@@ -954,7 +954,7 @@ export function BTCChart({
       </div>
 
       {/* Chart + subtle overlay controls */}
-      <div className="relative h-[340px] sm:h-[460px] lg:h-[560px] lg:min-h-0">
+      <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] lg:min-h-0">
         {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
           <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-[#141414]" />

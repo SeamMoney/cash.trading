@@ -494,31 +494,16 @@ export function TradePanel({
           </div>
         </div>
 
-        {/* Leverage mini bottom sheet */}
+        {/* Leverage mini drawer */}
         <div className="bg-[#0e0e0e]">
-          {/* Tappable handle area */}
-          <button
-            type="button"
-            onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
-            className="w-full py-2 flex flex-col items-center gap-1"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-display font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                Leverage
-              </span>
-              <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
-                {leverage.toFixed(1)}x
-              </span>
-            </div>
-            <div className="w-8 h-[3px] rounded-full bg-zinc-600" />
-          </button>
-
-          {/* Collapsible slider */}
           <div
-            className="overflow-hidden transition-[height] duration-300 ease-out"
+            className="overflow-hidden transition-[height] duration-150 ease-out"
             style={{ height: leverageOpen ? SLIDER_CONTENT_HEIGHT : 0 }}
           >
-            <div className="px-5 pb-4">
+            <div
+              className="px-5 pt-4 transition-transform duration-150 ease-out"
+              style={{ transform: leverageOpen ? "translateY(0)" : "translateY(-12px)" }}
+            >
               <div
                 ref={trackRef}
                 className="relative h-[24px] rounded-full bg-zinc-800 cursor-pointer touch-none overflow-hidden"
@@ -551,14 +536,31 @@ export function TradePanel({
               </div>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-[12px] font-mono font-bold text-zinc-500">
-                  {LEVERAGE_MIN}X
+                  {LEVERAGE_MIN}x
                 </span>
                 <span className="text-[12px] font-mono font-bold text-zinc-500">
-                  {maxLeverage}X
+                  {maxLeverage}x
                 </span>
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            aria-expanded={leverageOpen}
+            onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
+            className="flex w-full flex-col items-center gap-1 px-5 pb-3 pt-2"
+          >
+            <div className="w-8 h-[3px] rounded-full bg-zinc-600" />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-display font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                Leverage
+              </span>
+              <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
+                {leverage.toFixed(1)}x
+              </span>
+            </div>
+          </button>
         </div>
       </div>
 

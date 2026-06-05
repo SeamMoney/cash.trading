@@ -46,14 +46,16 @@ export interface PerpMarketSnapshot {
 type ChartInterval = "1s" | "5s" | "15s" | "1m";
 
 const CHART_PADDING = { top: 8, right: 80, bottom: 36, left: 8 } as const;
-const TRADE_POLL_MS = 4000;
-const PRICE_POLL_MS = 1000;
+const STREAM_FRESH_MS = 15_000;
+const TRADE_FALLBACK_POLL_MS = 20_000;
+const PRICE_FALLBACK_POLL_MS = 10_000;
 const ONE_SECOND_WINDOW_SECS = 12 * 60;
 const MINUTE_HISTORY_MS = 12 * 60 * 60 * 1000;
 const DECIBEL_VOLUME_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_DECIBEL_MINUTE_CANDLES = Math.ceil(DECIBEL_VOLUME_WINDOW_MS / 60_000) + 5;
 const SECOND_TRADE_LIMIT = 1800;
 const INITIAL_TRADE_LIMIT = 900;
+const LIVE_TRADE_REFRESH_LIMIT = 240;
 const BTC_FALLBACK_ACTIVATE_MS = 3500;
 const DEFAULT_LINE_WINDOW_SECS = 5 * 60;
 const MOBILE_BTC_LINE_WINDOW_SECS = 3 * 60;
@@ -887,12 +889,8 @@ function BtcPerpsChartComponent({
     if (lineBounds.latest == null) return null;
     if (lineEndTime != null) return lineEndTime;
 
-    // Liveline anchors its visible window to Date.now(). When Decibel has a
-    // sparse market or the tab resumes after being hidden, the latest indexed
-    // point can lag wall-clock time; anchoring the padded data to that older
-    // point leaves the left side of the chart visually empty.
-    return Math.max(Date.now() / 1000, lineBounds.latest + LIVE_EDGE_HEADROOM_SECS);
-  }, [lineBounds.latest, lineEndTime, snapshot.price]);
+    return lineBounds.latest + LIVE_EDGE_HEADROOM_SECS;
+  }, [lineBounds.latest, lineEndTime]);
 
   const lineInterval = useMemo(
     () => (activeSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
@@ -1479,7 +1477,7 @@ function BtcPerpsChartComponent({
         // Keep the existing fallback state if the ticker misses a beat.
       } finally {
         if (!cancelled) {
-          tickerTimer = setTimeout(pollFallbackTicker, PRICE_POLL_MS);
+          tickerTimer = setTimeout(pollFallbackTicker, PRICE_FALLBACK_POLL_MS);
         }
       }
     };
@@ -1613,7 +1611,7 @@ function BtcPerpsChartComponent({
   }, [defaultLineWindowSecs, marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
-    if (!marketAddress || useCoinbaseLineFeed) {
+    if (!active || !marketAddress || useCoinbaseLineFeed) {
       return () => {};
     }
 
@@ -1624,8 +1622,14 @@ function BtcPerpsChartComponent({
     let cancelled = false;
     let priceTimer: ReturnType<typeof setTimeout> | null = null;
     let tradeTimer: ReturnType<typeof setTimeout> | null = null;
+    const streamIsFresh = () => Date.now() - decibelLiveAtRef.current < STREAM_FRESH_MS;
 
     const pollPrice = async () => {
+      if (streamIsFresh()) {
+        if (!cancelled) priceTimer = setTimeout(pollPrice, PRICE_FALLBACK_POLL_MS);
+        return;
+      }
+
       try {
         const prices = await fetchDecibelMainnetPrices();
         const price = prices.find((entry) => entry.market === marketAddress);
@@ -1656,38 +1660,51 @@ function BtcPerpsChartComponent({
           }
         }
       } finally {
-        if (!cancelled) priceTimer = setTimeout(pollPrice, PRICE_POLL_MS);
+        if (!cancelled) priceTimer = setTimeout(pollPrice, PRICE_FALLBACK_POLL_MS);
       }
     };
 
     const refreshTrades = async () => {
+      if (streamIsFresh()) {
+        if (!cancelled) tradeTimer = setTimeout(refreshTrades, TRADE_FALLBACK_POLL_MS);
+        return;
+      }
+
       try {
-        const trades = await fetchDecibelMainnetTrades(marketAddress, SECOND_TRADE_LIMIT);
+        const trades = await fetchDecibelMainnetTrades(marketAddress, LIVE_TRADE_REFRESH_LIMIT);
         if (cancelled) return;
 
-        setSecondCandles(buildSecondCandlesFromTrades(trades, snapshotRef.current.price, Date.now()));
+        setSecondCandles((prev) =>
+          mergeTradesIntoSecondCandles(prev, trades, snapshotRef.current.price, Date.now())
+        );
         if (trades.length > 0) {
           setHasInitialHistory(true);
         }
       } catch {
         // Keep existing candles if the trade refresh misses a beat.
       } finally {
-        if (!cancelled) tradeTimer = setTimeout(refreshTrades, TRADE_POLL_MS);
+        if (!cancelled) tradeTimer = setTimeout(refreshTrades, TRADE_FALLBACK_POLL_MS);
       }
     };
 
-    void pollPrice();
-    void refreshTrades();
+    priceTimer = setTimeout(pollPrice, 2500);
+    tradeTimer = setTimeout(refreshTrades, 5000);
 
     return () => {
       cancelled = true;
       if (priceTimer) clearTimeout(priceTimer);
       if (tradeTimer) clearTimeout(tradeTimer);
     };
-  }, [btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
+  }, [active, btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !marketAddress || useCoinbaseLineFeed || (btcFallbackEnabled && useBtcFallback)) return () => {};
+    if (
+      !active
+      || typeof window === "undefined"
+      || !marketAddress
+      || useCoinbaseLineFeed
+      || (btcFallbackEnabled && useBtcFallback)
+    ) return () => {};
 
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1778,7 +1795,7 @@ function BtcPerpsChartComponent({
       if (reconnectTimer) clearTimeout(reconnectTimer);
       stream?.close();
     };
-  }, [btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
+  }, [active, btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
 
   // Derive a live candle from the latest second candle for Liveline
   const liveCandle = useMemo(() => {

@@ -348,6 +348,8 @@ export function PortfolioPageClient() {
     decibelNetwork,
     hasDecibelAccount,
     isLoadingSubaccounts,
+    lookupError,
+    lookupIncomplete,
     selectedSubaccount,
     selectedSubaccountRecord,
     subaccounts,
@@ -1234,7 +1236,11 @@ export function PortfolioPageClient() {
             {error && <span className="text-[#e8774f]">{error}</span>}
             {!connected && <span className="text-zinc-600">Connect wallet to load your Decibel portfolio.</span>}
             {connected && !hasDecibelAccount && !isLoadingSubaccounts && (
-              <span className="text-zinc-600">No Decibel trading account detected.</span>
+              <span className="text-zinc-600">
+                {lookupError || lookupIncomplete
+                  ? `Decibel account lookup is incomplete${lookupError ? `: ${lookupError}` : "."}`
+                  : "No Decibel trading account detected."}
+              </span>
             )}
             {actionStatus && (
               <div className={cn(

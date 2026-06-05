@@ -72,20 +72,24 @@ export function useDecibelSubaccounts() {
     setLookupIncomplete(false);
 
     try {
-      const res = await fetch(`/api/decibel/subaccount?address=${owner}&network=${decibelNetwork}`);
+      const res = await fetch(`/api/decibel/subaccount?address=${owner}&network=${decibelNetwork}`, {
+        cache: "no-store",
+      });
       const data = (await res.json()) as DecibelSubaccountResponse;
       if (!res.ok) {
         throw new Error(data.lookupError || `Decibel account lookup failed (${res.status})`);
       }
 
       const next = (data.subaccounts ?? []) as DecibelSubaccount[];
+      const stored = getStoredDecibelSubaccount(owner);
       setSubaccounts(next);
       setLookupError(data.lookupError ?? null);
       setLookupIncomplete(Boolean(data.lookupIncomplete));
       setLookupSource(data.source ?? "");
       setSelectedSubaccount((current) => {
-        if (next.length === 0 && data.lookupIncomplete) {
-          return current;
+        if (next.length === 0) {
+          const optimistic = current || stored;
+          return optimistic ?? "";
         }
         const picked = pickDecibelSubaccount(next, owner, current);
         storeDecibelSubaccount(picked, owner);
@@ -125,21 +129,24 @@ export function useDecibelSubaccounts() {
   useEffect(() => {
     return onDecibelSubaccountChange(() => {
       const stored = getStoredDecibelSubaccount(owner);
-      setSelectedSubaccount(
-        stored && subaccounts.some((s) => s.address === stored) ? stored : ""
-      );
+      setSelectedSubaccount(stored ?? "");
     });
-  }, [owner, subaccounts]);
+  }, [owner]);
 
   const selectedSubaccountRecord = useMemo(
     () =>
       selectedSubaccount
-        ? subaccounts.find((s) => s.address === selectedSubaccount)
+        ? subaccounts.find((s) => s.address === selectedSubaccount) ?? {
+            address: selectedSubaccount,
+            name: "Primary",
+            isPrimary: true,
+            isActive: true,
+          }
         : undefined,
     [selectedSubaccount, subaccounts]
   );
   const hasDecibelAccount = Boolean(
-    selectedSubaccountRecord && selectedSubaccountRecord.isActive !== false
+    selectedSubaccount && selectedSubaccountRecord?.isActive !== false
   );
 
   return {

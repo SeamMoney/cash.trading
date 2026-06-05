@@ -1260,7 +1260,7 @@ export function TradePageClient({
           )}
 
           <div className="mt-6 hidden animate-enter lg:block">
-            <DecibelPositions />
+            <DecibelPositions showOverview={false} />
           </div>
         </div>
 
@@ -1282,7 +1282,7 @@ export function TradePageClient({
       </div>
       {isMobile && (
         <MobilePortfolioSheet>
-          <DecibelPositions />
+          <DecibelPositions showOverview={false} />
         </MobilePortfolioSheet>
       )}
 

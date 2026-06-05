@@ -441,7 +441,7 @@ function actionErrorMessage(error: unknown, fallback: string) {
  * with the last enriched list by `marketAddress` so derived fields don't
  * flicker between polls.
  */
-export function Positions() {
+export function Positions({ showOverview = true }: { showOverview?: boolean } = {}) {
   const { account, connected, signAndSubmitTransaction } = useWallet();
   const ownerAddress = account?.address?.toString() ?? "";
   const [positions, setPositions] = useState<Position[]>([]);
@@ -999,7 +999,7 @@ export function Positions() {
   return (
     <div className="space-y-4">
       {/* Account Overview */}
-      {overview && (
+      {showOverview && overview && (
         <div className="hidden md:grid md:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             {

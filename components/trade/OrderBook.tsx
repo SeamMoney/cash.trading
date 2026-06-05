@@ -164,7 +164,7 @@ function LadderRowView({
     <button
       type="button"
       onClick={() => onPriceClick?.(row.price)}
-      className="group relative grid h-full w-full grid-cols-[minmax(78px,1fr)_118px_minmax(78px,1fr)] items-center overflow-hidden font-mono text-[12px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.035]"
+      className="group relative grid h-[22px] w-full shrink-0 grid-cols-[minmax(78px,1fr)_118px_minmax(78px,1fr)] items-center overflow-hidden font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.035] sm:text-[12px]"
     >
       <div className="relative h-full">
         {row.bidSize > 0 && (
@@ -361,8 +361,7 @@ export function OrderBook({
       </div>
 
       <div
-        className="grid flex-1 overflow-hidden py-1"
-        style={{ gridTemplateRows: `repeat(${rows.length}, minmax(0, 1fr))` }}
+        className="flex flex-1 flex-col justify-center overflow-hidden py-1"
       >
         {rows.map((row) => (
           <LadderRowView

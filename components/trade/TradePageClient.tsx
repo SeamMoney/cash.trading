@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
@@ -28,6 +27,7 @@ import { AreaChart, Area } from "@/components/charts/area-chart";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { curveLinear } from "@visx/curve";
 import { Grid } from "@/components/charts/grid";
+import { useIsMobile } from "@/components/ui/use-mobile";
 
 interface Position {
   id: string;
@@ -66,13 +66,7 @@ interface DecibelVault {
 }
 
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
-const MOBILE_TRADE_NAV = [
-  { label: "Trade", href: "#trade" },
-  { label: "Positions", href: "#positions" },
-  { label: "Vaults", href: "#vaults" },
-  { label: "Signals", href: "#signals" },
-  { label: "Portfolio", href: "/portfolio" },
-] as const;
+const PORTFOLIO_SHEET_PEEK = 74;
 
 // Display overrides for vault cards shown beside Decibel protocol vaults.
 // Decibel Protocol Vault uses 100% real API data — no override needed
@@ -889,6 +883,120 @@ function SignalProductsPanel({
   );
 }
 
+function MobilePortfolioSheet({ children }: { children: ReactNode }) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({
+    active: false,
+    startY: 0,
+    startOffset: 0,
+    offset: 0,
+    collapsed: 0,
+    moved: false,
+  });
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const updateCollapsed = useCallback(() => {
+    const height = sheetRef.current?.offsetHeight ?? 0;
+    const collapsed = Math.max(0, height - PORTFOLIO_SHEET_PEEK);
+    dragRef.current.collapsed = collapsed;
+    const next = open ? 0 : collapsed;
+    dragRef.current.offset = next;
+    setOffset(next);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    updateCollapsed();
+    window.addEventListener("resize", updateCollapsed);
+    window.addEventListener("orientationchange", updateCollapsed);
+    return () => {
+      window.removeEventListener("resize", updateCollapsed);
+      window.removeEventListener("orientationchange", updateCollapsed);
+    };
+  }, [updateCollapsed]);
+
+  const snapTo = useCallback((nextOpen: boolean) => {
+    const next = nextOpen ? 0 : dragRef.current.collapsed;
+    setOpen(nextOpen);
+    dragRef.current.offset = next;
+    setOffset(next);
+  }, []);
+
+  const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    dragRef.current.active = true;
+    dragRef.current.startY = event.clientY;
+    dragRef.current.startOffset = dragRef.current.offset;
+    dragRef.current.moved = false;
+    setDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const delta = event.clientY - dragRef.current.startY;
+    if (Math.abs(delta) > 4) dragRef.current.moved = true;
+    const next = Math.max(0, Math.min(dragRef.current.collapsed, dragRef.current.startOffset + delta));
+    dragRef.current.offset = next;
+    setOffset(next);
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    setDragging(false);
+    const shouldOpen = dragRef.current.offset < dragRef.current.collapsed * 0.55;
+    snapTo(shouldOpen);
+  }, [snapTo]);
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
+      {open && (
+        <button
+          type="button"
+          aria-label="Close portfolio"
+          className="fixed inset-0 -z-10 bg-black/50"
+          onClick={() => snapTo(false)}
+        />
+      )}
+      <section
+        ref={sheetRef}
+        className="surface-1 mx-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden rounded-t-[20px] border-b-0 bg-[#101010]"
+        style={{
+          transform: `translate3d(0, ${offset}px, 0)`,
+          transition: dragging ? "none" : "transform 160ms ease-out",
+        }}
+      >
+        <div
+          className="shrink-0 cursor-grab touch-none px-4 pb-3 pt-2 active:cursor-grabbing"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClick={() => {
+            if (dragRef.current.moved) return;
+            snapTo(!open);
+          }}
+        >
+          <div className="mx-auto mb-2 h-[4px] w-9 rounded-full bg-white/[0.16]" />
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[13px] font-display font-semibold text-zinc-100">Portfolio</div>
+              <div className="text-[11px] text-zinc-500">Positions, orders, and account state</div>
+            </div>
+            <div className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] font-mono uppercase text-zinc-500">
+              {open ? "Close" : "Open"}
+            </div>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 /* ─── Page ─── */
 
 export function TradePageClient({
@@ -917,6 +1025,7 @@ export function TradePageClient({
   const { account, signAndSubmitTransaction } = useWallet();
   const { selectedSubaccount } = useDecibelSubaccounts();
   const { subscribe } = useSubscription();
+  const isMobile = useIsMobile();
   const currentPriceRef = useRef(0);
   const positionsRef = useRef<Position[]>([]);
   const liquidatedIdsRef = useRef(new Set<string>());
@@ -1070,7 +1179,7 @@ export function TradePageClient({
   );
 
   return (
-    <div className="min-h-screen pb-28 lg:pb-0">
+    <div className="min-h-screen pb-24 lg:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-6 sm:py-6">
@@ -1113,8 +1222,8 @@ export function TradePageClient({
               marketName={decibelMarketName}
               marketAddress={decibelMarketAddress}
               currentPrice={currentPrice}
-              rowCount={41}
-              className="h-full min-h-[560px]"
+              rowCount={27}
+              className="h-[672px] min-h-0"
             />
           </div>
 
@@ -1135,8 +1244,8 @@ export function TradePageClient({
                 marketName={decibelMarketName}
                 marketAddress={decibelMarketAddress}
                 currentPrice={currentPrice}
-                rowCount={27}
-                className="h-[360px]"
+                rowCount={17}
+                className="h-[452px] sm:h-[572px]"
               />
             </div>
           </div>
@@ -1150,7 +1259,7 @@ export function TradePageClient({
             </div>
           )}
 
-          <div className="mt-6 animate-enter">
+          <div className="mt-6 hidden animate-enter lg:block">
             <DecibelPositions />
           </div>
         </div>
@@ -1171,23 +1280,11 @@ export function TradePageClient({
         </div>
         </main>
       </div>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-black/90 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 backdrop-blur-md lg:hidden" aria-label="Trade sections">
-        <div className="mx-auto grid max-w-xl grid-cols-5 rounded-[14px] bg-white/[0.04] p-1">
-          {MOBILE_TRADE_NAV.map((item) => {
-            const classes = "rounded-[10px] px-1.5 py-2 text-center text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-white";
-            return item.href.startsWith("#") ? (
-              <a key={item.href} href={item.href} className={classes}>
-                {item.label}
-              </a>
-            ) : (
-              <Link key={item.href} href={item.href} className={classes}>
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      {isMobile && (
+        <MobilePortfolioSheet>
+          <DecibelPositions />
+        </MobilePortfolioSheet>
+      )}
 
       {/* Deploy Bot Modal */}
       {deployTarget && (

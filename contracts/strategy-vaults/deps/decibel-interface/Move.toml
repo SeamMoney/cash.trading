@@ -1,0 +1,22 @@
+# Compile-time INTERFACE package for Decibel + the on-chain indicator.
+#
+# Decibel does not publish Move source for its perp-dex package, so to compile a module that calls
+# its PUBLIC (non-entry) functions — which are absent from the on-chain ABI — we declare matching
+# signatures here. Bodies are `abort` stubs; they are never published. At publish time the REAL
+# modules already on-chain at these addresses are linked. Signatures were extracted from the
+# decompiled bytecode in ~/decibel-security-research/decompiled/*.mv.move.
+#
+# DEPLOY NOTE: `order_book` (aptos_experimental::order_book_types) is a framework-style package; the
+# address below is a placeholder for compilation. Before mainnet/testnet publish, repoint it to the
+# real aptos_experimental address and prefer linking the real package so type identity matches.
+[package]
+name = "DecibelInterface"
+version = "0.1.0"
+
+[addresses]
+decibel = "0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f"          # testnet perp-dex pkg
+order_book = "0x7"                                                                       # aptos_experimental (placeholder — verify per network)
+indicator_launchpad = "0x203aee9ec419ae109e5fc9cf19a0657644bc17f0ae4adfef27b2b1d19bb2c52c" # deployed indicator pkg (testnet)
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }

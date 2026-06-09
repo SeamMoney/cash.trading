@@ -1,0 +1,15 @@
+[package]
+name = "CashStrategyVaults"
+version = "0.1.0"
+authors = ["SeamMoney"]
+
+[addresses]
+# Address this package deploys to. Placeholder for compilation; pass the real deployer at publish
+# with `--named-addresses cash_strategy=0x...`.
+cash_strategy = "0xCA54"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+# Compile-time interface for Decibel perp-dex + the deployed indicator package. The real modules are
+# already on-chain; this dep is never published. See deps/decibel-interface/.
+DecibelInterface = { local = "deps/decibel-interface" }

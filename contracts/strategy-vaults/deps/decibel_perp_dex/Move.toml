@@ -1,0 +1,12 @@
+# Compile-time interface mirroring the on-chain `decibel_perp_dex` package (testnet 0x952535…),
+# which owns perp_order / perp_market / builder_code_registry. Name MUST match on-chain. Stubs only.
+[package]
+name = "decibel_perp_dex"
+version = "0.1.0"
+
+[addresses]
+decibel = "0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+AptosTrading = { local = "../AptosTrading" }

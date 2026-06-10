@@ -1,0 +1,12 @@
+# Compile-time interface mirroring the on-chain `AptosTrading` package (testnet 0xb4e85b13…),
+# which owns aptos_experimental::order_book_types. Name MUST match the on-chain package so the
+# publish-time dependency check (0x1::code) resolves it. Never published; stubs only.
+[package]
+name = "AptosTrading"
+version = "0.1.0"
+
+[addresses]
+order_book = "0xb4e85b1328eeba5398a62585d9c15e55980f9c8acefbbe484b8232ddad0cc6c7"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }

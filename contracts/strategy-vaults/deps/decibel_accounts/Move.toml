@@ -1,0 +1,13 @@
+# Compile-time interface mirroring the on-chain `decibel_accounts` package (testnet 0x952535…),
+# which owns dex_accounts. Name MUST match on-chain. Stubs only; never published.
+[package]
+name = "decibel_accounts"
+version = "0.1.0"
+
+[addresses]
+decibel = "0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+decibel_perp_dex = { local = "../decibel_perp_dex" }
+AptosTrading = { local = "../AptosTrading" }

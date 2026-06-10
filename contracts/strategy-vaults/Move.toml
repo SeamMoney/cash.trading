@@ -4,12 +4,15 @@ version = "0.1.0"
 authors = ["SeamMoney"]
 
 [addresses]
-# Address this package deploys to. Placeholder for compilation; pass the real deployer at publish
-# with `--named-addresses cash_strategy=0x...`.
-cash_strategy = "0xCA54"
+# Address this package deploys to. Provided at compile/publish with
+# `--named-addresses cash_strategy=0x...` (e.g. `aptos move compile --named-addresses cash_strategy=0xCA54`).
+cash_strategy = "_"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
-# Compile-time interface for Decibel perp-dex + the deployed indicator package. The real modules are
-# already on-chain; this dep is never published. See deps/decibel-interface/.
-DecibelInterface = { local = "deps/decibel-interface" }
+# Compile-time interface packages mirroring the on-chain Decibel/AptosTrading packages BY NAME so the
+# publish-time dependency check (0x1::code) resolves them. The real modules are already on-chain; these
+# deps are never published. See deps/*/.
+decibel_accounts = { local = "deps/decibel_accounts" }
+decibel_perp_dex = { local = "deps/decibel_perp_dex" }
+AptosTrading = { local = "deps/AptosTrading" }

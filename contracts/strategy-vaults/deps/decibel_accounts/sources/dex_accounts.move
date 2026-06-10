@@ -11,7 +11,7 @@ module decibel::dex_accounts {
 
     struct Subaccount has key { v: u8 }
 
-    public fun primary_subaccount_object_public(_owner: address): Object<Subaccount> { abort 0 }
+    public fun primary_subaccount_object(_owner: address): Object<Subaccount> { abort 0 }
 
     /// place_perp_order_to_subaccount(signer, subaccount, market, common_args, reduce_only,
     ///   stop_price, tp_sl_args, builder_code) — `public fun` (composable; NOT entry, so absent

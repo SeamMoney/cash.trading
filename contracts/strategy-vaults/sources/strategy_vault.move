@@ -22,7 +22,7 @@ module cash_strategy::strategy_vault {
     use aptos_framework::event;
     use aptos_framework::object::{Self, Object, ExtendRef};
 
-    use indicator_launchpad::indicator;
+    use cash_strategy::indicator;
     use decibel::dex_accounts::{Self, Subaccount};
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
@@ -128,7 +128,7 @@ module cash_strategy::strategy_vault {
         //    SELL → close any long, open short.
         let want_long = sig == SIGNAL_BUY;
         let trader = object::generate_signer_for_extending(&sv.extend_ref);
-        let subaccount = dex_accounts::primary_subaccount_object_public(sv.decibel_vault_addr);
+        let subaccount = dex_accounts::primary_subaccount_object(sv.decibel_vault_addr);
 
         // If flipping from an open opposite position, first reduce-only close it.
         if (sv.in_position && sv.is_long != want_long) {

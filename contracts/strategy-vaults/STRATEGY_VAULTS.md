@@ -73,12 +73,22 @@ aptos move publish --named-addresses cash_strategy=0x<deployer>
 > interface package is sufficient for compilation and review; the link-identity step is the gate to a
 > successful on-chain publish.
 
+## Deployed (testnet)
+
+- **Package address:** `0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3`
+  (modules `strategy_vault`, `indicator`, `math_lib`)
+- **Publish tx:** `0xbb9752a110338fa58b40fef3f06355256a14b340e7b4768e85d83cbd393fa439`
+- Linked live against real Decibel testnet modules: `decibel_accounts::dex_accounts`,
+  `decibel_perp_dex::{perp_order,perp_market,builder_code_registry}`, `AptosTrading::order_book_types`.
+
 ## Status & next steps
 
 - [x] `strategy_vault.move` — binds indicator → Decibel vault; `tick()` trades on signal flips. **Compiles.**
-- [x] Decibel interface package — exact signatures from decompiled source.
-- [ ] Resolve real `aptos_experimental` address per network + publish to testnet; integration-test
-      create → delegate → tick → order fills against a live Decibel testnet vault.
+- [x] Decibel interface package — exact signatures from decompiled source (3 packages mirroring the
+      on-chain names so the publish-time dependency check resolves).
+- [x] **Published to testnet** and link-verified against live Decibel modules (see above).
+- [ ] Integration-test: create_strategy_vault → delegate_dex_actions_to → tick → confirm a real order
+      fills on a live Decibel testnet vault subaccount.
 - [ ] Transpiler: emit a strategy-vault-wired module from `lib/launchpad/move-codegen.ts` (today it
       generates a signal-only indicator and never compiles/deploys it).
 - [ ] Wire the lifecycle into the app: reuse `lib/decibel-vaults.ts` (create + **delegate to R**) and

@@ -6,6 +6,8 @@ import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
+import { getChainFromWallet } from "@/lib/wallet-utils";
+import { buildAptosCctpClaimPayload } from "@/lib/decibel-cctp";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import {
   shortAddress,
@@ -37,13 +39,32 @@ interface WalletBalanceResponse {
   error?: string;
 }
 
+type BridgeSourceChain = "Arbitrum" | "Base" | "Ethereum";
+
+interface CctpStatusResponse {
+  amount?: number;
+  attestation?: string | null;
+  destinationChain?: string;
+  destinationIsAptos?: boolean;
+  error?: string;
+  explorerUrl?: string | null;
+  mintRecipient?: string;
+  nonce?: string;
+  messageBytes?: string;
+  sourceChain?: string;
+  status?: "pending" | "claimable" | "completed";
+  txHash?: string;
+}
+
+const BRIDGE_SOURCE_CHAINS: BridgeSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
+
 function formatDepositInputAmount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
   return value.toFixed(6).replace(/\.?0+$/, "");
 }
 
 export function DecibelAccountManager({ className }: { className?: string }) {
-  const { account, connected, signAndSubmitTransaction } = useWallet();
+  const { account, connected, signAndSubmitTransaction, wallet } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -56,6 +77,15 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
   const [walletUsdcLoading, setWalletUsdcLoading] = useState(false);
   const [walletUsdcError, setWalletUsdcError] = useState("");
+  const [bridgeSourceChain, setBridgeSourceChain] =
+    useState<BridgeSourceChain>("Arbitrum");
+  const [bridgeTxHash, setBridgeTxHash] = useState("");
+  const [bridgeTransfer, setBridgeTransfer] =
+    useState<CctpStatusResponse | null>(null);
+  const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [bridgeMessage, setBridgeMessage] = useState("");
   const {
     decibelNetwork,
     hasDecibelAccount,
@@ -69,6 +99,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     waitForSubaccounts,
   } = useDecibelSubaccounts();
   const isMainnet = decibelNetwork === "mainnet";
+  const walletOrigin = wallet ? getChainFromWallet(wallet) : "aptos";
+  const isEvmWallet = walletOrigin === "ethereum";
+  const bridgeStorageKey =
+    connected && account
+      ? `cash:decibel:cctp-deposit:${decibelNetwork}:${account.address.toString()}`
+      : "";
 
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
@@ -128,6 +164,41 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     !isLoadingSubaccounts &&
     !lookupIncomplete &&
     status !== "submitting";
+
+  useEffect(() => {
+    if (!bridgeStorageKey) return;
+    try {
+      const saved = window.localStorage.getItem(bridgeStorageKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as {
+        sourceChain?: BridgeSourceChain;
+        txHash?: string;
+        transfer?: CctpStatusResponse;
+      };
+      if (parsed.sourceChain && BRIDGE_SOURCE_CHAINS.includes(parsed.sourceChain)) {
+        setBridgeSourceChain(parsed.sourceChain);
+      }
+      if (parsed.txHash) setBridgeTxHash(parsed.txHash);
+      if (parsed.transfer) {
+        setBridgeTransfer(parsed.transfer);
+        setBridgeLookupStatus("success");
+      }
+    } catch {
+      window.localStorage.removeItem(bridgeStorageKey);
+    }
+  }, [bridgeStorageKey]);
+
+  useEffect(() => {
+    if (!bridgeStorageKey || !bridgeTxHash) return;
+    window.localStorage.setItem(
+      bridgeStorageKey,
+      JSON.stringify({
+        sourceChain: bridgeSourceChain,
+        txHash: bridgeTxHash,
+        transfer: bridgeTransfer,
+      })
+    );
+  }, [bridgeSourceChain, bridgeStorageKey, bridgeTransfer, bridgeTxHash]);
 
   const refreshAccountState = useCallback(async (signal?: AbortSignal) => {
     if (!selectedSubaccount || !hasDecibelAccount) {
@@ -215,6 +286,157 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     void refreshAccountState();
     void refreshWalletUsdcBalance();
   }, [refreshAccountState, refreshSubaccounts, refreshWalletUsdcBalance]);
+
+  const lookupBridgeTransfer = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const txHash = bridgeTxHash.trim();
+      if (!txHash) {
+        setBridgeMessage("Paste the source-chain transfer transaction hash.");
+        setBridgeLookupStatus("error");
+        return;
+      }
+
+      if (!options?.silent) {
+        setBridgeLookupStatus("loading");
+        setBridgeMessage("Looking up Circle CCTP transfer...");
+      }
+
+      try {
+        const params = new URLSearchParams({
+          sourceChain: bridgeSourceChain,
+          txHash,
+          network: decibelNetwork,
+        });
+        const res = await fetch(`/api/decibel/cctp/status?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as CctpStatusResponse;
+        if (!res.ok || data.error) {
+          throw new Error(data.error || `Transfer lookup failed (${res.status})`);
+        }
+        setBridgeTransfer(data);
+        setBridgeLookupStatus("success");
+        setBridgeMessage(
+          data.status === "claimable"
+            ? "Transfer is attested and ready to claim on Aptos, then deposit to Decibel."
+            : "Transfer found. Waiting for Circle attestation before claim."
+        );
+      } catch (err) {
+        if (options?.silent) return;
+        setBridgeLookupStatus("error");
+        setBridgeMessage(
+          err instanceof Error ? err.message : "Could not look up the bridge transfer."
+        );
+      }
+    },
+    [bridgeSourceChain, bridgeTxHash, decibelNetwork]
+  );
+
+  useEffect(() => {
+    if (bridgeTransfer?.status !== "pending" || !bridgeTxHash) return;
+    const timer = window.setInterval(() => {
+      void lookupBridgeTransfer({ silent: true });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [bridgeTransfer?.status, bridgeTxHash, lookupBridgeTransfer]);
+
+  const handleClaimBridgeTransfer = useCallback(async () => {
+    if (!connected || !account) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Connect wallet before claiming the bridge transfer.");
+      return;
+    }
+    if (!selectedSubaccount || !subaccounts.some((s) => s.address === selectedSubaccount)) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Select a Decibel trading account before claim and deposit.");
+      return;
+    }
+    if (
+      !bridgeTransfer?.messageBytes ||
+      !bridgeTransfer.attestation ||
+      bridgeTransfer.status !== "claimable"
+    ) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Circle attestation is not ready yet.");
+      return;
+    }
+    if (typeof bridgeTransfer.amount !== "number" || bridgeTransfer.amount <= 0) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Transfer amount is unavailable.");
+      return;
+    }
+
+    setStatus("submitting");
+    setStatusHash("");
+    setBridgeLookupStatus("loading");
+    setBridgeMessage("Claim USDC on Aptos in your wallet...");
+    try {
+      let skipClaim = false;
+      try {
+        const claimPayload = buildAptosCctpClaimPayload({
+          attestation: bridgeTransfer.attestation,
+          messageBytes: bridgeTransfer.messageBytes,
+          network: decibelNetwork,
+        });
+        const claimResult = await signAndSubmitTransaction({ data: claimPayload });
+        setStatusHash(claimResult.hash);
+        setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
+        await waitForTransactionConfirmation(claimResult.hash);
+      } catch (claimErr) {
+        const claimMessage =
+          claimErr instanceof Error ? claimErr.message : String(claimErr);
+        if (
+          claimMessage.toLowerCase().includes("nonce") ||
+          claimMessage.toLowerCase().includes("already")
+        ) {
+          skipClaim = true;
+          setBridgeMessage("Transfer appears already claimed. Depositing available USDC...");
+        } else {
+          throw claimErr;
+        }
+      }
+
+      if (!skipClaim) {
+        setBridgeMessage("Claim confirmed. Depositing USDC to Decibel...");
+      }
+
+      const raw = String(Math.floor(bridgeTransfer.amount * 1_000_000));
+      const { hash } = await buildAndSign(
+        "/api/decibel/deposit",
+        { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
+        signAndSubmitTransaction
+      );
+      setStatusHash(hash);
+      setBridgeMessage("Deposit submitted. Waiting for Decibel confirmation...");
+      await waitForTransactionConfirmation(hash);
+      emitDecibelPositionsRefresh();
+      void refreshAccountState();
+      void refreshWalletUsdcBalance();
+      setBridgeTransfer((current) =>
+        current ? { ...current, status: "completed" } : current
+      );
+      setBridgeLookupStatus("success");
+      setBridgeMessage("USDC claimed on Aptos and deposited to Decibel.");
+      setStatus("success");
+      setStatusMessage("USDC claimed and deposited to Decibel.");
+    } catch (err) {
+      setStatus("error");
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        err instanceof Error ? err.message : "Claim and deposit failed."
+      );
+    }
+  }, [
+    account,
+    bridgeTransfer,
+    connected,
+    decibelNetwork,
+    refreshAccountState,
+    refreshWalletUsdcBalance,
+    selectedSubaccount,
+    signAndSubmitTransaction,
+    subaccounts,
+  ]);
 
   const handleCreateSubaccount = useCallback(async () => {
     if (!connected || !account) return;
@@ -529,6 +751,133 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           </button>
         </div>
       </div>
+
+      {connected && hasDecibelAccount && (
+        <div className="border-t border-white/[0.06] pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-zinc-600">
+                EVM bridge resume
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
+                Paste an Arbitrum, Base, or Ethereum CCTP transfer hash to track the
+                same bridge step Decibel uses before Aptos deposit.
+              </p>
+            </div>
+            <span
+              className={cn(
+                "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
+                isEvmWallet
+                  ? "bg-accent/10 text-accent"
+                  : "bg-white/[0.04] text-zinc-500"
+              )}
+            >
+              {isEvmWallet ? `${wallet?.name ?? "EVM"} detected` : "Optional"}
+            </span>
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-1 rounded-md bg-white/[0.03] p-1">
+            {BRIDGE_SOURCE_CHAINS.map((chain) => (
+              <button
+                key={chain}
+                type="button"
+                onClick={() => setBridgeSourceChain(chain)}
+                className={cn(
+                  "rounded px-2 py-1.5 text-[10px] font-display font-semibold transition-colors",
+                  bridgeSourceChain === chain
+                    ? "bg-white/[0.08] text-zinc-100"
+                    : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                {chain}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input
+              type="text"
+              value={bridgeTxHash}
+              onChange={(e) => {
+                setBridgeTxHash(e.target.value.trim());
+                setBridgeTransfer(null);
+                setBridgeLookupStatus("idle");
+                setBridgeMessage("");
+              }}
+              className="min-w-0 rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-white/[0.06]"
+              placeholder="0x... transfer hash"
+            />
+            <button
+              type="button"
+              onClick={() => void lookupBridgeTransfer()}
+              disabled={bridgeLookupStatus === "loading"}
+              className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bridgeLookupStatus === "loading" ? "Checking" : "Resume"}
+            </button>
+          </div>
+
+          {bridgeTransfer && (
+            <div className="mt-2 space-y-2 rounded-[10px] bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-400">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-mono text-zinc-500">
+                  {bridgeTransfer.status === "claimable"
+                    ? "Ready to claim"
+                    : bridgeTransfer.status === "completed"
+                      ? "Completed"
+                    : "Bridging funds"}
+                </span>
+                <span className="font-mono tabular-nums text-zinc-100">
+                  {typeof bridgeTransfer.amount === "number"
+                    ? `${bridgeTransfer.amount.toLocaleString("en-US", {
+                        maximumFractionDigits: 6,
+                      })} USDC`
+                    : "-- USDC"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span>{bridgeTransfer.sourceChain ?? bridgeSourceChain} to Aptos</span>
+                {bridgeTransfer.explorerUrl && (
+                  <a
+                    href={bridgeTransfer.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline"
+                  >
+                    Source tx
+                  </a>
+                )}
+              </div>
+              {!bridgeTransfer.destinationIsAptos && (
+                <p className="text-yellow-300">
+                  This CCTP transfer does not appear to target Aptos.
+                </p>
+              )}
+              {bridgeTransfer.status === "claimable" && (
+                <button
+                  type="button"
+                  onClick={() => void handleClaimBridgeTransfer()}
+                  disabled={status === "submitting"}
+                  className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {status === "submitting" ? "Working..." : "Claim & Deposit"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {bridgeMessage && (
+            <p
+              className={cn(
+                "mt-2 text-[11px] leading-relaxed text-pretty",
+                bridgeLookupStatus === "error" ? "text-red-300" : "text-zinc-500"
+              )}
+            >
+              {bridgeMessage}
+            </p>
+          )}
+        </div>
+      )}
 
       {statusMessage && (
         <div

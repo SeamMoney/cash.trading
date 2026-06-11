@@ -1,6 +1,6 @@
 # Data needs from the UI lane (for the backend session)
 
-## 0. URGENT — block testnet calls from mainnet wallets (real user bug)
+## 0. ~~URGENT — block testnet calls from mainnet wallets~~ CLOSED (7778d23, UI lane)
 A user opened the account modal, flipped the app to testnet, and tapped Faucet while their Petra
 wallet was still on Mainnet. The app submitted the testnet-only `0x952535…::usdc::restricted_mint`
 payload, and the wallet showed a raw `module_not_found` simulation error. The UI lane added a

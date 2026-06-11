@@ -41,7 +41,7 @@ export function useDecibelSubaccounts() {
   const { account, connected } = useWallet();
   const owner = account?.address?.toString() ?? "";
   const [subaccounts, setSubaccounts] = useState<DecibelSubaccount[]>([]);
-  const [selectedSubaccount, setSelectedSubaccount] = useState("");
+  const [selectedSubaccount, setSelectedSubaccount] = useState(() => getStoredDecibelSubaccount() ?? "");
   const [isLoadingSubaccounts, setIsLoadingSubaccounts] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupIncomplete, setLookupIncomplete] = useState(false);
@@ -97,8 +97,9 @@ export function useDecibelSubaccounts() {
       });
       return next;
     } catch (error) {
+      const stored = getStoredDecibelSubaccount(owner);
       setSubaccounts([]);
-      setSelectedSubaccount("");
+      setSelectedSubaccount((current) => current || stored || "");
       setLookupError(error instanceof Error ? error.message : "Decibel account lookup failed.");
       setLookupIncomplete(true);
       setLookupSource("");
@@ -119,10 +120,19 @@ export function useDecibelSubaccounts() {
 
   useEffect(() => {
     refreshSubaccounts().catch(() => {
+      const stored = getStoredDecibelSubaccount(owner);
       setSubaccounts([]);
-      setSelectedSubaccount("");
+      setSelectedSubaccount((current) => current || stored || "");
     });
   }, [refreshSubaccounts]);
+
+  useEffect(() => {
+    if (!connected || !owner) return;
+    const stored = getStoredDecibelSubaccount(owner);
+    if (stored) {
+      setSelectedSubaccount((current) => stored || current);
+    }
+  }, [connected, owner]);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 

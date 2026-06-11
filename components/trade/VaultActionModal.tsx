@@ -262,7 +262,14 @@ export function VaultActionModal({
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="min-w-0 rounded-md border border-zinc-800 p-3">
-                <div className="text-zinc-500">Vault</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-zinc-500">Vault</div>
+                  {indicator.network === "testnet" ? (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-400">
+                      Testnet
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mt-1 truncate font-mono tabular-nums text-zinc-200">{shortAddress(vaultAddress)}</div>
               </div>
               <div className="min-w-0 rounded-md border border-zinc-800 p-3">

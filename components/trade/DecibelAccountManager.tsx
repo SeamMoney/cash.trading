@@ -17,6 +17,7 @@ import {
   DECIBEL_APP_DERIVED_DOMAIN,
   DECIBEL_APP_DERIVED_URI,
   deriveEvmAptosAddress,
+  needsSponsoredGas,
   submitEvmDerivedAptosPayload,
 } from "@/lib/evm-derived-aptos";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -657,6 +658,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setBridgeLookupStatus("loading");
     setBridgeMessage("Claim with your app.decibel.trade derived account...");
     try {
+      // Bridged-only derived accounts hold zero APT, so claim/deposit gas
+      // must come from the server fee-payer when the account can't self-fund.
+      const sponsored = await needsSponsoredGas(bridgeTransfer.mintRecipient);
+      if (sponsored) {
+        setBridgeMessage("Derived account has no APT for gas — using sponsored submission...");
+      }
       let skipClaim = false;
       try {
         const claimPayload = buildAptosCctpClaimPayload({
@@ -669,6 +676,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           expectedSenderAddress: bridgeTransfer.mintRecipient,
           payload: claimPayload,
           preferredWalletName: wallet?.name,
+          sponsored,
           uri: DECIBEL_APP_DERIVED_URI,
           onStep: setBridgeMessage,
         });
@@ -713,6 +721,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         expectedSenderAddress: bridgeTransfer.mintRecipient,
         payload: depositJson.payload,
         preferredWalletName: wallet?.name,
+        sponsored,
         uri: DECIBEL_APP_DERIVED_URI,
         onStep: setBridgeMessage,
       });

@@ -42,15 +42,37 @@ export function deriveEvmAptosAddress(args: {
   return publicKey.authKey().derivedAddress().toStringLong();
 }
 
+/**
+ * A derived account that only ever received bridged USDC has no APT, so it
+ * cannot pay gas itself. Below this balance we route the transaction through
+ * the server fee-payer instead of letting the wallet signature fail on
+ * INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE.
+ */
+const MIN_SELF_GAS_OCTAS = 1_000_000n; // 0.01 APT
+
+export async function needsSponsoredGas(accountAddress: string): Promise<boolean> {
+  try {
+    const octas = await aptos.getAccountAPTAmount({
+      accountAddress: normalizeAptosAddress(accountAddress),
+    });
+    return BigInt(octas) < MIN_SELF_GAS_OCTAS;
+  } catch {
+    // Account not found on chain yet — it certainly has no APT.
+    return true;
+  }
+}
+
 export async function submitEvmDerivedAptosPayload(args: {
   domain: string;
   expectedSenderAddress?: string;
   payload: InputGenerateTransactionPayloadData;
   preferredWalletName?: string;
   scheme?: string;
+  /** Route through /api/decibel/sponsor-submit so a server fee-payer covers gas. */
+  sponsored?: boolean;
   uri: string;
   onStep?: (message: string) => void;
-}) {
+}): Promise<{ hash: string }> {
   const provider = await getEvmProvider(args.preferredWalletName);
   if (!provider) {
     throw new Error("No EVM wallet provider found. Open Rainbow, MetaMask, or Coinbase Wallet.");
@@ -75,6 +97,11 @@ export async function submitEvmDerivedAptosPayload(args: {
   const transaction = await aptos.transaction.build.simple({
     sender,
     data: args.payload,
+    withFeePayer: args.sponsored === true,
+    // The sponsor route caps max_gas_amount * gas_unit_price at 0.05 APT;
+    // the SDK's 200k-unit default would blow through that, and these claim/
+    // deposit transactions use well under 20k units.
+    options: args.sponsored ? { maxGasAmount: 20_000 } : undefined,
   });
 
   const issuedAt = new Date();
@@ -99,6 +126,27 @@ export async function submitEvmDerivedAptosPayload(args: {
     signingMessageDigest,
     issuedAt
   );
+
+  if (args.sponsored) {
+    args.onStep?.("Submit via gas sponsor...");
+    const res = await fetch("/api/decibel/sponsor-submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transactionHex: transaction.bcsToHex().toString(),
+        senderAuthenticatorHex: senderAuthenticator.bcsToHex().toString(),
+      }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | { hash?: string; error?: string; reason?: string }
+      | null;
+    if (!res.ok || !data?.hash) {
+      throw new Error(
+        data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`,
+      );
+    }
+    return { hash: data.hash };
+  }
 
   args.onStep?.("Submit Aptos transaction...");
   return aptos.transaction.submit.simple({

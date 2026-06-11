@@ -26,6 +26,12 @@ import {
 const LEVERAGE_MIN = 1.1;
 const SLIDER_CONTENT_HEIGHT = 72;
 
+function shortAddress(value?: string | null) {
+  if (!value) return "—";
+  if (value.length <= 13) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
 type OrderLifecycle =
   | "idle"
   | "building"
@@ -105,6 +111,20 @@ export function TradePanel({
   const canSubmitDecibel = Boolean(canUseDecibel && marketAllowsOrders && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
+  const accountState = !connected
+    ? "Wallet disconnected"
+    : isLoadingSubaccounts
+      ? "Checking account"
+      : lookupIncomplete
+        ? "Needs refresh"
+        : hasDecibelAccount
+          ? "Ready"
+          : "No Decibel account";
+  const marketState = !supportedDecibelMarket
+    ? "Unavailable"
+    : marketStatus?.isOpen === false
+      ? marketStatus.mode || "Closed"
+      : "Open";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -386,7 +406,7 @@ export function TradePanel({
         ? `Long ${market}`
         : `Short ${market}`;
   return (
-    <div className={cn(className)}>
+    <div className={cn("flex flex-col", className)}>
       {/* Header row */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -664,6 +684,44 @@ export function TradePanel({
           )}
         </div>
       )}
+
+      <div className="mt-auto hidden pt-4 xl:block">
+        <div className="border-t border-white/[0.06] pt-4 font-mono text-[11px] tabular-nums">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-zinc-500">Execution</span>
+            <span
+              className={cn(
+                "rounded-[6px] px-2 py-1 text-[10px]",
+                canUseDecibel && marketAllowsOrders ? "bg-green-500/10 text-green-400" : "bg-white/[0.04] text-zinc-500",
+              )}
+            >
+              {canUseDecibel && marketAllowsOrders ? "READY" : "WAITING"}
+            </span>
+          </div>
+          <div className="space-y-2.5 text-zinc-500">
+            <div className="flex justify-between gap-4">
+              <span>Account</span>
+              <span className="text-right text-zinc-300">{accountState}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Subaccount</span>
+              <span className="text-right text-zinc-300">{shortAddress(selectedSubaccount)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Market</span>
+              <span className="text-right text-zinc-300">{marketState}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Network</span>
+              <span className="text-right text-zinc-300">{decibelNetwork}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Max lev.</span>
+              <span className="text-right text-zinc-300">{maxLeverage}x</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* OrderBook — hidden for now (Decibel depth API unavailable on mainnet) */}
     </div>

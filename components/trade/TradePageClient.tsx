@@ -1247,7 +1247,7 @@ export function TradePageClient({
           className="grid gap-3 xl:grid-cols-[minmax(560px,1fr)_minmax(340px,390px)] xl:items-stretch 2xl:grid-cols-[minmax(700px,1fr)_390px_360px] 2xl:gap-4"
         >
           {/* BTC Chart */}
-          <div className="animate-enter animate-enter-delay-1 xl:min-w-0">
+          <div className="min-w-0 animate-enter animate-enter-delay-1">
             <BTCChart
               initialHistory={initialBtcCandles}
               liquidationLines={chartLiquidationLines}
@@ -1268,7 +1268,7 @@ export function TradePageClient({
           </div>
 
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="max-w-xl animate-enter animate-enter-delay-2 xl:col-span-2 xl:max-w-none 2xl:col-span-1">
+          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:col-span-2 xl:max-w-none 2xl:col-span-1">
             <TradePanel
               market={market.pair}
               marketId={market.id}

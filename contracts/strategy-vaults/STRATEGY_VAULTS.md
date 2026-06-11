@@ -91,9 +91,17 @@ aptos move publish --named-addresses cash_strategy=0x<deployer>
       (SMA 3/5) → pushed a rising price series → on-chain crossover yields **signal = BUY** (fast 12000 >
       slow 11200). Indicator object `0xc3816b44937eb90860f5424f28d1506e58c9be5b582718ea95413cffb637d180`.
       Reproduce: `scripts/integration-test.sh`.
-- [ ] Integration Stage B (Decibel order): create/fund a Decibel testnet vault → delegate_dex_actions_to
-      the strategy-vault object → tick → confirm a real order fills on the vault subaccount. Needs
-      testnet USDC collateral + a perp-market Object (see scripts/integration-test.sh TODO).
+- [x] **Integration Stage B (Decibel order) COMPLETE on testnet** — full trustless loop proven:
+      mint USDC → create subaccount + deposit collateral → `vault_api::create_and_fund_vault` (vault
+      `0x89394320…ec6e`, 100 USDC) → `create_strategy_vault` (binding `0x97ac8825…bc69`) →
+      `vault_admin_api::delegate_dex_actions_to(vault, binding)` → `strategy_vault::tick` placed a **real
+      Decibel perp order** on the vault subaccount (tick txn `0x304fa67c…`, emitted `VaultTraded` +
+      Decibel `OrderEvent`: is_buy=true, size=100000, signal=BUY). State: in_position=long, trades=1.
+      Driven entirely by the on-chain indicator — no trusted keeper. Reproduce: `scripts/stage-b.mjs`
+      (`vault` → `bind <vault>` → `delegate <vault> <sv>` → `size <sv> 100000` → `tick <sv>`).
+      Decibel facts learned: testnet USDC metadata `0xbdabb88a…1b7e`; BTC/USD perp-market Object
+      `0x6e9c93c8…b90a`; vault fee_interval_s ∈ [2592000, 31536000] + 1 APT creation fee;
+      `dex_accounts::primary_subaccount_object` (testnet), not `_public`.
 - [ ] Transpiler: emit a strategy-vault-wired module from `lib/launchpad/move-codegen.ts` (today it
       generates a signal-only indicator and never compiles/deploys it).
 - [ ] Wire the lifecycle into the app: reuse `lib/decibel-vaults.ts` (create + **delegate to R**) and

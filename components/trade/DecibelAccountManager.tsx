@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
+import { walletNetworkMismatchMessage } from "@/lib/wallet-network";
 import { buildAptosCctpClaimPayload } from "@/lib/decibel-cctp";
 import {
   fetchEvmUsdcBalance,
@@ -165,7 +166,7 @@ function BridgeStepsRail({
 }
 
 export function DecibelAccountManager({ className }: { className?: string }) {
-  const { account, connected, signAndSubmitTransaction, signTransaction, wallet } = useWallet();
+  const { account, connected, network: walletNetwork, signAndSubmitTransaction, signTransaction, wallet } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -915,6 +916,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   const handleMintTestnetUsdc = useCallback(async () => {
     if (!connected || !account || isMainnet) return;
+    // Hard guard: a mainnet-connected wallet cannot mint testnet USDC — the
+    // module doesn't exist there and the wallet shows a raw simulation error.
+    const mismatch = walletNetworkMismatchMessage(walletNetwork?.name, decibelNetwork);
+    if (mismatch) {
+      setStatusMessage(mismatch);
+      setStatus("error");
+      return;
+    }
     setStatus("submitting");
     setStatusMessage("Mint Decibel testnet USDC in your wallet...");
     setStatusHash("");
@@ -934,13 +943,23 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatusMessage(err instanceof Error ? err.message : "Decibel USDC mint failed");
       setStatus("error");
     }
-  }, [account, connected, decibelNetwork, isMainnet, signAndSubmitTransaction]);
+  }, [account, connected, decibelNetwork, isMainnet, signAndSubmitTransaction, walletNetwork?.name]);
 
   const handleDeposit = useCallback(async () => {
     if (!connected || !account) {
       setStatusMessage("Connect wallet before depositing USDC collateral.");
       setStatus("error");
       return;
+    }
+    {
+      // Hard guard: depositing through a wallet on the wrong network dies in
+      // simulation with a raw module/account error — fail with a clear message.
+      const mismatch = walletNetworkMismatchMessage(walletNetwork?.name, decibelNetwork);
+      if (mismatch) {
+        setStatusMessage(mismatch);
+        setStatus("error");
+        return;
+      }
     }
     if (!selectedSubaccount || !subaccounts.some((s) => s.address === selectedSubaccount)) {
       setStatusMessage("Create a Decibel trading account before depositing USDC collateral.");
@@ -992,6 +1011,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     selectedSubaccount,
     signAndSubmitTransaction,
     subaccounts,
+    walletNetwork?.name,
   ]);
 
   return (

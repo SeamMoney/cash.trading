@@ -9,6 +9,7 @@ import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events";
+import { Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/trade", label: "Trade" },
@@ -34,6 +35,12 @@ export function Header() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close the mobile menu whenever the route changes.
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   const addressStr = account?.address?.toString() ?? "";
   const shortAddress = addressStr
@@ -137,6 +144,15 @@ export function Header() {
         <div className="mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="md:hidden -ml-1.5 rounded-lg p-2 text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
             <Link href="/" className="text-white shrink-0" aria-label="cash.trading home">
               <CashWordmark />
             </Link>
@@ -208,6 +224,37 @@ export function Header() {
             )}
           </div>
         </div>
+
+        {/* Mobile nav menu */}
+        {mobileMenuOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Close menu"
+              className="fixed inset-0 top-[72px] z-40 bg-black/50 backdrop-blur-sm md:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <nav className="absolute inset-x-0 top-[72px] z-50 flex flex-col border-b border-white/[0.06] bg-[var(--background)] px-3 py-2 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)] md:hidden">
+              {NAV_ITEMS.map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`rounded-[10px] px-3 py-3 text-[15px] font-medium transition-colors ${
+                      isActive
+                        ? "bg-accent/15 text-accent"
+                        : "text-zinc-300 hover:bg-white/[0.05] hover:text-white"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </>
+        )}
       </header>
 
       {/* Wallet modals */}

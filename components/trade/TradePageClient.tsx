@@ -961,20 +961,24 @@ function MobilePortfolioSheet({ children }: { children: ReactNode }) {
         <button
           type="button"
           aria-label="Close portfolio"
-          className="pointer-events-auto fixed inset-0 -z-10 bg-black"
+          className="pointer-events-auto fixed inset-0 -z-10 bg-black/70 backdrop-blur-sm"
           onClick={() => snapTo(false)}
         />
       )}
       <section
         ref={sheetRef}
-        className="pointer-events-auto mx-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-[#2a2a2a] bg-[#101010] shadow-[0_-16px_40px_rgba(0,0,0,0.72)]"
+        className={cn(
+          "pointer-events-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden border border-[#363636] bg-[#121212]",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_-30px_60px_-15px_rgba(0,0,0,0.88),0_-10px_26px_-10px_rgba(0,0,0,0.72)]",
+          open ? "mx-auto rounded-t-[22px] border-b-0" : "mx-3 rounded-[22px]",
+        )}
         style={{
           transform: `translate3d(0, ${offset}px, 0)`,
-          transition: dragging ? "none" : "transform 160ms ease-out",
+          transition: dragging ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)",
         }}
       >
         <div
-          className="shrink-0 cursor-grab touch-none bg-[#101010] px-4 pb-3 pt-2 active:cursor-grabbing"
+          className="shrink-0 cursor-grab touch-none bg-gradient-to-b from-[#1c1c1c] to-[#121212] px-4 pb-3 pt-2.5 active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -984,13 +988,16 @@ function MobilePortfolioSheet({ children }: { children: ReactNode }) {
             snapTo(!open);
           }}
         >
-          <div className="mx-auto mb-2 h-[4px] w-9 rounded-full bg-[#3a3a3a]" />
+          <div className="mx-auto mb-2.5 h-[5px] w-10 rounded-full bg-[#4d4d4d] shadow-[0_1px_0_rgba(255,255,255,0.06)]" />
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[13px] font-display font-semibold text-zinc-100">Portfolio</div>
               <div className="text-[11px] text-zinc-500">Positions, orders, and account state</div>
             </div>
-            <div className="rounded-full bg-[#1f1f1f] px-2 py-1 text-[10px] font-mono uppercase text-zinc-500">
+            <div className={cn(
+              "rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide",
+              open ? "bg-[#1f1f1f] text-zinc-400" : "bg-accent/15 text-accent",
+            )}>
               {open ? "Close" : "Open"}
             </div>
           </div>

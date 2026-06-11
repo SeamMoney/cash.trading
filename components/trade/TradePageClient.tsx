@@ -9,6 +9,7 @@ import { OrderBook } from "@/components/trade/OrderBook";
 import { Positions as DecibelPositions } from "@/components/trade/Positions";
 import { TradePanel } from "@/components/trade/TradePanel";
 import { VaultActionModal } from "@/components/trade/VaultActionModal";
+import { MobilePortfolioSheet } from "@/components/trade/MobilePortfolioSheet";
 import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
@@ -67,7 +68,6 @@ interface DecibelVault {
 }
 
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
-const PORTFOLIO_SHEET_PEEK = 74;
 const PRICE_UI_COMMIT_MS = 250;
 
 // Display overrides for vault cards shown beside Decibel protocol vaults.
@@ -1167,126 +1167,6 @@ function SignalProductsPanel({
   );
 }
 
-function MobilePortfolioSheet({ children }: { children: ReactNode }) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef({
-    active: false,
-    startY: 0,
-    startOffset: 0,
-    offset: 0,
-    collapsed: 0,
-    moved: false,
-  });
-  const [offset, setOffset] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  const updateCollapsed = useCallback(() => {
-    const height = sheetRef.current?.offsetHeight ?? 0;
-    const collapsed = Math.max(0, height - PORTFOLIO_SHEET_PEEK);
-    dragRef.current.collapsed = collapsed;
-    const next = open ? 0 : collapsed;
-    dragRef.current.offset = next;
-    setOffset(next);
-  }, [open]);
-
-  useLayoutEffect(() => {
-    updateCollapsed();
-    window.addEventListener("resize", updateCollapsed);
-    window.addEventListener("orientationchange", updateCollapsed);
-    return () => {
-      window.removeEventListener("resize", updateCollapsed);
-      window.removeEventListener("orientationchange", updateCollapsed);
-    };
-  }, [updateCollapsed]);
-
-  const snapTo = useCallback((nextOpen: boolean) => {
-    const next = nextOpen ? 0 : dragRef.current.collapsed;
-    setOpen(nextOpen);
-    dragRef.current.offset = next;
-    setOffset(next);
-  }, []);
-
-  const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    dragRef.current.active = true;
-    dragRef.current.startY = event.clientY;
-    dragRef.current.startOffset = dragRef.current.offset;
-    dragRef.current.moved = false;
-    setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
-
-  const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active) return;
-    const delta = event.clientY - dragRef.current.startY;
-    if (Math.abs(delta) > 4) dragRef.current.moved = true;
-    const next = Math.max(0, Math.min(dragRef.current.collapsed, dragRef.current.startOffset + delta));
-    dragRef.current.offset = next;
-    setOffset(next);
-  }, []);
-
-  const onPointerUp = useCallback(() => {
-    if (!dragRef.current.active) return;
-    dragRef.current.active = false;
-    setDragging(false);
-    const shouldOpen = dragRef.current.offset < dragRef.current.collapsed * 0.55;
-    snapTo(shouldOpen);
-  }, [snapTo]);
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 lg:hidden">
-      {open && (
-        <button
-          type="button"
-          aria-label="Close portfolio"
-          className="pointer-events-auto fixed inset-0 -z-10 bg-black/70 backdrop-blur-sm"
-          onClick={() => snapTo(false)}
-        />
-      )}
-      <section
-        ref={sheetRef}
-        className={cn(
-          "pointer-events-auto flex h-[72dvh] max-w-xl flex-col overflow-hidden border border-[#363636] bg-[#121212]",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_-30px_60px_-15px_rgba(0,0,0,0.88),0_-10px_26px_-10px_rgba(0,0,0,0.72)]",
-          open ? "mx-auto rounded-t-[22px] border-b-0" : "mx-3 rounded-[22px]",
-        )}
-        style={{
-          transform: `translate3d(0, ${offset}px, 0)`,
-          transition: dragging ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)",
-        }}
-      >
-        <div
-          className="shrink-0 cursor-grab touch-none bg-gradient-to-b from-[#1c1c1c] to-[#121212] px-4 pb-3 pt-2.5 active:cursor-grabbing"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onClick={() => {
-            if (dragRef.current.moved) return;
-            snapTo(!open);
-          }}
-        >
-          <div className="mx-auto mb-2.5 h-[5px] w-10 rounded-full bg-[#4d4d4d] shadow-[0_1px_0_rgba(255,255,255,0.06)]" />
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[13px] font-display font-semibold text-zinc-100">Portfolio</div>
-              <div className="text-[11px] text-zinc-500">Positions, orders, and account state</div>
-            </div>
-            <div className={cn(
-              "rounded-full px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide",
-              open ? "bg-[#1f1f1f] text-zinc-400" : "bg-accent/15 text-accent",
-            )}>
-              {open ? "Close" : "Open"}
-            </div>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#101010] px-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-          {children}
-        </div>
-      </section>
-    </div>
-  );
-}
 
 /* ─── Page ─── */
 

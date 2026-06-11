@@ -111,8 +111,15 @@ aptos move publish --named-addresses cash_strategy=0x<deployer>
       on-chain so depositors verify deployed bytecode ⇄ published Pine.
 - [ ] Frontend: indicator overlay on Decibel charts + a trustless-vault marketplace.
 
-## Open decisions
+## Decisions made (2026-06-10)
 
-- **Tick cadence / oracle** — who calls `tick()` and with what price? Permissionless keeper vs. reading
-  Decibel's oracle inside `tick()` (preferred — makes the price un-spoofable).
-- **Position sizing** — fixed lot (`order_size`, today) vs. % of vault NAV.
+- **Tick pricing → read the Decibel oracle inside `tick()`** (un-spoofable). Use
+  `public_read_api::get_mark_price(market): u64` as both the indicator input and the order limit, instead
+  of a keeper-supplied price. (Next: add the stub + repoint tick; the toy-price keeper path stays only
+  for tests.)
+- **Position sizing → % of vault NAV.** Read `public_read_api::get_account_net_asset_value(addr): i64`
+  on the vault subaccount; `order_size = nav * pct_bps / mark_price`. (The private `vault::get_nav_in_*`
+  aren't callable; the account-level NAV is `public fun`.)
+
+Both reads live in `decibel::public_read_api`. Implementing them is a compatible upgrade to
+`strategy_vault.move` + a stub for `public_read_api`.

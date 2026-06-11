@@ -202,6 +202,9 @@ const MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
   "SPY/USD": { maxLeverage: 50, minSizeRaw: 40000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
   "QQQ/USD": { maxLeverage: 30, minSizeRaw: 40000, sizeDecimals: 7, priceDecimals: 6, tickSize: 10000, lotSize: 10000 },
   "EWY/USD": { maxLeverage: 15, minSizeRaw: 20000, sizeDecimals: 6, priceDecimals: 6, tickSize: 1000, lotSize: 10000 },
+  // Commodities — specs from the live Decibel /markets API
+  "COPPER/USD": { maxLeverage: 20, minSizeRaw: 20000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
+  "NATGAS/USD": { maxLeverage: 10, minSizeRaw: 50000, sizeDecimals: 5, priceDecimals: 6, tickSize: 100, lotSize: 10000 },
 };
 
 const TESTNET_MARKET_SPECS: Record<string, Omit<MarketConfig, "address">> = {
@@ -244,6 +247,8 @@ const MAINNET_MARKET_ADDRESSES: Record<string, string> = {
   "SPY/USD": "0xb4c1717658713ad5cffab87b6921ca51b66e753e2249c58089cf0631248ec6f9",
   "QQQ/USD": "0x8eef5222689f00c4fcbbaec2ff3f3e92ab41d8b89f1828c2f779700fc0e82eac",
   "EWY/USD": "0x4aab2fc83d5cee7de9cf4c9b4b90f8c5c47dc56292c31188ce00364d42f2de51",
+  "COPPER/USD": "0x51c0cfddf76db06e4a56471a7216afd71b2f395d259e9f0ce3f13d92049a3ec4",
+  "NATGAS/USD": "0x7c8eaf4161955cdfc8a11829e6a39d8bb931d7d1d599abc1cd38ebe60885e982",
 };
 
 // Build network-aware MARKETS object

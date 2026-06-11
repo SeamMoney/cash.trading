@@ -309,7 +309,10 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                   </div>
 
                   <div className="mt-3">
-                    <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
+                      <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">Curve illustrative · endpoint real</div>
+                    </div>
                     <div
                       className={cn(
                         "mt-0.5 text-[22px] font-bold tabular-nums",
@@ -358,10 +361,34 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                       <span>Trading Volume</span>
                       <span className="text-[#777]">{formatUsd(displayVolume)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>Open Interest</span>
-                      <span className="text-[#777]">{formatUsd(guild?.openInterest ?? 0)}</span>
-                    </div>
+                    {guild ? (
+                      <div className="flex items-center justify-between text-[11px] text-[#444]">
+                        <span>Open Interest</span>
+                        <span className="text-[#777]">{formatUsd(guild.openInterest)}</span>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Real Decibel vault metrics (protocol/DLP) — no fabricated rows */}
+                        <div className="flex items-center justify-between text-[11px] text-[#444]">
+                          <span>TVL</span>
+                          <span className="text-[#777]">{formatUsd(vault.tvl)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-[#444]">
+                          <span>All-time PnL</span>
+                          <span className={cn((vault.all_time_pnl ?? 0) < 0 ? "text-red-400" : "text-green-400")}>
+                            {formatUsd(vault.all_time_pnl)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-[#444]">
+                          <span>APR</span>
+                          <span className="text-[#777]">{(vault.apr ?? 0).toFixed(2)}%</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-[#444]">
+                          <span>Win Rate (12w)</span>
+                          <span className="text-[#777]">{((vault.weekly_win_rate_12w ?? 0) * 100).toFixed(0)}%</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Members</span>
                       <span className="text-[#777]">{(guild?.traders ?? vault.depositors ?? 0).toLocaleString()}</span>

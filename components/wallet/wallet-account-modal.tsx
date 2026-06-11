@@ -19,10 +19,19 @@ interface WalletAccountModalProps {
 }
 
 export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
-  const { account, wallet, disconnect, connected } = useWallet();
+  const { account, wallet, disconnect, connected, network: walletNetwork } = useWallet();
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
+
+  // The app's Decibel network and the wallet's own network are independent; a
+  // mismatch makes testnet-only calls (e.g. the USDC faucet) fail in the wallet
+  // with a raw module_not_found error. Warn before the user hits that wall.
+  const walletNetworkName = walletNetwork?.name?.toLowerCase() ?? "";
+  const walletNetworkMismatch =
+    connected &&
+    Boolean(walletNetworkName) &&
+    walletNetworkName !== decibelNetwork;
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
@@ -138,6 +147,14 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
                 ))}
               </div>
             </div>
+            {walletNetworkMismatch && (
+              <p className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-300">
+                Your wallet is connected to <span className="font-bold uppercase">{walletNetworkName}</span> but
+                the app is set to <span className="font-bold uppercase">{decibelNetwork}</span>. Switch the
+                network inside your wallet app too — otherwise {decibelNetwork}-only actions like the faucet
+                will fail with a &quot;module not found&quot; error.
+              </p>
+            )}
           </div>
 
           <DecibelAccountManager className="border-t border-white/[0.06] pt-4" />

@@ -1,4 +1,14 @@
-# Data needs from the UI lane (for Codex)
+# Data needs from the UI lane (for the backend session)
+
+## 0. URGENT — block testnet calls from mainnet wallets (real user bug)
+A user opened the account modal, flipped the app to testnet, and tapped Faucet while their Petra
+wallet was still on Mainnet. The app submitted the testnet-only `0x952535…::usdc::restricted_mint`
+payload, and the wallet showed a raw `module_not_found` simulation error. The UI lane added a
+mismatch warning banner in `wallet-account-modal.tsx` (uses `useWallet().network`), but the
+**hard guard belongs in the submit handlers** (faucet/deposit/order in `DecibelAccountManager.tsx`,
+`TradeForm.tsx` — currently your WIP): before `signAndSubmitTransaction`, compare
+`useWallet().network?.name` to the app's Decibel network and fail fast with a friendly message
+("Switch your wallet to Testnet") instead of letting the wallet simulate a nonexistent module.
 
 UI presentation is ready for these; each is a data-layer gap (your lane). No UI files need touching —
 when the data lands, ping Claude (UI lane) to swap the bindings.

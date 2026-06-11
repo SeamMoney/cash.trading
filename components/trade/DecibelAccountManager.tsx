@@ -522,6 +522,57 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     return () => window.clearInterval(timer);
   }, [bridgeTransfer?.status, bridgeTxHash, lookupBridgeTransfer]);
 
+  // Auto-discover pending bridge transfers from the connected EVM wallet —
+  // scans DepositForBurn events by depositor on the source chains, so the
+  // user never has to paste a tx hash (parity with Decibel's own resume UX).
+  // Best-effort: failures stay silent and the manual hash field still works.
+  const [autoDiscoverKey, setAutoDiscoverKey] = useState("");
+  useEffect(() => {
+    if (!isEvmWallet || !evmSourceAddress) return;
+    if (bridgeTransfer || bridgeTxHash.trim()) return;
+    const scanKey = `${evmSourceAddress.toLowerCase()}:${decibelNetwork}`;
+    if (autoDiscoverKey === scanKey) return;
+    setAutoDiscoverKey(scanKey);
+
+    let active = true;
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          address: evmSourceAddress,
+          network: decibelNetwork,
+        });
+        const res = await fetch(`/api/decibel/cctp/discover?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          burns?: Array<{ sourceChain: BridgeSourceChain; txHash: string }>;
+        };
+        if (!active || !res.ok || !data.burns?.length) return;
+        const latest = data.burns[0];
+        setBridgeSourceChain(latest.sourceChain);
+        setBridgeTxHash(latest.txHash);
+        void lookupBridgeTransfer({
+          silent: true,
+          sourceChain: latest.sourceChain,
+          txHash: latest.txHash,
+        });
+      } catch {
+        // Discovery is additive; the manual flow remains available.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [
+    autoDiscoverKey,
+    bridgeTransfer,
+    bridgeTxHash,
+    decibelNetwork,
+    evmSourceAddress,
+    isEvmWallet,
+    lookupBridgeTransfer,
+  ]);
+
   const handleClaimBridgeTransfer = useCallback(async () => {
     if (!connected || !account) {
       setBridgeLookupStatus("error");

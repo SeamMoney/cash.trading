@@ -683,6 +683,7 @@ function fitLineWindowBounds(
   startTime: number,
   endTime: number,
   fallbackValue: number,
+  interval: ChartInterval,
 ) {
   if (points.length === 0) {
     return Number.isFinite(fallbackValue)
@@ -693,9 +694,10 @@ function fitLineWindowBounds(
       : points;
   }
 
-  const first = points[0];
-  const last = points[points.length - 1];
-  const bounded = points.filter((point) => point.time >= startTime && point.time <= endTime);
+  const canonical = dedupeAndSort(points);
+  const first = canonical[0];
+  const last = canonical[canonical.length - 1];
+  const bounded = canonical.filter((point) => point.time >= startTime && point.time <= endTime);
   const visibleFirst = bounded[0] ?? first;
   const visibleLast = bounded[bounded.length - 1] ?? last;
   const startValue = Number.isFinite(visibleFirst.value) ? visibleFirst.value : fallbackValue;
@@ -710,7 +712,52 @@ function fitLineWindowBounds(
     result.push({ time: endTime, value: endValue });
   }
 
-  return dedupeAndSort(result);
+  return fillLineWindowGaps(dedupeAndSort(result), startTime, endTime, interval);
+}
+
+function fillLineWindowGaps(
+  points: LivelinePoint[],
+  startTime: number,
+  endTime: number,
+  interval: ChartInterval,
+) {
+  if (points.length < 2) return points;
+
+  const rawStep = Math.max(INTERVAL_SECONDS[interval], Math.ceil((endTime - startTime) / 720));
+  const stepSecs = Math.max(1, rawStep);
+  const filled: LivelinePoint[] = [points[0]];
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = filled[filled.length - 1];
+    const point = points[index];
+    const gapSecs = point.time - previous.time;
+
+    if (gapSecs > stepSecs * 1.5) {
+      for (let time = previous.time + stepSecs; time < point.time - stepSecs * 0.25; time += stepSecs) {
+        filled.push({ time, value: previous.value });
+      }
+
+      const transitionLead = Math.min(stepSecs * 0.2, 0.2);
+      const preJumpTime = point.time - transitionLead;
+      if (preJumpTime > previous.time && preJumpTime < point.time) {
+        filled.push({ time: preJumpTime, value: previous.value });
+      }
+    }
+
+    filled.push(point);
+  }
+
+  return dedupeAndSort(filled);
+}
+
+function shiftLinePoints(points: LivelinePoint[], offsetSecs: number) {
+  if (!Number.isFinite(offsetSecs) || Math.abs(offsetSecs) < 0.001) return points;
+  return points.map((point) => ({ ...point, time: point.time + offsetSecs }));
+}
+
+function shiftCandles(candles: CandlePoint[], offsetSecs: number) {
+  if (!Number.isFinite(offsetSecs) || Math.abs(offsetSecs) < 0.001) return candles;
+  return candles.map((candle) => ({ ...candle, time: candle.time + offsetSecs }));
 }
 
 function sliceCandlesForWindow(candles: CandlePoint[], startTime: number, endTime: number) {
@@ -783,6 +830,7 @@ function BtcPerpsChartComponent({
   const [lineEndTime, setLineEndTime] = useState<number | null>(null);
   const [manualLineVerticalPad, setManualLineVerticalPad] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [chartNowSec, setChartNowSec] = useState(() => Date.now() / 1000);
   const [snapshot, setSnapshot] = useState<PerpMarketSnapshot>({
     connected: false,
     fundingRateBps: null,
@@ -803,6 +851,16 @@ function BtcPerpsChartComponent({
   } | null>(null);
 
   snapshotRef.current = snapshot;
+
+  useEffect(() => {
+    if (!active) return () => {};
+
+    const updateClock = () => setChartNowSec(Date.now() / 1000);
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+
+    return () => clearInterval(timer);
+  }, [active]);
 
   // Decibel is the product source of truth. External feeds are only an
   // explicit degraded-mode fallback, never the default chart source.
@@ -918,7 +976,10 @@ function BtcPerpsChartComponent({
       const latestCoinbaseTick = useCoinbaseLineFeed
         ? coinbaseTicks[coinbaseTicks.length - 1] ?? coinbaseHistoryTicks[coinbaseHistoryTicks.length - 1]
         : null;
-      const liveTime = latestCoinbaseTick?.time ?? Math.max(Date.now() / 1000, lineBounds.latest ?? 0);
+      const isLiveWindow = lineEndTime == null;
+      const liveTime = isLiveWindow
+        ? lineResolvedEndTime
+        : Math.min(lineResolvedEndTime, lineBounds.latest ?? lineResolvedEndTime);
       const liveValue = latestCoinbaseTick?.value ?? snapshot.price;
 
       if (useCoinbaseLineFeed && lineInterval === "1s") {
@@ -926,38 +987,38 @@ function BtcPerpsChartComponent({
         // (acceptance #4: resume must rebuild from sorted arrays, not from
         // animated path state). Then attach the live tick via withLiveTail,
         // which never mutates a committed point.
-        const pointsWithTail = withLiveTail(
-          dedupeAndSort([
-            ...buildHybridVisibleLinePoints(
-              activeMinuteCandles,
-              activeSecondCandles,
-              startTime,
-              lineResolvedEndTime,
-            ),
-            ...coinbaseHistoryTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
-            ...coinbaseTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
-          ]),
-          liveValue,
-          liveTime,
-        );
+        const canonicalPoints = dedupeAndSort([
+          ...buildHybridVisibleLinePoints(
+            activeMinuteCandles,
+            activeSecondCandles,
+            startTime,
+            lineResolvedEndTime,
+          ),
+          ...coinbaseHistoryTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
+          ...coinbaseTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
+        ]);
+        const pointsWithTail = isLiveWindow
+          ? withLiveTail(canonicalPoints, liveValue, liveTime)
+          : canonicalPoints;
         return fitLineWindowBounds(
-          trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
+          fillShortLineGaps(pointsWithTail, lineInterval),
           startTime,
           lineResolvedEndTime,
           liveValue,
+          lineInterval,
         );
       }
 
-      const pointsWithTail = withLiveTail(
-        dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval)),
-        liveValue,
-        liveTime,
-      );
+      const canonicalPoints = dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval));
+      const pointsWithTail = isLiveWindow
+        ? withLiveTail(canonicalPoints, liveValue, liveTime)
+        : canonicalPoints;
       return fitLineWindowBounds(
-        trimAfterLargeLineGap(fillShortLineGaps(pointsWithTail, lineInterval), lineInterval),
+        fillShortLineGaps(pointsWithTail, lineInterval),
         startTime,
         lineResolvedEndTime,
         liveValue,
+        lineInterval,
       );
     },
     [
@@ -967,12 +1028,22 @@ function BtcPerpsChartComponent({
       coinbaseTicks,
       lineInterval,
       lineBounds.latest,
+      lineEndTime,
       lineResolvedEndTime,
       lineVisibleCandles,
       lineWindowSecs,
       snapshot.price,
       useCoinbaseLineFeed,
     ],
+  );
+  const renderTimeOffset = lineResolvedEndTime == null ? 0 : chartNowSec - lineResolvedEndTime;
+  const renderLineData = useMemo(
+    () => shiftLinePoints(lineData, renderTimeOffset),
+    [lineData, renderTimeOffset],
+  );
+  const renderSecondCandles = useMemo(
+    () => shiftCandles(activeSecondCandles, renderTimeOffset),
+    [activeSecondCandles, renderTimeOffset],
   );
   const displayedLineValue = lineData[lineData.length - 1]?.value ?? snapshot.price;
   const displayedCandleValue = activeSecondCandles[activeSecondCandles.length - 1]?.close ?? snapshot.price;
@@ -1797,11 +1868,11 @@ function BtcPerpsChartComponent({
     };
   }, [active, btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
 
-  // Derive a live candle from the latest second candle for Liveline
+  // Derive a render-time live candle from the latest shifted second candle for Liveline.
   const liveCandle = useMemo(() => {
-    if (activeSecondCandles.length === 0) return undefined;
-    return activeSecondCandles[activeSecondCandles.length - 1];
-  }, [activeSecondCandles]);
+    if (renderSecondCandles.length === 0) return undefined;
+    return renderSecondCandles[renderSecondCandles.length - 1];
+  }, [renderSecondCandles]);
 
   return (
     <>
@@ -1823,13 +1894,13 @@ function BtcPerpsChartComponent({
       >
         <Liveline
           mode={mode}
-          data={lineData}
+          data={renderLineData}
           value={mode === "line" ? displayedLineValue : displayedCandleValue}
-          candles={activeSecondCandles}
+          candles={renderSecondCandles}
           candleWidth={1}
           liveCandle={liveCandle}
           lineMode={mode === "line"}
-          lineData={lineData}
+          lineData={renderLineData}
           lineValue={displayedLineValue}
           theme="dark"
           color={market.color}
@@ -1844,6 +1915,7 @@ function BtcPerpsChartComponent({
           loading={loading && lineData.length === 0 && activeSecondCandles.length === 0}
           emptyText=""
           padding={linePadding}
+          paused={!active}
         />
         <div
           aria-hidden="true"

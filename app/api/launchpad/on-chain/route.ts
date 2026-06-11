@@ -1,7 +1,12 @@
 /**
  * On-chain state reader for indicator contracts.
  *
- * GET /api/launchpad/on-chain?addr=<addr>&type=state|prices|position
+ * GET /api/launchpad/on-chain?addr=<addr>&type=state|prices|position[&pkg=<package addr>]
+ *
+ * `pkg` selects which published indicator package defines the object's types
+ * (defaults to the legacy launchpad package). The strategy-vault package
+ * deployed for trustless Decibel vaults lives at 0x44bccd… — pass it for
+ * indicators created by that factory.
  */
 import { NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
@@ -21,13 +26,15 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const addr = url.searchParams.get("addr");
   const type = url.searchParams.get("type") || "state";
+  const pkgParam = url.searchParams.get("pkg");
+  const CONTRACT_AT = pkgParam && /^0x[0-9a-fA-F]{1,64}$/.test(pkgParam) ? pkgParam : CONTRACT;
 
   if (!addr) return NextResponse.json({ error: "addr required" }, { status: 400 });
 
   try {
     if (type === "prices") {
-      const prices = await safeView(`${CONTRACT}::indicator::get_prices`, [addr]);
-      const timestamps = await safeView(`${CONTRACT}::indicator::get_timestamps`, [addr]);
+      const prices = await safeView(`${CONTRACT_AT}::indicator::get_prices`, [addr]);
+      const timestamps = await safeView(`${CONTRACT_AT}::indicator::get_timestamps`, [addr]);
       return NextResponse.json({
         prices: (prices as string[]).map((p) => Number(p) / 1e8),
         timestamps: (timestamps as string[]).map((t) => Number(t)),
@@ -35,7 +42,7 @@ export async function GET(req: Request) {
     }
 
     if (type === "position") {
-      const [inPos, entry, gain, loss] = await safeView(`${CONTRACT}::indicator::get_position`, [addr]);
+      const [inPos, entry, gain, loss] = await safeView(`${CONTRACT_AT}::indicator::get_position`, [addr]);
       return NextResponse.json({
         inPosition: inPos,
         entryPrice: Number(entry) / 1e8,
@@ -53,11 +60,11 @@ export async function GET(req: Request) {
       pricesResult,
       timestampsResult,
     ] = await Promise.all([
-      safeView(`${CONTRACT}::indicator::get_signal_view`, [addr]),
-      safeView(`${CONTRACT}::indicator::get_stats`, [addr]),
-      safeView(`${CONTRACT}::indicator::get_position`, [addr]),
-      safeView(`${CONTRACT}::indicator::get_prices`, [addr]),
-      safeView(`${CONTRACT}::indicator::get_timestamps`, [addr]),
+      safeView(`${CONTRACT_AT}::indicator::get_signal_view`, [addr]),
+      safeView(`${CONTRACT_AT}::indicator::get_stats`, [addr]),
+      safeView(`${CONTRACT_AT}::indicator::get_position`, [addr]),
+      safeView(`${CONTRACT_AT}::indicator::get_prices`, [addr]),
+      safeView(`${CONTRACT_AT}::indicator::get_timestamps`, [addr]),
     ]);
 
     const [sig, fast, slow, price, sigTime] = signalResult;

@@ -28,6 +28,9 @@ export interface IndicatorEntry {
   params: number[];       // [shortPeriod, longPeriod, thirdPeriod?]
   indicatorType: number;  // 0=SMA, 1=EMA, 2=RSI, 3=MACD, 4=BB, 5=Stoch, 6=SuperTrend, 7=Donchian
   isProprietary?: boolean;
+  /** Published package defining this indicator's module (for /api/launchpad/on-chain?pkg=…).
+   *  Present only on indicators that are REAL on-chain objects. */
+  pkg?: string;
   algoHash?: string;           // hex SHA3-256 commitment
   commitTs?: number;           // timestamp of commitment
   creatorFeeBps?: number;      // 0-1000 (200 = 2%)
@@ -37,6 +40,40 @@ export interface IndicatorEntry {
 
 // ─── Demo seed data — stats from real Pyth daily backtest (500–10k sims) ─
 const SEED: IndicatorEntry[] = [
+  {
+    // LIVE TRUSTLESS STRATEGY VAULT (testnet) — the real thing, end to end:
+    // indicator object created by the cash_strategy factory (pkg 0x44bccd…),
+    // bound to Decibel vault 0x8939…ec6e via StrategyVault object 0x97ac88…bc69,
+    // which holds delegated TradePerpsAllMarkets. tick() pushed prices on-chain
+    // and placed a real Decibel perp order (tx 0x304fa67c…). Stats read live
+    // via /api/launchpad/on-chain?pkg=0x44bccd….
+    address: "0xc3816b44937eb90860f5424f28d1506e58c9be5b582718ea95413cffb637d180",
+    creator: "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3",
+    name: "SMA Cross — Trustless Vault",
+    symbol: "SMATV",
+    description:
+      "SMA(3)/SMA(5) crossover bound to a Decibel vault by an immutable on-chain strategy module. The vault can ONLY trade this strategy — the module, not a keeper, places the orders.",
+    assets: ["BTC/USD"],
+    createdAt: Date.now() - 24 * 3600_000,
+    curveAddr: "0xc3816b44937eb90860f5424f28d1506e58c9be5b582718ea95413cffb637d180",
+    aptReserves: 0,
+    totalRaised: 0,
+    simsFunded: 0,
+    isGraduated: true,
+    totalSims: 0,
+    meanSharpe: 1840,
+    profitablePct: 100,
+    robustnessScore: 0,
+    maxDrawdownBps: 728,
+    vaultAddr: "0x89394320d351ec94dd47a14e3a60865242b504ed6001e5836f8d0fba0f95ec6e",
+    lastSignal: 1,
+    lastSignalTime: 1781000005 * 1000,
+    params: [3, 5],
+    indicatorType: 0,
+    isProprietary: false,
+    creatorFeeBps: 0,
+    pkg: "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3",
+  },
   {
     // LIVE ON-CHAIN: SMA Crossover Live — Aptos Object created by factory
     // Factory: 0x33b2..., Object addr: 0x27ab... (from IndicatorCreated event)
@@ -401,7 +438,15 @@ const SEED: IndicatorEntry[] = [
 ];
 
 // Runtime registry — persisted to disk, falls back to seed data on first load
-export const indicatorRegistry: IndicatorEntry[] = loadState<IndicatorEntry[]>("indicators", [...SEED]);
+// Persisted state wins for entries it knows, but seeds added after the state
+// file was first written (e.g. newly deployed live indicators) must still
+// surface — merge any unseen seeds in front of the persisted list.
+const persistedIndicators = loadState<IndicatorEntry[]>("indicators", [...SEED]);
+const persistedAddrs = new Set(persistedIndicators.map((i) => i.address.toLowerCase()));
+export const indicatorRegistry: IndicatorEntry[] = [
+  ...SEED.filter((s) => !persistedAddrs.has(s.address.toLowerCase())),
+  ...persistedIndicators,
+];
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

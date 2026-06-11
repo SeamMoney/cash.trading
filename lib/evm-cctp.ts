@@ -2,7 +2,7 @@ import type { DecibelNetwork } from "@/lib/decibel";
 
 export type EvmCctpSourceChain = "Ethereum" | "Arbitrum" | "Base";
 
-type Eip1193Provider = {
+export type Eip1193Provider = {
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>;
 };
 

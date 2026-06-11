@@ -13,6 +13,12 @@ import {
   startEvmCctpDeposit,
   type EvmCctpSourceChain,
 } from "@/lib/evm-cctp";
+import {
+  DECIBEL_APP_DERIVED_DOMAIN,
+  DECIBEL_APP_DERIVED_URI,
+  deriveEvmAptosAddress,
+  submitEvmDerivedAptosPayload,
+} from "@/lib/evm-derived-aptos";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import {
   shortAddress,
@@ -74,6 +80,16 @@ function normalizeAptosAddress(address?: string | null) {
   return `0x${hex.toLowerCase().padStart(64, "0")}`;
 }
 
+function safeDeriveEvmAptosAddress(evmAddress: string, domain: string) {
+  try {
+    return normalizeAptosAddress(
+      deriveEvmAptosAddress({ domain, evmAddress })
+    );
+  } catch {
+    return "";
+  }
+}
+
 export function DecibelAccountManager({ className }: { className?: string }) {
   const { account, connected, signAndSubmitTransaction, wallet } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
@@ -122,6 +138,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     !!bridgeMintRecipient &&
     !!connectedAptosAddress &&
     bridgeMintRecipient !== connectedAptosAddress;
+  const decibelAppDerivedAddress = evmSourceAddress
+    ? safeDeriveEvmAptosAddress(evmSourceAddress, DECIBEL_APP_DERIVED_DOMAIN)
+    : "";
+  const bridgeMatchesDecibelAppDerivedAccount =
+    bridgeMintRecipientMismatch &&
+    !!bridgeMintRecipient &&
+    !!decibelAppDerivedAddress &&
+    bridgeMintRecipient === decibelAppDerivedAddress;
   const bridgeStorageKey =
     connected && account
       ? `cash:decibel:cctp-deposit:${decibelNetwork}:${account.address.toString()}`
@@ -527,6 +551,135 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     selectedSubaccount,
     signAndSubmitTransaction,
     subaccounts,
+  ]);
+
+  const handleClaimDecibelAppBridgeTransfer = useCallback(async () => {
+    if (!connected) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Connect the EVM wallet that started this Decibel bridge transfer.");
+      return;
+    }
+    if (!selectedSubaccount || !subaccounts.some((s) => s.address === selectedSubaccount)) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Select a cash.trading Decibel account to receive this deposit.");
+      return;
+    }
+    if (!bridgeMatchesDecibelAppDerivedAccount || !bridgeTransfer?.mintRecipient) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("This transfer does not match the connected app.decibel.trade derived account.");
+      return;
+    }
+    if (
+      !bridgeTransfer.messageBytes ||
+      !bridgeTransfer.attestation ||
+      bridgeTransfer.status !== "claimable"
+    ) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Circle attestation is not ready yet.");
+      return;
+    }
+    if (typeof bridgeTransfer.amount !== "number" || bridgeTransfer.amount <= 0) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Transfer amount is unavailable.");
+      return;
+    }
+
+    setStatus("submitting");
+    setStatusHash("");
+    setBridgeLookupStatus("loading");
+    setBridgeMessage("Claim with your app.decibel.trade derived account...");
+    try {
+      let skipClaim = false;
+      try {
+        const claimPayload = buildAptosCctpClaimPayload({
+          attestation: bridgeTransfer.attestation,
+          messageBytes: bridgeTransfer.messageBytes,
+          network: decibelNetwork,
+        });
+        const claimResult = await submitEvmDerivedAptosPayload({
+          domain: DECIBEL_APP_DERIVED_DOMAIN,
+          expectedSenderAddress: bridgeTransfer.mintRecipient,
+          payload: claimPayload,
+          preferredWalletName: wallet?.name,
+          uri: DECIBEL_APP_DERIVED_URI,
+          onStep: setBridgeMessage,
+        });
+        setStatusHash(claimResult.hash);
+        setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
+        await waitForTransactionConfirmation(claimResult.hash);
+      } catch (claimErr) {
+        const claimMessage =
+          claimErr instanceof Error ? claimErr.message : String(claimErr);
+        if (
+          claimMessage.toLowerCase().includes("nonce") ||
+          claimMessage.toLowerCase().includes("already")
+        ) {
+          skipClaim = true;
+          setBridgeMessage("Transfer appears already claimed. Depositing available USDC...");
+        } else {
+          throw claimErr;
+        }
+      }
+
+      if (!skipClaim) {
+        setBridgeMessage("Claim confirmed. Depositing USDC to cash.trading Decibel account...");
+      }
+
+      const raw = String(Math.floor(bridgeTransfer.amount * 1_000_000));
+      const depositRes = await fetch("/api/decibel/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: raw,
+          network: decibelNetwork,
+          subaccount: selectedSubaccount,
+        }),
+      });
+      const depositJson = await depositRes.json();
+      if (!depositRes.ok || depositJson.error || !depositJson.payload) {
+        throw new Error(depositJson.error || "Failed to build Decibel deposit transaction.");
+      }
+
+      const depositResult = await submitEvmDerivedAptosPayload({
+        domain: DECIBEL_APP_DERIVED_DOMAIN,
+        expectedSenderAddress: bridgeTransfer.mintRecipient,
+        payload: depositJson.payload,
+        preferredWalletName: wallet?.name,
+        uri: DECIBEL_APP_DERIVED_URI,
+        onStep: setBridgeMessage,
+      });
+      setStatusHash(depositResult.hash);
+      setBridgeMessage("Deposit submitted. Waiting for Decibel confirmation...");
+      await waitForTransactionConfirmation(depositResult.hash);
+      emitDecibelPositionsRefresh();
+      void refreshAccountState();
+      void refreshWalletUsdcBalance();
+      setBridgeTransfer((current) =>
+        current ? { ...current, status: "completed" } : current
+      );
+      setBridgeLookupStatus("success");
+      setBridgeMessage("USDC claimed from the Decibel app transfer and deposited to cash.trading.");
+      setStatus("success");
+      setStatusMessage("Decibel app bridge claimed and deposited.");
+    } catch (err) {
+      setStatus("error");
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        err instanceof Error
+          ? err.message
+          : "Could not claim and deposit the Decibel app transfer."
+      );
+    }
+  }, [
+    bridgeMatchesDecibelAppDerivedAccount,
+    bridgeTransfer,
+    connected,
+    decibelNetwork,
+    refreshAccountState,
+    refreshWalletUsdcBalance,
+    selectedSubaccount,
+    subaccounts,
+    wallet?.name,
   ]);
 
   const handleStartEvmBridge = useCallback(async () => {
@@ -1062,21 +1215,41 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 </p>
               )}
               {bridgeMintRecipientMismatch && (
-                <p className="text-yellow-300">
-                  Mint recipient is {shortAddress(bridgeTransfer.mintRecipient ?? "")};
-                  this wallet is {shortAddress(account?.address.toString() ?? "")}.
-                </p>
+                <div className="space-y-1 text-yellow-300">
+                  <p>
+                    Mint recipient is {shortAddress(bridgeTransfer.mintRecipient ?? "")};
+                    this wallet is {shortAddress(account?.address.toString() ?? "")}.
+                  </p>
+                  <p className="text-yellow-300/80">
+                    {bridgeMatchesDecibelAppDerivedAccount
+                      ? "This looks like a transfer started on app.decibel.trade. Claim it with the same EVM wallet, then deposit it into the selected cash.trading account."
+                      : "Connect the wallet/domain-derived Aptos account that started this bridge before claiming."}
+                  </p>
+                </div>
               )}
-              {bridgeTransfer.status === "claimable" && (
+              {bridgeTransfer.status === "claimable" && !bridgeMintRecipientMismatch && (
                 <button
                   type="button"
                   onClick={() => void handleClaimBridgeTransfer()}
-                  disabled={status === "submitting" || bridgeMintRecipientMismatch}
+                  disabled={status === "submitting"}
                   className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {status === "submitting" ? "Working..." : "Claim & Deposit"}
                 </button>
               )}
+              {bridgeTransfer.status === "claimable" &&
+                bridgeMatchesDecibelAppDerivedAccount && (
+                  <button
+                    type="button"
+                    onClick={() => void handleClaimDecibelAppBridgeTransfer()}
+                    disabled={status === "submitting"}
+                    className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {status === "submitting"
+                      ? "Working..."
+                      : "Claim Decibel App Transfer"}
+                  </button>
+                )}
             </div>
           )}
 

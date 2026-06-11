@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { explorerTxUrl } from "@/lib/constants";
 import {
   emitDecibelPositionsRefresh,
+  getStoredDecibelSubaccount,
   onDecibelPositionsRefresh,
   onDecibelSubaccountChange,
   pickDecibelSubaccount,
@@ -497,10 +498,11 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       const subaccounts = Array.isArray(subaccountData.subaccounts)
         ? subaccountData.subaccounts as Subaccount[]
         : [];
-      const subaccount = pickDecibelSubaccount(
-        subaccounts,
-        ownerAddress
-      );
+      const fallback = getStoredDecibelSubaccount(ownerAddress);
+      const subaccount =
+        subaccounts.length > 0
+          ? pickDecibelSubaccount(subaccounts, ownerAddress)
+          : fallback;
 
       setSelectedSubaccount(subaccount);
       if (!subaccount) {
@@ -511,8 +513,9 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       return subaccount;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return null;
-      setSelectedSubaccount(null);
-      return null;
+      const fallback = getStoredDecibelSubaccount(ownerAddress);
+      setSelectedSubaccount(fallback);
+      return fallback;
     }
   }, [decibelNetwork, ownerAddress]);
 

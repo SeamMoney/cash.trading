@@ -18,6 +18,7 @@ import {
 } from "@/lib/decibel-public";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import type { Candle } from "@/hooks/useBtcCandles";
+import { cn } from "@/lib/utils";
 
 function fmtPrice(v: number): string {
   return "$" + v.toLocaleString("en-US", {
@@ -724,6 +725,7 @@ export function BTCChart({
   markets: marketsProp,
   categories: categoriesProp,
   defaultMarket,
+  className,
 }: {
   initialHistory?: MarketHistoryCandle[];
   liquidationLines?: LiquidationLine[];
@@ -732,6 +734,7 @@ export function BTCChart({
   markets?: Market[];
   categories?: readonly { key: MarketCategory; label: string }[];
   defaultMarket?: string;
+  className?: string;
 }) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [liveMarkets, setLiveMarkets] = useState<Market[]>(() =>
@@ -935,7 +938,7 @@ export function BTCChart({
   };
 
   return (
-    <div ref={chartRef} className="surface-1 rounded-[16px] overflow-hidden lg:flex lg:flex-col">
+    <div ref={chartRef} className={cn("surface-1 overflow-hidden rounded-[16px] lg:flex lg:flex-col", className)}>
       {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
@@ -1038,7 +1041,7 @@ export function BTCChart({
       </div>
 
       {/* Chart + subtle overlay controls */}
-      <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] lg:min-h-0">
+      <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1">
         {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
           <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-[#141414]" />

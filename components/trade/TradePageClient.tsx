@@ -1244,31 +1244,32 @@ export function TradePageClient({
         {/* ── Desktop: side-by-side. Mobile: stacked ── */}
         <div
           id="trade"
-          className="grid gap-3 xl:grid-cols-[minmax(560px,1fr)_minmax(340px,390px)] xl:items-stretch 2xl:grid-cols-[minmax(700px,1fr)_390px_360px] 2xl:gap-4"
+          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,390px)_minmax(320px,380px)] xl:items-stretch xl:gap-4"
         >
           {/* BTC Chart */}
-          <div className="min-w-0 animate-enter animate-enter-delay-1">
+          <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">
             <BTCChart
               initialHistory={initialBtcCandles}
               liquidationLines={chartLiquidationLines}
               onMarketChange={handleMarketChange}
               onPriceUpdate={handlePriceUpdate}
+              className="xl:h-full"
             />
           </div>
 
-          <div className="hidden animate-enter animate-enter-delay-2 xl:block">
+          <div className="hidden min-w-0 animate-enter animate-enter-delay-2 xl:block xl:h-[672px]">
             <OrderBook
               key={decibelMarketAddress ?? decibelMarketName}
               marketName={decibelMarketName}
               marketAddress={decibelMarketAddress}
               currentPrice={currentPrice}
               rowCount={21}
-              className="h-[672px] min-h-0"
+              className="h-full min-h-0"
             />
           </div>
 
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:col-span-2 xl:max-w-none 2xl:col-span-1">
+          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:h-[672px] xl:max-w-none">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1277,7 +1278,7 @@ export function TradePageClient({
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
               onPositionOpen={handlePositionOpen}
-              className="2xl:min-h-[672px]"
+              className="xl:h-full"
             />
             <div className="mt-3 xl:hidden">
               <OrderBook

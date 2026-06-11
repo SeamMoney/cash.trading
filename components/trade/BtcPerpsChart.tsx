@@ -1915,6 +1915,26 @@ function BtcPerpsChartComponent({
     return series;
   }, [overlayMode, mode, renderLineData, renderSecondCandles]);
 
+  // Fast/slow crossovers from the rendered overlay — surfaced as BUY/SELL signal
+  // chips (Liveline draws line series only, so events render as chips, not dots).
+  const overlayCrossings = useMemo(() => {
+    if (overlayMode === "off" || indicatorSeries.length < 2) return [];
+    const fast = indicatorSeries[0].data;
+    const slowByTime = new Map(indicatorSeries[1].data.map((p) => [p.time, p.value]));
+    const crossings: { time: number; side: "buy" | "sell"; price: number }[] = [];
+    let prevDiff: number | null = null;
+    for (const p of fast) {
+      const s = slowByTime.get(p.time);
+      if (s === undefined) continue;
+      const diff = p.value - s;
+      if (prevDiff !== null && diff !== 0 && Math.sign(diff) !== Math.sign(prevDiff)) {
+        crossings.push({ time: p.time, side: diff > 0 ? "buy" : "sell", price: p.value });
+      }
+      if (diff !== 0) prevDiff = diff;
+    }
+    return crossings.slice(-3);
+  }, [overlayMode, indicatorSeries]);
+
   return (
     <>
       {/* Loading overlay */}
@@ -1965,6 +1985,26 @@ function BtcPerpsChartComponent({
           onWheel={handleLineAxisWheel}
           onDoubleClick={() => setManualLineVerticalPad(0)}
         />
+        {/* Overlay crossover signals — most recent first */}
+        {overlayCrossings.length > 0 && (
+          <div className="pointer-events-none absolute left-3 top-9 z-10 flex flex-col gap-1">
+            {[...overlayCrossings].reverse().map((c) => (
+              <span
+                key={`${c.side}-${c.time}`}
+                className={`flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
+                  c.side === "buy"
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "bg-red-500/15 text-red-400"
+                }`}
+              >
+                {c.side === "buy" ? "▲ Buy" : "▼ Sell"}
+                <span className="font-medium normal-case text-zinc-500">
+                  {new Date(c.time * 1000).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

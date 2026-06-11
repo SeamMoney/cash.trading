@@ -153,6 +153,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Simulate before paying: a transaction that aborts on-chain still charges
+    // the fee payer, so garbage claims must be rejected while it's still free.
+    transaction.feePayerAddress = sponsor.accountAddress;
+    const [simulation] = await aptos.transaction.simulate.simple({ transaction });
+    if (!simulation?.success) {
+      return NextResponse.json(
+        {
+          error: "transaction fails simulation; not sponsoring",
+          vmStatus: simulation?.vm_status ?? "unknown",
+        },
+        { status: 422, headers: NO_STORE_HEADERS },
+      );
+    }
+
     const feePayerAuthenticator = aptos.transaction.signAsFeePayer({
       signer: sponsor,
       transaction,

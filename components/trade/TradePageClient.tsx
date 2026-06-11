@@ -146,10 +146,11 @@ function useDecibelVaults(enabled = true) {
   const [vaults, setVaults] = useState<DecibelVault[]>([]);
   const [loading, setLoading] = useState(true);
   const chartDataRef = useRef<Record<string, PnlPoint[]>>({});
-  // Addresses whose chart series is REAL history (from /api/decibel/vault-history)
-  // rather than the seeded illustrative curve.
-  const [realCharts, setRealCharts] = useState<Record<string, boolean>>({});
+  // Chart provenance per address: "real" = series from /api/decibel/vault-history,
+  // "unavailable" = history confirmed missing (no fake fallback), undefined = seeded demo.
+  const [chartKind, setChartKind] = useState<Record<string, "real" | "unavailable">>({});
   const historyRequestedRef = useRef<Set<string>>(new Set());
+  const unavailableRef = useRef<Set<string>>(new Set());
 
   const fetchVaults = useCallback(async () => {
     try {
@@ -164,34 +165,42 @@ function useDecibelVaults(enabled = true) {
         // Use guild PnL override if available
         const guild = GUILD_OVERRIDES[v.name];
         const effectivePnl = guild?.pnl ?? v.all_time_return ?? 0;
-        if (!chartDataRef.current[v.address]) {
+        if (!chartDataRef.current[v.address] && !unavailableRef.current.has(v.address)) {
           const vaultWithPnl = { ...v, all_time_return: effectivePnl };
           chartDataRef.current[v.address] = buildPnlCurve(vaultWithPnl);
-        } else if (!historyRequestedRef.current.has(v.address)) {
+        } else if (chartDataRef.current[v.address] && !historyRequestedRef.current.has(v.address)) {
           const curve = chartDataRef.current[v.address];
           curve[curve.length - 1] = { date: new Date(), pnl: effectivePnl };
         }
 
         // Upgrade to the real PnL series where Decibel has history (skip guild
-        // demo cards — their stats are intentionally illustrative).
+        // demo cards — their stats are intentionally illustrative). When history
+        // is confirmed unavailable, say so instead of showing a fake curve.
         if (!guild && !historyRequestedRef.current.has(v.address)) {
           historyRequestedRef.current.add(v.address);
           void (async () => {
             try {
               const hr = await fetch(
-                `/api/decibel/vault-history?vault=${v.address}&range=30d&dataType=pnl`,
+                `/api/decibel/vault-history?vault=${v.address}&range=30d&type=pnl`,
                 { cache: "no-store" },
               );
               if (!hr.ok) return;
               const hist = await hr.json();
               const points: { t: number; v: number }[] = hist.points ?? [];
-              if (points.length < 2) return;
+              if (hist.unavailable || points.length < 2) {
+                delete chartDataRef.current[v.address];
+                unavailableRef.current.add(v.address);
+                setChartKind((prev) => ({ ...prev, [v.address]: "unavailable" }));
+                return;
+              }
               chartDataRef.current[v.address] = points.map((p) => ({
                 date: new Date(p.t),
                 pnl: p.v,
               }));
-              setRealCharts((prev) => ({ ...prev, [v.address]: true }));
-            } catch { /* keep illustrative curve */ }
+              setChartKind((prev) => ({ ...prev, [v.address]: "real" }));
+            } catch { /* transient failure — keep current curve, retry next poll */
+              historyRequestedRef.current.delete(v.address);
+            }
           })();
         }
       }
@@ -207,11 +216,11 @@ function useDecibelVaults(enabled = true) {
     return () => clearInterval(interval);
   }, [enabled, fetchVaults]);
 
-  return { vaults, loading, chartData: chartDataRef.current, realCharts };
+  return { vaults, loading, chartData: chartDataRef.current, chartKind };
 }
 
 function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
-  const { vaults, loading, chartData, realCharts } = useDecibelVaults(enabled);
+  const { vaults, loading, chartData, chartKind } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -278,7 +287,8 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                 const pnlStr = `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
                 const chartColor = pnlNeg ? "#ef4444" : VAULT_COLORS[index % VAULT_COLORS.length];
                 const chartPoints = chartData[vault.address] ?? [];
-                const chartIsReal = Boolean(realCharts[vault.address]);
+                const chartIsReal = chartKind[vault.address] === "real";
+                const chartUnavailable = chartKind[vault.address] === "unavailable";
 
                 return (
                 <div
@@ -340,7 +350,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     <div className="flex items-baseline justify-between">
                       <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
                       <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">
-                        {chartIsReal ? "30d on-chain history" : "Curve illustrative · endpoint real"}
+                        {chartIsReal ? "30d on-chain history" : chartUnavailable ? "" : "Curve illustrative · endpoint real"}
                       </div>
                     </div>
                     <div
@@ -388,7 +398,9 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                         />
                       </AreaChart>
                     ) : (
-                      <div className="flex h-full items-center justify-center text-[10px] text-[#333]">Loading chart...</div>
+                      <div className="flex h-full items-center justify-center text-[10px] text-[#333]">
+                        {chartUnavailable ? "PnL history not available for this vault yet" : "Loading chart..."}
+                      </div>
                     )}
                   </div>
 

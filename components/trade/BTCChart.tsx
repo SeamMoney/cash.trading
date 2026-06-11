@@ -753,7 +753,7 @@ export function BTCChart({
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<"line" | "candle">("line");
   const [perpsMode, setPerpsMode] = useState<"line" | "candle">("line");
-  const [showIndicators, setShowIndicators] = useState(false);
+  const [overlayMode, setOverlayMode] = useState<"off" | "sma" | "ema">("off");
   const [windowSecs, setWindowSecs] = useState(60);
   const marketConfig = activeMarkets.find((m) => m.id === market) || activeMarkets[0] || MARKETS[0];
   const isPerpsMarket = marketConfig.chartKind === "perps";
@@ -1077,13 +1077,13 @@ export function BTCChart({
           {isPerpsMarket && (
             <button
               type="button"
-              onClick={() => setShowIndicators((v) => !v)}
+              onClick={() => setOverlayMode((v) => (v === "off" ? "sma" : v === "sma" ? "ema" : "off"))}
               className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
-                showIndicators ? "bg-purple-500/20 text-purple-300" : "text-zinc-500"
+                overlayMode !== "off" ? "bg-purple-500/20 text-purple-300" : "text-zinc-500"
               }`}
-              title="Overlay SMA 20 / SMA 50"
+              title="Overlay moving averages (off → SMA → EMA)"
             >
-              SMA
+              {overlayMode === "ema" ? "EMA" : "SMA"}
             </button>
           )}
         </div>
@@ -1094,7 +1094,7 @@ export function BTCChart({
             market={perpData}
             mode={perpsMode}
             onSnapshotChange={handlePerpsSnapshotChange}
-            showIndicators={showIndicators}
+            overlayMode={overlayMode}
           />
         ) : (
           <Liveline

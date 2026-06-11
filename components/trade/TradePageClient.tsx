@@ -146,6 +146,10 @@ function useDecibelVaults(enabled = true) {
   const [vaults, setVaults] = useState<DecibelVault[]>([]);
   const [loading, setLoading] = useState(true);
   const chartDataRef = useRef<Record<string, PnlPoint[]>>({});
+  // Addresses whose chart series is REAL history (from /api/decibel/vault-history)
+  // rather than the seeded illustrative curve.
+  const [realCharts, setRealCharts] = useState<Record<string, boolean>>({});
+  const historyRequestedRef = useRef<Set<string>>(new Set());
 
   const fetchVaults = useCallback(async () => {
     try {
@@ -163,9 +167,32 @@ function useDecibelVaults(enabled = true) {
         if (!chartDataRef.current[v.address]) {
           const vaultWithPnl = { ...v, all_time_return: effectivePnl };
           chartDataRef.current[v.address] = buildPnlCurve(vaultWithPnl);
-        } else {
+        } else if (!historyRequestedRef.current.has(v.address)) {
           const curve = chartDataRef.current[v.address];
           curve[curve.length - 1] = { date: new Date(), pnl: effectivePnl };
+        }
+
+        // Upgrade to the real PnL series where Decibel has history (skip guild
+        // demo cards — their stats are intentionally illustrative).
+        if (!guild && !historyRequestedRef.current.has(v.address)) {
+          historyRequestedRef.current.add(v.address);
+          void (async () => {
+            try {
+              const hr = await fetch(
+                `/api/decibel/vault-history?vault=${v.address}&range=30d&dataType=pnl`,
+                { cache: "no-store" },
+              );
+              if (!hr.ok) return;
+              const hist = await hr.json();
+              const points: { t: number; v: number }[] = hist.points ?? [];
+              if (points.length < 2) return;
+              chartDataRef.current[v.address] = points.map((p) => ({
+                date: new Date(p.t),
+                pnl: p.v,
+              }));
+              setRealCharts((prev) => ({ ...prev, [v.address]: true }));
+            } catch { /* keep illustrative curve */ }
+          })();
         }
       }
     } catch {
@@ -180,11 +207,11 @@ function useDecibelVaults(enabled = true) {
     return () => clearInterval(interval);
   }, [enabled, fetchVaults]);
 
-  return { vaults, loading, chartData: chartDataRef.current };
+  return { vaults, loading, chartData: chartDataRef.current, realCharts };
 }
 
 function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
-  const { vaults, loading, chartData } = useDecibelVaults(enabled);
+  const { vaults, loading, chartData, realCharts } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -251,6 +278,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                 const pnlStr = `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
                 const chartColor = pnlNeg ? "#ef4444" : VAULT_COLORS[index % VAULT_COLORS.length];
                 const chartPoints = chartData[vault.address] ?? [];
+                const chartIsReal = Boolean(realCharts[vault.address]);
 
                 return (
                 <div
@@ -311,7 +339,9 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                   <div className="mt-3">
                     <div className="flex items-baseline justify-between">
                       <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
-                      <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">Curve illustrative · endpoint real</div>
+                      <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">
+                        {chartIsReal ? "30d on-chain history" : "Curve illustrative · endpoint real"}
+                      </div>
                     </div>
                     <div
                       className={cn(
@@ -347,7 +377,13 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                           showDots
                           showDatePill={false}
                           rows={(point) => [
-                            { color: chartColor, label: "PnL", value: `${(point.pnl as number) >= 0 ? "+" : ""}${(point.pnl as number).toFixed(2)}%` },
+                            {
+                              color: chartColor,
+                              label: "PnL",
+                              value: chartIsReal
+                                ? formatUsd(point.pnl as number)
+                                : `${(point.pnl as number) >= 0 ? "+" : ""}${(point.pnl as number).toFixed(2)}%`,
+                            },
                           ]}
                         />
                       </AreaChart>

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { Liveline, type CandlePoint, type LivelinePoint } from "liveline";
+import { Liveline, type CandlePoint, type LivelinePoint, type LivelineSeries } from "liveline";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { useIsMobile } from "@/components/ui/use-mobile";
@@ -803,6 +803,8 @@ type BtcPerpsChartProps = {
   market: PerpMarketData;
   mode: "line" | "candle";
   onSnapshotChange?: (snapshot: PerpMarketSnapshot) => void;
+  /** Overlay SMA indicator lines on the chart (presentational only). */
+  showIndicators?: boolean;
 };
 
 function BtcPerpsChartComponent({
@@ -811,6 +813,7 @@ function BtcPerpsChartComponent({
   market,
   mode,
   onSnapshotChange,
+  showIndicators = false,
 }: BtcPerpsChartProps) {
   const marketRef = useRef(market);
   marketRef.current = market;
@@ -1874,6 +1877,32 @@ function BtcPerpsChartComponent({
     return renderSecondCandles[renderSecondCandles.length - 1];
   }, [renderSecondCandles]);
 
+  // SMA indicator overlay — derived purely from the data already rendered, so the
+  // overlay always shows exactly what the chart shows (no extra fetches/feeds).
+  const indicatorSeries = useMemo<LivelineSeries[]>(() => {
+    if (!showIndicators) return [];
+    const src: LivelinePoint[] = mode === "line"
+      ? renderLineData
+      : renderSecondCandles.map((c) => ({ time: c.time, value: c.close }));
+    if (src.length < 25) return [];
+    const sma = (period: number): LivelinePoint[] => {
+      const out: LivelinePoint[] = [];
+      let sum = 0;
+      for (let i = 0; i < src.length; i++) {
+        sum += src[i].value;
+        if (i >= period) sum -= src[i - period].value;
+        if (i >= period - 1) out.push({ time: src[i].time, value: sum / period });
+      }
+      return out;
+    };
+    const fast = sma(20);
+    const slow = sma(50);
+    const series: LivelineSeries[] = [];
+    if (fast.length >= 2) series.push({ id: "sma20", data: fast, value: fast[fast.length - 1].value, color: "#a855f7", label: "SMA 20" });
+    if (slow.length >= 2) series.push({ id: "sma50", data: slow, value: slow[slow.length - 1].value, color: "#f59e0b", label: "SMA 50" });
+    return series;
+  }, [showIndicators, mode, renderLineData, renderSecondCandles]);
+
   return (
     <>
       {/* Loading overlay */}
@@ -1895,6 +1924,7 @@ function BtcPerpsChartComponent({
         <Liveline
           mode={mode}
           data={renderLineData}
+          series={indicatorSeries.length > 0 ? indicatorSeries : undefined}
           value={mode === "line" ? displayedLineValue : displayedCandleValue}
           candles={renderSecondCandles}
           candleWidth={1}
@@ -1938,4 +1968,5 @@ export const BtcPerpsChart = memo(BtcPerpsChartComponent, (prev, next) => (
   && prev.market.color === next.market.color
   && prev.market.priceDecimals === next.market.priceDecimals
   && prev.market.leverage === next.market.leverage
+  && prev.showIndicators === next.showIndicators
 ));

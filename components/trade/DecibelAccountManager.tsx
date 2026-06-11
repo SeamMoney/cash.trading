@@ -8,6 +8,11 @@ import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { buildAptosCctpClaimPayload } from "@/lib/decibel-cctp";
+import {
+  fetchEvmUsdcBalance,
+  startEvmCctpDeposit,
+  type EvmCctpSourceChain,
+} from "@/lib/evm-cctp";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import {
   shortAddress,
@@ -39,7 +44,7 @@ interface WalletBalanceResponse {
   error?: string;
 }
 
-type BridgeSourceChain = "Arbitrum" | "Base" | "Ethereum";
+type BridgeSourceChain = EvmCctpSourceChain;
 
 interface CctpStatusResponse {
   amount?: number;
@@ -61,6 +66,12 @@ const BRIDGE_SOURCE_CHAINS: BridgeSourceChain[] = ["Arbitrum", "Base", "Ethereum
 function formatDepositInputAmount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
   return value.toFixed(6).replace(/\.?0+$/, "");
+}
+
+function normalizeAptosAddress(address?: string | null) {
+  if (!address) return "";
+  const hex = address.startsWith("0x") ? address.slice(2) : address;
+  return `0x${hex.toLowerCase().padStart(64, "0")}`;
 }
 
 export function DecibelAccountManager({ className }: { className?: string }) {
@@ -86,6 +97,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [bridgeMessage, setBridgeMessage] = useState("");
+  const [evmSourceBalance, setEvmSourceBalance] = useState<number | null>(null);
+  const [evmSourceAddress, setEvmSourceAddress] = useState("");
+  const [evmSourceLoading, setEvmSourceLoading] = useState(false);
+  const [evmSourceError, setEvmSourceError] = useState("");
   const {
     decibelNetwork,
     hasDecibelAccount,
@@ -101,6 +116,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const isMainnet = decibelNetwork === "mainnet";
   const walletOrigin = wallet ? getChainFromWallet(wallet) : "aptos";
   const isEvmWallet = walletOrigin === "ethereum";
+  const connectedAptosAddress = normalizeAptosAddress(account?.address.toString());
+  const bridgeMintRecipient = normalizeAptosAddress(bridgeTransfer?.mintRecipient);
+  const bridgeMintRecipientMismatch =
+    !!bridgeMintRecipient &&
+    !!connectedAptosAddress &&
+    bridgeMintRecipient !== connectedAptosAddress;
   const bridgeStorageKey =
     connected && account
       ? `cash:decibel:cctp-deposit:${decibelNetwork}:${account.address.toString()}`
@@ -110,12 +131,22 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
   const depositExceedsWallet =
     walletUsdcBalance !== null && depositValue > walletUsdcBalance + 0.000001;
+  const depositExceedsEvmSource =
+    evmSourceBalance !== null && depositValue > evmSourceBalance + 0.000001;
   const canDeposit =
     connected &&
     account &&
     hasDecibelAccount &&
     hasDepositAmount &&
     !depositExceedsWallet &&
+    status !== "submitting";
+  const canStartEvmBridge =
+    connected &&
+    account &&
+    hasDecibelAccount &&
+    isEvmWallet &&
+    hasDepositAmount &&
+    !depositExceedsEvmSource &&
     status !== "submitting";
 
   const selectedSubaccountLabel = selectedSubaccountRecord
@@ -281,6 +312,53 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     return () => controller.abort();
   }, [refreshWalletUsdcBalance]);
 
+  useEffect(() => {
+    let active = true;
+    if (!connected || !account || !hasDecibelAccount || !isEvmWallet) {
+      setEvmSourceBalance(null);
+      setEvmSourceAddress("");
+      setEvmSourceError("");
+      setEvmSourceLoading(false);
+      return;
+    }
+
+    setEvmSourceLoading(true);
+    setEvmSourceError("");
+    fetchEvmUsdcBalance({
+      network: decibelNetwork,
+      preferredWalletName: wallet?.name,
+      sourceChain: bridgeSourceChain,
+    })
+      .then((result) => {
+        if (!active) return;
+        setEvmSourceBalance(result?.balance ?? null);
+        setEvmSourceAddress(result?.address ?? "");
+      })
+      .catch((err) => {
+        if (!active) return;
+        setEvmSourceBalance(null);
+        setEvmSourceAddress("");
+        setEvmSourceError(
+          err instanceof Error ? err.message : "EVM USDC balance unavailable."
+        );
+      })
+      .finally(() => {
+        if (active) setEvmSourceLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    account,
+    bridgeSourceChain,
+    connected,
+    decibelNetwork,
+    hasDecibelAccount,
+    isEvmWallet,
+    wallet?.name,
+  ]);
+
   const handleRefreshAccount = useCallback(() => {
     void refreshSubaccounts();
     void refreshAccountState();
@@ -288,8 +366,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   }, [refreshAccountState, refreshSubaccounts, refreshWalletUsdcBalance]);
 
   const lookupBridgeTransfer = useCallback(
-    async (options?: { silent?: boolean }) => {
-      const txHash = bridgeTxHash.trim();
+    async (options?: {
+      silent?: boolean;
+      sourceChain?: BridgeSourceChain;
+      txHash?: string;
+    }) => {
+      const txHash = (options?.txHash ?? bridgeTxHash).trim();
+      const sourceChain = options?.sourceChain ?? bridgeSourceChain;
       if (!txHash) {
         setBridgeMessage("Paste the source-chain transfer transaction hash.");
         setBridgeLookupStatus("error");
@@ -303,7 +386,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
       try {
         const params = new URLSearchParams({
-          sourceChain: bridgeSourceChain,
+          sourceChain,
           txHash,
           network: decibelNetwork,
         });
@@ -363,6 +446,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     if (typeof bridgeTransfer.amount !== "number" || bridgeTransfer.amount <= 0) {
       setBridgeLookupStatus("error");
       setBridgeMessage("Transfer amount is unavailable.");
+      return;
+    }
+    if (bridgeMintRecipientMismatch) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        `This bridge mints to ${shortAddress(bridgeTransfer.mintRecipient ?? "")}, but this wallet is ${shortAddress(account.address.toString())}. Connect the matching derived Aptos account before claiming.`
+      );
       return;
     }
 
@@ -429,6 +519,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   }, [
     account,
     bridgeTransfer,
+    bridgeMintRecipientMismatch,
     connected,
     decibelNetwork,
     refreshAccountState,
@@ -436,6 +527,87 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     selectedSubaccount,
     signAndSubmitTransaction,
     subaccounts,
+  ]);
+
+  const handleStartEvmBridge = useCallback(async () => {
+    if (!connected || !account) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Connect Rainbow, MetaMask, or Coinbase Wallet before bridging.");
+      return;
+    }
+    if (!hasDecibelAccount) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Create or select a Decibel trading account before bridging.");
+      return;
+    }
+    if (!isEvmWallet) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Connect an EVM wallet like Rainbow or MetaMask to start an EVM bridge here.");
+      return;
+    }
+    if (!hasDepositAmount) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage("Enter a USDC amount before bridging.");
+      return;
+    }
+    if (depositExceedsEvmSource) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage(`${bridgeSourceChain} USDC balance is too low for this bridge.`);
+      return;
+    }
+
+    setStatus("submitting");
+    setStatusHash("");
+    setBridgeLookupStatus("loading");
+    setBridgeMessage(`Start ${bridgeSourceChain} USDC bridge in your wallet...`);
+    try {
+      const result = await startEvmCctpDeposit({
+        amount: depositValue,
+        aptosRecipientAddress: account.address.toString(),
+        network: decibelNetwork,
+        preferredWalletName: wallet?.name,
+        sourceChain: bridgeSourceChain,
+        onStep: setBridgeMessage,
+      });
+
+      setBridgeTxHash(result.txHash);
+      setBridgeTransfer({
+        amount: depositValue,
+        destinationChain: "Aptos",
+        destinationIsAptos: true,
+        explorerUrl: result.explorerUrl,
+        sourceChain: result.sourceChain,
+        status: "pending",
+        txHash: result.txHash,
+      });
+      setBridgeLookupStatus("success");
+      setBridgeMessage("Source transfer confirmed. Waiting for Circle attestation...");
+      setStatus("success");
+      setStatusMessage("CCTP bridge started. Claim and deposit when Circle attests.");
+      void lookupBridgeTransfer({
+        silent: true,
+        sourceChain: result.sourceChain,
+        txHash: result.txHash,
+      });
+    } catch (err) {
+      setStatus("error");
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        err instanceof Error ? err.message : "Could not start the EVM bridge transfer."
+      );
+    }
+  }, [
+    account,
+    bridgeSourceChain,
+    connected,
+    decibelNetwork,
+    depositExceedsEvmSource,
+    depositValue,
+    hasDecibelAccount,
+    hasDepositAmount,
+    isEvmWallet,
+    lookupBridgeTransfer,
+    wallet?.name,
   ]);
 
   const handleCreateSubaccount = useCallback(async () => {
@@ -757,11 +929,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-zinc-600">
-                EVM bridge resume
+                Cross-chain USDC
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
-                Paste an Arbitrum, Base, or Ethereum CCTP transfer hash to track the
-                same bridge step Decibel uses before Aptos deposit.
+                Bridge native USDC from EVM with Circle CCTP, or paste an existing
+                transfer hash to claim and deposit.
               </p>
             </div>
             <span
@@ -793,6 +965,42 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               </button>
             ))}
           </div>
+
+          <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
+            <span className={evmSourceError ? "text-yellow-300/80" : ""}>
+              {bridgeSourceChain}{" "}
+              {evmSourceLoading
+                ? "..."
+                : evmSourceBalance !== null
+                  ? `${evmSourceBalance.toLocaleString("en-US", {
+                      maximumFractionDigits: 6,
+                    })} USDC`
+                  : "-- USDC"}
+            </span>
+            {evmSourceAddress && (
+              <span className="truncate text-zinc-700">
+                {evmSourceAddress.slice(0, 6)}...{evmSourceAddress.slice(-4)}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleStartEvmBridge()}
+            disabled={!canStartEvmBridge}
+            className={cn(
+              "mt-2 w-full rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+              canStartEvmBridge
+                ? "bg-accent/15 text-accent hover:bg-accent/20"
+                : "bg-white/[0.03] text-zinc-600"
+            )}
+          >
+            {status === "submitting"
+              ? "Bridge pending..."
+              : isEvmWallet
+                ? `Bridge from ${bridgeSourceChain}`
+                : "Connect EVM wallet to bridge"}
+          </button>
 
           <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input
@@ -853,11 +1061,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   This CCTP transfer does not appear to target Aptos.
                 </p>
               )}
+              {bridgeMintRecipientMismatch && (
+                <p className="text-yellow-300">
+                  Mint recipient is {shortAddress(bridgeTransfer.mintRecipient ?? "")};
+                  this wallet is {shortAddress(account?.address.toString() ?? "")}.
+                </p>
+              )}
               {bridgeTransfer.status === "claimable" && (
                 <button
                   type="button"
                   onClick={() => void handleClaimBridgeTransfer()}
-                  disabled={status === "submitting"}
+                  disabled={status === "submitting" || bridgeMintRecipientMismatch}
                   className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {status === "submitting" ? "Working..." : "Claim & Deposit"}

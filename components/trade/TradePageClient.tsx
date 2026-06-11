@@ -1654,6 +1654,8 @@ export function TradePageClient({
             symbol: vaultAction.indicator.symbol,
             description: vaultAction.indicator.description,
             assets: vaultAction.indicator.assets,
+            // Live on-chain strategies are deployed on testnet today — say so.
+            network: vaultAction.indicator.pkg ? "testnet" : undefined,
           }}
           vaultAddress={
             vaultAction.vaultAddress ??

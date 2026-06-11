@@ -733,6 +733,85 @@ interface GraduatedIndicator {
   vaultAddr?: string | null;
   whopProductId?: string | null;
   isProprietary?: boolean;
+  /** Published package for REAL on-chain indicators — presence marks a LIVE strategy. */
+  pkg?: string;
+  maxDrawdownBps?: number;
+  params?: number[];
+  indicatorType?: number;
+}
+
+const INDICATOR_TYPE_LABEL = ["SMA", "EMA", "RSI", "MACD", "BB", "Stoch", "SuperTrend", "Donchian"];
+
+/** Live on-chain state for indicators that exist as real objects (pkg set). */
+interface LiveIndicatorState {
+  signal: number;
+  lastPrice: number;
+  totalPushed: number;
+  totalSignals: number;
+  inPosition: boolean;
+  entryPrice: number;
+  prices: number[];
+  timestamps: number[];
+}
+
+function useLiveIndicatorStates(indicators: GraduatedIndicator[]) {
+  const [states, setStates] = useState<Record<string, LiveIndicatorState>>({});
+  const liveKey = indicators.filter((i) => i.pkg).map((i) => i.address).join(",");
+
+  useEffect(() => {
+    if (!liveKey) return;
+    let cancelled = false;
+    const load = async () => {
+      const live = indicators.filter((i) => i.pkg);
+      const results = await Promise.all(
+        live.map(async (ind) => {
+          try {
+            const res = await fetch(
+              `/api/launchpad/on-chain?addr=${ind.address}&pkg=${ind.pkg}`,
+              { cache: "no-store" },
+            );
+            const data = await res.json();
+            if (!res.ok || data.onChain === false || typeof data.signal !== "number") return null;
+            return [ind.address.toLowerCase(), data as LiveIndicatorState] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, LiveIndicatorState> = {};
+      for (const r of results) if (r) next[r[0]] = r[1];
+      setStates((prev) => ({ ...prev, ...next }));
+    };
+    load();
+    const t = setInterval(load, 20_000);
+    return () => { cancelled = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveKey]);
+
+  return states;
+}
+
+/** Seeded demo curve for strategies that aren't live yet — stable across renders. */
+function buildDemoStrategyCurve(ind: GraduatedIndicator): PnlPoint[] {
+  let seed = 0;
+  for (let i = 0; i < ind.address.length; i++) seed = (seed * 31 + ind.address.charCodeAt(i)) | 0;
+  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const endPnl = (ind.meanSharpe / 1000) * 2.4;
+  const maxDD = Math.max(1, (ind.maxDrawdownBps ?? 500) / 100);
+  const vol = Math.min(1.6, Math.max(0.25, maxDD / 4));
+  const now = Date.now();
+  const span = 60 * 24 * 3600_000;
+  const M = 120;
+  const points: PnlPoint[] = [];
+  let pnl = 0;
+  for (let i = 0; i <= M; i++) {
+    points.push({ date: new Date(now - span + (i * span) / M), pnl: +pnl.toFixed(2) });
+    const expected = endPnl * (i / M);
+    pnl += endPnl / M + (rng() - 0.5) * 2 * vol + (expected - pnl) * 0.12;
+  }
+  points[points.length - 1] = { date: new Date(now), pnl: +endPnl.toFixed(2) };
+  return points;
 }
 
 interface StrategyVaultSummary {
@@ -799,6 +878,37 @@ function SignalProductsPanel({
 }) {
   const indicators = useGraduatedIndicators(enabled);
   const { isSubscribed } = useSubscription();
+  const liveStates = useLiveIndicatorStates(indicators);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  // Live (real on-chain) strategies first, then demos by Sharpe desc.
+  const sorted = [...indicators].sort((a, b) => {
+    const liveA = a.pkg ? 1 : 0;
+    const liveB = b.pkg ? 1 : 0;
+    if (liveA !== liveB) return liveB - liveA;
+    return b.meanSharpe - a.meanSharpe;
+  });
+
+  const scrollTo = useCallback((idx: number) => {
+    const el = scrollRef.current;
+    if (!el || sorted.length === 0) return;
+    const clamped = Math.max(0, Math.min(idx, sorted.length - 1));
+    const cardW = el.scrollWidth / sorted.length;
+    el.scrollTo({ left: cardW * clamped, behavior: "smooth" });
+  }, [sorted.length]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const w = el.scrollWidth / Math.max(sorted.length, 1);
+      setActiveIndex(Math.min(Math.round(el.scrollLeft / w), sorted.length - 1));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [sorted.length]);
+
   if (indicators.length === 0) return null;
 
   return (
@@ -808,82 +918,223 @@ function SignalProductsPanel({
           <span className="relative h-2 w-2 shrink-0 rounded-full bg-purple-400">
             <span className="absolute inset-0 animate-ping rounded-full bg-purple-400 opacity-75" />
           </span>
-          <span>SIGNAL PRODUCTS [{indicators.length}]</span>
+          <span>STRATEGY VAULTS [{sorted.length}]</span>
         </span>
-        <span className="ml-3 text-[10px] font-normal text-[#555]">· Graduated indicators · deploy a bot for live signals</span>
+        <span className="ml-3 hidden text-[10px] font-normal text-[#555] sm:inline">· Indicators that trade Decibel vaults — on-chain enforced</span>
       </header>
 
-      <div className="bg-[#111] divide-y divide-[#1e1e1e]">
-        {indicators.map((ind) => {
-          const sig = ind.lastSignal ?? 0;
-          const sigLabel = SIG_LABEL_TRADE[sig] ?? "HOLD";
-          const sigColor = SIG_COLOR[sig] ?? SIG_COLOR[0];
-          const sharpe = (ind.meanSharpe / 1000).toFixed(2);
-          const subscriberCount = Math.max(1, Math.round(ind.simsFunded / 100));
-          const showUnlock = ind.isProprietary && !isSubscribed(ind.address);
-          const strategyVault = strategyVaultsByIndicator[ind.address.toLowerCase()];
-          const vaultAddress =
-            strategyVault?.vaultAddr ??
-            (isRealAptosAddress(ind.vaultAddr) ? ind.vaultAddr : null);
+      <div className="bg-[#111] font-mono text-sm font-medium text-[#888]">
+        <div
+          ref={scrollRef}
+          className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          {sorted.map((ind) => {
+            const live = liveStates[ind.address.toLowerCase()];
+            const isLive = Boolean(ind.pkg);
+            const sig = live?.signal ?? ind.lastSignal ?? 0;
+            const sigLabel = SIG_LABEL_TRADE[sig] ?? "HOLD";
+            const sigColor = SIG_COLOR[sig] ?? SIG_COLOR[0];
+            const sharpe = (ind.meanSharpe / 1000).toFixed(2);
+            const subscriberCount = Math.max(1, Math.round(ind.simsFunded / 100));
+            const showUnlock = ind.isProprietary && !isSubscribed(ind.address);
+            const strategyVault = strategyVaultsByIndicator[ind.address.toLowerCase()];
+            const vaultAddress =
+              strategyVault?.vaultAddr ??
+              (isRealAptosAddress(ind.vaultAddr) ? ind.vaultAddr : null);
+            const typeLabel = INDICATOR_TYPE_LABEL[ind.indicatorType ?? -1];
+            const paramsLabel = ind.params?.length ? `(${ind.params.join("/")})` : "";
 
-          return (
-            <div
-              key={ind.address}
-              className="flex items-center gap-4 px-5 py-4 sm:px-8 hover:bg-white/[0.02] transition-colors"
-            >
-              {/* Signal badge */}
-              <span className={cn(
-                "shrink-0 text-[10px] font-bold px-2 py-1 rounded border font-mono",
-                sigColor.bg, sigColor.text,
-              )}>
-                {sigLabel}
-              </span>
+            // Chart: live strategies plot the real on-chain price buffer;
+            // demo strategies plot a seeded illustrative curve.
+            const liveChart = live && live.prices.length >= 2
+              ? live.prices.map((p, i) => ({
+                  date: new Date((live.timestamps[i] ?? 0) * 1000 || Date.now()),
+                  pnl: p,
+                }))
+              : null;
+            const chartPoints = liveChart ?? buildDemoStrategyCurve(ind);
+            const chartColor = sig === 2 ? "#ef4444" : "#a855f7";
 
-              {/* Name + asset */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{ind.name}</p>
-                <p className="text-[11px] text-[#555] mt-0.5">{ind.assets[0]} · {subscriberCount} subscribers</p>
+            return (
+              <div
+                key={ind.address}
+                className="w-full shrink-0 snap-start border-r border-[#2a2a2a] bg-[#111] p-[18px] last:border-r-0 xl:w-[calc(100%/3)] xl:min-w-[calc(100%/3)]"
+                style={{ scrollSnapStop: "always" }}
+              >
+                {/* Title row */}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate font-sans text-[15px] font-bold text-white">{ind.name}</span>
+                  <span className={cn(
+                    "flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                    isLive ? "bg-emerald-500/15 text-emerald-400" : "bg-zinc-700/50 text-zinc-400",
+                  )}>
+                    {isLive && (
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400">
+                        <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      </span>
+                    )}
+                    {isLive ? "Live" : "Demo"}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-[#555]">
+                  {ind.assets[0]}
+                  {typeLabel ? ` · ${typeLabel} ${paramsLabel}` : ""}
+                  {` · ${subscriberCount} subscribers`}
+                </p>
+
+                {/* Signal + position */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className={cn(
+                    "rounded border px-2 py-1 font-mono text-[10px] font-bold",
+                    sigColor.bg, sigColor.text,
+                  )}>
+                    {sigLabel}
+                  </span>
+                  {live?.inPosition && (
+                    <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] font-bold text-emerald-400">
+                      IN POSITION
+                    </span>
+                  )}
+                  {isLive && live && (
+                    <span className="ml-auto text-[10px] text-[#555]">
+                      {live.totalPushed} ticks · {live.totalSignals} signals
+                    </span>
+                  )}
+                </div>
+
+                {/* Stat grid */}
+                <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-[#241a2e]">
+                  <div className="bg-[#160e1a] px-3 py-2.5">
+                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Sharpe</div>
+                    <div className="mt-0.5 text-[14px] font-bold text-purple-300">{sharpe}</div>
+                  </div>
+                  <div className="border-l border-[#241a2e] bg-[#160e1a] px-3 py-2.5">
+                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Win Rate</div>
+                    <div className="mt-0.5 text-[14px] font-bold text-white">{ind.profitablePct}%</div>
+                  </div>
+                </div>
+
+                {/* Chart */}
+                <div className="mt-3 h-[120px] touch-pan-x">
+                  {chartPoints.length >= 2 ? (
+                    <AreaChart
+                      data={chartPoints as unknown as Record<string, unknown>[]}
+                      xDataKey="date"
+                      aspectRatio="auto"
+                      className="!h-full"
+                      margin={{ top: 4, right: 4, bottom: 20, left: 0 }}
+                      animationDuration={600}
+                    >
+                      <Grid horizontal fadeHorizontal numTicksRows={2} stroke="rgba(255,255,255,0.04)" strokeDasharray="4,4" />
+                      <Area
+                        dataKey="pnl"
+                        fill={chartColor}
+                        fillOpacity={0.2}
+                        strokeWidth={1.5}
+                        gradientToOpacity={0}
+                        curve={curveLinear}
+                      />
+                      <ChartTooltip
+                        showCrosshair
+                        showDots
+                        showDatePill={false}
+                        rows={(point) => [
+                          {
+                            color: chartColor,
+                            label: liveChart ? "Price" : "PnL",
+                            value: liveChart
+                              ? `$${(point.pnl as number).toLocaleString()}`
+                              : `${(point.pnl as number) >= 0 ? "+" : ""}${(point.pnl as number).toFixed(2)}%`,
+                          },
+                        ]}
+                      />
+                    </AreaChart>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[10px] text-[#333]">Loading chart...</div>
+                  )}
+                </div>
+
+                {/* Details */}
+                <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
+                  <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <span>Strategy</span>
+                    <span className="text-[#777]">{isLive ? "On-chain enforced" : "Backtest demo"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <span>Vault</span>
+                    <span className="text-[#777]">{vaultAddress ? shortenAddr(vaultAddress) : "Not created"}</span>
+                  </div>
+                  {isLive && live && (
+                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                      <span>Last price</span>
+                      <span className="text-[#777]">${live.lastPrice.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* CTAs */}
+                <div className="mt-3 flex items-center gap-2">
+                  {showUnlock ? (
+                    <button
+                      onClick={() => onUnlock(ind)}
+                      className="flex-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-bold text-amber-400 transition-colors hover:bg-amber-500/20"
+                    >
+                      Unlock
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
+                        className={cn(
+                          "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors",
+                          vaultAddress
+                            ? "bg-accent text-black hover:bg-[#5dff3f]"
+                            : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
+                        )}
+                      >
+                        {vaultAddress ? "Invest" : "Create Vault"}
+                      </button>
+                      <button
+                        onClick={() => onDeploy(ind)}
+                        className="flex-1 rounded-lg bg-purple-500 px-3 py-2 text-[12px] font-bold text-white transition-colors hover:bg-purple-400"
+                      >
+                        Deploy Bot
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
+            );
+          })}
+        </div>
 
-              {/* Stats */}
-              <div className="hidden sm:flex items-center gap-6 shrink-0 text-[11px] font-mono">
-                <div className="text-right">
-                  <p className="text-white tabular-nums">{sharpe}</p>
-                  <p className="text-[#555]">Sharpe</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-white tabular-nums">{ind.profitablePct}%</p>
-                  <p className="text-[#555]">Win Rate</p>
-                </div>
-              </div>
-
-              {/* CTA */}
-              {showUnlock ? (
-                <button
-                  onClick={() => onUnlock(ind)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[11px] font-bold hover:bg-amber-500/20 transition-colors"
-                >
-                  Unlock
-                </button>
-              ) : (
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
-                    className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-                  >
-                    Vault
-                  </button>
-                  <button
-                    onClick={() => onDeploy(ind)}
-                    className="flex items-center gap-1.5 rounded-lg bg-purple-500 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-purple-400"
-                  >
-                    Deploy Bot
-                  </button>
-                </div>
-              )}
+        {/* Scroll indicator — tap left half to go back, right half to go forward */}
+        {sorted.length > 1 && (
+          <div className="relative flex items-center justify-center border-t border-[#2a2a2a] bg-[#181818] px-5 py-3">
+            <button
+              aria-label="Previous strategy"
+              className="absolute inset-y-0 left-0 w-1/2"
+              onClick={() => scrollTo(activeIndex - 1)}
+            />
+            <button
+              aria-label="Next strategy"
+              className="absolute inset-y-0 right-0 w-1/2"
+              onClick={() => scrollTo(activeIndex + 1)}
+            />
+            <div className="flex items-center gap-1.5">
+              {sorted.map((_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "h-[2px] rounded-full transition-all duration-200",
+                    i === activeIndex ? "w-6 bg-[#888]" : "w-3 bg-[#333]",
+                  )}
+                />
+              ))}
             </div>
-          );
-        })}
+          </div>
+        )}
       </div>
     </div>
   );

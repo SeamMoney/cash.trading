@@ -90,6 +90,74 @@ function safeDeriveEvmAptosAddress(evmAddress: string, domain: string) {
   }
 }
 
+const BRIDGE_STEPS = ["Burn", "Attest", "Claim", "Deposit"] as const;
+
+/**
+ * Presentational 4-step CCTP progress rail (burn → attestation → claim → deposit),
+ * derived entirely from existing bridge state — no flow logic here.
+ *
+ * Stage mapping: a looked-up transfer means the source burn happened (step 1 done);
+ * `pending` = waiting on Circle attestation (step 2 active); `claimable` = claim ready
+ * (step 3) and, while submitting, the deposit phase is detected from the status text;
+ * `completed` = all done.
+ */
+function BridgeStepsRail({
+  transferStatus,
+  submitting,
+  message,
+  errored,
+}: {
+  transferStatus: "pending" | "claimable" | "completed";
+  submitting: boolean;
+  message: string;
+  errored: boolean;
+}) {
+  const depositPhase = submitting && /deposit/i.test(message);
+  const activeIndex =
+    transferStatus === "completed" ? 4
+    : transferStatus === "pending" ? 1
+    : depositPhase ? 3
+    : 2;
+
+  return (
+    <div className="flex items-center gap-1.5 pb-1">
+      {BRIDGE_STEPS.map((label, i) => {
+        const done = i < activeIndex;
+        const active = i === activeIndex;
+        return (
+          <div key={label} className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold",
+                done && "bg-accent/20 text-accent",
+                active && !errored && "bg-accent text-black",
+                active && errored && "bg-red-500/80 text-black",
+                !done && !active && "bg-white/[0.06] text-zinc-600",
+              )}
+            >
+              {done ? "✓" : i + 1}
+            </span>
+            <span
+              className={cn(
+                "truncate font-mono text-[9px] uppercase tracking-wide",
+                done && "text-accent/80",
+                active && !errored && "text-zinc-100",
+                active && errored && "text-red-300",
+                !done && !active && "text-zinc-600",
+              )}
+            >
+              {label}
+            </span>
+            {i < BRIDGE_STEPS.length - 1 && (
+              <span className={cn("h-px flex-1", i < activeIndex ? "bg-accent/30" : "bg-white/[0.07]")} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DecibelAccountManager({ className }: { className?: string }) {
   const { account, connected, signAndSubmitTransaction, wallet } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
@@ -1180,6 +1248,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
           {bridgeTransfer && (
             <div className="mt-2 space-y-2 rounded-[10px] bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-400">
+              <BridgeStepsRail
+                transferStatus={bridgeTransfer.status ?? "pending"}
+                submitting={status === "submitting"}
+                message={bridgeMessage}
+                errored={bridgeLookupStatus === "error"}
+              />
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono text-zinc-500">
                   {bridgeTransfer.status === "claimable"

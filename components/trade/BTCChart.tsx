@@ -302,6 +302,8 @@ const COMMODITY_SYMBOLS = new Set([
   "GOLD",
   "SILVER",
   "WTIOIL",
+  "COPPER",
+  "NATGAS",
 ]);
 
 const CRYPTO_SYMBOLS = new Set([

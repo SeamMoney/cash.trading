@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { explorerTxUrl } from "@/lib/constants";
-import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
+import {
+  buildAndSign,
+  buildAndSignSponsored,
+  signAndSubmitSponsored,
+  waitForTransactionConfirmation,
+} from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
@@ -160,7 +165,7 @@ function BridgeStepsRail({
 }
 
 export function DecibelAccountManager({ className }: { className?: string }) {
-  const { account, connected, signAndSubmitTransaction, wallet } = useWallet();
+  const { account, connected, signAndSubmitTransaction, signTransaction, wallet } = useWallet();
   const [depositAmount, setDepositAmount] = useState("100");
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -554,6 +559,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setBridgeLookupStatus("loading");
     setBridgeMessage("Claim USDC on Aptos in your wallet...");
     try {
+      // Freshly derived accounts that only ever received bridged USDC hold
+      // zero APT, so claim/deposit gas must come from the server fee-payer.
+      const senderAddress = account.address.toString();
+      const sponsored = await needsSponsoredGas(senderAddress);
+      if (sponsored) {
+        setBridgeMessage("Wallet has no APT for gas — using sponsored submission...");
+      }
       let skipClaim = false;
       try {
         const claimPayload = buildAptosCctpClaimPayload({
@@ -561,7 +573,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           messageBytes: bridgeTransfer.messageBytes,
           network: decibelNetwork,
         });
-        const claimResult = await signAndSubmitTransaction({ data: claimPayload });
+        const claimResult = sponsored
+          ? await signAndSubmitSponsored({
+              senderAddress,
+              payload: claimPayload,
+              signTransaction,
+            })
+          : await signAndSubmitTransaction({ data: claimPayload });
         setStatusHash(claimResult.hash);
         setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
         await waitForTransactionConfirmation(claimResult.hash);
@@ -584,11 +602,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       }
 
       const raw = String(Math.floor(bridgeTransfer.amount * 1_000_000));
-      const { hash } = await buildAndSign(
-        "/api/decibel/deposit",
-        { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
-        signAndSubmitTransaction
-      );
+      const { hash } = sponsored
+        ? await buildAndSignSponsored(
+            "/api/decibel/deposit",
+            { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
+            { senderAddress, signTransaction }
+          )
+        : await buildAndSign(
+            "/api/decibel/deposit",
+            { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
+            signAndSubmitTransaction
+          );
       setStatusHash(hash);
       setBridgeMessage("Deposit submitted. Waiting for Decibel confirmation...");
       await waitForTransactionConfirmation(hash);
@@ -619,6 +643,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     refreshWalletUsdcBalance,
     selectedSubaccount,
     signAndSubmitTransaction,
+    signTransaction,
     subaccounts,
   ]);
 

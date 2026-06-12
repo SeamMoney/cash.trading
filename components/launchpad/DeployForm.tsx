@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { AccountAddress, createResourceAddress } from "@aptos-labs/ts-sdk";
 import { cn } from "@/lib/utils";
 import { transpile, type TranspileResult } from "@/lib/launchpad/transpiler";
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
@@ -766,7 +767,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     errored: boolean;
     message: string;
     busy: boolean;
-    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string };
+    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string; indicatorAddr?: string };
   } | null>(null);
   const [compileServiceAvailable, setCompileServiceAvailable] = useState<boolean | null>(null);
 
@@ -838,6 +839,19 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
         setVaultDeploy({ activeIndex: 2, errored: true, busy: false, message: pub.error ?? "Publish failed", artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName } });
         return;
       }
+      // The module's init_module creates a resource account seeded with the
+      // module name, signed by the package object — so the indicator address
+      // (where IndicatorState/PriceBuffer live, and what create_strategy_vault
+      // takes as indicator_addr) is derivable without parsing the writeset.
+      let indicatorAddr: string | undefined;
+      try {
+        indicatorAddr = createResourceAddress(
+          AccountAddress.from(pub.packageAddress),
+          compileJson.moduleName ?? "",
+        ).toString();
+      } catch {
+        // Leave undefined — the artifacts panel simply omits the row.
+      }
       // Steps 3-5 (vault / delegate / live) are wallet signatures + registry —
       // wired next; stop honestly at "published" with the live artifacts.
       setVaultDeploy({
@@ -845,7 +859,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
         errored: false,
         busy: false,
         message: "Module is LIVE on testnet. Next steps (create vault → bind strategy → delegate) sign with your wallet — coming next.",
-        artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName, packageAddress: pub.packageAddress, txHash: pub.txHash },
+        artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName, packageAddress: pub.packageAddress, txHash: pub.txHash, indicatorAddr },
       });
     } catch (err) {
       setVaultDeploy({ activeIndex: 2, errored: true, busy: false, message: err instanceof Error ? err.message : "Publish request failed", artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName } });
@@ -1466,6 +1480,19 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                           rel="noreferrer"
                         >
                           {vaultDeploy.artifacts.txHash.slice(0, 18)}…
+                        </a>
+                      </div>
+                    )}
+                    {vaultDeploy.artifacts.indicatorAddr && (
+                      <div>
+                        indicator (resource acct):{" "}
+                        <a
+                          className="text-emerald-400 underline"
+                          href={`https://explorer.aptoslabs.com/account/${vaultDeploy.artifacts.indicatorAddr}?network=testnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {vaultDeploy.artifacts.indicatorAddr.slice(0, 18)}…
                         </a>
                       </div>
                     )}

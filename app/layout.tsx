@@ -5,6 +5,7 @@ import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/react"
 import { Toaster } from "@/components/ui/sonner"
 import { ClientProviders } from "@/components/client-providers"
+import { ChunkReload } from "@/components/chunk-reload"
 import "./globals.css"
 
 const inter = Inter({
@@ -90,6 +91,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="font-mono antialiased" style={{ backgroundColor: "#000000" }}>
+        <ChunkReload />
         <ClientProviders>
           <Suspense fallback={null}>{children}</Suspense>
         </ClientProviders>

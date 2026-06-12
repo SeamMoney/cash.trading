@@ -806,7 +806,9 @@ export function parsePine(src: string): ParsedPine {
       periodArgs.forEach((a, i) => {
         const ok = a.k === "num" || (a.k === "id" && resolveNumericId(a.name) !== undefined);
         if (!ok) {
-          const what = a.k === "id" ? `'${a.name}' does not resolve to a number (use a literal, input(), or a numeric assignment)` : `argument is not numeric`;
+          const what = a.k === "id"
+            ? `'${a.name}' does not resolve to a constant number. Dynamic periods (function parameters, computed values) can't be transpiled on-chain — use a literal, input(), or a top-level numeric assignment`
+            : `argument is not numeric`;
           result.argErrors.push(`ta.${fn}: argument ${i + (seriesVarSource || startIdx ? 2 : 1)} invalid — ${what}.`);
         }
       });

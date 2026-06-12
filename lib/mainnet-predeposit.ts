@@ -16,6 +16,23 @@ export const USDC_DECIMALS = 6
 const FULLNODE_URL = process.env.APTOS_MAINNET_FULLNODE_URL || 'https://api.mainnet.aptoslabs.com/v1'
 const INDEXER_URL = process.env.APTOS_MAINNET_INDEXER_URL || 'https://api.mainnet.aptoslabs.com/v1/graphql'
 
+// Anonymous indexer queries hit Geomi's per-IP rate limits (429s flip DLP/points
+// to $0). Authenticate server-side with whichever Aptos/Geomi key is configured.
+function aptosAuthHeaders(): Record<string, string> {
+  const key = (
+    process.env.APTOS_API_KEY_MAINNET ||
+    process.env.APTOS_NODE_API_KEY_MAINNET ||
+    process.env.GEOMI_API_KEY_MAINNET ||
+    process.env.APTOS_API_KEY ||
+    process.env.APTOS_NODE_API_KEY ||
+    process.env.GEOMI_API_KEY ||
+    ''
+  ).trim()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (key) headers.Authorization = `Bearer ${key}`
+  return headers
+}
+
 // Points formula: ~0.00157 points per $1 per day (recalibrated: Decibel shows ~1049 pts for ~$18.96M)
 const POINTS_PER_DOLLAR_PER_SECOND = 0.00157 / 86400 // ~1.817e-8
 
@@ -77,7 +94,7 @@ async function callViewFunction(
 ): Promise<string[]> {
   const response = await fetch(`${FULLNODE_URL}/view`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: aptosAuthHeaders(),
     body: JSON.stringify({
       function: `${MAINNET_PACKAGE}::predeposit::${functionId}`,
       type_arguments: typeArgs,
@@ -277,7 +294,7 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
 
     const response = await fetch(INDEXER_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: aptosAuthHeaders(),
       body: JSON.stringify({ query }),
     })
 
@@ -422,7 +439,7 @@ export async function getMainnetUserDepositEvents(
 
     const response = await fetch(INDEXER_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: aptosAuthHeaders(),
       body: JSON.stringify({ query }),
     })
 

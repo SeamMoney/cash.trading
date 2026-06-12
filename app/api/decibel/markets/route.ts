@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFastMarkets } from "@/lib/decibel-chain";
-import { getReadDex, type DecibelNetwork } from "@/lib/decibel";
+import { getAptosFullnodeApiKey, getReadDex, type DecibelNetwork } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +32,50 @@ function fallbackMarkets(error: string, network: DecibelNetwork) {
     error,
     markets: [],
   };
+}
+
+const DECIBEL_REST_BASE: Record<DecibelNetwork, string> = {
+  mainnet: "https://api.mainnet.aptoslabs.com/decibel/api/v1",
+  testnet: "https://api.testnet.aptoslabs.com/decibel/api/v1",
+};
+
+interface DayStats {
+  volume24h: number | null;
+  change24hPct: number | null;
+}
+
+/** 24h volume / price change per market name from the indexer's asset_contexts. */
+async function fetchAssetContexts(network: DecibelNetwork): Promise<Map<string, DayStats>> {
+  const map = new Map<string, DayStats>();
+  const apiKey = getAptosFullnodeApiKey(network);
+  if (!apiKey) return map;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REST_MARKETS_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${DECIBEL_REST_BASE[network]}/asset_contexts`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return map;
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) return map;
+    for (const raw of data) {
+      const row = raw as Record<string, unknown>;
+      const name = asString(row.market);
+      if (!name) continue;
+      map.set(name.toUpperCase(), {
+        volume24h: asNumber(row.volume_24h),
+        change24hPct: asNumber(row.price_change_pct_24h),
+      });
+    }
+    return map;
+  } catch {
+    return map;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchSdkMarkets(network: DecibelNetwork) {
@@ -98,6 +142,7 @@ export async function GET(req: Request) {
   const startedAt = Date.now();
 
   try {
+    const dayStatsPromise = fetchAssetContexts(network);
     let markets = await fetchSdkMarkets(network);
     let sources = {
       config: "sdk",
@@ -115,9 +160,27 @@ export async function GET(req: Request) {
       };
     }
 
+    // 24h stats ride along when the indexer has them; null means "hide the cell",
+    // never zero (DATA-NEEDS-FOR-UI.md #2). asset_contexts reports volume in BASE
+    // units (matches the prices endpoint's open_interest), so the USD figure is
+    // derived via mark price; change24hPct is already a percentage.
+    const dayStats = await dayStatsPromise;
+    const enriched = markets.map((market) => {
+      const stats = dayStats.get(market.name.toUpperCase());
+      const volume24h = stats?.volume24h ?? null;
+      const volume24hUsd =
+        volume24h !== null && market.markPrice ? volume24h * market.markPrice : null;
+      return {
+        ...market,
+        volume24h,
+        volume24hUsd,
+        change24hPct: stats?.change24hPct ?? null,
+      };
+    });
+
     return NextResponse.json({
       network,
-      markets,
+      markets: enriched,
       latencyMs: Date.now() - startedAt,
       sources,
     }, { headers: NO_STORE_HEADERS });

@@ -961,3 +961,256 @@ function collectNeededTAFunctions(ops: IRTAOp[]): string[] {
 
   return Array.from(needed);
 }
+
+// ─── Strategy-Vault Target ─────────────────────────────────────────────────────
+//
+// Emits ONE self-contained module: the generated indicator (above) PLUS the
+// trustless Decibel strategy-vault pattern proven live on testnet in
+// contracts/strategy-vaults/sources/strategy_vault.move — tick_oracle reads
+// Decibel's mark price inside the contract (un-spoofable), orders are
+// NAV-sized via SizingConfig and placed on a delegated vault subaccount.
+// Compile against the interface packages in contracts/strategy-vaults/deps.
+
+export interface StrategyVaultOpts {
+  /** Decibel perp-market Object address this strategy trades. */
+  marketAddr: string;
+  /** Engine lot size — sizes are floored to a multiple (testnet BTC = 10). */
+  lotSize?: number;
+  /** Engine minimum order size — NAV sizes clamp up (testnet BTC = 100000). */
+  minSize?: number;
+  /** 10^sizeDecimals for the market (BTC = 1e8). */
+  szDecimalsPow?: string;
+  /** Mark px decimals (1e6) → indicator scale (1e8) multiplier. */
+  priceScaleMult?: number;
+}
+
+const VAULT_IMPORTS = [
+  `    use std::option;`,
+  `    use aptos_framework::object::{Self, Object, ExtendRef};`,
+  `    use decibel::dex_accounts::{Self, Subaccount};`,
+  `    use decibel::perp_engine;`,
+  `    use decibel::perp_market::PerpMarket;`,
+  `    use decibel::perp_order;`,
+  `    use order_book::order_book_types;`,
+].join("\n");
+
+export function generateStrategyVaultModule(ir: IndicatorIR, opts: StrategyVaultOpts): string {
+  const base = generateMoveModule(ir);
+  const withImports = base.replace(
+    `    use aptos_framework::event;`,
+    `    use aptos_framework::event;\n${VAULT_IMPORTS}`,
+  );
+  const closing = withImports.lastIndexOf("\n}");
+  return (
+    withImports.slice(0, closing) +
+    "\n\n" +
+    vaultSection(opts) +
+    "\n}\n"
+  );
+}
+
+function vaultSection(opts: StrategyVaultOpts): string {
+  const lot = opts.lotSize ?? 10;
+  const minSize = opts.minSize ?? 100000;
+  const szPow = opts.szDecimalsPow ?? "100000000";
+  const scaleMult = opts.priceScaleMult ?? 100;
+
+  return `    // ── Trustless Strategy Vault ───────────────────────────────
+    // Binds THIS indicator to a Decibel vault: the only code that can move the
+    // vault's positions is this module. tick_oracle prices from Decibel's own
+    // perp engine, so the cranker contributes nothing but gas + a timestamp.
+
+    const E_SV_NOT_CREATOR: u64 = 10;
+    const E_SV_PAUSED:      u64 = 11;
+    const E_SV_ZERO_SIZE:   u64 = 12;
+    const E_SV_BAD_BPS:     u64 = 13;
+    const E_SV_NO_NAV:      u64 = 14;
+
+    const SV_PRICE_SCALE: u64 = ${scaleMult};
+    const SV_SIZE_POW: u128 = ${szPow};
+    const SV_BPS_DENOM: u128 = 10000;
+    const SV_LOT_SIZE: u128 = ${lot};
+    const SV_MIN_SIZE: u128 = ${minSize};
+
+    struct StrategyVault has key {
+        creator: address,
+        indicator_addr: address,
+        decibel_vault_addr: address,
+        market: Object<PerpMarket>,
+        order_size: u64,
+        extend_ref: ExtendRef,
+        last_signal: u8,
+        is_long: bool,
+        in_position: bool,
+        paused: bool,
+        trades: u64,
+    }
+
+    struct SizingConfig has key {
+        pct_bps: u64,
+    }
+
+    #[event]
+    struct VaultTraded has drop, store {
+        strategy_vault: address,
+        decibel_vault: address,
+        signal: u8,
+        is_buy: bool,
+        reduce_only: bool,
+        size: u64,
+        price: u64,
+        timestamp: u64,
+    }
+
+    public entry fun create_strategy_vault(
+        creator: &signer,
+        indicator_addr: address,
+        decibel_vault_addr: address,
+        market: Object<PerpMarket>,
+        order_size: u64,
+    ) {
+        assert!(order_size > 0, E_SV_ZERO_SIZE);
+        let ctor = object::create_object(signer::address_of(creator));
+        let obj_signer = object::generate_signer(&ctor);
+        let extend_ref = object::generate_extend_ref(&ctor);
+        move_to(&obj_signer, StrategyVault {
+            creator: signer::address_of(creator),
+            indicator_addr,
+            decibel_vault_addr,
+            market,
+            order_size,
+            extend_ref,
+            last_signal: SIGNAL_NEUTRAL,
+            is_long: false,
+            in_position: false,
+            paused: false,
+            trades: 0,
+        });
+    }
+
+    /// Preferred crank: price comes from Decibel's perp engine on-chain.
+    public entry fun tick_oracle(keeper: &signer, sv_addr: address, ts: u64)
+        acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
+    {
+        let market = borrow_global<StrategyVault>(sv_addr).market;
+        let mark_px = perp_engine::get_mark_price(market);
+        sv_tick_internal(keeper, sv_addr, mark_px * SV_PRICE_SCALE, ts);
+    }
+
+    /// Test/keeper tick with an explicit 1e8-scaled price.
+    public entry fun tick(keeper: &signer, sv_addr: address, price: u64, ts: u64)
+        acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
+    {
+        sv_tick_internal(keeper, sv_addr, price, ts);
+    }
+
+    fun sv_tick_internal(keeper: &signer, sv_addr: address, price: u64, ts: u64)
+        acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
+    {
+        let sv = borrow_global_mut<StrategyVault>(sv_addr);
+        assert!(!sv.paused, E_SV_PAUSED);
+
+        push_price(keeper, sv.indicator_addr, price, ts);
+        let sig = get_signal(sv.indicator_addr);
+        if (sig == SIGNAL_NEUTRAL || sig == sv.last_signal) {
+            sv.last_signal = sig;
+            return
+        };
+
+        let size = sv_resolve_size(sv_addr, sv.decibel_vault_addr, sv.order_size, price);
+        let want_long = sig == SIGNAL_BUY;
+        let trader = object::generate_signer_for_extending(&sv.extend_ref);
+        let subaccount = dex_accounts::primary_subaccount_object(sv.decibel_vault_addr);
+
+        if (sv.in_position && sv.is_long != want_long) {
+            sv_place(&trader, subaccount, sv.market, !sv.is_long, size, price, true);
+            sv_emit(sv_addr, sv.decibel_vault_addr, size, sig, !sv.is_long, true, price, ts);
+        };
+
+        sv_place(&trader, subaccount, sv.market, want_long, size, price, false);
+        sv_emit(sv_addr, sv.decibel_vault_addr, size, sig, want_long, false, price, ts);
+
+        sv.in_position = true;
+        sv.is_long = want_long;
+        sv.last_signal = sig;
+        sv.trades = sv.trades + 1;
+    }
+
+    fun sv_resolve_size(sv_addr: address, vault_addr: address, fixed_size: u64, price_1e8: u64): u64
+        acquires SizingConfig
+    {
+        if (!exists<SizingConfig>(sv_addr)) return fixed_size;
+        let pct_bps = borrow_global<SizingConfig>(sv_addr).pct_bps;
+        let nav = perp_engine::get_account_net_asset_value(
+            dex_accounts::primary_subaccount(vault_addr)
+        );
+        assert!(nav > 0, E_SV_NO_NAV);
+        let nav_u = (nav as u128);
+        let mark_px = ((price_1e8 / SV_PRICE_SCALE) as u128);
+        if (mark_px == 0) return fixed_size;
+        let size = nav_u * (pct_bps as u128) * SV_SIZE_POW / (SV_BPS_DENOM * mark_px);
+        size = size / SV_LOT_SIZE * SV_LOT_SIZE;
+        if (size < SV_MIN_SIZE) size = SV_MIN_SIZE;
+        (size as u64)
+    }
+
+    fun sv_place(
+        trader: &signer,
+        subaccount: Object<Subaccount>,
+        market: Object<PerpMarket>,
+        is_buy: bool,
+        size: u64,
+        price: u64,
+        reduce_only: bool,
+    ) {
+        let tif = order_book_types::immediate_or_cancel();
+        let common = perp_order::new_order_common_args(price, size, is_buy, tif, option::none());
+        let tpsl = perp_order::new_empty_order_tp_sl_args();
+        dex_accounts::place_perp_order_to_subaccount(
+            trader, subaccount, market, common, reduce_only,
+            option::none(), tpsl, option::none(),
+        );
+    }
+
+    fun sv_emit(
+        sv_addr: address, decibel_vault: address, size: u64,
+        signal: u8, is_buy: bool, reduce_only: bool, price: u64, ts: u64,
+    ) {
+        event::emit(VaultTraded {
+            strategy_vault: sv_addr,
+            decibel_vault,
+            signal,
+            is_buy,
+            reduce_only,
+            size,
+            price,
+            timestamp: ts,
+        });
+    }
+
+    public entry fun set_paused(creator: &signer, sv_addr: address, paused: bool) acquires StrategyVault {
+        let sv = borrow_global_mut<StrategyVault>(sv_addr);
+        assert!(signer::address_of(creator) == sv.creator, E_SV_NOT_CREATOR);
+        sv.paused = paused;
+    }
+
+    public entry fun set_nav_sizing(creator: &signer, sv_addr: address, pct_bps: u64)
+        acquires StrategyVault, SizingConfig
+    {
+        assert!(pct_bps > 0 && pct_bps <= 10000, E_SV_BAD_BPS);
+        let sv = borrow_global<StrategyVault>(sv_addr);
+        assert!(signer::address_of(creator) == sv.creator, E_SV_NOT_CREATOR);
+        if (exists<SizingConfig>(sv_addr)) {
+            borrow_global_mut<SizingConfig>(sv_addr).pct_bps = pct_bps;
+        } else {
+            let obj_signer = object::generate_signer_for_extending(&sv.extend_ref);
+            move_to(&obj_signer, SizingConfig { pct_bps });
+        }
+    }
+
+    #[view]
+    public fun get_vault_state(sv_addr: address): (address, address, u64, bool, bool, bool, u64) acquires StrategyVault {
+        let sv = borrow_global<StrategyVault>(sv_addr);
+        (sv.indicator_addr, sv.decibel_vault_addr, sv.order_size, sv.in_position, sv.is_long, sv.paused, sv.trades)
+    }`;
+}

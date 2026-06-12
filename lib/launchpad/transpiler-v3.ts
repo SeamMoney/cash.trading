@@ -11,7 +11,7 @@
 import { parsePine, exprToString } from "./pine-parser";
 import type { Expr, ParsedPine, Stmt, TACallInfo } from "./pine-parser";
 import { astToIndicatorIR, type IndicatorIR, type IRFuncDef } from "./pine-ir";
-import { generateMoveModule } from "./move-codegen";
+import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
 // ─── Result type ─────────────────────────────────────────────────────────────
 
@@ -225,9 +225,18 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
 
 // ─── Main transpile function ─────────────────────────────────────────────────
 
+export interface TranspileV3Options {
+  /** "vault" emits the indicator PLUS the trustless Decibel strategy-vault
+   *  pattern in one module (tick_oracle, NAV sizing, delegated orders). */
+  target?: "indicator" | "vault";
+  /** Decibel perp-market Object address (required for target:"vault"). */
+  marketAddr?: string;
+}
+
 export function transpileV3(
   pineScript: string,
   creatorAddr = "0xcreator",
+  options: TranspileV3Options = {},
 ): TranspileV3Result {
   // 1. Parse
   const ast = parsePine(pineScript);
@@ -236,7 +245,10 @@ export function transpileV3(
   const ir = astToIndicatorIR(ast, creatorAddr);
 
   // 3. Generate Move source
-  let moveSource = generateMoveModule(ir);
+  let moveSource =
+    options.target === "vault" && options.marketAddr
+      ? generateStrategyVaultModule(ir, { marketAddr: options.marketAddr })
+      : generateMoveModule(ir);
 
   // 4. Generate Move.toml
   const moveToml = generateMoveToml(ir.moduleName, creatorAddr);

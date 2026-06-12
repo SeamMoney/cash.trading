@@ -353,6 +353,9 @@ interface DecibelApiMarket {
   mode: string;
   szDecimals: number | null;
   pxDecimals: number | null;
+  /** Already a percentage (e.g. 1.42 = +1.42%). */
+  change24hPct?: number | null;
+  volume24hUsd?: number | null;
 }
 
 type MarketChangePayload = {
@@ -411,8 +414,10 @@ function toPerpMarketData(market: DecibelApiMarket): PerpMarketData {
     color: getMarketColor(market.name),
     seedPrice,
     priceDecimals: getDisplayDecimals(seedPrice),
-    change24h: "—",
-    volume24h: "—",
+    change24h: market.change24hPct != null
+      ? `${market.change24hPct >= 0 ? "+" : ""}${market.change24hPct.toFixed(2)}%`
+      : "—",
+    volume24h: market.volume24hUsd != null ? fmtStatUsd(market.volume24hUsd) : "—",
     openInterestLabel: openInterestUsd,
     volatility: 0.0028,
   };

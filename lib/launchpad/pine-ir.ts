@@ -790,7 +790,10 @@ export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): Indic
 
   // ── Step 5: Compute buffer capacity ─────────────────────────────────────
 
-  const bufferCapacity = Math.max(maxPeriod + BUFFER_PADDING, 30);
+  // Recursive indicators (EMA/RSI/MACD) seed on the oldest window and fold
+  // forward, so they need history well beyond one period to converge to
+  // Pine's full-history values — 3x leaves residual seed weight at ~2%.
+  const bufferCapacity = Math.max(maxPeriod * 3, maxPeriod + BUFFER_PADDING, 30);
   const warmupMinBars = Math.max(maxPeriod, 10);
 
   // ── Step 5b: Statement-level conversion (V3) ────────────────────────────

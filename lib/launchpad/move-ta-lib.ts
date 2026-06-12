@@ -118,20 +118,22 @@ export const MOVE_TA_FUNCTIONS: Record<string, MoveTAFunction> = {
     name: "compute_ema",
     signature: "fun compute_ema(prices: &vector<u64>, period: u64): u64",
     body: `fun compute_ema(prices: &vector<u64>, period: u64): u64 {
-        let len       = vector::length(prices);
-        let start_idx = len - period;
-        // Seed with SMA of first window
+        // Pine ta.ema semantics over the available buffer: seed with the SMA
+        // of the OLDEST window, then fold the recursion forward to the newest
+        // price. (Seeding at len - period leaves nothing to fold and silently
+        // degenerates to an SMA.)
+        let len = vector::length(prices);
         let seed: u128 = 0;
         let i = 0;
         while (i < period) {
-            seed = seed + (*vector::borrow(prices, start_idx + i) as u128);
+            seed = seed + (*vector::borrow(prices, i) as u128);
             i = i + 1;
         };
         let ema: u128  = seed / (period as u128);
         // k = 2/(period+1) scaled to 1e6
         let k_scaled: u128 = 2_000_000 / ((period + 1) as u128);
         let k_inv:    u128 = 1_000_000 - k_scaled;
-        let j = start_idx + period;
+        let j = period;
         while (j < len) {
             let p = *vector::borrow(prices, j);
             ema = ((p as u128) * k_scaled + ema * k_inv) / 1_000_000;
@@ -153,9 +155,12 @@ export const MOVE_TA_FUNCTIONS: Record<string, MoveTAFunction> = {
         assert!(len > period, E_INSUFFICIENT_DATA);
         let avg_gain: u128 = 0;
         let avg_loss: u128 = 0;
-        let start = len - period - 1;
-        let i     = start;
-        while (i < start + period) {
+        // Seed simple averages over the OLDEST period of deltas, then apply
+        // Wilder's smoothing forward to the newest price. (Seeding on the
+        // trailing window leaves nothing to smooth — that's Cutler's RSI,
+        // not Pine's rma-based ta.rsi.)
+        let i = 0;
+        while (i < period) {
             let prev = *vector::borrow(prices, i);
             let curr = *vector::borrow(prices, i + 1);
             if (curr > prev) { avg_gain = avg_gain + ((curr - prev) as u128); }
@@ -165,7 +170,7 @@ export const MOVE_TA_FUNCTIONS: Record<string, MoveTAFunction> = {
         avg_gain = avg_gain / (period as u128);
         avg_loss = avg_loss / (period as u128);
         // Wilder's smoothing for remaining prices
-        let j = start + period;
+        let j = period;
         while (j < len - 1) {
             let prev = *vector::borrow(prices, j);
             let curr = *vector::borrow(prices, j + 1);

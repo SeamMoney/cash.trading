@@ -754,7 +754,7 @@ export function BTCChart({
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<"line" | "candle">("line");
   const [perpsMode, setPerpsMode] = useState<"line" | "candle">("line");
-  const [overlayMode, setOverlayMode] = useState<"off" | "sma" | "ema">("off");
+  const [overlayMode, setOverlayMode] = useState<"off" | "sma" | "ema" | "strategy">("off");
   const [windowSecs, setWindowSecs] = useState(60);
   const marketConfig = activeMarkets.find((m) => m.id === market) || activeMarkets[0] || MARKETS[0];
   const isPerpsMarket = marketConfig.chartKind === "perps";
@@ -1075,18 +1075,31 @@ export function BTCChart({
           >
             Candles
           </button>
-          {isPerpsMarket && (
-            <button
-              type="button"
-              onClick={() => setOverlayMode((v) => (v === "off" ? "sma" : v === "sma" ? "ema" : "off"))}
-              className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
-                overlayMode !== "off" ? "bg-purple-500/20 text-purple-300" : "text-zinc-500"
-              }`}
-              title="Overlay moving averages (off → SMA → EMA)"
-            >
-              {overlayMode === "ema" ? "EMA" : "SMA"}
-            </button>
-          )}
+          {isPerpsMarket && (() => {
+            // The live trustless strategy vault trades BTC/USD with SMA 3/5 —
+            // on that market the toggle gains a "vault strategy" state so the
+            // chart shows exactly what the on-chain strategy sees.
+            const hasStrategy = perpData?.marketName === "BTC/USD";
+            const next = (v: typeof overlayMode) =>
+              v === "off" ? "sma"
+              : v === "sma" ? "ema"
+              : v === "ema" && hasStrategy ? "strategy"
+              : "off";
+            return (
+              <button
+                type="button"
+                onClick={() => setOverlayMode(next)}
+                className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
+                  overlayMode === "strategy" ? "bg-emerald-500/20 text-emerald-300"
+                  : overlayMode !== "off" ? "bg-purple-500/20 text-purple-300"
+                  : "text-zinc-500"
+                }`}
+                title={hasStrategy ? "Overlay moving averages (off → SMA → EMA → Vault 3/5)" : "Overlay moving averages (off → SMA → EMA)"}
+              >
+                {overlayMode === "ema" ? "EMA" : overlayMode === "strategy" ? "VAULT 3/5" : "SMA"}
+              </button>
+            );
+          })()}
         </div>
         {isPerpsMarket && perpData ? (
           <BtcPerpsChart

@@ -101,6 +101,8 @@ function scoreConfidence(ast: ParsedPine, ir: IndicatorIR): {
     warnings.push("No TA function calls detected.");
   }
   errors.push(...collectUnsupportedSyntaxErrors(ast));
+  // Malformed TA-call arguments are hard rejects — never silently defaulted.
+  errors.push(...(ast.argErrors ?? []));
   // Silently infer signals when no explicit strategy.entry() found
 
   // Visual stripping info

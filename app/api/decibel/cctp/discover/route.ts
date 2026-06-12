@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AbiCoder, JsonRpcProvider } from "ethers";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import type { DecibelNetwork } from "@/lib/decibel";
 import { getEvmCctpConfig, type EvmCctpSourceChain } from "@/lib/evm-cctp";
 
@@ -133,6 +134,14 @@ async function scanChain(
 }
 
 export async function GET(req: NextRequest) {
+  // The scan fans out dozens of public-RPC getLogs calls — keep it scarce.
+  const rate = checkApiRateLimit(req, "cctp-discover", 6, 600_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      { status: 429, headers: NO_STORE_HEADERS },
+    );
+  }
   const address = req.nextUrl.searchParams.get("address")?.trim() ?? "";
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
     return NextResponse.json(

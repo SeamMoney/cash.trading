@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import {
   DECIBEL_BASE,
   getDecibelApiKey,
@@ -52,6 +53,13 @@ function unavailable(reason: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "candlesticks", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      { status: 429, headers: NO_STORE_HEADERS },
+    );
+  }
   const params = req.nextUrl.searchParams;
   const market = params.get("market") ?? "";
   const interval = params.get("interval") ?? "1m";

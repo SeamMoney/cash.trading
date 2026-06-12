@@ -65,3 +65,21 @@ shapes as defense-in-depth, but the real fix is parser strictness in `lib/launch
 - `publishPineVault({moveSource, moduleName})` → `{ok, packageAddress, txHash}` — testnet
   object-publish paid by EXPOSED_TESTNET_KEY.
 Verified: SMA-cross Pine compiles end-to-end (~95s cold incl. framework fetch, 3ms cached).
+
+## C. Transpiler math audit (backend lane, June 12) — EMA/RSI fixed, ATR still wrong
+User asked backend to review the transpiler. Found and FIXED in lib/launchpad/move-ta-lib.ts +
+pine-ir.ts (surgical, your lane otherwise untouched):
+- compute_ema seeded its SMA on the TRAILING window, so the recursion loop started at len and
+  never ran — **every EMA (and both MACD legs) was computing an SMA**, numerically proven
+  byte-identical. Now seeds on the oldest window and folds forward; matches float Pine EMA to
+  <0.0001 (old behavior was off by ~10 points at period 26).
+- compute_rsi had the same dead-loop: Wilder's smoothing never ran (silently Cutler's RSI).
+  Same fix shape.
+- bufferCapacity raised to max(3×maxPeriod, …) so recursive indicators converge (~2% residual).
+STILL WRONG, not fixed (design question, your call): the "ATR approximation" used for
+supertrend is compute_sma over CLOSES — that is not any approximation of Average True Range
+(no high/low data in the buffer). Supertrend-based presets are trading a different indicator
+than advertised. Options: store OHLC in the buffer, derive a close-to-close volatility proxy
+and rename honestly, or remove supertrend presets until real.
+Note: already-published indicator packages keep the old bytecode — only new deploys get the
+fixed math. The live SMA 3/5 vault is unaffected (pure SMA).

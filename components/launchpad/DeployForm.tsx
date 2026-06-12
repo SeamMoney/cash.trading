@@ -6,6 +6,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { cn } from "@/lib/utils";
 import { transpile, type TranspileResult } from "@/lib/launchpad/transpiler";
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
+import { DeployVaultRail } from "@/components/launchpad/DeployVaultRail";
 import { PineVisualPreview } from "./PineVisualPreview";
 
 const MonacoEditor = dynamic(
@@ -756,6 +757,98 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   const [moveSource, setMoveSource] = useState<string>("");
   const [vaultSource, setVaultSource] = useState<string>("");
   const [vaultMarket, setVaultMarket] = useState<keyof typeof VAULT_MARKETS>("BTC/USD");
+  const { connected, account, signAndSubmitTransaction } = useWallet();
+  // Deploy-from-UI flow (transpile → compile → publish → vault → delegate → live).
+  const [vaultDeploy, setVaultDeploy] = useState<{
+    activeIndex: number;
+    errored: boolean;
+    message: string;
+    busy: boolean;
+    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string };
+  } | null>(null);
+  const [compileServiceAvailable, setCompileServiceAvailable] = useState<boolean | null>(null);
+
+  // Availability probe — Vercel prod has no aptos CLI; present deploy-from-UI
+  // honestly as local/self-hosted-only there instead of a broken button.
+  useEffect(() => {
+    if (activeTab !== "vault" || compileServiceAvailable !== null) return;
+    fetch("/api/launchpad/deploy-vault")
+      .then((r) => r.json())
+      .then((d) => setCompileServiceAvailable(Boolean(d.available)))
+      .catch(() => setCompileServiceAvailable(false));
+  }, [activeTab, compileServiceAvailable]);
+
+  const handleDeployVault = useCallback(async () => {
+    if (!pineScript.trim()) return;
+    const creatorAddr = (connected && account) ? account.address.toString() : undefined;
+
+    // Step 0: transpile client-side (instant) — hard errors stop here.
+    setVaultDeploy({ activeIndex: 0, errored: false, busy: true, message: "Transpiling PineScript…", artifacts: {} });
+    try {
+      const market = VAULT_MARKETS[vaultMarket];
+      const t = transpileV3(pineScript, creatorAddr ?? "0xcreator", {
+        target: "vault", marketAddr: market.addr,
+        lotSize: market.lotSize, minSize: market.minSize, szDecimalsPow: market.szDecimalsPow,
+      });
+      if ((t as { errors?: string[] }).errors?.length) {
+        setVaultDeploy({ activeIndex: 0, errored: true, busy: false, message: (t as { errors: string[] }).errors.join("\n"), artifacts: {} });
+        return;
+      }
+    } catch (err) {
+      setVaultDeploy({ activeIndex: 0, errored: true, busy: false, message: err instanceof Error ? err.message : "Transpile failed", artifacts: {} });
+      return;
+    }
+
+    // Step 1: compile on the server — serialized, ~2 min cold. Honest progress.
+    setVaultDeploy({ activeIndex: 1, errored: false, busy: true, message: "Compiling Move on the server — a cold compile can take ~2 minutes…", artifacts: {} });
+    let compileJson: { ok?: boolean; sourceHash?: string; moduleName?: string; moveSource?: string; compilerError?: string; transpileErrors?: string[]; error?: string };
+    try {
+      const res = await fetch("/api/launchpad/deploy-vault", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "compile", pineScript, marketName: vaultMarket, creatorAddr }),
+      });
+      compileJson = await res.json();
+      if (res.status === 501) {
+        setVaultDeploy({ activeIndex: 1, errored: true, busy: false, message: compileJson.error ?? "Compile service unavailable on this deployment.", artifacts: {} });
+        return;
+      }
+      if (!res.ok || !compileJson.ok) {
+        const detail = compileJson.compilerError ?? compileJson.transpileErrors?.join("\n") ?? compileJson.error ?? "Compile failed";
+        setVaultDeploy({ activeIndex: 1, errored: true, busy: false, message: detail, artifacts: { sourceHash: compileJson.sourceHash } });
+        return;
+      }
+    } catch (err) {
+      setVaultDeploy({ activeIndex: 1, errored: true, busy: false, message: err instanceof Error ? err.message : "Compile request failed", artifacts: {} });
+      return;
+    }
+
+    // Step 2: publish to testnet (deployer-paid).
+    setVaultDeploy({ activeIndex: 2, errored: false, busy: true, message: "Publishing the module to Aptos testnet…", artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName } });
+    try {
+      const res = await fetch("/api/launchpad/deploy-vault", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "publish", moveSource: compileJson.moveSource, moduleName: compileJson.moduleName }),
+      });
+      const pub = await res.json();
+      if (!res.ok || !pub.ok) {
+        setVaultDeploy({ activeIndex: 2, errored: true, busy: false, message: pub.error ?? "Publish failed", artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName } });
+        return;
+      }
+      // Steps 3-5 (vault / delegate / live) are wallet signatures + registry —
+      // wired next; stop honestly at "published" with the live artifacts.
+      setVaultDeploy({
+        activeIndex: 3,
+        errored: false,
+        busy: false,
+        message: "Module is LIVE on testnet. Next steps (create vault → bind strategy → delegate) sign with your wallet — coming next.",
+        artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName, packageAddress: pub.packageAddress, txHash: pub.txHash },
+      });
+    } catch (err) {
+      setVaultDeploy({ activeIndex: 2, errored: true, busy: false, message: err instanceof Error ? err.message : "Publish request failed", artifacts: { sourceHash: compileJson.sourceHash, moduleName: compileJson.moduleName } });
+    }
+  }, [pineScript, vaultMarket, connected, account]);
 
   const [result, setResult] = useState<DeployResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -775,7 +868,6 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { connected, account, signAndSubmitTransaction } = useWallet();
 
   // On mount: fetch the real BOS script from TV import so overlays match the published indicator.
   // Falls back to the local stub if the fetch fails (no network / scrape blocked).
@@ -1327,6 +1419,56 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
+                {compileServiceAvailable === true && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeployVault()}
+                    disabled={vaultDeploy?.busy}
+                    className="shrink-0 rounded bg-emerald-400 px-2.5 py-1 font-mono text-[10px] font-bold text-black transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {vaultDeploy?.busy ? "Working…" : "Deploy to Testnet"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === "vault" && compileServiceAvailable === false && (
+              <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/[0.06] px-3 py-1.5 text-[10px] text-amber-300/90">
+                One-click deploy needs the Move compiler, which isn&apos;t available on this hosted deployment yet —
+                run cash.trading locally (or self-hosted) to deploy this module from the UI. The generated source
+                below is complete and compiles as-is.
+              </div>
+            )}
+
+            {activeTab === "vault" && vaultDeploy && (
+              <div className="shrink-0 space-y-1.5 border-b border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2">
+                <DeployVaultRail status={{ activeIndex: vaultDeploy.activeIndex, errored: vaultDeploy.errored }} />
+                <p className={`whitespace-pre-wrap font-mono text-[10px] leading-relaxed ${vaultDeploy.errored ? "text-red-300" : "text-zinc-400"}`}>
+                  {vaultDeploy.message}
+                </p>
+                {(vaultDeploy.artifacts.packageAddress || vaultDeploy.artifacts.sourceHash) && (
+                  <div className="space-y-0.5 font-mono text-[9px] text-zinc-500">
+                    {vaultDeploy.artifacts.packageAddress && (
+                      <div>package: <span className="text-emerald-400">{vaultDeploy.artifacts.packageAddress}</span></div>
+                    )}
+                    {vaultDeploy.artifacts.txHash && (
+                      <div>
+                        tx:{" "}
+                        <a
+                          className="text-emerald-400 underline"
+                          href={`https://explorer.aptoslabs.com/txn/${vaultDeploy.artifacts.txHash}?network=testnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {vaultDeploy.artifacts.txHash.slice(0, 18)}…
+                        </a>
+                      </div>
+                    )}
+                    {vaultDeploy.artifacts.sourceHash && (
+                      <div>source hash (commitment): {vaultDeploy.artifacts.sourceHash.slice(0, 22)}…</div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

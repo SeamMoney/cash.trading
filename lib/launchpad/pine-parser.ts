@@ -766,7 +766,19 @@ export function parsePine(src: string): ParsedPine {
       startIdx = 1;
     }
 
-    const periods = args.slice(startIdx).map(a => a.k === "num" ? a.v : (a.k === "id" && result.params[a.name] !== undefined ? result.params[a.name] : 0));
+    // Resolve a numeric identifier: input() param, or a plain numeric
+    // assignment earlier in the script (e.g. `pLen = 5`). Returns undefined
+    // when the id can't be resolved to a constant.
+    const resolveNumericId = (name: string): number | undefined => {
+      if (result.params[name] !== undefined) return result.params[name];
+      const assigned = result.assignments[name];
+      if (assigned && assigned.k === "num") return assigned.v;
+      return undefined;
+    };
+
+    const periods = args.slice(startIdx).map(a =>
+      a.k === "num" ? a.v : (a.k === "id" ? (resolveNumericId(a.name) ?? 0) : 0),
+    );
 
     // ── Strict argument validation ──────────────────────────────────────────
     // Malformed args must be HARD errors, never silent defaults: substituting
@@ -792,9 +804,9 @@ export function parsePine(src: string): ParsedPine {
       const seriesVarSource = startIdx === 0 && args.length > 0 && args[0].k !== "num";
       const periodArgs = args.slice(seriesVarSource ? 1 : startIdx);
       periodArgs.forEach((a, i) => {
-        const ok = a.k === "num" || (a.k === "id" && result.params[a.name] !== undefined);
+        const ok = a.k === "num" || (a.k === "id" && resolveNumericId(a.name) !== undefined);
         if (!ok) {
-          const what = a.k === "id" ? `'${a.name}' is not a numeric literal or declared input()` : `argument is not numeric`;
+          const what = a.k === "id" ? `'${a.name}' does not resolve to a number (use a literal, input(), or a numeric assignment)` : `argument is not numeric`;
           result.argErrors.push(`ta.${fn}: argument ${i + (seriesVarSource || startIdx ? 2 : 1)} invalid — ${what}.`);
         }
       });

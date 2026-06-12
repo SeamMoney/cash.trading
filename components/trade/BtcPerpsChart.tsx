@@ -803,8 +803,9 @@ type BtcPerpsChartProps = {
   market: PerpMarketData;
   mode: "line" | "candle";
   onSnapshotChange?: (snapshot: PerpMarketSnapshot) => void;
-  /** Overlay moving-average lines on the chart (presentational only). */
-  overlayMode?: "off" | "sma" | "ema";
+  /** Overlay moving-average lines on the chart (presentational only).
+   *  "strategy" mirrors the live trustless vault's SMA 3/5 on its market. */
+  overlayMode?: "off" | "sma" | "ema" | "strategy";
 };
 
 function BtcPerpsChartComponent({
@@ -1905,13 +1906,17 @@ function BtcPerpsChartComponent({
       }
       return out;
     };
+    const isStrategy = overlayMode === "strategy";
     const calc = overlayMode === "ema" ? ema : sma;
     const tag = overlayMode === "ema" ? "EMA" : "SMA";
-    const fast = calc(20);
-    const slow = calc(50);
+    const fastPeriod = isStrategy ? 3 : 20;
+    const slowPeriod = isStrategy ? 5 : 50;
+    const fast = calc(fastPeriod);
+    const slow = calc(slowPeriod);
     const series: LivelineSeries[] = [];
-    if (fast.length >= 2) series.push({ id: `${tag}20`, data: fast, value: fast[fast.length - 1].value, color: "#a855f7", label: `${tag} 20` });
-    if (slow.length >= 2) series.push({ id: `${tag}50`, data: slow, value: slow[slow.length - 1].value, color: "#f59e0b", label: `${tag} 50` });
+    const fastColor = isStrategy ? "#34d399" : "#a855f7";
+    if (fast.length >= 2) series.push({ id: `${tag}${fastPeriod}`, data: fast, value: fast[fast.length - 1].value, color: fastColor, label: isStrategy ? "Vault SMA 3" : `${tag} ${fastPeriod}` });
+    if (slow.length >= 2) series.push({ id: `${tag}${slowPeriod}`, data: slow, value: slow[slow.length - 1].value, color: "#f59e0b", label: isStrategy ? "Vault SMA 5" : `${tag} ${slowPeriod}` });
     return series;
   }, [overlayMode, mode, renderLineData, renderSecondCandles]);
 

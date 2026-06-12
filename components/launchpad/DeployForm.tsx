@@ -735,8 +735,9 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   const [tvError, setTvError] = useState<string | null>(null);
 
   // IDE tabs
-  const [activeTab, setActiveTab] = useState<"pine" | "move">("pine");
+  const [activeTab, setActiveTab] = useState<"pine" | "move" | "vault">("pine");
   const [moveSource, setMoveSource] = useState<string>("");
+  const [vaultSource, setVaultSource] = useState<string>("");
 
   const [result, setResult] = useState<DeployResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -789,6 +790,23 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       setMoveSource(result.moveSource);
     } catch {
       setMoveSource("// Transpilation error — check PineScript syntax");
+    }
+  }, [activeTab, pineScript, connected, account]);
+
+  // Vault target: the same indicator PLUS the trustless Decibel strategy-vault
+  // pattern in one module — this module IS the bot.
+  useEffect(() => {
+    if (activeTab !== "vault") return;
+    try {
+      const addr = (connected && account) ? account.address.toString() : "0xcreator";
+      const result = transpileV3(pineScript, addr, {
+        target: "vault",
+        // BTC/USD perp market (testnet) — selectable per-market later.
+        marketAddr: "0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a",
+      });
+      setVaultSource(result.moveSource);
+    } catch {
+      setVaultSource("// Transpilation error — check PineScript syntax");
     }
   }, [activeTab, pineScript, connected, account]);
 
@@ -1256,7 +1274,28 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
                 <span className="truncate">{tabFileName}.move</span>
               </button>
+              <button
+                onClick={() => setActiveTab("vault")}
+                className={cn(
+                  "flex items-center gap-1 px-2 text-[9px] font-mono transition-colors border-b-2",
+                  activeTab === "vault"
+                    ? "bg-[#0d0d0d] text-emerald-300 border-emerald-500"
+                    : "bg-[#1e1e1e] text-zinc-500 hover:text-zinc-300 border-transparent"
+                )}
+                title="The trustless vault module — this module IS the bot"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span className="truncate">{tabFileName}.vault.move</span>
+              </button>
             </div>
+
+            {activeTab === "vault" && (
+              <div className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-[10px] leading-relaxed text-emerald-300/90">
+                This module <span className="font-bold">is</span> the bot: deployed on-chain and delegated by a
+                Decibel vault, it can only trade this exact strategy — prices come from Decibel&apos;s oracle,
+                sizing from vault NAV. Nobody (including the creator) can make it trade anything else.
+              </div>
+            )}
 
             {/* Editor content area */}
             <div className="h-[350px] lg:flex-1 lg:min-h-[250px]">
@@ -1282,11 +1321,15 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 />
               ) : (
                 <MonacoEditor
-                  key="move-editor"
+                  key={activeTab === "vault" ? "vault-editor" : "move-editor"}
                   height="100%"
                   defaultLanguage="move"
                   theme="vs-dark"
-                  value={moveSource || "// Generating Move module..."}
+                  value={
+                    activeTab === "vault"
+                      ? (vaultSource || "// Generating trustless vault module...")
+                      : (moveSource || "// Generating Move module...")
+                  }
                   beforeMount={(monaco) => {
                     if (!monaco.languages.getLanguages().some((l: { id: string }) => l.id === "move")) {
                       monaco.languages.register({ id: "move" });

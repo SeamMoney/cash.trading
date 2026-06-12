@@ -180,6 +180,10 @@ export interface ParsedPine {
   buyExpr?: Expr;
   sellExpr?: Expr;
   params: Record<string, number>;       // all numeric input defaults by varname
+  /** HARD errors from malformed TA-call arguments (missing/extra/non-numeric
+   *  periods). These must reject the transpile — silently substituting a
+   *  default would deploy a different strategy than the user wrote. */
+  argErrors: string[];
   varDeclarations?: Map<string, { initExpr: Expr; isVarip: boolean }>;
   visualCalls?: string[];
   alertConditions?: Array<{ condition: Expr; title: string; message: string }>;
@@ -227,6 +231,7 @@ export function parsePine(src: string): ParsedPine {
     inputs: {}, taCalls: [], assignments: {}, statements: [],
     strategyEntries: [], strategyCloses: [],
     params: {},
+    argErrors: [],
     varDeclarations: new Map(),
     visualCalls: [],
     alertConditions: [],
@@ -762,6 +767,47 @@ export function parsePine(src: string): ParsedPine {
     }
 
     const periods = args.slice(startIdx).map(a => a.k === "num" ? a.v : (a.k === "id" && result.params[a.name] !== undefined ? result.params[a.name] : 0));
+
+    // ── Strict argument validation ──────────────────────────────────────────
+    // Malformed args must be HARD errors, never silent defaults: substituting
+    // e.g. period 14 for a typo deploys a different strategy than written.
+    // Expected count of numeric/period args after the source, per function.
+    const TA_PERIOD_ARITY: Record<string, { min: number; max: number }> = {
+      sma: { min: 1, max: 1 }, ema: { min: 1, max: 1 }, wma: { min: 1, max: 1 },
+      hma: { min: 1, max: 1 }, vwma: { min: 1, max: 1 }, rma: { min: 1, max: 1 },
+      alma: { min: 1, max: 3 }, rsi: { min: 1, max: 1 }, atr: { min: 1, max: 1 },
+      cci: { min: 1, max: 1 }, stdev: { min: 1, max: 1 }, variance: { min: 1, max: 1 },
+      median: { min: 1, max: 1 }, change: { min: 0, max: 1 },
+      highest: { min: 1, max: 1 }, lowest: { min: 1, max: 1 },
+      highestbars: { min: 1, max: 1 }, lowestbars: { min: 1, max: 1 },
+      macd: { min: 3, max: 3 }, bb: { min: 2, max: 2 }, bbands: { min: 2, max: 2 },
+      stoch: { min: 1, max: 3 }, supertrend: { min: 2, max: 2 }, donchian: { min: 1, max: 1 },
+      pivothigh: { min: 2, max: 2 }, pivotlow: { min: 2, max: 2 },
+    };
+    const arity = TA_PERIOD_ARITY[fn];
+    if (arity) {
+      // Series-variable first arg (TA-of-variable) keeps legacy handling for
+      // the source slot; everything after a recognized source must be a
+      // numeric literal or a declared input.
+      const seriesVarSource = startIdx === 0 && args.length > 0 && args[0].k !== "num";
+      const periodArgs = args.slice(seriesVarSource ? 1 : startIdx);
+      periodArgs.forEach((a, i) => {
+        const ok = a.k === "num" || (a.k === "id" && result.params[a.name] !== undefined);
+        if (!ok) {
+          const what = a.k === "id" ? `'${a.name}' is not a numeric literal or declared input()` : `argument is not numeric`;
+          result.argErrors.push(`ta.${fn}: argument ${i + (seriesVarSource || startIdx ? 2 : 1)} invalid — ${what}.`);
+        }
+      });
+      if (!seriesVarSource && (periodArgs.length < arity.min || periodArgs.length > arity.max)) {
+        result.argErrors.push(
+          `ta.${fn}: expected ${arity.min === arity.max ? arity.min : `${arity.min}-${arity.max}`} period argument(s) after the source, got ${periodArgs.length}. Missing or extra arguments are rejected — defaults are never substituted.`,
+        );
+      }
+      const nonPositive = periodArgs.some((a) => a.k === "num" && a.v <= 0);
+      if (nonPositive) {
+        result.argErrors.push(`ta.${fn}: period arguments must be positive integers.`);
+      }
+    }
 
     result.taCalls.push({ fn, source, periods, rawArgs: args, targets });
   }

@@ -23,15 +23,19 @@ the card now says "curve illustrative · endpoint real"). To make it real:
 - UI consumer: `useDecibelVaults`'s `chartDataRef` in `components/trade/TradePageClient.tsx` —
   Claude will swap `buildPnlCurve` for the API series once available.
 
-## 2. 24h Change / 24h Volume on the market stats row
-`components/trade/BTCChart.tsx` (your file) renders "24h Change —" and an empty 24h Volume on some
-markets. Decibel marketPrices/stats should populate both; if an interval stat isn't available for a
-market, hide the cell instead of showing "—".
+## 2. ~~24h Change / 24h Volume on the market stats row~~ SHIPPED (backend lane)
+`GET /api/decibel/markets?network=…` now returns per market:
+- `change24hPct` — already a percentage (e.g. `12.22` = +12.22%), null when unavailable
+- `volume24h` — **base units** (e.g. BTC count), null when unavailable
+- `volume24hUsd` — derived via mark price; use this one for the stats row
+Null means hide the cell (never zero). Source: indexer `asset_contexts`, 2.5s timeout, fetched in
+parallel with the markets call. **UI lane: swap the bindings in BTCChart's stats row.**
 
-## 3. Indexer 429s → DLP/points numbers flip to $0
-The depositors/points indexer query runs anonymously and hits Geomi per-IP rate limits
-(`Error fetching depositors from indexer … 429`). Wire `GEOMI_API_KEY`/`APTOS_API_KEY` server-side
-(env already has keys) so /points + DLP stats stop intermittently zeroing.
+## 3. ~~Indexer 429s → DLP/points numbers flip to $0~~ SHIPPED (backend lane)
+All three fetches in `lib/mainnet-predeposit.ts` (fullnode view + both indexer GraphQL queries) now
+send `Authorization: Bearer <key>` resolved from the standard env chain
+(`APTOS_API_KEY_MAINNET → … → GEOMI_API_KEY`). Verified `/api/predeposit/total` returns live
+numbers. If 429s persist in prod, the key needs more quota — not an auth gap.
 
 ## 4. (Later) Per-strategy vault stats for live indicator cards
 The STRATEGY VAULTS feed reads indicator state from `/api/launchpad/on-chain` (Claude's lane) but

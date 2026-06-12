@@ -231,6 +231,10 @@ export interface TranspileV3Options {
   target?: "indicator" | "vault";
   /** Decibel perp-market Object address (required for target:"vault"). */
   marketAddr?: string;
+  /** Per-market engine constraints for NAV sizing (see StrategyVaultOpts). */
+  lotSize?: number;
+  minSize?: number;
+  szDecimalsPow?: string;
 }
 
 export function transpileV3(
@@ -247,7 +251,12 @@ export function transpileV3(
   // 3. Generate Move source
   let moveSource =
     options.target === "vault" && options.marketAddr
-      ? generateStrategyVaultModule(ir, { marketAddr: options.marketAddr })
+      ? generateStrategyVaultModule(ir, {
+          marketAddr: options.marketAddr,
+          lotSize: options.lotSize,
+          minSize: options.minSize,
+          szDecimalsPow: options.szDecimalsPow,
+        })
       : generateMoveModule(ir);
 
   // 4. Generate Move.toml

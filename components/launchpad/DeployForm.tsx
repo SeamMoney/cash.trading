@@ -20,6 +20,23 @@ const MonacoEditor = dynamic(
 
 const LAUNCHPAD_CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 
+// Testnet Decibel perp markets the vault target can bind to (object addresses
+// derived from GlobalPerpEngine + market-name seed; specs from the live API).
+const VAULT_MARKETS = {
+  "BTC/USD": {
+    addr: "0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a",
+    lotSize: 10, minSize: 100000, szDecimalsPow: "100000000",
+  },
+  "ETH/USD": {
+    addr: "0x0dd1772998bb9bbb1189ef7d680353f1b97adb947b178167b03ace95dd2fcf8e",
+    lotSize: 10, minSize: 100000, szDecimalsPow: "10000000",
+  },
+  "APT/USD": {
+    addr: "0x57ba43880ee443eebd5021af91d5a8156fb3e04247c97c30912e6501c187a428",
+    lotSize: 10, minSize: 100000, szDecimalsPow: "10000",
+  },
+} as const;
+
 // ─── Type name map ────────────────────────────────────────────────────────────
 
 const TYPE_NAMES: Record<number, string> = {
@@ -738,6 +755,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   const [activeTab, setActiveTab] = useState<"pine" | "move" | "vault">("pine");
   const [moveSource, setMoveSource] = useState<string>("");
   const [vaultSource, setVaultSource] = useState<string>("");
+  const [vaultMarket, setVaultMarket] = useState<keyof typeof VAULT_MARKETS>("BTC/USD");
 
   const [result, setResult] = useState<DeployResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -799,16 +817,19 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     if (activeTab !== "vault") return;
     try {
       const addr = (connected && account) ? account.address.toString() : "0xcreator";
+      const market = VAULT_MARKETS[vaultMarket];
       const result = transpileV3(pineScript, addr, {
         target: "vault",
-        // BTC/USD perp market (testnet) — selectable per-market later.
-        marketAddr: "0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a",
+        marketAddr: market.addr,
+        lotSize: market.lotSize,
+        minSize: market.minSize,
+        szDecimalsPow: market.szDecimalsPow,
       });
       setVaultSource(result.moveSource);
     } catch {
       setVaultSource("// Transpilation error — check PineScript syntax");
     }
-  }, [activeTab, pineScript, connected, account]);
+  }, [activeTab, pineScript, connected, account, vaultMarket]);
 
   const runPreview = useCallback((script: string) => {
     if (!script.trim()) {
@@ -1290,10 +1311,22 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
             </div>
 
             {activeTab === "vault" && (
-              <div className="shrink-0 border-b border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-[10px] leading-relaxed text-emerald-300/90">
-                This module <span className="font-bold">is</span> the bot: deployed on-chain and delegated by a
-                Decibel vault, it can only trade this exact strategy — prices come from Decibel&apos;s oracle,
-                sizing from vault NAV. Nobody (including the creator) can make it trade anything else.
+              <div className="flex shrink-0 items-center gap-3 border-b border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5">
+                <p className="min-w-0 flex-1 text-[10px] leading-relaxed text-emerald-300/90">
+                  This module <span className="font-bold">is</span> the bot: deployed on-chain and delegated by a
+                  Decibel vault, it can only trade this exact strategy — prices come from Decibel&apos;s oracle,
+                  sizing from vault NAV. Nobody (including the creator) can make it trade anything else.
+                </p>
+                <select
+                  value={vaultMarket}
+                  onChange={(e) => setVaultMarket(e.target.value as keyof typeof VAULT_MARKETS)}
+                  className="shrink-0 rounded border border-emerald-500/30 bg-[#0d0d0d] px-1.5 py-1 font-mono text-[10px] text-emerald-300 outline-none"
+                  aria-label="Vault market"
+                >
+                  {Object.keys(VAULT_MARKETS).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </div>
             )}
 

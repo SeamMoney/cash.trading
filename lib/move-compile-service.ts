@@ -117,6 +117,28 @@ function extractModuleName(moveSource: string): string | null {
   return moveSource.match(/^module\s+([a-z0-9_]+)::/m)?.[1] ?? null;
 }
 
+/** Non-TTY aptos CLI exits 0 on failure with {"Error": ...} on stdout. */
+function extractCliError(stdout: string): string | null {
+  if (!stdout.includes('"Error"')) return null;
+  try {
+    const jsonStart = stdout.indexOf("{");
+    const parsed = JSON.parse(stdout.slice(jsonStart)) as { Error?: string };
+    if (parsed.Error) {
+      // Prepend any compiler diagnostics printed before the JSON envelope.
+      const diagnostics = stdout
+        .slice(0, jsonStart)
+        .split("\n")
+        .filter((l) => !/^(UPDATING|FETCHING|INCLUDING|BUILDING)/.test(l))
+        .join("\n")
+        .trim();
+      return [diagnostics, parsed.Error].filter(Boolean).join("\n").slice(-4000);
+    }
+  } catch {
+    return stdout.slice(-2000);
+  }
+  return null;
+}
+
 /**
  * Transpile user PineScript to the vault target and compile it in isolation.
  * Compiler failures return the Move error verbatim (no silent fallback).
@@ -199,13 +221,20 @@ export async function compilePineVault(args: {
 
   const run = async (): Promise<CompileResult> => {
     try {
-      await withTempPackage(moveSource, moduleName, "0xCAFE", (dir) =>
+      const { stdout } = await withTempPackage(moveSource, moduleName, "0xCAFE", (dir) =>
         execFileAsync(
           "aptos",
           ["move", "compile", "--skip-fetch-latest-git-deps", "--package-dir", dir],
           { timeout: COMPILE_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
         ),
       );
+      // aptos CLI (8.0.0) exits 0 on compile FAILURE when run without a TTY —
+      // the error arrives as {"Error": ...} JSON on stdout. Exit code alone
+      // would cache broken Move as success (found by dogfooding the rail).
+      const cliError = extractCliError(stdout);
+      if (cliError) {
+        return { ok: false, sourceHash, moduleName, moveSource, compilerError: cliError };
+      }
       const ok: CompileResult = { ok: true, sourceHash, moduleName, moveSource };
       compileCache.set(cacheKey, ok);
       return ok;
@@ -265,6 +294,10 @@ export async function publishPineVault(args: {
           { timeout: PUBLISH_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
         ),
       );
+      const cliError = extractCliError(stdout);
+      if (cliError) {
+        return { ok: false, error: cliError };
+      }
       const packageAddress = stdout.match(/object address (0x[0-9a-f]+)/i)?.[1]
         ?? stdout.match(/"Result":\s*"Published package at object address (0x[0-9a-f]+)/i)?.[1]
         ?? stdout.match(/(0x[0-9a-f]{60,64})/)?.[1];

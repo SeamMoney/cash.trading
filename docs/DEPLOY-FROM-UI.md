@@ -30,6 +30,17 @@ PineScript to a live, investable, trustless vault without leaving the app.
   compiler on attacker-controlled source — needs timeout/memory caps + no network + tmpdir isolation
   (the compiler itself is safe-ish but rate-limit it).
 - **Rate limiting** on /deploy-vault (compile is CPU-heavy).
+- **BUG (2026-06-12, blocking honesty contract): `compilePineVault` reports ok for sources that
+  don't compile.** When run under `execFile` (no TTY), `aptos move compile` **exits 0 on compile
+  failure** and reports the error as JSON `{"Error": "Move compilation failed: ..."}` on *stdout* —
+  so the promisify-rejection path in `lib/move-compile-service.ts` never fires, `ok: true` is
+  returned AND cached (`compileCache`), and the failure surfaces later at publish as the confusing
+  "publish output had no object address: {Error: exiting with context checking errors}". Repro:
+  `execFile("aptos", ["move","compile",...])` on any package with a Move type error → resolves with
+  exit 0. Fix: treat stdout containing `"Error"` JSON as failure in BOTH compile and publish paths,
+  and don't cache failures as ok. (Found dogfooding the deploy rail with the WaveTrend preset; the
+  transpiler bugs that *generated* the bad Move are fixed in the UI lane, but this check must not
+  rely on the transpiler being perfect.)
 
 ## UI-lane remaining (mine)
 - Market picker for the vault target (today BTC default in the .vault.move tab).

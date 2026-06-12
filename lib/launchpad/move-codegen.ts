@@ -672,20 +672,22 @@ function generateIRExpr(expr: IRExpr): string {
     case "scaled_mul": {
       const left = generateIRExpr(expr.left);
       const right = generateIRExpr(expr.right);
-      return `((((${left}) as u128) * ((${right}) as u128)) / (SCALE as u128)) as u64`;
+      // Outer parens required: `as` and if-expressions bind looser than the
+      // operators callers embed this into (`a / X as u64` casts only X).
+      return `(((((${left}) as u128) * ((${right}) as u128)) / (SCALE as u128)) as u64)`;
     }
 
     case "safe_sub": {
       const left = generateIRExpr(expr.left);
       const right = generateIRExpr(expr.right);
-      return `if (${left} >= ${right}) { ${left} - ${right} } else { 0 }`;
+      return `(if (${left} >= ${right}) { ${left} - ${right} } else { 0 })`;
     }
 
     case "ternary": {
       const cond = generateIRExpr(expr.cond);
       const yes = generateIRExpr(expr.yes);
       const no = generateIRExpr(expr.no);
-      return `if (${cond}) { ${yes} } else { ${no} }`;
+      return `(if (${cond}) { ${yes} } else { ${no} })`;
     }
 
     case "unop":
@@ -713,7 +715,7 @@ function generateIRExpr(expr: IRExpr): string {
       const e = expr as any;
       const l = generateIRExpr(e.left);
       const r = generateIRExpr(e.right);
-      return `if (${r} == 0) { 0 } else { (((${l}) as u128) * (SCALE as u128) / ((${r}) as u128)) as u64 }`;
+      return `(if (${r} == 0) { 0 } else { ((((${l}) as u128) * (SCALE as u128) / ((${r}) as u128)) as u64) })`;
     }
 
     case "abs": {

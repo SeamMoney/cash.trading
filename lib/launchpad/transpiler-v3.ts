@@ -103,6 +103,10 @@ function scoreConfidence(ast: ParsedPine, ir: IndicatorIR): {
   errors.push(...collectUnsupportedSyntaxErrors(ast));
   // Malformed TA-call arguments are hard rejects — never silently defaulted.
   errors.push(...(ast.argErrors ?? []));
+  // IR call nodes named ta_* have no emitted implementation (all helpers are
+  // compute_*) — the generated Move can never compile. Reject instead of
+  // shipping source that fails at the compile/publish step.
+  errors.push(...collectUndefinedTACallErrors(ir));
   // Silently infer signals when no explicit strategy.entry() found
 
   // Visual stripping info
@@ -163,9 +167,19 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
     }
   };
 
+  // Composite price sources need OHLC/volume data the on-chain feed doesn't
+  // carry (close-only). Unless the user assigned their own variable with the
+  // same name, these would silently become undeclared state fields.
+  const COMPOSITE_SOURCES = new Set(["hlc3", "hl2", "ohlc4", "hlcc4", "volume"]);
+
   function walkExpr(expr: Expr | undefined): void {
     if (!expr) return;
     switch (expr.k) {
+      case "id":
+        if (COMPOSITE_SOURCES.has(expr.name) && ast.assignments[expr.name] === undefined) {
+          add(`Unsupported source \`${expr.name}\`: the on-chain price feed is close-only, so OHLC/volume composites can't be computed. Rewrite the expression in terms of \`close\`.`);
+        }
+        break;
       case "binop":
         if (expr.op === "index") {
           add("Unsupported PineScript: dynamic history indexing like series[expr] cannot be lowered to Move; use a numeric literal offset such as close[1].");
@@ -223,6 +237,33 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
 
   ast.statements.forEach(walkStmt);
   return errors;
+}
+
+/** Find IR call nodes that reference functions the codegen never emits.
+ *  The inline-ta fallback in pine-ir produces `ta_<fn>` calls for ta.* uses
+ *  inside larger expressions, but every emitted helper is named compute_* —
+ *  so any surviving ta_* call is a guaranteed Move compile failure. */
+function collectUndefinedTACallErrors(ir: IndicatorIR): string[] {
+  const errors = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const n = node as Record<string, unknown>;
+    if (n.kind === "call" && typeof n.fn === "string" && n.fn.startsWith("ta_")) {
+      const pineFn = n.fn.slice(3);
+      errors.add(
+        `ta.${pineFn} used inline inside a larger expression — it has no on-chain inline form. Assign it to its own variable on one line (e.g. \`x = ta.${pineFn}(...)\`), then use \`x\`. Note: on-chain TA helpers operate on the close-price series; computed-series sources aren't supported.`,
+      );
+    }
+    Object.values(n).forEach(walk);
+  };
+  walk(ir.taOps);
+  walk(ir.signalLogic);
+  walk(ir.funcDefs ?? []);
+  return [...errors];
 }
 
 // ─── Main transpile function ─────────────────────────────────────────────────

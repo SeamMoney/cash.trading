@@ -730,6 +730,8 @@ function TranspilerPreview({
 export function DeployForm({ onDeployed }: DeployFormProps) {
   const [step, setStep] = useState<Step>("form");
   const [pineScript, setPineScript] = useState(EXAMPLES.bos.script);
+  // Once the user picks a preset or edits, the async TV import must not clobber it.
+  const scriptTouchedRef = useRef(false);
   const [activeExample, setActiveExample] = useState("bos");
 
   // Auto-extracted meta (editable via override)
@@ -879,7 +881,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     fetch(`/api/launchpad/tv-import?url=${encodeURIComponent(BOS_URL)}`)
       .then(r => r.json())
       .then((data: { source?: string; error?: string }) => {
-        if (data.source) {
+        if (data.source && !scriptTouchedRef.current) {
           setPineScript(data.source);
           setNameOverride(null);
           setSymbolOverride(null);
@@ -963,6 +965,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
 
   const handleScriptChange = useCallback(
     (val: string) => {
+      scriptTouchedRef.current = true;
       setPineScript(val);
       // Clear overrides so auto-extract re-runs
       setNameOverride(null);
@@ -1015,6 +1018,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       } else if (trimmed.length > 20 && (val.includes("//@version") || val.includes("strategy(") || val.includes("indicator("))) {
         // User pasted PineScript directly
         setTvHelper(false);
+        scriptTouchedRef.current = true;
         setPineScript(val);
         setNameOverride(null);
         setSymbolOverride(null);
@@ -1032,6 +1036,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   function loadExample(key: string) {
     const script = EXAMPLES[key].script;
     setActiveExample(key);
+    scriptTouchedRef.current = true;
     setPineScript(script);
     setNameOverride(null);
     setSymbolOverride(null);

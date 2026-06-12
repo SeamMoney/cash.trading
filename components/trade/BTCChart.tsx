@@ -294,6 +294,7 @@ const STOCK_SYMBOLS = new Set([
   "NVDA",
   "QQQ",
   "SNDK",
+  "SPCX",
   "SPY",
   "TSLA",
 ]);

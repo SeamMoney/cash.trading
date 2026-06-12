@@ -24,6 +24,7 @@ module cash_strategy::strategy_vault {
 
     use cash_strategy::indicator;
     use decibel::dex_accounts::{Self, Subaccount};
+    use decibel::perp_engine;
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
     use order_book::order_book_types;
@@ -32,6 +33,14 @@ module cash_strategy::strategy_vault {
     const E_NOT_CREATOR: u64 = 1;
     const E_PAUSED:      u64 = 2;
     const E_ZERO_SIZE:   u64 = 3;
+    const E_BAD_BPS:     u64 = 4;
+    const E_NO_NAV:      u64 = 5;
+
+    /// Mark price uses px decimals (1e6); the indicator buffer uses 1e8.
+    const PRICE_SCALE_PX_TO_1E8: u64 = 100;
+    /// BTC/USD size decimals (v2 sizes for the live strategy's market).
+    const SIZE_DECIMALS_POW: u128 = 100000000; // 10^8
+    const BPS_DENOM: u128 = 10000;
 
     // Signal constants (mirror indicator.move).
     const SIGNAL_NEUTRAL: u8 = 0;
@@ -102,14 +111,35 @@ module cash_strategy::strategy_vault {
         });
     }
 
-    /// Push a price into the bound indicator, read the new signal, and translate any flip into a real
-    /// perp order on the Decibel vault subaccount — entirely on-chain.
-    ///
-    /// Permissionless by design: a ticker can only feed a price (which should come from the Decibel
-    /// oracle — see STRATEGY_VAULTS.md "Open decisions"); the trade itself is fully determined by the
-    /// indicator and the vault's delegated authority.
+    /// Optional %-of-NAV sizing, stored as a SEPARATE resource on the StrategyVault
+    /// object (additive — keeps the upgrade layout-compatible). When present, each
+    /// order sizes to `nav * pct_bps / 10000` instead of the fixed `order_size`.
+    struct SizingConfig has key {
+        pct_bps: u64,
+    }
+
+    /// PREFERRED tick: reads the mark price from Decibel's own perp engine, so the
+    /// price feeding the indicator (and the order limit) cannot be spoofed by the
+    /// caller. Fully permissionless — anyone may crank it.
+    public entry fun tick_oracle(keeper: &signer, sv_addr: address, ts: u64)
+        acquires StrategyVault, SizingConfig
+    {
+        let market = borrow_global<StrategyVault>(sv_addr).market;
+        let mark_px = perp_engine::get_mark_price(market);
+        // Mark price is in px decimals (1e6); the indicator buffer is 1e8-scaled.
+        tick_internal(keeper, sv_addr, mark_px * PRICE_SCALE_PX_TO_1E8, ts);
+    }
+
+    /// Test/keeper tick with an explicit price (1e8-scaled). Kept for integration
+    /// tests and markets without a live oracle; production cranks use tick_oracle.
     public entry fun tick(keeper: &signer, sv_addr: address, price: u64, ts: u64)
-        acquires StrategyVault
+        acquires StrategyVault, SizingConfig
+    {
+        tick_internal(keeper, sv_addr, price, ts);
+    }
+
+    fun tick_internal(keeper: &signer, sv_addr: address, price: u64, ts: u64)
+        acquires StrategyVault, SizingConfig
     {
         let sv = borrow_global_mut<StrategyVault>(sv_addr);
         assert!(!sv.paused, E_PAUSED);
@@ -124,7 +154,10 @@ module cash_strategy::strategy_vault {
             return
         };
 
-        // 3. Translate the signal flip into orders. BUY → close any short, open long.
+        // 3. Size the order: %-of-NAV when configured, fixed lots otherwise.
+        let size = resolve_order_size(sv_addr, sv.decibel_vault_addr, sv.order_size, price);
+
+        // 4. Translate the signal flip into orders. BUY → close any short, open long.
         //    SELL → close any long, open short.
         let want_long = sig == SIGNAL_BUY;
         let trader = object::generate_signer_for_extending(&sv.extend_ref);
@@ -133,18 +166,53 @@ module cash_strategy::strategy_vault {
         // If flipping from an open opposite position, first reduce-only close it.
         if (sv.in_position && sv.is_long != want_long) {
             // Closing side is opposite of the current position: a long is closed with a sell.
-            place(&trader, subaccount, sv.market, /*is_buy=*/ !sv.is_long, sv.order_size, price, true);
-            emit(sv_addr, sv.decibel_vault_addr, sv.order_size, sig, !sv.is_long, true, price, ts);
+            place(&trader, subaccount, sv.market, /*is_buy=*/ !sv.is_long, size, price, true);
+            emit(sv_addr, sv.decibel_vault_addr, size, sig, !sv.is_long, true, price, ts);
         };
 
         // Open in the new direction.
-        place(&trader, subaccount, sv.market, /*is_buy=*/ want_long, sv.order_size, price, false);
-        emit(sv_addr, sv.decibel_vault_addr, sv.order_size, sig, want_long, false, price, ts);
+        place(&trader, subaccount, sv.market, /*is_buy=*/ want_long, size, price, false);
+        emit(sv_addr, sv.decibel_vault_addr, size, sig, want_long, false, price, ts);
 
         sv.in_position = true;
         sv.is_long = want_long;
         sv.last_signal = sig;
         sv.trades = sv.trades + 1;
+    }
+
+    /// size_raw = nav * pct_bps/10000 * 10^size_decimals / mark_price, computed in
+    /// u128 to avoid overflow. `price_1e8` is the 1e8-scaled tick price; Decibel px
+    /// decimals are 1e6, hence the /PRICE_SCALE_PX_TO_1E8.
+    fun resolve_order_size(sv_addr: address, vault_addr: address, fixed_size: u64, price_1e8: u64): u64
+        acquires SizingConfig
+    {
+        if (!exists<SizingConfig>(sv_addr)) return fixed_size;
+        let pct_bps = borrow_global<SizingConfig>(sv_addr).pct_bps;
+        let nav = perp_engine::get_account_net_asset_value(
+            dex_accounts::primary_subaccount(vault_addr)
+        );
+        assert!(nav > 0, E_NO_NAV);
+        let nav_u = (nav as u128);
+        let mark_px = ((price_1e8 / PRICE_SCALE_PX_TO_1E8) as u128);
+        if (mark_px == 0) return fixed_size;
+        let size = nav_u * (pct_bps as u128) * SIZE_DECIMALS_POW / (BPS_DENOM * mark_px);
+        if (size == 0) return fixed_size;
+        (size as u64)
+    }
+
+    /// Enable %-of-NAV sizing (creator only). pct_bps in 1..=10000 (100% max).
+    public entry fun set_nav_sizing(creator: &signer, sv_addr: address, pct_bps: u64)
+        acquires StrategyVault, SizingConfig
+    {
+        assert!(pct_bps > 0 && pct_bps <= 10000, E_BAD_BPS);
+        let sv = borrow_global<StrategyVault>(sv_addr);
+        assert!(signer::address_of(creator) == sv.creator, E_NOT_CREATOR);
+        if (exists<SizingConfig>(sv_addr)) {
+            borrow_global_mut<SizingConfig>(sv_addr).pct_bps = pct_bps;
+        } else {
+            let obj_signer = object::generate_signer_for_extending(&sv.extend_ref);
+            move_to(&obj_signer, SizingConfig { pct_bps });
+        }
     }
 
     /// Place a single marketable order (IOC at the given price = aggressive, fill-or-skip).

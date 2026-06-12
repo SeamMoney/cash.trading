@@ -11,6 +11,8 @@ module decibel::dex_accounts {
 
     struct Subaccount has key { v: u8 }
 
+    public fun primary_subaccount(_owner: address): address { abort 0 }
+
     public fun primary_subaccount_object(_owner: address): Object<Subaccount> { abort 0 }
 
     /// place_perp_order_to_subaccount(signer, subaccount, market, common_args, reduce_only,

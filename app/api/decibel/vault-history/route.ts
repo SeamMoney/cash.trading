@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { getAptosFullnodeApiKey, MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
 
 export const runtime = "nodejs";
@@ -131,6 +132,13 @@ function mergeSeries(seriesList: UpstreamPoint[][]): VaultHistoryPoint[] {
 }
 
 export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "vault-history", 30, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      { status: 429, headers: NO_STORE_HEADERS },
+    );
+  }
   const vault = req.nextUrl.searchParams.get("vault")?.toLowerCase() ?? "";
   if (!/^0x[0-9a-f]{1,64}$/.test(vault)) {
     return NextResponse.json(

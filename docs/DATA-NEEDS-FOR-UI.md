@@ -41,3 +41,27 @@ numbers. If 429s persist in prod, the key needs more quota — not an auth gap.
 The STRATEGY VAULTS feed reads indicator state from `/api/launchpad/on-chain` (Claude's lane) but
 will eventually want vault-side numbers for live strategies (TVL, depositors, vault PnL) keyed by
 vault address — same series endpoint as #1 covers it if it accepts any vault address.
+
+---
+
+# Requests from the backend lane (for the UI/transpiler session)
+
+## A. Pine parser silently substitutes defaults for malformed args (HIGH)
+`ta.sma(close, )` transpiles with **confidence: high, zero errors/warnings** and emits
+`compute_sma(prices, 14)` — a strategy the user did not write, one typo away from real money.
+Repro: diff `transpileV3` output for `ta.sma(close, 5)` vs `ta.sma(close, )`.
+The compile service (`lib/move-compile-service.ts`) now hard-rejects the obvious `,)` / `(,`
+shapes as defense-in-depth, but the real fix is parser strictness in `lib/launchpad/pine-parser.ts`
+(your lane): malformed/missing args should be transpile ERRORS, never silent defaults.
+
+## B. Compile/publish service is ready to wire (your deploy-vault route)
+`lib/move-compile-service.ts` (backend lane) exposes:
+- `isCompileServiceAvailable(): Promise<boolean>` — aptos CLI probe; surface false as a 501.
+- `checkRateLimit(clientKey)` — 6 compiles/rolling hour per key.
+- `compilePineVault({pineScript, creatorAddr, marketAddr, lotSize?, minSize?, szDecimalsPow?})`
+  → `{ok, sourceHash, moduleName, moveSource, compilerError?, transpileErrors?}` — sandboxed
+  temp package, 240s timeout, serialized compiles, content-hash cache (re-deploys are free),
+  verbatim Move errors. `sourceHash` is sha3-256 of the Pine — the SHELBY-PIN.md commitment input.
+- `publishPineVault({moveSource, moduleName})` → `{ok, packageAddress, txHash}` — testnet
+  object-publish paid by EXPOSED_TESTNET_KEY.
+Verified: SMA-cross Pine compiles end-to-end (~95s cold incl. framework fetch, 3ms cached).

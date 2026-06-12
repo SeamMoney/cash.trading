@@ -41,6 +41,13 @@ module cash_strategy::strategy_vault {
     /// BTC/USD size decimals (v2 sizes for the live strategy's market).
     const SIZE_DECIMALS_POW: u128 = 100000000; // 10^8
     const BPS_DENOM: u128 = 10000;
+    /// Order sizes must be lot-size multiples (testnet BTC/USD lot = 10);
+    /// round NAV-derived sizes down to the lot or the engine aborts.
+    const LOT_SIZE: u128 = 10;
+    /// Engine minimum order size (testnet BTC/USD = 100000 = 0.001 BTC). NAV
+    /// sizing clamps UP to this so small vaults stay tradeable; production
+    /// should source lot/min per market instead of these constants.
+    const MIN_SIZE: u128 = 100000;
 
     // Signal constants (mirror indicator.move).
     const SIGNAL_NEUTRAL: u8 = 0;
@@ -196,7 +203,10 @@ module cash_strategy::strategy_vault {
         let mark_px = ((price_1e8 / PRICE_SCALE_PX_TO_1E8) as u128);
         if (mark_px == 0) return fixed_size;
         let size = nav_u * (pct_bps as u128) * SIZE_DECIMALS_POW / (BPS_DENOM * mark_px);
-        if (size == 0) return fixed_size;
+        // Engine rejects sizes that aren't lot multiples — floor to the lot,
+        // then clamp up to the market minimum so small vaults stay tradeable.
+        size = size / LOT_SIZE * LOT_SIZE;
+        if (size < MIN_SIZE) size = MIN_SIZE;
         (size as u64)
     }
 

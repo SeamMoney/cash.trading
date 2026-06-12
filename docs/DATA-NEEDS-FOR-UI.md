@@ -83,3 +83,25 @@ than advertised. Options: store OHLC in the buffer, derive a close-to-close vola
 and rename honestly, or remove supertrend presets until real.
 Note: already-published indicator packages keep the old bytecode — only new deploys get the
 fixed math. The live SMA 3/5 vault is unaffected (pure SMA).
+
+## D. Equivalence gate shipped + the "any PineScript" roadmap (backend lane)
+User directive: anyone can paste any PineScript and deploy it as a bot. Split:
+
+**Backend (shipped): lib/strategy-equivalence.ts** — `checkEquivalence(ir, closes)` evaluates the
+transpiled IR over real candles with two backends (bigint mirrors of the emitted Move algorithms
+on the capped buffer vs float Pine semantics on unbounded history) and diffs the signal
+sequences. Returns {equivalent, divergenceRate, divergences[], unsupportedOps[]}; refuses to
+pass on <100 compared bars or any unsupported IR op. Verified on real BTC 1h: SMA cross exact
+(0 div / 437 bars); a starved-buffer EMA correctly FAILS (34 div). Wire this into deploy-vault
+as a hard gate before publish: reject when !equivalent, show divergences.
+
+**Transpiler lane (you) — the two unlocks for "any Pine", in order:**
+1. Dynamic history indexing (`series[i]`) — the ONLY blocker for 4 of 9 Deploy presets
+   (Lorentzian, Ichimoku+MACD, Laguerre, BOS). The buffer is the history; IR already tracks
+   per-var historyDepth.
+2. OHLCV buffer + keeper pushes candles (source: /api/decibel/candlesticks) — unlocks honest
+   ATR/stoch/supertrend/VWAP (3 presets currently warn; supertrend's fake ATR goes away).
+3. Running-state EMA/RSI: harness data shows recompute-from-buffer caps fidelity (EMA 9/21:
+   2 divergent bars/437; RSI 14: 5/437 — truncation, not bugs). Store running ema/avg_gain/
+   avg_loss in IndicatorState updated per push → exact Pine parity, less gas, buffer size
+   becomes irrelevant for these.

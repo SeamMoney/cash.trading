@@ -45,25 +45,39 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
   const allWallets: AnyWallet[] = [...wallets, ...notDetectedWallets];
   const { petraWebWallets } = groupAndSortWallets(allWallets);
 
-  // Allowlist — only show these wallets (by base name)
-  const ALLOWED = new Set(["Petra", "Rainbow", "Backpack", "Phantom", "MetaMask"]);
-
-  // Only show installed wallets that are in the allowlist
+  // Parity with app.decibel.trade's connect modal: show EVERY detected wallet
+  // (Aptos AIP-62 natives plus EVM/Solana derived — Petra, Phantom, OKX,
+  // Nightly, MetaMask, Backpack, Rainbow, ...), deduped by base name, instead
+  // of a hardcoded allowlist that hid wallets users actually have.
   const installedRaw = allWallets.filter(
     (w) =>
       !isInstallRequired(w) &&
       !petraWebWallets.some((pw) => pw.name === w.name),
   );
-
-  // Deduplicate by base name, only keep allowed wallets
   const seen = new Map<string, AnyWallet>();
   for (const w of installedRaw) {
     const base = w.name.replace(/\s*\(.*\)/, "").trim();
-    if (ALLOWED.has(base) && !seen.has(base)) {
-      seen.set(base, w);
-    }
+    if (!seen.has(base)) seen.set(base, w);
   }
   const installed = Array.from(seen.values());
+
+  // Not-detected popular wallets get an install link (Decibel-style), rather
+  // than being hidden entirely.
+  const POPULAR_NOT_DETECTED = ["Petra", "Nightly", "OKX Wallet", "Backpack", "Phantom", "MetaMask", "Rainbow"];
+  const installedBases = new Set(seen.keys());
+  const moreWallets: AnyWallet[] = [];
+  const seenMore = new Set<string>();
+  for (const w of notDetectedWallets as AnyWallet[]) {
+    const base = w.name.replace(/\s*\(.*\)/, "").trim();
+    if (
+      POPULAR_NOT_DETECTED.includes(base) &&
+      !installedBases.has(base) &&
+      !seenMore.has(base)
+    ) {
+      seenMore.add(base);
+      moreWallets.push(w);
+    }
+  }
 
   // Separate Google and Apple from other social wallets
   const googleWallet = petraWebWallets.find((w) => w.name.toLowerCase().includes("google"));
@@ -138,7 +152,7 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
 
           {/* Social icon buttons in a row (Apple + wallets) */}
           {(hasSocial || hasWallets) && (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               {/* Apple button */}
               {appleWallet && (
                 <button
@@ -165,7 +179,7 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
                     aria-label={`Connect ${w.name}`}
                     onClick={() => handleConnect(w.name)}
                     disabled={!!connecting}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/[0.08] border border-white/[0.06] hover:bg-white/[0.12] active:scale-[0.98] transition-all disabled:opacity-50"
+                    className="flex-1 min-w-[88px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/[0.08] border border-white/[0.06] hover:bg-white/[0.12] active:scale-[0.98] transition-all disabled:opacity-50"
                   >
                     {w.icon ? (
                       <img src={w.icon} alt={w.name} className="w-5 h-5 rounded" />
@@ -178,6 +192,38 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Not-detected popular wallets — install links (Decibel parity) */}
+          {moreWallets.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[11px] uppercase tracking-wider text-zinc-600 font-medium mb-2.5">
+                More wallets
+              </p>
+              <div className="space-y-1.5">
+                {moreWallets.map((w) => (
+                  <a
+                    key={w.name}
+                    href={(w as { url?: string }).url ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.04] hover:bg-white/[0.08] transition-all"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      {w.icon ? (
+                        <img src={w.icon} alt={w.name} className="w-5 h-5 rounded" />
+                      ) : (
+                        <span className="text-[14px] font-bold text-zinc-400">{w.name.charAt(0)}</span>
+                      )}
+                      <span className="text-[13px] font-medium text-zinc-300">
+                        {w.name.replace(/\s*\(.*\)/, "")}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-zinc-500">Install</span>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

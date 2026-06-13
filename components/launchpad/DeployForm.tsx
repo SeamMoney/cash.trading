@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { AccountAddress, createResourceAddress } from "@aptos-labs/ts-sdk";
+import { buildDelegateDecibelVaultPayload } from "@/lib/decibel-vaults";
 import { cn } from "@/lib/utils";
 import { transpile, type TranspileResult } from "@/lib/launchpad/transpiler";
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
@@ -796,7 +797,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     errored: boolean;
     message: string;
     busy: boolean;
-    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string; indicatorAddr?: string; bindingAddr?: string; bindingTxHash?: string };
+    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string; indicatorAddr?: string; bindingAddr?: string; bindingTxHash?: string; delegateTxHash?: string };
   } | null>(null);
   const [compileServiceAvailable, setCompileServiceAvailable] = useState<boolean | null>(null);
   // Per-preset vault-target transpile status, so the pills can show which
@@ -891,6 +892,64 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       setBindBusy(false);
     }
   }, [vaultDeploy, vaultMarket, bindVaultAddr, bindOrderSize, signAndSubmitTransaction]);
+
+  // Step 5 (Delegate): the Decibel vault admin grants the binding trading
+  // rights. Reuses the existing payload builder from lib/decibel-vaults —
+  // delegate = the StrategyVault binding object from step 4.
+  const handleDelegate = useCallback(async () => {
+    const binding = vaultDeploy?.artifacts.bindingAddr;
+    const vault = bindVaultAddr.trim();
+    if (!binding || !vault) return;
+    setBindBusy(true);
+    setVaultDeploy((d) => d && { ...d, errored: false, message: "Awaiting wallet signature for delegate_dex_actions_to… (must be signed by the vault admin, wallet on Aptos TESTNET)" });
+    try {
+      const { payload } = buildDelegateDecibelVaultPayload({
+        vaultAddress: vault,
+        delegate: binding,
+        network: "testnet",
+      });
+      const res = await signAndSubmitTransaction({
+        data: {
+          function: payload.function as `${string}::${string}::${string}`,
+          typeArguments: payload.typeArguments,
+          // Builder emits [vaultAddress, delegate, expirationOrNull] — all
+          // simple wallet-adapter argument types.
+          functionArguments: payload.functionArguments as (string | number | null)[],
+        },
+      });
+      const hash = (res as { hash?: string }).hash;
+      if (!hash) throw new Error("Wallet returned no transaction hash");
+      for (let i = 0; i < 15; i++) {
+        const r = await fetch(`https://fullnode.testnet.aptoslabs.com/v1/transactions/by_hash/${hash}`);
+        if (r.ok) {
+          const tx = (await r.json()) as { type?: string; success?: boolean; vm_status?: string };
+          if (tx.type === "user_transaction") {
+            if (!tx.success) throw new Error(`delegate_dex_actions_to aborted on-chain: ${tx.vm_status}`);
+            break;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      setVaultDeploy((d) => d && {
+        ...d,
+        activeIndex: 6,
+        errored: false,
+        busy: false,
+        message: "Strategy vault is LIVE. The module holds delegated trading rights and can only trade this exact strategy — permissionless tick_oracle cranks drive it from here.",
+        artifacts: { ...d.artifacts, delegateTxHash: hash },
+      });
+    } catch (err) {
+      setVaultDeploy((d) => d && {
+        ...d,
+        activeIndex: 4,
+        errored: true,
+        busy: false,
+        message: err instanceof Error ? err.message : "delegate_dex_actions_to failed or was rejected in the wallet",
+      });
+    } finally {
+      setBindBusy(false);
+    }
+  }, [vaultDeploy, bindVaultAddr, signAndSubmitTransaction]);
 
   const handleDeployVault = useCallback(async () => {
     if (!pineScript.trim()) return;
@@ -1669,6 +1728,23 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                       {connected
                         ? "Signs create_strategy_vault: binds the published module to your vault — it can then only trade this exact strategy. Needs a funded Decibel testnet vault; delegation (step 5) follows."
                         : "Connect an Aptos testnet wallet to sign create_strategy_vault."}
+                    </p>
+                  </div>
+                )}
+                {/* Step 5 — delegate trading rights to the binding. Vault admin signs. */}
+                {vaultDeploy.activeIndex === 4 && !vaultDeploy.errored && vaultDeploy.artifacts.bindingAddr && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button
+                      onClick={handleDelegate}
+                      disabled={!connected || bindBusy}
+                      className="rounded bg-emerald-500/90 px-2.5 py-1 font-mono text-[10px] font-semibold text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-zinc-600"
+                    >
+                      {bindBusy ? "Signing…" : "Delegate trading rights"}
+                    </button>
+                    <p className="min-w-0 flex-1 font-mono text-[9px] leading-relaxed text-zinc-600">
+                      {connected
+                        ? "Signs vault_admin_api::delegate_dex_actions_to(vault, binding) — must be the vault admin. After this the strategy trades autonomously."
+                        : "Connect the vault admin's testnet wallet to delegate."}
                     </p>
                   </div>
                 )}

@@ -1,0 +1,31 @@
+# fly.io worker box for cash.trading — no HTTP service, two always-on processes.
+# Deploy from the repo root:
+#   fly launch --no-deploy --copy-config --config infra/fly/fly.toml   (first time)
+#   fly secrets set DATABASE_URL=... GEOMI_API_KEY=... CRANK_KEY=... -c infra/fly/fly.toml
+#   fly deploy -c infra/fly/fly.toml --dockerfile infra/fly/Dockerfile
+app = "cash-trading-workers"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  crank = "node scripts/crank-loop.mjs"
+  depth = "node scripts/depth-capture-worker.mjs"
+
+[env]
+  CRANK_INTERVAL_S = "60"
+  CAPTURE_INTERVAL_S = "15"   # ~86 MB/day across 39 markets
+  DEPTH_LEVELS = "10"
+  RETENTION_DAYS = "60"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["crank", "depth"]
+
+# Workers must never be auto-stopped.
+[machine]
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1

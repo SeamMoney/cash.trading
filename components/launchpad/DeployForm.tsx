@@ -59,6 +59,35 @@ const TYPE_NAMES: Record<number, string> = {
 // ─── Example Pine Scripts ─────────────────────────────────────────────────────
 
 const EXAMPLES: Record<string, { label: string; script: string }> = {
+  // First two presets are verified deployable end-to-end (transpile + Move
+  // compile against the Decibel deps) — keep at least one such preset leading
+  // the gallery so the deploy rail has an honest happy path.
+  emaCross: {
+    label: "EMA Cross 9/21",
+    script: `//@version=6
+indicator("EMA Cross 9/21", overlay=true)
+fastLen = input.int(9, "Fast EMA")
+slowLen = input.int(21, "Slow EMA")
+fast = ta.ema(close, fastLen)
+slow = ta.ema(close, slowLen)
+bullish_cross = ta.crossover(fast, slow)
+bearish_cross = ta.crossunder(fast, slow)
+plot(fast, color=color.green)
+plot(slow, color=color.red)`,
+  },
+  rsiReversion: {
+    label: "RSI Mean Reversion",
+    script: `//@version=6
+indicator("RSI Mean Reversion")
+rsiLen = input.int(14, "RSI Length")
+oversold = input.int(30, "Oversold")
+overbought = input.int(70, "Overbought")
+r = ta.rsi(close, rsiLen)
+trendFilter = ta.sma(close, 50)
+bullish_cross = ta.crossover(r, oversold) and close > trendFilter
+bearish_cross = ta.crossunder(r, overbought)
+plot(r)`,
+  },
   lorentzian: {
     label: "Lorentzian Classification",
     script: `//@version=5
@@ -767,9 +796,32 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     errored: boolean;
     message: string;
     busy: boolean;
-    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string; indicatorAddr?: string };
+    artifacts: { sourceHash?: string; moduleName?: string; packageAddress?: string; txHash?: string; indicatorAddr?: string; bindingAddr?: string; bindingTxHash?: string };
   } | null>(null);
   const [compileServiceAvailable, setCompileServiceAvailable] = useState<boolean | null>(null);
+  // Per-preset vault-target transpile status, so the pills can show which
+  // strategies can actually deploy on-chain before the user finds out the
+  // hard way at the rail. Computed once, off the critical path.
+  const [presetDeployable, setPresetDeployable] = useState<Record<string, boolean> | null>(null);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      const market = VAULT_MARKETS["BTC/USD"];
+      const map: Record<string, boolean> = {};
+      for (const [key, ex] of Object.entries(EXAMPLES)) {
+        try {
+          map[key] = transpileV3(ex.script, "0xcreator", {
+            target: "vault", marketAddr: market.addr,
+            lotSize: market.lotSize, minSize: market.minSize, szDecimalsPow: market.szDecimalsPow,
+          }).errors.length === 0;
+        } catch {
+          map[key] = false;
+        }
+      }
+      setPresetDeployable(map);
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // Availability probe — Vercel prod has no aptos CLI; present deploy-from-UI
   // honestly as local/self-hosted-only there instead of a broken button.
@@ -780,6 +832,65 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       .then((d) => setCompileServiceAvailable(Boolean(d.available)))
       .catch(() => setCompileServiceAvailable(false));
   }, [activeTab, compileServiceAvailable]);
+
+  // Step 4 (Vault): bind the published strategy module to a funded Decibel
+  // vault the user administers. The wallet signs create_strategy_vault; the
+  // binding object address comes from the committed tx's writeset.
+  const [bindVaultAddr, setBindVaultAddr] = useState("");
+  const [bindOrderSize, setBindOrderSize] = useState("100000");
+  const [bindBusy, setBindBusy] = useState(false);
+
+  const handleCreateVaultBinding = useCallback(async () => {
+    const pkg = vaultDeploy?.artifacts.packageAddress;
+    const indicatorAddr = vaultDeploy?.artifacts.indicatorAddr;
+    if (!pkg || !indicatorAddr) return;
+    const market = VAULT_MARKETS[vaultMarket];
+    setBindBusy(true);
+    setVaultDeploy((d) => d && { ...d, errored: false, message: "Awaiting wallet signature for create_strategy_vault… (wallet must be on Aptos TESTNET)" });
+    try {
+      const res = await signAndSubmitTransaction({
+        data: {
+          function: `${pkg}::indicator::create_strategy_vault`,
+          typeArguments: [],
+          functionArguments: [indicatorAddr, bindVaultAddr.trim(), market.addr, bindOrderSize],
+        },
+      });
+      const hash = (res as { hash?: string }).hash;
+      if (!hash) throw new Error("Wallet returned no transaction hash");
+      // Poll for commitment, then read the StrategyVault object address out of the writeset.
+      let bindingAddr: string | undefined;
+      for (let i = 0; i < 15; i++) {
+        const r = await fetch(`https://fullnode.testnet.aptoslabs.com/v1/transactions/by_hash/${hash}`);
+        if (r.ok) {
+          const tx = (await r.json()) as { type?: string; success?: boolean; vm_status?: string; changes?: Array<{ address?: string; data?: { type?: string } }> };
+          if (tx.type === "user_transaction") {
+            if (!tx.success) throw new Error(`create_strategy_vault aborted on-chain: ${tx.vm_status}`);
+            bindingAddr = tx.changes?.find((c) => c.data?.type?.endsWith("::indicator::StrategyVault"))?.address;
+            break;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      setVaultDeploy((d) => d && {
+        ...d,
+        activeIndex: 4,
+        errored: false,
+        busy: false,
+        message: "Vault binding created. Final step (Delegate): as the Decibel vault admin, grant the binding trading rights via vault_admin_api::delegate_dex_actions_to(vault, binding) — wiring next.",
+        artifacts: { ...d.artifacts, bindingAddr, bindingTxHash: hash },
+      });
+    } catch (err) {
+      setVaultDeploy((d) => d && {
+        ...d,
+        activeIndex: 3,
+        errored: true,
+        busy: false,
+        message: err instanceof Error ? err.message : "create_strategy_vault failed or was rejected in the wallet",
+      });
+    } finally {
+      setBindBusy(false);
+    }
+  }, [vaultDeploy, vaultMarket, bindVaultAddr, bindOrderSize, signAndSubmitTransaction]);
 
   const handleDeployVault = useCallback(async () => {
     if (!pineScript.trim()) return;
@@ -1365,13 +1476,28 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 <button
                   key={key}
                   onClick={() => loadExample(key)}
+                  title={
+                    presetDeployable === null
+                      ? undefined
+                      : presetDeployable[key]
+                        ? "Deployable on-chain as a vault module"
+                        : "Chart preview only — uses constructs the on-chain target rejects"
+                  }
                   className={cn(
-                    "px-2.5 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap shrink-0",
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap shrink-0",
                     activeExample === key
                       ? "bg-white/[0.08] border-white/15 text-white"
                       : "border-[#2a2a2a] text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
                   )}
                 >
+                  {presetDeployable !== null && (
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        presetDeployable[key] ? "bg-emerald-400" : "bg-zinc-700",
+                      )}
+                    />
+                  )}
                   {ex.label}
                 </button>
               ))}
@@ -1499,6 +1625,51 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     {vaultDeploy.artifacts.sourceHash && (
                       <div>source hash (commitment): {vaultDeploy.artifacts.sourceHash.slice(0, 22)}…</div>
                     )}
+                    {vaultDeploy.artifacts.bindingAddr && (
+                      <div>
+                        binding (StrategyVault):{" "}
+                        <a
+                          className="text-emerald-400 underline"
+                          href={`https://explorer.aptoslabs.com/account/${vaultDeploy.artifacts.bindingAddr}?network=testnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {vaultDeploy.artifacts.bindingAddr.slice(0, 18)}…
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Step 4 — bind a Decibel vault. Only after a successful publish. */}
+                {vaultDeploy.activeIndex === 3 && !vaultDeploy.errored && !vaultDeploy.busy && vaultDeploy.artifacts.indicatorAddr && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <input
+                        value={bindVaultAddr}
+                        onChange={(e) => setBindVaultAddr(e.target.value)}
+                        placeholder="0x… funded Decibel vault you admin (testnet)"
+                        spellCheck={false}
+                        className="min-w-0 flex-1 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500/40 focus:outline-none"
+                      />
+                      <input
+                        value={bindOrderSize}
+                        onChange={(e) => setBindOrderSize(e.target.value.replace(/[^0-9]/g, ""))}
+                        title="Order size in engine units (market minimum 100000)"
+                        className="w-20 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 focus:border-emerald-500/40 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleCreateVaultBinding}
+                        disabled={!connected || bindBusy || !/^0x[0-9a-fA-F]{1,64}$/.test(bindVaultAddr.trim())}
+                        className="rounded bg-emerald-500/90 px-2.5 py-1 font-mono text-[10px] font-semibold text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-zinc-600"
+                      >
+                        {bindBusy ? "Signing…" : "Create binding"}
+                      </button>
+                    </div>
+                    <p className="font-mono text-[9px] leading-relaxed text-zinc-600">
+                      {connected
+                        ? "Signs create_strategy_vault: binds the published module to your vault — it can then only trade this exact strategy. Needs a funded Decibel testnet vault; delegation (step 5) follows."
+                        : "Connect an Aptos testnet wallet to sign create_strategy_vault."}
+                    </p>
                   </div>
                 )}
               </div>

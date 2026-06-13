@@ -14,7 +14,15 @@ import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 export const runtime = "nodejs";
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
-const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));
+// Use the testnet API key (same as the crank route) — the default fullnode
+// rate-limits anonymous IPs hard (40k CU / 300s), and the feed polls these
+// view functions every 15s per visible card, so without a key live reads 429
+// under any real load.
+const apiKey = process.env.GEOMI_API_KEY_TESTNET ?? process.env.APTOS_API_KEY_TESTNET;
+const aptos = new Aptos(new AptosConfig({
+  network: Network.TESTNET,
+  ...(apiKey ? { clientConfig: { API_KEY: apiKey } } : {}),
+}));
 
 type ViewFn = `${string}::${string}::${string}`;
 

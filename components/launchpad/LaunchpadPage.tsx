@@ -482,6 +482,27 @@ function IndicatorDetail({
           >
             Deploy your own strategy from PineScript →
           </button>
+          {/* On-chain provenance — trustless means you can inspect it. Shown
+              only for real on-chain vaults (testnet); links are explicit
+              testnet so they resolve regardless of the app's network. */}
+          {(ind.pkg || ind.vaultAddr) && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-zinc-600">
+              <span className="text-zinc-700">On-chain:</span>
+              {ind.pkg && (
+                <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                   href={`https://explorer.aptoslabs.com/account/${ind.pkg}?network=testnet`}
+                   target="_blank" rel="noreferrer">strategy module ↗</a>
+              )}
+              <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                 href={`https://explorer.aptoslabs.com/account/${ind.address}?network=testnet`}
+                 target="_blank" rel="noreferrer">indicator ↗</a>
+              {ind.vaultAddr && (
+                <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                   href={`https://explorer.aptoslabs.com/account/${ind.vaultAddr}?network=testnet`}
+                   target="_blank" rel="noreferrer">Decibel vault ↗</a>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Inline signal — no border box */}

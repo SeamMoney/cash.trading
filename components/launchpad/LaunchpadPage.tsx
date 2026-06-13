@@ -333,13 +333,14 @@ function BacktestBar({ ind, showUnlock, onUnlock, onDeployBot }: {
 // ─── Right panel: detail view ─────────────────────────────────────────────────
 
 function IndicatorDetail({
-  ind, onFunded, isSubscribed, onDeployBot, onUnlock,
+  ind, onFunded, isSubscribed, onDeployBot, onUnlock, onDeployOwn,
 }: {
   ind: Indicator;
   onFunded: (u: Record<string, unknown>) => void;
   isSubscribed: boolean;
   onDeployBot: () => void;
   onUnlock: () => void;
+  onDeployOwn: () => void;
 }) {
   const live     = useLiveSignal(ind.address, ind.pkg);
   const flashing = useFlash(live.signal);
@@ -475,6 +476,12 @@ function IndicatorDetail({
           {ind.description && (
             <p className="text-[12px] text-zinc-600 mt-1 max-w-lg leading-relaxed">{ind.description}</p>
           )}
+          <button
+            onClick={onDeployOwn}
+            className="mt-2 text-[11px] font-mono text-emerald-400/80 hover:text-emerald-400 transition-colors"
+          >
+            Deploy your own strategy from PineScript →
+          </button>
         </div>
 
         {/* Inline signal — no border box */}
@@ -844,6 +851,7 @@ export function LaunchpadPage() {
                         isSubscribed={isSubscribed(selected.address)}
                         onDeployBot={() => setScheduleTarget(selected)}
                         onUnlock={() => { subscribe(selected.address, 29); }}
+                        onDeployOwn={() => setTab("deploy")}
                       />
                     ) : (
                       <EmptyState onDeploy={() => setTab("deploy")} />

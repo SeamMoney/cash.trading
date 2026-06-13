@@ -172,6 +172,27 @@ model ExecutionAudit {
   @@index([decibelTxHash])
 }
 
+// Verifiability record binding a deployed strategy package to the exact
+// PineScript it came from (MASTER-PLAN WS3.1). Written by the deploy pipeline
+// after compile, updated after publish; consumed by /api/launchpad/verify.
+model StrategyArtifact {
+  id                String   @id @default(cuid())
+  sourceHash        String   @unique
+  pineScript        String
+  moveSource        String
+  transpilerVersion String
+  marketAddr        String
+  packageAddress    String?  @unique
+  publishTxHash     String?
+  indicatorAddr     String?
+  strategyVaultAddr String?
+  equivalenceReport String?
+  createdAt         DateTime @default(now())
+
+  // packageAddress lookups are served by its unique index.
+  @@index([indicatorAddr])
+}
+
 model DecibelIndexerCheckpoint {
   id                     String   @id @default(cuid())
   network                String

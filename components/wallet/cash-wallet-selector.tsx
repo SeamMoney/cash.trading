@@ -63,7 +63,7 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
 
   // Not-detected popular wallets get an install link (Decibel-style), rather
   // than being hidden entirely.
-  const POPULAR_NOT_DETECTED = ["Petra", "Nightly", "OKX Wallet", "Backpack", "Phantom", "MetaMask", "Rainbow"];
+  const POPULAR_NOT_DETECTED = ["Petra", "Nightly", "OKX Wallet", "Backpack", "Bitget Wallet", "Phantom", "MetaMask", "Rainbow"];
   const installedBases = new Set(seen.keys());
   const moreWallets: AnyWallet[] = [];
   const seenMore = new Set<string>();

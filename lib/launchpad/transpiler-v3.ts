@@ -110,6 +110,10 @@ function scoreConfidence(ast: ParsedPine, ir: IndicatorIR): {
   // compute_*) — the generated Move can never compile. Reject instead of
   // shipping source that fails at the compile/publish step.
   errors.push(...collectUndefinedTACallErrors(ir));
+  // Same family: state.<field> references the struct never declares, and
+  // custom functions whose body lowered to nothing but must return a value.
+  errors.push(...collectUndeclaredFieldErrors(ir));
+  errors.push(...collectEmptyFuncBodyErrors(ir));
   // Silently infer signals when no explicit strategy.entry() found
 
   // Visual stripping info
@@ -267,6 +271,57 @@ function collectUndefinedTACallErrors(ir: IndicatorIR): string[] {
   walk(ir.signalLogic);
   walk(ir.funcDefs ?? []);
   return [...errors];
+}
+
+/** Struct fields the codegen always emits on IndicatorState, mirrored from
+ *  move-codegen's generateStruct. Keep in sync. */
+const ALWAYS_DECLARED_FIELDS = new Set([
+  "keeper", "owner",
+  "last_signal", "last_signal_time", "total_signals", "total_prices_pushed",
+  "last_price", "in_position", "entry_price", "realized_gain_bps", "realized_loss_bps",
+]);
+
+/** field_ref nodes compile to `state.<field>` — if the field is neither a
+ *  declared IR state field nor a standard struct field, the Move can never
+ *  compile ("field not declared in struct IndicatorState"). */
+function collectUndeclaredFieldErrors(ir: IndicatorIR): string[] {
+  const declared = new Set<string>(ALWAYS_DECLARED_FIELDS);
+  for (const f of ir.stateFields) declared.add(f.name);
+  for (const v of ir.varFields ?? []) declared.add(v.name);
+  const errors = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const n = node as Record<string, unknown>;
+    if (n.kind === "field_ref" && typeof n.field === "string" && !declared.has(n.field)) {
+      errors.add(
+        `\`${n.field}\` is read as strategy state but nothing computes it — its source construct isn't supported on-chain, so the generated module would reference an undeclared field. Remove it or derive it from supported ta.* calls.`,
+      );
+    }
+    Object.values(n).forEach(walk);
+  };
+  walk(ir.taOps);
+  walk(ir.signalLogic);
+  walk(ir.funcDefs ?? []);
+  return [...errors];
+}
+
+/** A custom function whose body lowered to zero statements but declares a
+ *  return type emits `fun f(...): u64 { }` — a guaranteed compile failure
+ *  ("cannot return nothing"). */
+function collectEmptyFuncBodyErrors(ir: IndicatorIR): string[] {
+  const errors: string[] = [];
+  for (const f of ir.funcDefs ?? []) {
+    if (f.body.length === 0 && f.returnType && f.returnType !== "void" && f.returnType !== "()") {
+      errors.push(
+        `Custom function \`${f.name}\` uses constructs that can't be lowered to Move — its body compiled to nothing but it must return ${f.returnType}. Inline the logic or restrict it to supported ta.*/math.* operations.`,
+      );
+    }
+  }
+  return errors;
 }
 
 // ─── Main transpile function ─────────────────────────────────────────────────

@@ -98,3 +98,28 @@ errors[] includes "Unsupported source `hlc3`"
 The on-chain feed is close-only; `hlc3`/`hl2`/`ohlc4`/`hlcc4`/`volume` would
 become undeclared state fields. (`high`/`low`/`open` currently alias to the
 close price in convertExpr — a separate honesty gap, warned via `needsOHLC`.)
+
+## Undeclared state-field reads (hard reject)
+
+```pine
+[diplus, diminus, adx_val] = ta.dmi(14, 14)
+trending = adx_val > 25
+```
+
+Expected: `errors[]` includes "`adx_val` is read as strategy state but nothing computes it".
+Unsupported TA calls produce no taOp/state field, but field_refs to their
+targets survived into codegen → "field not declared in struct IndicatorState".
+
+## Custom function bodies that lower to nothing (hard reject)
+
+```pine
+hma(src, length) =>
+    ta.wma(2 * ta.wma(src, length / 2) - ta.wma(src, length), math.round(math.sqrt(length)))
+```
+
+Expected: `errors[]` includes "Custom function `hma` uses constructs that can't be lowered".
+The funcDef body drops unsupported statements; an empty body with a non-void
+return type emits `fun hma(...): u64 { }` — "cannot return nothing".
+
+NOTE: ALWAYS_DECLARED_FIELDS in transpiler-v3.ts mirrors generateStruct's
+standard fields in move-codegen.ts — keep in sync when adding struct fields.

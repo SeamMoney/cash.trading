@@ -33,6 +33,9 @@ interface Indicator {
   indicatorType: number;
   whopProductId?: string | null;
   isProprietary?: boolean;
+  /** Published package defining this object's Move types — required for the
+   *  live on-chain read on rail-deployed (single "indicator" module) packages. */
+  pkg?: string;
   algoHash?: string;
   commitTs?: number;
   creatorFeeBps?: number;
@@ -55,7 +58,7 @@ interface LiveSignalState {
   lastUpdate: number;
 }
 
-function useLiveSignal(addr: string): LiveSignalState {
+function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
   const [state, setState] = useState<LiveSignalState>({
     signal: 0, price: 0, fastLine: 0, slowLine: 0, isLive: false, lastUpdate: 0,
   });
@@ -64,7 +67,8 @@ function useLiveSignal(addr: string): LiveSignalState {
     let cancelled = false;
     async function poll() {
       try {
-        const res = await fetch(`/api/launchpad/on-chain?addr=${addr}&type=state`);
+        const q = pkg ? `&pkg=${pkg}` : "";
+        const res = await fetch(`/api/launchpad/on-chain?addr=${addr}&type=state${q}`);
         if (!res.ok || cancelled) return;
         const d = await res.json();
         if (cancelled) return;
@@ -82,7 +86,7 @@ function useLiveSignal(addr: string): LiveSignalState {
     poll();
     const t = setInterval(poll, 15_000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [addr]);
+  }, [addr, pkg]);
   return state;
 }
 
@@ -337,7 +341,7 @@ function IndicatorDetail({
   onDeployBot: () => void;
   onUnlock: () => void;
 }) {
-  const live     = useLiveSignal(ind.address);
+  const live     = useLiveSignal(ind.address, ind.pkg);
   const flashing = useFlash(live.signal);
   const sig      = live.isLive ? live.signal : (ind.lastSignal ?? 0);
   const sharpe   = (ind.meanSharpe / 1000).toFixed(2);

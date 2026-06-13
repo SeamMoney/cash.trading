@@ -837,6 +837,21 @@ function generateViewFunctions(ir: IndicatorIR, indent: number): string {
   lines.push(`${p}}`);
   lines.push(``);
 
+  // get_signal_view — shape the /api/launchpad/on-chain reader expects:
+  // (signal, fast_line, slow_line, last_price, last_signal_time).
+  lines.push(`${p}#[view]`);
+  lines.push(
+    `${p}public fun get_signal_view(indicator_addr: address): (u8, u64, u64, u64, u64) acquires IndicatorState {`,
+  );
+  lines.push(
+    `${p2}let s = borrow_global<IndicatorState>(indicator_addr);`,
+  );
+  lines.push(
+    `${p2}(s.last_signal, s.${taFields.fast}, s.${taFields.slow}, s.last_price, s.last_signal_time)`,
+  );
+  lines.push(`${p}}`);
+  lines.push(``);
+
   // get_position
   lines.push(`${p}#[view]`);
   lines.push(
@@ -870,6 +885,17 @@ function generateViewFunctions(ir: IndicatorIR, indent: number): string {
   );
   lines.push(
     `${p2}borrow_global<PriceBuffer>(indicator_addr).prices`,
+  );
+  lines.push(`${p}}`);
+  lines.push(``);
+
+  // get_timestamps — parallels get_prices for the chart reader.
+  lines.push(`${p}#[view]`);
+  lines.push(
+    `${p}public fun get_timestamps(indicator_addr: address): vector<u64> acquires PriceBuffer {`,
+  );
+  lines.push(
+    `${p2}borrow_global<PriceBuffer>(indicator_addr).timestamps`,
   );
   lines.push(`${p}}`);
   lines.push(``);

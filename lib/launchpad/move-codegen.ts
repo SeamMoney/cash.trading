@@ -280,8 +280,24 @@ function generatePushPrice(ir: IndicatorIR, indent: number): string {
 
   const taFields = getTAFieldNames(ir);
 
+  // Caller-supplied prices stay keeper-gated; the oracle crank path (which
+  // reads the price on-chain) goes through push_price_unchecked instead.
+  // NOTE: under object publish, init_module's creator is the package object —
+  // an unsignable address — so for rail-deployed packages the keeper gate
+  // means "never": the oracle is the only price source, by design.
   lines.push(`${p}public entry fun push_price(`);
   lines.push(`${p2}keeper_signer: &signer,`);
+  lines.push(`${p2}indicator_addr: address,`);
+  lines.push(`${p2}price: u64,`);
+  lines.push(`${p2}ts: u64,`);
+  lines.push(`${p}) acquires IndicatorState, PriceBuffer {`);
+  lines.push(
+    `${p2}assert!(signer::address_of(keeper_signer) == borrow_global<IndicatorState>(indicator_addr).keeper, E_NOT_KEEPER);`,
+  );
+  lines.push(`${p2}push_price_unchecked(indicator_addr, price, ts);`);
+  lines.push(`${p}}`);
+  lines.push(``);
+  lines.push(`${p}fun push_price_unchecked(`);
   lines.push(`${p2}indicator_addr: address,`);
   lines.push(`${p2}price: u64,`);
   lines.push(`${p2}ts: u64,`);
@@ -293,12 +309,6 @@ function generatePushPrice(ir: IndicatorIR, indent: number): string {
   );
   lines.push(
     `${p2}let buf = borrow_global_mut<PriceBuffer>(indicator_addr);`,
-  );
-  lines.push(``);
-
-  // Keeper auth
-  lines.push(
-    `${p2}assert!(signer::address_of(keeper_signer) == state.keeper, E_NOT_KEEPER);`,
   );
   lines.push(``);
 
@@ -1090,29 +1100,34 @@ function vaultSection(opts: StrategyVaultOpts): string {
         });
     }
 
-    /// Preferred crank: price comes from Decibel's perp engine on-chain.
-    public entry fun tick_oracle(keeper: &signer, sv_addr: address, ts: u64)
+    /// Permissionless crank: anyone pays gas; the price is read from Decibel's
+    /// perp engine inside the transaction, so the caller can't spoof it.
+    public entry fun tick_oracle(_cranker: &signer, sv_addr: address, ts: u64)
         acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
     {
         let market = borrow_global<StrategyVault>(sv_addr).market;
         let mark_px = perp_engine::get_mark_price(market);
-        sv_tick_internal(keeper, sv_addr, mark_px * SV_PRICE_SCALE, ts);
+        sv_tick_internal(sv_addr, mark_px * SV_PRICE_SCALE, ts);
     }
 
-    /// Test/keeper tick with an explicit 1e8-scaled price.
+    /// Keeper-gated tick with an explicit 1e8-scaled price. On rail-published
+    /// packages the keeper is the unsignable package object, so this entry is
+    /// intentionally dead there — the oracle is the only price source.
     public entry fun tick(keeper: &signer, sv_addr: address, price: u64, ts: u64)
         acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
     {
-        sv_tick_internal(keeper, sv_addr, price, ts);
+        let ind = borrow_global<StrategyVault>(sv_addr).indicator_addr;
+        assert!(signer::address_of(keeper) == borrow_global<IndicatorState>(ind).keeper, E_NOT_KEEPER);
+        sv_tick_internal(sv_addr, price, ts);
     }
 
-    fun sv_tick_internal(keeper: &signer, sv_addr: address, price: u64, ts: u64)
+    fun sv_tick_internal(sv_addr: address, price: u64, ts: u64)
         acquires StrategyVault, SizingConfig, IndicatorState, PriceBuffer
     {
         let sv = borrow_global_mut<StrategyVault>(sv_addr);
         assert!(!sv.paused, E_SV_PAUSED);
 
-        push_price(keeper, sv.indicator_addr, price, ts);
+        push_price_unchecked(sv.indicator_addr, price, ts);
         let sig = get_signal(sv.indicator_addr);
         if (sig == SIGNAL_NEUTRAL || sig == sv.last_signal) {
             sv.last_signal = sig;

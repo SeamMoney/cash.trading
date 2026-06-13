@@ -1,0 +1,9 @@
+{
+  "name": "cash-trading-workers",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "^5.2.1",
+    "pg": "^8.13.0"
+  }
+}

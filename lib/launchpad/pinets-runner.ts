@@ -224,7 +224,9 @@ export async function runPineTS(
 
     return { plots, fills, labels, lines, indicatorTitle, overlay };
   } catch (err) {
-    console.error("[pinets-runner] Error:", err);
+    // Expected for scripts the PineTS library can't parse — the caller falls
+    // back to our own runtime's result, so this is a soft miss, not an error.
+    console.debug("[pinets-runner] PineTS fallback could not render (using own runtime):", err instanceof Error ? err.message : err);
     return null;
   }
 }

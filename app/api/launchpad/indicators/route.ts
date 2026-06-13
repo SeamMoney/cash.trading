@@ -41,6 +41,43 @@ export interface IndicatorEntry {
 // ─── Demo seed data — stats from real Pyth daily backtest (500–10k sims) ─
 const SEED: IndicatorEntry[] = [
   {
+    // LIVE TRUSTLESS VAULT — DEPLOYED FROM THE UI RAIL (testnet). The whole
+    // point of cash.trading proven end to end with zero hand-written Move:
+    // EMA(9)/EMA(21) PineScript → transpiled + compiled + published from the
+    // Deploy tab (pkg 0x845874cf…, module "indicator"), bound to Decibel vault
+    // 0x8939…ec6e via StrategyVault 0xbe8bd9…fae6, delegated TradePerpsAllMarkets
+    // (delegate tx 0x4ae3ba18…), and cranked permissionlessly (tick_oracle reads
+    // Decibel's mark price on-chain). Live state read via
+    // /api/launchpad/on-chain?pkg=0x845874cf…&addr=0xe89991…. No backtest stats
+    // (totalSims:0 → the card shows live signal, not a fabricated Sharpe).
+    address: "0xe899910cb2aa0146489fcc35567abbbef06d6e57689d69b33be335c223526ce0",
+    creator: "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3",
+    name: "EMA Cross 9/21 — Deployed from UI",
+    symbol: "EMATV",
+    description:
+      "EMA(9)/EMA(21) crossover transpiled from PineScript and published as an immutable on-chain strategy module straight from the Deploy tab — no hand-written Move. Bound to a Decibel vault that can ONLY trade this strategy; permissionless oracle cranks drive it.",
+    assets: ["BTC/USD"],
+    createdAt: Date.now() - 1 * 3600_000,
+    curveAddr: "0xe899910cb2aa0146489fcc35567abbbef06d6e57689d69b33be335c223526ce0",
+    aptReserves: 0,
+    totalRaised: 0,
+    simsFunded: 0,
+    isGraduated: true,
+    totalSims: 0,
+    meanSharpe: 0,
+    profitablePct: 0,
+    robustnessScore: 0,
+    maxDrawdownBps: 0,
+    vaultAddr: "0x89394320d351ec94dd47a14e3a60865242b504ed6001e5836f8d0fba0f95ec6e",
+    lastSignal: 0,
+    lastSignalTime: 0,
+    params: [9, 21],
+    indicatorType: 1,
+    isProprietary: false,
+    creatorFeeBps: 0,
+    pkg: "0x845874cf317f60019f3fccc979c0489a24ba362a5350fd8559e1f3108752ab3f",
+  },
+  {
     // LIVE TRUSTLESS STRATEGY VAULT (testnet) — the real thing, end to end:
     // indicator object created by the cash_strategy factory (pkg 0x44bccd…),
     // bound to Decibel vault 0x8939…ec6e via StrategyVault object 0x97ac88…bc69,

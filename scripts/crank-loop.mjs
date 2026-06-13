@@ -58,6 +58,39 @@ process.on("SIGINT", () => { stopping = true; });
 process.on("SIGTERM", () => { stopping = true; });
 
 let consecutiveFailures = 0;
+let sweepCount = 0;
+
+// ── Gas self-monitoring ──────────────────────────────────────────────────────
+// The crank pays gas itself; if it drains, every tick fails silently. On
+// testnet we top up from the faucet automatically so the worker is
+// zero-maintenance. (Disabled on mainnet — there is no faucet; alert instead.)
+const MIN_GAS_OCTAS = 20_000_000;        // 0.2 APT (~200 cranks)
+const REFUEL_TARGET_OCTAS = 100_000_000; // top up toward 1 APT
+const GAS_CHECK_EVERY = 30;              // sweeps (~30 min at 60s)
+const IS_TESTNET = (process.env.APTOS_NETWORK_URL ?? "testnet").includes("testnet")
+  || !process.env.APTOS_NETWORK_URL;
+
+async function checkGas() {
+  if (!signer) return;
+  let bal = 0;
+  try {
+    bal = await aptos.getAccountAPTAmount({ accountAddress: signer.accountAddress });
+  } catch {
+    return; // transient; try again next check
+  }
+  console.log(`[crank] gas: ${(bal / 1e8).toFixed(4)} APT`);
+  if (bal >= MIN_GAS_OCTAS) return;
+  if (!IS_TESTNET) {
+    console.error(`[crank] LOW GAS ${(bal / 1e8).toFixed(4)} APT and no faucet on mainnet — fund ${signer.accountAddress.toStringLong()}`);
+    return;
+  }
+  try {
+    await aptos.fundAccount({ accountAddress: signer.accountAddress, amount: REFUEL_TARGET_OCTAS });
+    console.log(`[crank] refueled from testnet faucet`);
+  } catch (err) {
+    console.error(`[crank] faucet refuel failed: ${(err.message || err).slice(0, 120)}`);
+  }
+}
 
 // ── Registry ───────────────────────────────────────────────────────────────
 // One pooled pg client, lazily created. Registry failures never break the
@@ -147,9 +180,11 @@ async function shutdown() {
 }
 
 console.log(`[crank] starting (legacy=${LEGACY_VAULTS.length}, registry=${process.env.DATABASE_URL ? "on" : "off"}, interval=${INTERVAL_S}s, dryRun=${DRY_RUN})`);
+if (!DRY_RUN) await checkGas();
 for (;;) {
   await sweep();
   if (DRY_RUN || stopping) break;
+  if (++sweepCount % GAS_CHECK_EVERY === 0) await checkGas();
   // Back off when everything is failing (fullnode outage / empty gas).
   const delay = INTERVAL_S * Math.min(2 ** consecutiveFailures, 16);
   await new Promise((r) => setTimeout(r, delay * 1000));

@@ -2,17 +2,26 @@
 /**
  * Permissionless crank loop for trustless strategy vaults.
  *
- * Submits `strategy_vault::tick_oracle(sv_addr, ts)` for every configured
- * vault on an interval. The contract reads Decibel's mark price on-chain, so
- * this loop contributes only gas + a timestamp — it cannot influence trades.
+ * Each sweep cranks `<pkg>::<module>::tick_oracle(sv_addr, now)` for every
+ * known vault. The contract reads Decibel's mark price on-chain, so this loop
+ * contributes only gas + a timestamp — it cannot influence trades.
+ *
+ * Vault sources, merged + deduped per sweep:
+ *   1. The legacy hand-written vault (CRANK_PKG / CRANK_VAULTS, module
+ *      "strategy_vault").
+ *   2. EVERY rail-deployed vault in the StrategyArtifact registry — rows with
+ *      both strategyVaultAddr and packageAddress set, module "indicator"
+ *      (rail packages bundle the strategy as `<pkg>::indicator`). This is what
+ *      makes a vault anyone deploys start trading automatically.
  *
  * Designed for the fly.io worker box (see infra/fly/), replacing serverless
  * cron wake-ups with a reliable always-on cadence.
  *
  * Env:
  *   CRANK_KEY          ed25519 private key paying gas (testnet deployer)
- *   CRANK_PKG          strategy package (default: live 0x44bccd… deployment)
- *   CRANK_VAULTS       comma-separated sv addresses (default: live SMA 3/5 vault)
+ *   CRANK_PKG          legacy strategy package (default 0x44bccd…)
+ *   CRANK_VAULTS       comma-separated legacy sv addresses (default live SMA 3/5)
+ *   DATABASE_URL       Postgres — registry source for rail-deployed vaults
  *   CRANK_INTERVAL_S   seconds between sweeps (default 60)
  *   APTOS_NETWORK_URL  fullnode (default testnet)
  *   DRY_RUN=1          build but don't submit; one sweep then exit
@@ -22,8 +31,8 @@
 
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk";
 
-const PKG = process.env.CRANK_PKG ?? "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3";
-const VAULTS = (process.env.CRANK_VAULTS ?? "0x97ac8825850adadfc1a6c0792e25ca08e46a5123ffe693615f26e74551c7bc69")
+const LEGACY_PKG = process.env.CRANK_PKG ?? "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3";
+const LEGACY_VAULTS = (process.env.CRANK_VAULTS ?? "0x97ac8825850adadfc1a6c0792e25ca08e46a5123ffe693615f26e74551c7bc69")
   .split(",").map((s) => s.trim()).filter(Boolean);
 const INTERVAL_S = Number(process.env.CRANK_INTERVAL_S ?? 60);
 const DRY_RUN = process.env.DRY_RUN === "1";
@@ -50,13 +59,54 @@ process.on("SIGTERM", () => { stopping = true; });
 
 let consecutiveFailures = 0;
 
-async function crankOne(svAddr) {
+// ── Registry ───────────────────────────────────────────────────────────────
+// One pooled pg client, lazily created. Registry failures never break the
+// loop — we fall back to the legacy vault list.
+let pgClient = null;
+async function getRegistryVaults() {
+  if (!process.env.DATABASE_URL) return [];
+  try {
+    if (!pgClient) {
+      const { default: pg } = await import("pg");
+      pgClient = new pg.Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+      });
+      await pgClient.connect();
+    }
+    const { rows } = await pgClient.query(
+      `SELECT "strategyVaultAddr", "packageAddress" FROM "StrategyArtifact"
+       WHERE "strategyVaultAddr" IS NOT NULL AND "packageAddress" IS NOT NULL`,
+    );
+    return rows.map((r) => ({
+      svAddr: r.strategyVaultAddr,
+      pkg: r.packageAddress,
+      module: "indicator",
+    }));
+  } catch (err) {
+    console.error(`[crank] registry query failed (using legacy list): ${(err.message || err).slice(0, 120)}`);
+    return [];
+  }
+}
+
+function buildVaultList(registry) {
+  const byKey = new Map();
+  for (const sv of LEGACY_VAULTS) {
+    byKey.set(`${LEGACY_PKG}:${sv}`, { svAddr: sv, pkg: LEGACY_PKG, module: "strategy_vault" });
+  }
+  for (const v of registry) {
+    byKey.set(`${v.pkg}:${v.svAddr}`, v);
+  }
+  return [...byKey.values()];
+}
+
+async function crankOne(v) {
   const ts = Math.floor(Date.now() / 1000);
   const transaction = await aptos.transaction.build.simple({
     sender: signer.accountAddress,
     data: {
-      function: `${PKG}::strategy_vault::tick_oracle`,
-      functionArguments: [svAddr, String(ts)],
+      function: `${v.pkg}::${v.module}::tick_oracle`,
+      functionArguments: [v.svAddr, String(ts)],
     },
   });
   const pending = await aptos.signAndSubmitTransaction({ signer, transaction });
@@ -66,32 +116,37 @@ async function crankOne(svAddr) {
 }
 
 async function sweep() {
+  const vaults = buildVaultList(await getRegistryVaults());
   let ok = 0, failed = 0, trades = 0;
-  for (const sv of VAULTS) {
+  for (const v of vaults) {
     if (DRY_RUN) {
-      console.log(`[crank] DRY RUN would crank ${sv.slice(0, 12)}…`);
+      console.log(`[crank] DRY RUN would crank ${v.pkg.slice(0, 10)}…::${v.module} ${v.svAddr.slice(0, 12)}…`);
       ok++;
       continue;
     }
     try {
-      const r = await crankOne(sv);
+      const r = await crankOne(v);
       ok++;
       trades += r.traded;
       if (r.traded > 0) {
-        console.log(`[crank] FLIP ${sv.slice(0, 12)}… tx=${r.hash.slice(0, 14)} traded=${r.traded}`);
+        console.log(`[crank] FLIP ${v.svAddr.slice(0, 12)}… (${v.module}) tx=${r.hash.slice(0, 14)} traded=${r.traded}`);
       }
     } catch (err) {
       failed++;
       const msg = err instanceof Error ? err.message : String(err);
       // Paused vaults / non-flip aborts are expected operational states.
-      console.error(`[crank] ${sv.slice(0, 12)}… failed: ${msg.slice(0, 160)}`);
+      console.error(`[crank] ${v.svAddr.slice(0, 12)}… (${v.module}) failed: ${msg.slice(0, 160)}`);
     }
   }
-  consecutiveFailures = failed === VAULTS.length && VAULTS.length > 0 ? consecutiveFailures + 1 : 0;
-  console.log(`[crank] sweep ok=${ok} failed=${failed} flips=${trades}`);
+  consecutiveFailures = failed === vaults.length && vaults.length > 0 ? consecutiveFailures + 1 : 0;
+  console.log(`[crank] sweep vaults=${vaults.length} ok=${ok} failed=${failed} flips=${trades}`);
 }
 
-console.log(`[crank] starting (vaults=${VAULTS.length}, interval=${INTERVAL_S}s, dryRun=${DRY_RUN})`);
+async function shutdown() {
+  if (pgClient) await pgClient.end().catch(() => {});
+}
+
+console.log(`[crank] starting (legacy=${LEGACY_VAULTS.length}, registry=${process.env.DATABASE_URL ? "on" : "off"}, interval=${INTERVAL_S}s, dryRun=${DRY_RUN})`);
 for (;;) {
   await sweep();
   if (DRY_RUN || stopping) break;
@@ -100,4 +155,5 @@ for (;;) {
   await new Promise((r) => setTimeout(r, delay * 1000));
   if (stopping) break;
 }
+await shutdown();
 console.log("[crank] stopped");

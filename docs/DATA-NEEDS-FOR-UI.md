@@ -105,3 +105,14 @@ as a hard gate before publish: reject when !equivalent, show divergences.
    2 divergent bars/437; RSI 14: 5/437 — truncation, not bugs). Store running ema/avg_gain/
    avg_loss in IndicatorState updated per push → exact Pine parity, less gas, buffer size
    becomes irrelevant for these.
+
+## E. Auto-crank is registry-driven — deploy-vault must write StrategyArtifact (backend ready, your wiring)
+The fly crank worker (scripts/crank-loop.mjs, LIVE on cash-trading-jdma7a) now cranks EVERY
+vault found in the StrategyArtifact registry each sweep, module "indicator", in addition to the
+legacy hand-written vault. Verified: registry=on, query valid (0 bound rows today).
+**To make a rail-deployed vault start trading automatically, the deploy-vault flow must, after
+the wallet runs create_strategy_vault + delegate, write/update the StrategyArtifact row with
+both `packageAddress` and `strategyVaultAddr` set** (use lib/strategy-artifacts.ts#storeArtifact,
+already merged). The crank picks it up within one interval (60s) — no redeploy. Also store
+`sourceHash` (from the compile step) + `equivalenceReport` so /api/launchpad/verify works.
+Module name is always "indicator" for rail packages (`<pkg>::indicator::tick_oracle`).

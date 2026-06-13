@@ -116,3 +116,22 @@ both `packageAddress` and `strategyVaultAddr` set** (use lib/strategy-artifacts.
 already merged). The crank picks it up within one interval (60s) — no redeploy. Also store
 `sourceHash` (from the compile step) + `equivalenceReport` so /api/launchpad/verify works.
 Module name is always "indicator" for rail packages (`<pkg>::indicator::tick_oracle`).
+
+## F. Deploy/verify routes are now wired — two small rail hooks remain (your lane)
+deploy-vault + verify are fully wired to the registry (commit d1719f8):
+- compile → returns `equivalence` {equivalent, divergences, signalsCompared} (500 real mainnet
+  candles) AND stores the StrategyArtifact. **Show the equivalence result in the rail** — green
+  when equivalent, red with divergences when not.
+- publish → HARD-gated: refuses if equivalence says diverged. Pass `sourceHash` (from compile) in
+  the publish body so the gate + artifact-update fire. Returns `indicatorAddr`.
+- **NEW: after the wallet runs create_strategy_vault + delegate, POST
+  {step:"register", sourceHash, strategyVaultAddr}** → the live fly crank auto-ticks the vault
+  within 60s. This is the one hook that makes a deployed vault actually start trading. Wire it
+  into the rail's step-5 success handler.
+- verify?sourceHash=… (or packageAddress / indicator) → real {checks:{hash,emission}, verified}.
+  Use for the "Verified source" badge on vault cards.
+
+DEV-SERVER RESTART NEEDED: the running :3210 dev server has a stale Prisma client (started before
+the StrategyArtifact migration/generate), so artifact writes silently no-op locally until it's
+restarted. Prod build regenerates automatically — this only affects local dogfooding. Restart at
+a safe checkpoint: `PORT=3210 pnpm dev`.

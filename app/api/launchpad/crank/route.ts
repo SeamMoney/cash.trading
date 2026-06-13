@@ -2,8 +2,10 @@
  * Permissionless crank for trustless strategy vaults.
  *
  * POST /api/launchpad/crank
- *   Body: { svAddr?: string, pkg?: string }
- *   Submits `strategy_vault::tick_oracle(sv, now)` — the contract reads the
+ *   Body: { svAddr?: string, pkg?: string, module?: string }
+ *   Submits `{module}::tick_oracle(sv, now)` — module defaults to
+ *   "strategy_vault" (the hand-written package); rail-deployed packages
+ *   bundle everything into a module named "indicator". The contract reads the
  *   mark price from Decibel's perp engine itself, so this caller contributes
  *   nothing but gas + a timestamp. Anyone could run this crank; we expose it
  *   so the app/bot-runner can keep live strategies ticking.
@@ -70,8 +72,12 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const svAddr = typeof body.svAddr === "string" ? body.svAddr : DEFAULT_SV;
     const pkg = typeof body.pkg === "string" ? body.pkg : DEFAULT_PKG;
+    const moduleName = typeof body.module === "string" ? body.module : "strategy_vault";
     if (!ADDR_RE.test(svAddr) || !ADDR_RE.test(pkg)) {
       return NextResponse.json({ error: "svAddr/pkg must be 0x hex addresses" }, { status: 400 });
+    }
+    if (!/^[a-z0-9_]{1,64}$/.test(moduleName)) {
+      return NextResponse.json({ error: "module must be a Move identifier" }, { status: 400 });
     }
 
     const account = getCrankAccount();
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
     const txn = await aptos.transaction.build.simple({
       sender: account.accountAddress,
       data: {
-        function: `${pkg}::strategy_vault::tick_oracle`,
+        function: `${pkg}::${moduleName}::tick_oracle`,
         functionArguments: [svAddr, String(Math.floor(Date.now() / 1000))],
       },
     });

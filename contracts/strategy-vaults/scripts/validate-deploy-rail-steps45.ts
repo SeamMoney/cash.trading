@@ -3,8 +3,8 @@ import { buildDelegateDecibelVaultPayload } from "../../../lib/decibel-vaults";
 import { readFileSync } from "fs";
 
 const env = Object.fromEntries(readFileSync(new URL("../../../.env", import.meta.url),"utf8").split("\n").filter(l=>l.includes("=")&&!l.startsWith("#")).map(l=>[l.slice(0,l.indexOf("=")), l.slice(l.indexOf("=")+1).trim()]));
-const PKG = "0x6718ff4f11622e19de8aee68607c6a0b2ff7e4a8a40b38c393d15e931abbef62";
-const MODULE = "ema_cross_9_21";
+const PKG = process.env.VALIDATE_PKG ?? "0x6718ff4f11622e19de8aee68607c6a0b2ff7e4a8a40b38c393d15e931abbef62";
+const MODULE = process.env.VALIDATE_MODULE ?? "ema_cross_9_21";
 const VAULT = "0x89394320d351ec94dd47a14e3a60865242b504ed6001e5836f8d0fba0f95ec6e";
 const MARKET = "0x6e9c93c836abebdcf998a7defdd56cd067b6db50127db5d51b000ccfc483b90a";
 

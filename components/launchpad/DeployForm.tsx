@@ -893,6 +893,39 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     }
   }, [vaultDeploy, vaultMarket, bindVaultAddr, bindOrderSize, signAndSubmitTransaction]);
 
+  // Step 6 (Live): permissionless oracle crank. tick_oracle reads the mark
+  // price from Decibel's perp engine inside the tx, so the cranker
+  // contributes only gas + a timestamp.
+  const [crankBusy, setCrankBusy] = useState(false);
+  const [crankResult, setCrankResult] = useState<string | null>(null);
+
+  const handleCrank = useCallback(async () => {
+    const pkg = vaultDeploy?.artifacts.packageAddress;
+    const binding = vaultDeploy?.artifacts.bindingAddr;
+    if (!pkg || !binding) return;
+    setCrankBusy(true);
+    setCrankResult(null);
+    try {
+      const res = await fetch("/api/launchpad/crank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pkg, svAddr: binding, module: "indicator" }),
+      });
+      const json = (await res.json()) as { hash?: string; success?: boolean; traded?: unknown[]; error?: string };
+      if (!res.ok || !json.success) {
+        setCrankResult(`crank failed: ${json.error ?? "unknown"}`);
+      } else {
+        setCrankResult(
+          `cranked ✓ tx ${json.hash?.slice(0, 14)}… — ${json.traded?.length ? `${json.traded.length} trade(s) placed` : "no signal flip this tick (indicator may still be warming up)"}`,
+        );
+      }
+    } catch (err) {
+      setCrankResult(`crank failed: ${err instanceof Error ? err.message : "request error"}`);
+    } finally {
+      setCrankBusy(false);
+    }
+  }, [vaultDeploy]);
+
   // Step 5 (Delegate): the Decibel vault admin grants the binding trading
   // rights. Reuses the existing payload builder from lib/decibel-vaults —
   // delegate = the StrategyVault binding object from step 4.
@@ -1746,6 +1779,28 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                         ? "Signs vault_admin_api::delegate_dex_actions_to(vault, binding) — must be the vault admin. After this the strategy trades autonomously."
                         : "Connect the vault admin's testnet wallet to delegate."}
                     </p>
+                  </div>
+                )}
+                {/* Step 6 — LIVE. Permissionless oracle crank; no wallet needed. */}
+                {vaultDeploy.activeIndex === 6 && !vaultDeploy.errored && vaultDeploy.artifacts.bindingAddr && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={handleCrank}
+                        disabled={crankBusy}
+                        className="rounded bg-emerald-500/90 px-2.5 py-1 font-mono text-[10px] font-semibold text-black transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-zinc-600"
+                      >
+                        {crankBusy ? "Cranking…" : "Crank now"}
+                      </button>
+                      <p className="min-w-0 flex-1 font-mono text-[9px] leading-relaxed text-zinc-600">
+                        Permissionless: tick_oracle reads Decibel&apos;s mark price on-chain and trades only on a strategy signal flip. Anyone can crank — the app keeps live vaults ticking automatically.
+                      </p>
+                    </div>
+                    {crankResult && (
+                      <p className={`font-mono text-[9px] leading-relaxed ${crankResult.startsWith("crank failed") ? "text-red-300" : "text-emerald-400/90"}`}>
+                        {crankResult}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

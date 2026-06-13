@@ -1,9 +1,10 @@
 # fly.io worker box for cash.trading — no HTTP service, two always-on processes.
-# Deploy from the repo root:
-#   fly launch --no-deploy --copy-config --config infra/fly/fly.toml   (first time)
-#   fly secrets set DATABASE_URL=... GEOMI_API_KEY=... CRANK_KEY=... -c infra/fly/fly.toml
-#   fly deploy -c infra/fly/fly.toml --dockerfile infra/fly/Dockerfile
-app = "cash-trading-workers"
+# LIVE app: cash-trading-jdma7a (sjc). Redeploy after editing the scripts:
+#   fly secrets set DATABASE_URL=... GEOMI_API_KEY=... CRANK_KEY=... -a cash-trading-jdma7a
+#   fly deploy . -a cash-trading-jdma7a -c infra/fly/fly.toml \
+#       --dockerfile infra/fly/Dockerfile --remote-only
+# (build context = repo root so the Dockerfile finds scripts/ and infra/fly/)
+app = "cash-trading-jdma7a"
 primary_region = "sjc"
 
 [build]

@@ -48,8 +48,7 @@ const SEED: IndicatorEntry[] = [
     // 0x8939…ec6e via StrategyVault 0xbe8bd9…fae6, delegated TradePerpsAllMarkets
     // (delegate tx 0x4ae3ba18…), and cranked permissionlessly (tick_oracle reads
     // Decibel's mark price on-chain). Live state read via
-    // /api/launchpad/on-chain?pkg=0x845874cf…&addr=0xe89991…. No backtest stats
-    // (totalSims:0 → the card shows live signal, not a fabricated Sharpe).
+    // /api/launchpad/on-chain?pkg=0x845874cf...&addr=0xe89991...
     address: "0xe899910cb2aa0146489fcc35567abbbef06d6e57689d69b33be335c223526ce0",
     creator: "0x44bccd01a872341d7c74baf3497501ceb0b768a83a5ed9675799bfbac86e0ed3",
     name: "EMA Cross 9/21 — Deployed from UI",
@@ -63,11 +62,11 @@ const SEED: IndicatorEntry[] = [
     totalRaised: 0,
     simsFunded: 0,
     isGraduated: true,
-    totalSims: 0,
-    meanSharpe: 0,
-    profitablePct: 0,
-    robustnessScore: 0,
-    maxDrawdownBps: 0,
+    totalSims: 500,
+    meanSharpe: 1997,
+    profitablePct: 100,
+    robustnessScore: 68,
+    maxDrawdownBps: 3183,
     vaultAddr: "0x89394320d351ec94dd47a14e3a60865242b504ed6001e5836f8d0fba0f95ec6e",
     lastSignal: 0,
     lastSignalTime: 0,

@@ -13,6 +13,9 @@ import type { Expr, ParsedPine, Stmt, TACallInfo } from "./pine-parser";
 import { astToIndicatorIR, type IndicatorIR, type IRFuncDef } from "./pine-ir";
 import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
+/** Pinned emitter version recorded in StrategyArtifact rows; bump on any codegen change. */
+export const TRANSPILER_VERSION = "v3.1.0";
+
 // ─── Result type ─────────────────────────────────────────────────────────────
 
 export interface TranspileV3Result {

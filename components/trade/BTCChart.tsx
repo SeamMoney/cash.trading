@@ -945,11 +945,16 @@ export function BTCChart({
       ? price + Math.round(price * 0.0004)
       : 0;
   const displayChange = isPerpsMarket ? perpData?.change24h ?? "-3.41%" : "-3.41%";
+  // Prefer the indexer's exact 24h figure (perpData, from asset_contexts) —
+  // the snapshot's estimate only sees candles loaded since mount, so it
+  // undercounts and grows over the session.
   const displayVolume = isPerpsMarket
-    ? perpsSnapshot?.volume24h != null
-      ? fmtStatUsd(perpsSnapshot.volume24h)
-      : perpData?.volume24h ?? "$29.3M"
-    : "$29.3M";
+    ? perpData?.volume24h && perpData.volume24h !== "—"
+      ? perpData.volume24h
+      : perpsSnapshot?.volume24h != null
+        ? fmtStatUsd(perpsSnapshot.volume24h)
+        : "—"
+    : "—";
   const displayOpenInterest = isPerpsMarket
     ? perpsSnapshot?.openInterest != null
       ? fmtStatUsd(perpsSnapshot.openInterest * Math.max(displayPrice, perpData?.seedPrice ?? 0))

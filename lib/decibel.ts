@@ -498,9 +498,10 @@ export async function getDecibelMarketConfigFromRegistry(
   options: { signal?: AbortSignal; network?: DecibelNetwork } = {}
 ): Promise<{ marketName: string; config: MarketConfig }> {
   const network = options.network ?? getActiveNetwork();
-  const staticConfig = getStaticDecibelMarketConfig(marketNameOrAddress, network);
-  if (staticConfig) return staticConfig;
 
+  // Live registry first: the static snapshot drifts (leverage limits changed
+  // on ETH/SOL/HYPE between upgrades) and never learns new listings. Static
+  // config is only a fallback when the registry is unreachable.
   const cachedConfig = getCachedMarketRegistryConfig(
     marketNameOrAddress,
     network
@@ -514,27 +515,32 @@ export async function getDecibelMarketConfigFromRegistry(
       network
     );
     if (refreshedConfig) return refreshedConfig;
-  } catch (error) {
-    throw error;
+  } catch {
+    const staticConfig = getStaticDecibelMarketConfig(
+      marketNameOrAddress,
+      network
+    );
+    if (staticConfig) return staticConfig;
   }
 
-  const bucket = getMarketRegistryBucket(network);
-  const normalized = marketNameOrAddress.toLowerCase();
-  const market = marketNameOrAddress.startsWith("0x")
-    ? bucket.byAddress.get(normalized)
-    : bucket.byName.get(normalized);
+  const staticConfig = getStaticDecibelMarketConfig(marketNameOrAddress, network);
+  if (staticConfig) return staticConfig;
 
-  if (!market) {
-    throw new Error(`Unknown Decibel market: ${marketNameOrAddress}`);
-  }
-
-  return market;
+  throw new Error(`Unknown Decibel market: ${marketNameOrAddress}`);
 }
 
 export function getDecibelMarketNameForAddress(address: string, network?: DecibelNetwork): string | null {
+  const net = network ?? getActiveNetwork();
   const normalized = address.toLowerCase();
-  const specs = (network ?? getActiveNetwork()) === "mainnet" ? MARKET_SPECS : TESTNET_MARKET_SPECS;
-  const addresses = (network ?? getActiveNetwork()) === "mainnet" ? MAINNET_MARKET_ADDRESSES : TESTNET_MARKET_ADDRESSES;
+
+  // Warm registry cache first — the static maps only know the original 15
+  // markets. When cold, kick off a background load so the next poll resolves.
+  const cached = getCachedMarketRegistryConfig(normalized, net);
+  if (cached) return cached.marketName;
+  void loadMarketRegistry(net).catch(() => {});
+
+  const specs = net === "mainnet" ? MARKET_SPECS : TESTNET_MARKET_SPECS;
+  const addresses = net === "mainnet" ? MAINNET_MARKET_ADDRESSES : TESTNET_MARKET_ADDRESSES;
   for (const name of Object.keys(specs)) {
     const config = { address: addresses[name] };
     if (config.address.toLowerCase() === normalized) return name;

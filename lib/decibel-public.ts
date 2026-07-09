@@ -2,7 +2,10 @@
 
 export const DECIBEL_PUBLIC_PROXY_BASE = "/api/decibel/public";
 export type DecibelPublicNetwork = "mainnet" | "testnet";
-export const DECIBEL_NETWORK_STORAGE_KEY = "cash:decibel-network";
+// v2: the unversioned key predates the mainnet launch and pinned returning
+// browsers to testnet forever. Bumping the key resets everyone to the build
+// default (mainnet); explicit network switches persist under the new key.
+export const DECIBEL_NETWORK_STORAGE_KEY = "cash:decibel-network:v2";
 export const DECIBEL_NETWORK_CHANGE_EVENT = "cash:decibel-network-change";
 
 const DECIBEL_PUBLIC_BASES: Record<DecibelPublicNetwork, string> = {

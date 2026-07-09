@@ -286,13 +286,32 @@ const MARKET_COLORS: Record<string, string> = {
 };
 
 const STOCK_SYMBOLS = new Set([
+  "AAPL",
+  "AMD",
   "AMZN",
+  "ARM",
+  "ASML",
+  "BABA",
   "CBRS",
-  "GOOGL",
+  "COIN",
+  "CRCL",
+  "DRAM",
   "EWY",
+  "GOOGL",
+  "HOOD",
+  "IBM",
+  "INTC",
+  "META",
+  "MRVL",
+  "MSFT",
+  "MSTR",
   "MU",
+  "NFLX",
   "NVDA",
+  "QCOM",
   "QQQ",
+  "SAMSUNG",
+  "SKHYNIX",
   "SNDK",
   "SPCX",
   "SPY",
@@ -353,6 +372,8 @@ interface DecibelApiMarket {
   mode: string;
   szDecimals: number | null;
   pxDecimals: number | null;
+  /** Decibel's own listing category: "crypto" | "equity" | "commodity" | "". */
+  category?: string | null;
   /** Already a percentage (e.g. 1.42 = +1.42%). */
   change24hPct?: number | null;
   volume24hUsd?: number | null;
@@ -379,7 +400,15 @@ function getMarketColor(marketName: string) {
   return MARKET_COLORS[getBaseSymbol(marketName)] ?? "#39ff14";
 }
 
-function classifyMarketCategory(marketName: string): "crypto" | "stocks" | "commodities" {
+function classifyMarketCategory(
+  marketName: string,
+  apiCategory?: string | null
+): "crypto" | "stocks" | "commodities" {
+  // Prefer Decibel's own listing category so newly listed markets land in the
+  // right tab without a code change; symbol sets remain the fallback.
+  if (apiCategory === "equity") return "stocks";
+  if (apiCategory === "commodity") return "commodities";
+  if (apiCategory === "crypto") return "crypto";
   const base = getBaseSymbol(marketName);
   if (COMMODITY_SYMBOLS.has(base)) return "commodities";
   if (STOCK_SYMBOLS.has(base)) return "stocks";
@@ -433,7 +462,7 @@ function apiMarketToMarket(market: DecibelApiMarket): Market {
     color: perpData.color,
     chartKind: "perps",
     perpData,
-    category: classifyMarketCategory(market.name),
+    category: classifyMarketCategory(market.name, market.category),
     marketAddr: market.address,
     marketName: market.name,
     mode: market.mode,

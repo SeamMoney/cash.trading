@@ -1,8 +1,9 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { Liveline, type CandlePoint, type LivelinePoint, type LivelineSeries } from "liveline";
+import { Liveline, type CandlePoint, type LivelinePoint, type LivelineSeries, type WindowOption } from "liveline";
 import { TetherLoader } from "@/components/layout/TetherLoader";
+import { ProCandleChart } from "@/components/trade/ProCandleChart";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { getPriceCandleProductId, supportsPriceCandleMarket, usePriceCandles } from "@/hooks/useBtcCandles";
@@ -78,6 +79,16 @@ const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "15s": 15,
   "1m": 60,
 };
+
+// Window presets for the live line view (max = 12h of minute history).
+const LINE_WINDOW_OPTIONS: WindowOption[] = [
+  { label: "1m", secs: 60 },
+  { label: "5m", secs: 5 * 60 },
+  { label: "15m", secs: 15 * 60 },
+  { label: "1H", secs: 60 * 60 },
+  { label: "6H", secs: 6 * 60 * 60 },
+  { label: "12H", secs: 12 * 60 * 60 },
+];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -930,6 +941,9 @@ function BtcPerpsChartComponent({
     startEndTime: number;
     spanSecs: number;
   } | null>(null);
+  // Which market the window/pan state was last reset for — bootstrap re-runs
+  // (feed fallback flips) must not clobber the user's chosen window.
+  const lineViewResetKeyRef = useRef<string | null>(null);
 
   const defaultLineWindowSecs = useMemo(() => {
     if (!isMobile) return DEFAULT_LINE_WINDOW_SECS;
@@ -1573,9 +1587,12 @@ function BtcPerpsChartComponent({
     if (useCoinbaseLineFeed) {
       coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setLineWindowSecs(defaultLineWindowSecs);
-      setLineEndTime(null);
-      setManualLineVerticalPad(0);
+      if (lineViewResetKeyRef.current !== marketKey) {
+        lineViewResetKeyRef.current = marketKey;
+        setLineWindowSecs(defaultLineWindowSecs);
+        setLineEndTime(null);
+        setManualLineVerticalPad(0);
+      }
       setSecondCandles([]);
       setMinuteCandles([]);
       setCoinbaseMinuteCandles([]);
@@ -1598,9 +1615,15 @@ function BtcPerpsChartComponent({
       const currentMarket = marketRef.current;
       coinbaseHistoryLoadedKeyRef.current = null;
       setLoading(true);
-      setLineWindowSecs(defaultLineWindowSecs);
-      setLineEndTime(null);
-      setManualLineVerticalPad(0);
+      // Reset view state only when the MARKET changed — this effect also
+      // re-runs on feed-fallback flips, and those must not stomp the user's
+      // chosen window/pan.
+      if (lineViewResetKeyRef.current !== marketKey) {
+        lineViewResetKeyRef.current = marketKey;
+        setLineWindowSecs(defaultLineWindowSecs);
+        setLineEndTime(null);
+        setManualLineVerticalPad(0);
+      }
       setSecondCandles([]);
       setMinuteCandles([]);
       setHasInitialHistory(false);
@@ -1616,10 +1639,14 @@ function BtcPerpsChartComponent({
         const now = Date.now();
         const [pricesResult, candlesResult, tradesResult] = await Promise.allSettled([
           fetchDecibelMainnetPrices(INITIAL_REQUEST_TIMEOUT_MS),
+          // 12h of minute candles — the upstream caps requests at 1000 bars,
+          // so the old 24h ask (1440 bars) got a 400 and left history empty.
+          // 12h covers the largest line window; 24h volume comes from the
+          // indexer's asset_contexts, not from candles.
           fetchDecibelMainnetCandles(
             currentMarket.marketAddr,
             "1m",
-            now - Math.max(MINUTE_HISTORY_MS, DECIBEL_VOLUME_WINDOW_MS),
+            now - MINUTE_HISTORY_MS,
             now,
             INITIAL_REQUEST_TIMEOUT_MS,
           ),
@@ -1940,6 +1967,20 @@ function BtcPerpsChartComponent({
     return crossings.slice(-3);
   }, [overlayMode, indicatorSeries]);
 
+  // Candle mode gets the TradingView-engine chart: real timeframes, native
+  // pan/zoom, volume, and tick-merged live candles. The Liveline path below
+  // stays as the streaming "LIVE" line view.
+  if (mode === "candle") {
+    return (
+      <ProCandleChart
+        market={market}
+        active={active}
+        liquidationLines={liquidationLines}
+        overlayMode={overlayMode}
+      />
+    );
+  }
+
   return (
     <>
       {/* Loading overlay */}
@@ -1984,6 +2025,32 @@ function BtcPerpsChartComponent({
           padding={linePadding}
           paused={!active}
         />
+        {/* Window presets — our own pills, not Liveline's `windows` prop: that
+            prop flips Liveline to self-managed window state seeded from
+            windows[0], which ignores the `window` prop and breaks wheel zoom. */}
+        <div
+          className="absolute left-2 top-2 z-10 flex items-center gap-0.5 rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {LINE_WINDOW_OPTIONS.map((option) => (
+            <button
+              key={option.secs}
+              type="button"
+              onClick={() =>
+                setLineWindowSecs(
+                  clamp(option.secs, MIN_LINE_WINDOW_SECS, MAX_LINE_WINDOW_SECS)
+                )
+              }
+              className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
+                Math.abs(lineWindowSecs - option.secs) < option.secs * 0.25
+                  ? "bg-white/[0.12] text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div
           aria-hidden="true"
           className="absolute inset-y-0 right-0 z-10 w-[84px] cursor-ns-resize"

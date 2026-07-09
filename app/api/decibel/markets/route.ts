@@ -195,15 +195,18 @@ export async function GET(req: Request) {
     }
 
     // 24h stats ride along when the indexer has them; null means "hide the cell",
-    // never zero (DATA-NEEDS-FOR-UI.md #2). asset_contexts reports volume in BASE
-    // units (matches the prices endpoint's open_interest), so the USD figure is
-    // derived via mark price; change24hPct is already a percentage.
+    // never zero (DATA-NEEDS-FOR-UI.md #2). asset_contexts reports volume_24h in
+    // QUOTE units (USD) — verified live: BTC volume_24h ≈ 15.79M against a $63k
+    // price; multiplying by mark price again produced trillion-dollar headers.
+    // change24hPct is already a percentage.
     const dayStats = await dayStatsPromise;
     const enriched = markets.map((market) => {
       const stats = dayStats.get(market.name.toUpperCase());
-      const volume24h = stats?.volume24h ?? null;
-      const volume24hUsd =
-        volume24h !== null && market.markPrice ? volume24h * market.markPrice : null;
+      const volume24hUsd = stats?.volume24h ?? null;
+      const volume24h =
+        volume24hUsd !== null && market.markPrice
+          ? volume24hUsd / market.markPrice
+          : null;
       return {
         ...market,
         volume24h,

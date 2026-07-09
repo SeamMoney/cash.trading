@@ -31,7 +31,9 @@ const INTERVAL_MS: Record<string, number> = {
 };
 
 const DEFAULT_BARS = 300;
-const MAX_BARS = 1500;
+// Upstream rejects spans over 1000 candles ("Maximum number of candles is
+// 1000"), so cap under it.
+const MAX_BARS = 990;
 
 /** Upstream candle: {t, T, o, h, l, c, v, i} (TradingView-style, unix ms). */
 interface Candle {

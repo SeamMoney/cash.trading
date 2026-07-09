@@ -254,6 +254,17 @@ export async function fetchDecibelMainnetTrades(
   return data.items;
 }
 
+const CANDLE_INTERVAL_MS: Record<"1m" | "5m" | "15m" | "30m" | "1h", number> = {
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "30m": 1_800_000,
+  "1h": 3_600_000,
+};
+// Decibel rejects candle requests spanning more than 1000 bars with a 400
+// ("Maximum number of candles is 1000"), so clamp every request under it.
+const MAX_CANDLES_PER_REQUEST = 990;
+
 export async function fetchDecibelMainnetCandles(
   marketAddr: string,
   interval: "1m" | "5m" | "15m" | "30m" | "1h",
@@ -261,6 +272,10 @@ export async function fetchDecibelMainnetCandles(
   endTime: number,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ) {
+  startTime = Math.max(
+    startTime,
+    endTime - MAX_CANDLES_PER_REQUEST * CANDLE_INTERVAL_MS[interval],
+  );
   const network = getDecibelPublicNetwork();
   return fetchPreferredJson<DecibelRestCandle[]>(
     buildProxyUrl("candles", {

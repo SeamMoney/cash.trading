@@ -15,13 +15,17 @@ import {
   type DecibelNetwork,
 } from "@/lib/decibel";
 
-const INDEXED_POSITIONS_TIMEOUT_MS = 600;
+// The Decibel REST indexer round-trip runs ~1s from outside its region; the
+// old 250/600ms budgets guaranteed aborts, so open orders never rendered.
+// These fetches only ride the slow poll (chainOnly=true skips them), so a
+// 2.5s ceiling costs nothing on the 1s hot path.
+const INDEXED_POSITIONS_TIMEOUT_MS = 2_500;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const REST_OPEN_ORDER_TIMEOUT_MS = 250;
+const REST_OPEN_ORDER_TIMEOUT_MS = 2_500;
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };

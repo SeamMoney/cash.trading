@@ -5,12 +5,9 @@
  * - API responses may now use { items: [], total: x } format
  */
 
-import WebSocket from 'ws'
 import { normalizeArrayResponse } from './api-helpers'
 import { getActiveNetwork } from './decibel-sdk'
-
-const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
-const MAINNET_WS_URL = 'wss://api.mainnet.aptoslabs.com/decibel/ws'
+import { openDecibelSocket } from './decibel-ws'
 
 // Market address mapping (testnet — for mainnet, use MAINNET_MARKETS from decibel-client)
 export const MARKET_ADDRESSES: Record<string, string> = {
@@ -40,10 +37,8 @@ export async function getMarkPrice(
   network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 5000
 ): Promise<{ markPx: number; oraclePx: number; midPx: number } | null> {
-  const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
-
   return new Promise((resolve) => {
-    const ws = new WebSocket(wsUrl)
+    const ws = openDecibelSocket(network)
     const timeout = setTimeout(() => {
       ws.close()
       resolve(null)

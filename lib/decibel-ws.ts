@@ -11,9 +11,19 @@
 import WebSocket from 'ws'
 import { normalizeArrayResponse } from './api-helpers'
 import { getActiveNetwork } from './decibel-sdk'
+import { getAptosFullnodeApiKey } from './decibel'
 
 const TESTNET_WS_URL = 'wss://api.testnet.aptoslabs.com/decibel/ws'
 const MAINNET_WS_URL = 'wss://api.mainnet.aptoslabs.com/decibel/ws'
+
+// The Decibel WS endpoint rejects anonymous connections (401). Auth rides on
+// the subprotocol pair ['decibel', <api key>], same scheme as the SSE stream
+// route.
+export function openDecibelSocket(network: 'testnet' | 'mainnet'): WebSocket {
+  const url = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
+  const apiKey = getAptosFullnodeApiKey(network)
+  return apiKey ? new WebSocket(url, ['decibel', apiKey]) : new WebSocket(url)
+}
 
 export interface AccountOverview {
   perp_equity_balance: number
@@ -64,10 +74,8 @@ export async function getAccountOverview(
   network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 10000
 ): Promise<AccountOverview | null> {
-  const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
-
   return new Promise((resolve) => {
-    const ws = new WebSocket(wsUrl)
+    const ws = openDecibelSocket(network)
     let resolved = false
 
     const timeout = setTimeout(() => {
@@ -130,10 +138,8 @@ export async function getRecentTrades(
   network: 'testnet' | 'mainnet' = getActiveNetwork(),
   timeoutMs: number = 10000
 ): Promise<Trade[]> {
-  const wsUrl = network === 'testnet' ? TESTNET_WS_URL : MAINNET_WS_URL
-
   return new Promise((resolve) => {
-    const ws = new WebSocket(wsUrl)
+    const ws = openDecibelSocket(network)
     const trades: Trade[] = []
     let resolved = false
 

@@ -631,15 +631,28 @@ export async function hasAssetsOrPositionsOnChain(
   subaccount: string,
   network?: DecibelNetwork
 ): Promise<boolean> {
+  // Contract upgrade 22 removed perp_engine::has_any_assets_or_positions.
+  // Equivalent signal: any listed position, or any account value.
   const pkg = getDecibelPackage(network);
-  const hasAssets = await safeView<boolean>(
-    {
-      function: `${pkg}::perp_engine::has_any_assets_or_positions`,
-      functionArguments: [subaccount],
-    },
-    network
-  );
-  return hasAssets === true;
+  const [positions, nav] = await Promise.all([
+    safeView<unknown[]>(
+      {
+        function: `${pkg}::perp_engine::list_positions`,
+        functionArguments: [subaccount],
+      },
+      network
+    ),
+    safeView<string | number>(
+      {
+        function: `${pkg}::perp_engine::get_account_net_asset_value`,
+        functionArguments: [subaccount],
+      },
+      network
+    ),
+  ]);
+  if (Array.isArray(positions) && positions.length > 0) return true;
+  const navValue = Number(nav ?? 0);
+  return Number.isFinite(navValue) && navValue !== 0;
 }
 
 export async function getFastSubaccounts(
@@ -804,38 +817,36 @@ export async function getFastOverview(
 ): Promise<ChainDecibelOverview> {
   const pkg = getDecibelPackage(network);
   const collateralMetadata = getDecibelCollateralMetadata(network);
-  const [status, nav, collateralValue, withdrawable, hasAssetsOrPositions] =
-    await Promise.all([
-      safeView<RawRecord>(
-        {
-          function: `${pkg}::perp_engine::cross_position_status`,
-          functionArguments: [subaccount],
-        },
-        network
-      ),
-      safeView<string | number>(
-        {
-          function: `${pkg}::perp_engine::get_account_net_asset_value`,
-          functionArguments: [subaccount],
-        },
-        network
-      ),
-      safeView<string | number>(
-        {
-          function: `${pkg}::perp_engine::get_cross_total_collateral_value`,
-          functionArguments: [subaccount],
-        },
-        network
-      ),
-      safeView<string | number>(
-        {
-          function: `${pkg}::perp_engine::max_allowed_withdraw_from_cross`,
-          functionArguments: [subaccount, collateralMetadata],
-        },
-        network
-      ),
-      hasAssetsOrPositionsOnChain(subaccount, network),
-    ]);
+  const [status, nav, collateralValue, withdrawable] = await Promise.all([
+    safeView<RawRecord>(
+      {
+        function: `${pkg}::perp_engine::cross_position_status`,
+        functionArguments: [subaccount],
+      },
+      network
+    ),
+    safeView<string | number>(
+      {
+        function: `${pkg}::perp_engine::get_account_net_asset_value`,
+        functionArguments: [subaccount],
+      },
+      network
+    ),
+    safeView<string | number>(
+      {
+        function: `${pkg}::perp_engine::get_cross_total_collateral_value`,
+        functionArguments: [subaccount],
+      },
+      network
+    ),
+    safeView<string | number>(
+      {
+        function: `${pkg}::perp_engine::max_allowed_withdraw_from_cross`,
+        functionArguments: [subaccount, collateralMetadata],
+      },
+      network
+    ),
+  ]);
 
   const statusRecord = asRecord(status) ?? {};
   if (!status && nav === null && collateralValue === null) {
@@ -878,7 +889,9 @@ export async function getFastOverview(
     volume30d: null,
     totalNotional,
     collateral,
-    hasAssetsOrPositions,
+    // Derived: upgrade 22 removed has_any_assets_or_positions, and equity /
+    // notional already answer the same question for overview consumers.
+    hasAssetsOrPositions: equity !== 0 || totalNotional !== 0 || collateral !== 0,
     source: "chain",
   };
 }

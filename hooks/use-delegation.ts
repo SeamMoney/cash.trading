@@ -35,14 +35,16 @@ export function useDelegation(): DelegationState {
     try {
       const APTOS_NODE = getAptosNodeUrl()
 
-      // Check if bot operator is delegated for this subaccount
+      // Check if bot operator is delegated for this subaccount.
+      // Contract upgrade 22 removed is_delegated_trader; the delegation set
+      // now comes back as an OrderedMap keyed by delegate address.
       const response = await fetch(`${APTOS_NODE}/view`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          function: `${getActivePackage()}::dex_accounts_entry::is_delegated_trader`,
+          function: `${getActivePackage()}::dex_accounts::view_delegated_permissions`,
           type_arguments: [],
-          arguments: [subaccount, BOT_OPERATOR],
+          arguments: [subaccount],
         }),
       })
 
@@ -51,7 +53,11 @@ export function useDelegation(): DelegationState {
       }
 
       const data = await response.json()
-      const delegated = data[0] as boolean
+      const entries: Array<{ key?: string }> = data?.[0]?.entries ?? []
+      const operator = BOT_OPERATOR.toLowerCase()
+      const delegated = entries.some(
+        (entry) => typeof entry.key === "string" && entry.key.toLowerCase() === operator
+      )
       setIsDelegated(delegated)
     } catch (err) {
       console.error("Failed to check delegation:", err)
@@ -137,7 +143,7 @@ export function useDelegation(): DelegationState {
     try {
       const payload = {
         type: "entry_function_payload",
-        function: `${getActivePackage()}::dex_accounts_entry::revoke_trading_delegation_for_subaccount`,
+        function: `${getActivePackage()}::dex_accounts_entry::revoke_delegation`,
         type_arguments: [],
         arguments: [subaccount, BOT_OPERATOR],
       }

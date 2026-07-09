@@ -23,7 +23,7 @@
     "@aptos-labs/wallet-adapter-core": "^8.2.0",
     "@aptos-labs/wallet-adapter-react": "^7.2.2",
     "@blocto/aptos-wallet-adapter-plugin": "^0.2.11",
-    "@decibeltrade/sdk": "^0.4.0",
+    "@decibeltrade/sdk": "^0.7.0",
     "@flipperplatform/wallet-adapter-plugin": "^0.2.0",
     "@keyv/etcd": "^2.1.1",
     "@keyv/mongo": "^3.0.5",

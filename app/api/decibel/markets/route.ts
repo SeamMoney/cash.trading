@@ -78,14 +78,45 @@ async function fetchAssetContexts(network: DecibelNetwork): Promise<Map<string, 
   }
 }
 
+/** market_addr → category from the raw REST /markets payload; the SDK's
+ * markets.getAll() strips fields it doesn't type (category included). */
+async function fetchMarketCategories(
+  network: DecibelNetwork,
+  signal: AbortSignal
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const apiKey = getAptosFullnodeApiKey(network);
+  if (!apiKey) return map;
+  try {
+    const res = await fetch(`${DECIBEL_REST_BASE[network]}/markets`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return map;
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) return map;
+    for (const raw of data) {
+      const row = raw as Record<string, unknown>;
+      const addr = asString(row.market_addr);
+      const category = asString(row.category);
+      if (addr && category) map.set(addr.toLowerCase(), category);
+    }
+    return map;
+  } catch {
+    return map;
+  }
+}
+
 async function fetchSdkMarkets(network: DecibelNetwork) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REST_MARKETS_TIMEOUT_MS);
   try {
     const dex = getReadDex(network);
-    const [markets, prices] = await Promise.all([
+    const [markets, prices, categories] = await Promise.all([
       dex.markets.getAll({ fetchOptions: { signal: controller.signal } }),
       dex.marketPrices.getAll({ fetchOptions: { signal: controller.signal } }),
+      fetchMarketCategories(network, controller.signal),
     ]);
 
     const priceMap = new Map<string, Record<string, unknown>>();
@@ -123,6 +154,9 @@ async function fetchSdkMarkets(network: DecibelNetwork) {
         mode: asString(market.mode) || "Unknown",
         szDecimals: asNumber(market.sz_decimals),
         pxDecimals: asNumber(market.px_decimals),
+        category:
+          categories.get(address.toLowerCase()) ??
+          (asString(market.category) || null),
         source: rest ? "sdk+rest" : "sdk",
       };
     }).filter((market) => market.name && market.address);
@@ -152,7 +186,7 @@ export async function GET(req: Request) {
 
     if (markets.length === 0) {
       const chainMarkets = await getFastMarkets(network);
-      markets = chainMarkets.map((market) => ({ ...market, source: market.source }));
+      markets = chainMarkets.map((market) => ({ ...market, category: null, source: market.source }));
       sources = {
         config: "chain",
         markOracle: "chain",

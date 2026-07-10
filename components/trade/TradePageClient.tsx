@@ -1049,6 +1049,17 @@ function SignalProductsPanel({
               : null;
             const chartPoints = liveChart ?? buildDemoStrategyCurve(ind);
             const chartColor = sig === 2 ? "#ef4444" : "#a855f7";
+            // A frozen buffer of near-identical prices plots as a featureless
+            // block; flag it so the card shows a designed frozen state instead.
+            const chartValues = chartPoints.map((p) => p.pnl);
+            const chartLo = Math.min(...chartValues);
+            const chartHi = Math.max(...chartValues);
+            const chartMid = (chartHi + chartLo) / 2 || 1;
+            const frozenFlatChart =
+              engineStale &&
+              Boolean(liveChart) &&
+              chartValues.length >= 2 &&
+              (chartHi - chartLo) / Math.abs(chartMid) < 0.0005;
 
             return (
               <div
@@ -1113,6 +1124,16 @@ function SignalProductsPanel({
                 </div>
 
                 {/* Chart */}
+                {frozenFlatChart ? (
+                  <div className="mt-3 flex h-[120px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#4a3d5c] bg-[#160e1a]/40">
+                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
+                      frozen {engineAgeLabel}
+                    </span>
+                    <span className="text-[10px] text-[#555]">
+                      No price movement recorded since the last crank
+                    </span>
+                  </div>
+                ) : (
                 <div className="relative mt-3 h-[120px] touch-pan-x">
                   {engineStale && liveChart && (
                     <span className="absolute right-1 top-0 z-10 rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
@@ -1156,6 +1177,7 @@ function SignalProductsPanel({
                     <div className="flex h-full items-center justify-center text-[10px] text-[#333]">Loading chart...</div>
                   )}
                 </div>
+                )}
 
                 {/* Details */}
                 <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">

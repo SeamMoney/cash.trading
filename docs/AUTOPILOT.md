@@ -365,3 +365,16 @@ one-off <img> asset; downgraded to NIT. Remaining: header strip OI clip
 (scroll affordance); launchpad list affordance; flat frozen sparklines;
 identical price-at-freeze presentation; slow first points fetch hint;
 deploy-tab overlaps; minors/NITs. Iteration 20 = full sweep.
+
+## 2026-07-10T17:10Z — Iteration 19: frozen sparklines → designed empty state (audit16 #11)
+
+Frozen strategies' on-chain buffers hold near-identical prices, so the card
+AreaChart collapsed to a featureless purple block (the neighbouring DEMO
+card's real curve made it look broken). Cards now detect a flat series
+(range/mid < 0.05%) on a frozen engine and render a dashed empty-state box:
+"FROZEN Nd AGO" + "No price movement recorded since the last crank".
+Non-frozen cards are untouched. Judge cycle: first pass FAIL (border too
+dark to see) → brightened to #4a3d5c with a tinted fill → re-judge PASS.
+Remaining: header strip OI clip; launchpad list affordance; identical
+price-at-freeze presentation; slow first points fetch; deploy-tab overlaps;
+portfolio tinted dashes; toggle x-axis overlap; NITs. NEXT = IT 20 FULL SWEEP.

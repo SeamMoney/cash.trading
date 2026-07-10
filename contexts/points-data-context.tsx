@@ -116,30 +116,28 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
   const { isMockMode } = useMockData()
   const addr = account?.address?.toString() || null
 
-  // Initialize state from localStorage cache for instant render
-  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(() => {
-    if (typeof window === 'undefined') return null
-    return readCache(addr)?.globalStats || null
-  })
-  const [userData, setUserData] = useState<UserData | null>(() => {
-    if (typeof window === 'undefined') return null
-    return readCache(addr)?.userData || null
-  })
-  const [vaultUserData, setVaultUserData] = useState<VaultUserData | null>(() => {
-    if (typeof window === 'undefined') return null
-    return readCache(addr)?.vaultUserData || null
-  })
-  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>(() => {
-    if (typeof window === 'undefined') return []
-    return readCache(addr)?.leaderboardEntries || []
-  })
-  const [userRank, setUserRank] = useState<LeaderboardEntry | null>(() => {
-    if (typeof window === 'undefined') return null
-    return readCache(addr)?.userRank || null
-  })
+  // Cache hydration happens AFTER mount: reading localStorage in useState
+  // initializers made the client's first render differ from the server's
+  // (e.g. the LIVE badge) — a hydration mismatch on every clean /points load.
+  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [vaultUserData, setVaultUserData] = useState<VaultUserData | null>(null)
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([])
+  const [userRank, setUserRank] = useState<LeaderboardEntry | null>(null)
   const [loading, setLoading] = useState(false)
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const mountedRef = useRef(true)
+
+  useEffect(() => {
+    const cached = readCache(addr)
+    if (!cached) return
+    if (cached.globalStats) setGlobalStats((prev) => prev ?? cached.globalStats)
+    if (cached.userData) setUserData((prev) => prev ?? cached.userData)
+    if (cached.vaultUserData) setVaultUserData((prev) => prev ?? cached.vaultUserData)
+    if (cached.leaderboardEntries?.length)
+      setLeaderboardEntries((prev) => (prev.length ? prev : cached.leaderboardEntries))
+    if (cached.userRank) setUserRank((prev) => prev ?? cached.userRank)
+  }, [addr])
 
   const fetchAll = useCallback(async () => {
     if (isMockMode) {

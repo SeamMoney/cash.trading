@@ -654,6 +654,16 @@ export function LaunchpadPage() {
   const [tab,        setTab]        = useState<Tab>("explore");
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [selected,   setSelected]   = useState<Indicator | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+
+  // Below lg the detail panel stacks under the full 16-row list (~1700px
+  // down) — without this scroll, tapping a strategy appears to do nothing.
+  const selectedAddress = selected?.address ?? null;
+  useEffect(() => {
+    if (!selectedAddress || !detailPanelRef.current) return;
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    detailPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedAddress]);
   const [loading,    setLoading]    = useState(true);
   const [loadKey,    setLoadKey]    = useState(0);
   const [sort,       setSort]       = useState<Sort>("robustness");
@@ -885,7 +895,7 @@ export function LaunchpadPage() {
                 </div>
 
                 {/* Right: detail panel */}
-                <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
+                <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
                   <div className="bg-[#111] min-h-[480px]">
                     {selected ? (
                       <IndicatorDetail

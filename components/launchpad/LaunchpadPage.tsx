@@ -56,11 +56,17 @@ interface LiveSignalState {
   slowLine: number;
   isLive: boolean;
   lastUpdate: number;
+  /** Unix seconds of the freshest ON-CHAIN datum (price buffer / signal) —
+   *  NOT the poll time. The engine freezes at its last crank, so poll time
+   *  masks weeks-old data as live. */
+  dataTime: number;
 }
+
+const SIGNAL_STALE_AFTER_MS = 30 * 60_000;
 
 function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
   const [state, setState] = useState<LiveSignalState>({
-    signal: 0, price: 0, fastLine: 0, slowLine: 0, isLive: false, lastUpdate: 0,
+    signal: 0, price: 0, fastLine: 0, slowLine: 0, isLive: false, lastUpdate: 0, dataTime: 0,
   });
   useEffect(() => {
     if (!addr) return;
@@ -73,6 +79,7 @@ function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
         const d = await res.json();
         if (cancelled) return;
         const price = typeof d.lastPrice === "number" ? (d.lastPrice > 1000 ? d.lastPrice : d.lastPrice / 1e8) : 0;
+        const timestamps: number[] = Array.isArray(d.timestamps) ? d.timestamps : [];
         setState({
           signal: d.signal ?? 0,
           price,
@@ -80,6 +87,7 @@ function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
           slowLine: d.slowLine ?? 0,
           isLive: true,
           lastUpdate: Date.now(),
+          dataTime: timestamps[timestamps.length - 1] ?? d.lastSignalTime ?? 0,
         });
       } catch { /* ignore */ }
     }
@@ -511,20 +519,35 @@ function IndicatorDetail({
             "shrink-0 flex flex-col items-end gap-0.5 transition-all duration-200",
             flashing && "opacity-80",
           )}>
-            <div className="flex items-center gap-1.5">
-              <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", SIG_DOT[sig])} />
-              <span className={cn("text-base font-bold font-mono tracking-wide", SIG_TEXT[sig])}>{SIG_LABEL[sig]}</span>
-            </div>
-            {live.isLive && live.price > 0 && (
-              <span className="text-[11px] text-zinc-600 font-mono tabular-nums">
-                ${live.price > 1000
-                  ? live.price.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : live.price.toFixed(4)}
-              </span>
-            )}
-            {!live.isLive && ind.lastSignalTime > 0 && (
-              <span className="text-[11px] text-zinc-600">{timeAgo(ind.lastSignalTime)}</span>
-            )}
+            {(() => {
+              // A frozen engine (last crank weeks ago) must not read as a
+              // live BUY/SELL call — date it and drop the current-price look.
+              const stale =
+                live.isLive &&
+                live.dataTime > 0 &&
+                Date.now() - live.dataTime * 1000 > SIGNAL_STALE_AFTER_MS;
+              return (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", stale ? "bg-zinc-600" : SIG_DOT[sig])} />
+                    <span className={cn("text-base font-bold font-mono tracking-wide", stale ? "text-zinc-500" : SIG_TEXT[sig])}>
+                      {stale ? `LAST ${SIG_LABEL[sig]}` : SIG_LABEL[sig]}
+                    </span>
+                  </div>
+                  {live.isLive && live.price > 0 && (
+                    <span className={cn("text-[11px] font-mono tabular-nums", stale ? "text-amber-500/80" : "text-zinc-600")}>
+                      ${live.price > 1000
+                        ? live.price.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                        : live.price.toFixed(4)}
+                      {stale && ` · ${timeAgo(live.dataTime * 1000)}`}
+                    </span>
+                  )}
+                  {!live.isLive && ind.lastSignalTime > 0 && (
+                    <span className="text-[11px] text-zinc-600">{timeAgo(ind.lastSignalTime)}</span>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

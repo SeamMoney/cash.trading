@@ -288,3 +288,18 @@ sparklines render as flat purple blocks; (8) portfolio tinted dashes;
 avatar clip "CAS|", APT input contrast, Push Price tooltip, PnL heading on
 Portfolio Val, list row dot misalign, dev-speak empty copy, mobile sheet
 void).
+
+## 2026-07-10T14:20Z — Iteration 14: list/detail signal agreement (audit12 #3)
+
+List rows showed seed lastSignal ("SELL 42d ago") while details showed live
+on-chain state ("LAST BUY · 94d ago") — direction and age both wrong.
+IndicatorItem now reads the same on-chain source via
+useLiveSignal(addr, pkg, {once:true}) (single fetch per row, no polling —
+the detail keeps its 15s poll), with identical stale treatment: muted
+"LAST BUY/SELL <age>". Verified: SMA Crossover Pro row = "LAST BUY 94d
+ago" = detail; EMA Ribbon/Laguerre now consistent too. Judge PASS. Note:
+agent-browser default session wedged mid-iteration (os error 35) — killed
+and restarted, no data lost. Remaining: (13) automation-embedded points
+zeros; (5) mobile 24h-vol abbreviate; (4) load-time 401/404/504; (6) list
+scroll affordance; (11) flat sparkline blocks; minors/NITs. Iteration 16 =
+full sweep.

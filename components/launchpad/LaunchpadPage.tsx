@@ -64,10 +64,11 @@ interface LiveSignalState {
 
 const SIGNAL_STALE_AFTER_MS = 30 * 60_000;
 
-function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
+function useLiveSignal(addr: string, pkg?: string, opts?: { once?: boolean }): LiveSignalState {
   const [state, setState] = useState<LiveSignalState>({
     signal: 0, price: 0, fastLine: 0, slowLine: 0, isLive: false, lastUpdate: 0, dataTime: 0,
   });
+  const once = opts?.once ?? false;
   useEffect(() => {
     if (!addr) return;
     let cancelled = false;
@@ -92,9 +93,10 @@ function useLiveSignal(addr: string, pkg?: string): LiveSignalState {
       } catch { /* ignore */ }
     }
     poll();
+    if (once) return () => { cancelled = true; };
     const t = setInterval(poll, 15_000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [addr, pkg]);
+  }, [addr, pkg, once]);
   return state;
 }
 
@@ -137,7 +139,15 @@ const SIG_CHIP  = [
 // ─── Left panel: indicator list item ─────────────────────────────────────────
 
 function IndicatorItem({ ind, selected, onClick, index }: { ind: Indicator; selected: boolean; onClick: () => void; index: number }) {
-  const sig   = ind.lastSignal ?? 0;
+  // Live strategies read the SAME on-chain state the detail header shows —
+  // the seed lastSignal drifted ("SELL 42d ago" row vs "LAST BUY · 94d ago"
+  // detail) and contradicted it in both direction and age.
+  const live = useLiveSignal(ind.address, ind.pkg, { once: true });
+  const hasLive = live.isLive && live.dataTime > 0;
+  const sig = hasLive ? live.signal : (ind.lastSignal ?? 0);
+  const sigTimeMs = hasLive ? live.dataTime * 1000 : ind.lastSignalTime;
+  const sigStale =
+    hasLive && live.dataTime > 0 && Date.now() - live.dataTime * 1000 > SIGNAL_STALE_AFTER_MS;
   const sharpe = (ind.meanSharpe / 1000).toFixed(2);
 
   return (
@@ -187,9 +197,9 @@ function IndicatorItem({ ind, selected, onClick, index }: { ind: Indicator; sele
 
       {sig !== 0 && (
         <div className="pl-3 mt-1.5">
-          <span className={cn("text-[10px] font-semibold", SIG_TEXT[sig])}>
-            {SIG_LABEL[sig]}
-            {ind.lastSignalTime > 0 && <span className="text-zinc-600 font-normal ml-1">{timeAgo(ind.lastSignalTime)}</span>}
+          <span className={cn("text-[10px] font-semibold", sigStale ? "text-zinc-500" : SIG_TEXT[sig])}>
+            {sigStale ? `LAST ${SIG_LABEL[sig]}` : SIG_LABEL[sig]}
+            {sigTimeMs > 0 && <span className="text-zinc-600 font-normal ml-1">{timeAgo(sigTimeMs)}</span>}
           </span>
         </div>
       )}

@@ -158,8 +158,12 @@ function useDecibelVaults(enabled = true) {
       if (!res.ok) return;
       const data = await res.json();
       const fetched: DecibelVault[] = data.vaults ?? [];
-      setVaults(fetched);
+      // Never replace loaded vaults with an empty refresh — the upstream
+      // flaps, and a transient empty payload was wiping the whole section
+      // ([6] → [0]) on the 30s poll.
+      setVaults((prev) => (fetched.length > 0 ? fetched : prev));
       setLoading(false);
+      if (fetched.length === 0) return;
 
       for (const v of fetched) {
         // Use guild PnL override if available

@@ -134,3 +134,28 @@ desktop + mobile screenshots; independent judge = PASS. Note: portfolio PnL
 chart (judge #8, disconnected dashes when logged out) confirmed still present
 in the new screenshots — remains in backlog. Next worst: #5 mobile home chart
 y-scale clip, #6 mobile dead void, #7 vault-card data bugs, #8 PnL chart.
+
+## 2026-07-10T09:05Z — Iteration 4: full re-sweep + DECIBEL VAULTS self-wipe
+
+Full bar sweep: tsc 0 · 60 markets · positions/openOrders/indexed green ·
+audit4 (fresh judge, all pages, both viewports) found old items (a) mobile
+chart y-clip, (b) mobile dead void, (d) PnL dashed segments now FIXED (side
+effects of earlier chart/theme work). New worst: DECIBEL VAULTS section
+loaded [6] then wiped to [0] on the 30s poll. Root cause (verified live):
+upstream /vaults takes ~10s cold; route aborted at 8s → returned empty →
+client setVaults(fetched) clobbered good data. Fix: route budget 8s→15s +
+module-level last-good cache (stale:true on failure); client keeps prev
+state on empty refresh. Verified: API 5/5 × 13 vaults; independent judge
+watched live page across two poll cycles — count stayed [6], PASS.
+
+Remaining backlog (worst first): (A) launchpad detail shows stale engine
+prices ~7% off the live chart with no staleness cue (audit4 #3); (B) mobile
+launchpad: tapping a strategy gives no visible response — detail renders
+~1700px below fold, needs auto-scroll (audit4 #4); (C) portfolio PnL
+zero-state renders as broken amber block (audit4 #5); (D) strategy-vault
+cards: identical addr + stale identical $70k price on different strategies,
+empty purple chart rects, all "WIN RATE 100%" (audit4 #2 / old #7);
+(E) "YOU ARE LONGING/SHORT" copy + control ambiguity; (F) mobile 24h-volume
+header clip; (G) launchpad list scroll affordance + wrapped-row status dot;
+(H) minor: order-book empty rows, SMA tag overlap, stats tile wrap, double
+ellipsis, leaderboard 13-20s spinner.

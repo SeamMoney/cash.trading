@@ -35,6 +35,12 @@ function fmtPerpPrice(v: number, decimals: number): string {
 }
 
 function fmtStatUsd(v: number): string {
+  // Abbreviate big figures — "$17,849,016.40" clips mid-digit in the mobile
+  // header; "$17.8M" always fits.
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (abs >= 100_000) return `$${(v / 1_000).toFixed(0)}K`;
   return "$" + v.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

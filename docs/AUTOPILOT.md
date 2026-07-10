@@ -316,3 +316,14 @@ frame all-skeletons, final frame $23.78M/$23.78M/2,519,845/125. Judge PASS
 both frames. Remaining: (5) mobile 24h-vol abbreviate; (4) load-time
 401/404/504; (6) list scroll affordance; (11) flat sparkline blocks;
 minors/NITs. NEXT = ITERATION 16 FULL SWEEP.
+
+## 2026-07-10T15:25Z — Iteration 16: full sweep + stat abbreviation (audit12 #5)
+
+API bar green (tsc 0 · 60 markets · 59 positions · openOrders=rest ·
+indexed=ok). audit16 (fresh full-page judge incl. clean-load /points
+hydration re-check) launched — findings land next iteration. Shipped:
+fmtStatUsd now abbreviates ($17.9M / $1.30B / $558K at ≥100K) — fixes the
+mobile 24h-volume mid-digit clip and tidies OI + vault-card stats
+everywhere it's used. Verified at 390px: "24h Volume $17.9M", no clip.
+Judge PASS. Remaining: (4) load-time 401/404/504; (6) launchpad list scroll
+affordance; (11) flat frozen sparklines; minors/NITs + audit16 findings.

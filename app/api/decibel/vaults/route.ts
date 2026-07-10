@@ -35,7 +35,18 @@ export interface DecibelVault {
   manager_cash_pct: number | null;
 }
 
+// Upstream /vaults regularly takes ~10s on a cold call (verified live: 10.1s,
+// 10.0s, then 0.3s from its cache). Keep the last good payload so a slow or
+// failed refresh serves stale-but-real data instead of an empty list.
+let lastGood: { vaults: DecibelVault[]; fetchedAt: number } | null = null;
+
 function unavailableVaults(reason: string) {
+  if (lastGood) {
+    return NextResponse.json(
+      { ...lastGood, stale: true, reason },
+      { headers: NO_STORE_HEADERS },
+    );
+  }
   return NextResponse.json(
     { vaults: [], fetchedAt: Date.now(), unavailable: true, reason },
     { headers: NO_STORE_HEADERS },
@@ -50,7 +61,7 @@ export async function GET() {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 15_000);
 
   try {
     const res = await fetch(`${DECIBEL_BASE}/vaults?limit=50`, {
@@ -70,6 +81,10 @@ export async function GET() {
     const vaults = items
       .filter((v: DecibelVault) => v.status === "active" && (v.tvl ?? 0) > 0)
       .sort((a: DecibelVault, b: DecibelVault) => (b.tvl ?? 0) - (a.tvl ?? 0));
+
+    if (vaults.length > 0) {
+      lastGood = { vaults, fetchedAt: Date.now() };
+    }
 
     return NextResponse.json({ vaults, fetchedAt: Date.now() }, { headers: NO_STORE_HEADERS });
   } catch (error) {

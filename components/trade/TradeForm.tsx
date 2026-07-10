@@ -726,12 +726,19 @@ export function TradeForm({
         </div>
       )}
 
-      {/* Submit */}
+      {/* Submit — when logged out this is the primary CTA: keep it clickable
+          and route it to the wallet selector instead of a dead disabled state. */}
       <button
-        onClick={handleSubmit}
-        disabled={!canSubmit}
+        onClick={
+          !connected
+            ? () => window.dispatchEvent(new CustomEvent("cash:open-wallet-selector"))
+            : handleSubmit
+        }
+        disabled={connected && !canSubmit}
         className={`w-full py-3 rounded-[12px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-          side === "buy"
+          !connected
+            ? "bg-accent text-black hover:brightness-110"
+            : side === "buy"
             ? "bg-green-500 text-accent-foreground hover:bg-green-600"
             : "bg-red-500 text-accent-foreground hover:bg-red-600"
         }`}

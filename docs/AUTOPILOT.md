@@ -112,3 +112,14 @@ High-Risk default; (15) "DECIBEL VAULTS [0]" dead header; (16) mobile
 portfolio tab row clipped; (17) disabled Withdraw with no reason; (18) price
 mid-flip glyph artifact; (19) duplicate connect-wallet copy; (20) Unlock
 button with no context. Dev-overlay "1 Issue" pill flagged — read dev log.
+
+## 2026-07-10T08:05Z — Iteration 2: points global stats skeletons (judge #3)
+
+The four global tiles rendered "$0.00 / 0 / 0" hard zeros while the first
+fetch was in flight (`globalStats?.x || 0`). Added a `globalStat` helper in
+components/points/points-stats.tsx: pulsing skeleton while globalStats is
+null, real value after. Loaded state verified live ($23.78M / 2,517,865 /
+125); independent judge = PASS on both the code path and the screenshot.
+Dev-overlay "1 Issue" pill: no errors in dev log or browser console now —
+treating as transient. Next worst: #4 Portfolio header (dim ".trading" logo,
+duplicate gray Sign In) or #5 mobile chart y-clip.

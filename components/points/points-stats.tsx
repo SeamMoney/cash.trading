@@ -52,6 +52,18 @@ export function PointsStats() {
     ? Math.min(100, ((globalStats.total_dlp || 0) / globalStats.dlp_cap) * 100)
     : 0
 
+  // While the first load is in flight, show a pulse instead of hard zeros —
+  // "$0.00 deposited / 0 depositors" reads as a dead product to a first-time
+  // visitor when the real figures just haven't arrived yet.
+  const statSkeleton = (
+    <span
+      aria-hidden
+      className="my-0.5 inline-block h-4 w-16 animate-pulse rounded-sm bg-zinc-800"
+    />
+  )
+  const globalStat = (render: () => React.ReactNode) =>
+    globalStats ? render() : statSkeleton
+
   return (
     <div className="space-y-3">
       {/* Header */}
@@ -103,7 +115,7 @@ export function PointsStats() {
             Deposited
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-            {formatNumber(globalStats?.total_deposited || 0)}
+            {globalStat(() => formatNumber(globalStats!.total_deposited || 0))}
           </div>
         </div>
 
@@ -113,7 +125,7 @@ export function PointsStats() {
             DLP
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-            {formatNumber(globalStats?.total_dlp || 0)}
+            {globalStat(() => formatNumber(globalStats!.total_dlp || 0))}
           </div>
         </div>
 
@@ -123,7 +135,9 @@ export function PointsStats() {
             Points
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
-            {(globalStats?.total_points || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {globalStat(() =>
+              (globalStats!.total_points || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
+            )}
           </div>
         </div>
 
@@ -133,7 +147,7 @@ export function PointsStats() {
             Depositors
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-            {(globalStats?.depositor_count || 0).toLocaleString()}
+            {globalStat(() => (globalStats!.depositor_count || 0).toLocaleString())}
           </div>
         </div>
       </div>

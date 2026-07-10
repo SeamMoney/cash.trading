@@ -198,3 +198,15 @@ connected but inactive. Verified at 1440px; independent judge = PASS.
 Remaining: (D) strategy-card stale/dup data, (E) "YOU ARE LONGING" copy,
 (F) mobile 24h-vol clip, (G) scroll affordances, (H) minors + attribution
 logo. Iteration 8 = full sweep + fresh audit.
+
+## 2026-07-10T11:15Z — Iteration 8: full sweep + copy/logo fixes (backlog E + H-partial)
+
+API bar green: tsc 0 · 60 markets/3 cats · 59 positions, openOrders=rest,
+indexed=ok · per-category candles (SOL/SILVER/AAPL) all serve. Fresh
+full-page audit (audit8) launched — findings land next iteration. Shipped
+this iteration: (E) "You are LONGING/SHORTING" → "You are LONG/SHORT" in
+the order panel; (H-partial) TradingView attribution logo disabled on the
+three remaining lightweight-charts users (OnChainChart, EquityCurveChart,
+PineVisualPreview) matching ProCandleChart. Independent judge: PASS ×2.
+Remaining: (D) strategy-card stale/dup data (biggest known), (F) mobile
+24h-vol clip, (G) scroll affordances, (H) other minors + audit8 findings.

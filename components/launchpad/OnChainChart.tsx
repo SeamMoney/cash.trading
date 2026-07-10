@@ -371,6 +371,7 @@ export function OnChainChart({
           background: { type: ColorType.Solid, color: "transparent" },
           textColor: "#52525b",
           fontSize: 10,
+          attributionLogo: false,
         },
         grid: {
           vertLines: { color: "#18181b" },

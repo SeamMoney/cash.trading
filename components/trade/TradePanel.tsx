@@ -419,7 +419,7 @@ export function TradePanel({
               isLong ? "text-success" : "text-zinc-600 hover:text-zinc-400"
             }`}
           >
-            {isLong ? "You are LONGING" : "Long"}
+            {isLong ? "You are LONG" : "Long"}
           </button>
           <span className="text-zinc-700">/</span>
           <button
@@ -431,7 +431,7 @@ export function TradePanel({
               !isLong ? "text-danger" : "text-zinc-600 hover:text-zinc-400"
             }`}
           >
-            {!isLong ? "You are SHORTING" : "Short"}
+            {!isLong ? "You are SHORT" : "Short"}
           </button>
         </div>
         <span className="rounded-md bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">

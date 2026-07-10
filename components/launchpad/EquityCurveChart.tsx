@@ -37,6 +37,7 @@ export function EquityCurveChart({ data, initialCapital = 10000 }: EquityCurveCh
         layout: {
           background: { type: ColorType.Solid, color: "transparent" },
           textColor: "#71717a",
+          attributionLogo: false,
         },
         grid: {
           vertLines: { color: "#27272a", style: LineStyle.Dashed },

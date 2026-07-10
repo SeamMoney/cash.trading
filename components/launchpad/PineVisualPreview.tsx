@@ -97,6 +97,7 @@ export function PineVisualPreview({ pineScript }: Props) {
           background: { type: ColorType.Solid, color: CHART_BG },
           textColor: "#52525b",
           fontSize: 10,
+          attributionLogo: false,
         },
         grid: {
           vertLines: { color: "#1a1a2e" },

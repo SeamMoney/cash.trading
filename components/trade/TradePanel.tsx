@@ -632,20 +632,28 @@ export function TradePanel({
         );
       })()}
 
-      {/* Submit button */}
+      {/* Submit button — when no wallet is connected this is the page's
+          primary CTA, so it must be clickable and open the selector rather
+          than sit disabled. */}
       <button
-        onClick={handleSubmit}
-        disabled={!canSubmitDecibel}
+        onClick={
+          !connected
+            ? () => window.dispatchEvent(new CustomEvent("cash:open-wallet-selector"))
+            : handleSubmit
+        }
+        disabled={connected && !canSubmitDecibel}
         className={cn(
           "mt-3 w-full rounded-[10px] py-3.5 text-[14px] font-display font-bold uppercase tracking-wider transition-all disabled:cursor-not-allowed sm:mt-4",
-          canSubmitDecibel && "active:scale-[0.98]",
+          (canSubmitDecibel || !connected) && "active:scale-[0.98]",
           isOrderSuccess
             ? "bg-success text-white"
-            : canSubmitDecibel
-              ? isLong
-                ? "bg-success text-white hover:brightness-110"
-                : "bg-danger text-white hover:brightness-110"
-              : "border border-white/[0.06] bg-white/[0.04] text-zinc-500"
+            : !connected
+              ? "bg-accent text-black hover:brightness-110"
+              : canSubmitDecibel
+                ? isLong
+                  ? "bg-success text-white hover:brightness-110"
+                  : "bg-danger text-white hover:brightness-110"
+                : "border border-white/[0.06] bg-white/[0.04] text-zinc-500"
         )}
       >
         {isOrderSubmitting ? (

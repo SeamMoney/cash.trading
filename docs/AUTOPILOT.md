@@ -234,3 +234,20 @@ contradiction (SELL 42d vs LAST BUY 94d — different sources); (8) portfolio
 random green/red tinted dashes; (9) chart toggle covers x-axis label;
 (10) illustrative-curve disclosure too small; (11) NITs (price-tag overlap,
 dev-speak empty copy, Pine preview label clip, mobile sheet mostly empty).
+
+## 2026-07-10T12:30Z — Iteration 10: dead CONNECT WALLET CTA (audit8 #2)
+
+Both order-panel submit buttons (TradePanel + TradeForm) showed "Connect
+wallet" while carrying disabled={!canSubmit} — the app's primary entry point
+never became clickable. Fix: when disconnected the button is enabled, styled
+accent, and dispatches a `cash:open-wallet-selector` CustomEvent; Header
+listens and opens the WalletSelector (account modal when already connected).
+Verified by independent judge: disabled===false, click opens "Sign in to
+cash.trading" modal with Google/Apple/wallet options. PASS.
+
+Remaining (audit8): (2) mobile launchpad detail stat-grid collapse at 390px;
+(3) "Enable mock data" dev button in prod UI; (4) idle console 401/404
+churn; (5) mobile 24h-vol clip → abbreviate; (6) launchpad list scroll
+affordance; (7) list-vs-detail signal recency contradiction; (8) portfolio
+tinted dashes; (9) chart toggle covers x-axis label; (10) illustrative-curve
+disclosure; (11) NITs. Iteration 12 = full sweep.

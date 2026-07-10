@@ -138,6 +138,17 @@ export function Header() {
     }
   };
 
+  // Let deep CTAs (e.g. the order panel's "Connect wallet" button) open the
+  // selector without threading state through the page tree.
+  useEffect(() => {
+    const onOpen = () => {
+      if (!connected) setSelectorOpen(true);
+      else setAccountModalOpen(true);
+    };
+    window.addEventListener("cash:open-wallet-selector", onOpen);
+    return () => window.removeEventListener("cash:open-wallet-selector", onOpen);
+  }, [connected]);
+
   return (
     <>
       <header className="relative z-50 isolate border-b border-white/[0.06] bg-[var(--background)]">

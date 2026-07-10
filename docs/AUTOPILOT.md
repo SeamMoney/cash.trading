@@ -186,3 +186,15 @@ Independent judge: PASS. Remaining: (C) portfolio PnL amber zero-state
 block, (D) strategy-card stale/dup data, (E) "YOU ARE LONGING" copy,
 (F) mobile 24h-vol clip, (G) launchpad scroll affordances, (H) minors +
 OnChainChart attribution logo.
+
+## 2026-07-10T10:50Z — Iteration 7: portfolio PnL honest empty state (backlog C)
+
+Logged out, buildPortfolioSeries synthesized a series that rendered as a
+floating amber block with no axes — read as a chart bug next to a green
+"+$0.00" headline. The chart now renders only with real account data
+(connected && (overview || positions)); otherwise a dashed empty-state box:
+"Connect a wallet to see your PnL history" / "No trading history yet" when
+connected but inactive. Verified at 1440px; independent judge = PASS.
+Remaining: (D) strategy-card stale/dup data, (E) "YOU ARE LONGING" copy,
+(F) mobile 24h-vol clip, (G) scroll affordances, (H) minors + attribution
+logo. Iteration 8 = full sweep + fresh audit.

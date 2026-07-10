@@ -251,3 +251,15 @@ churn; (5) mobile 24h-vol clip → abbreviate; (6) launchpad list scroll
 affordance; (7) list-vs-detail signal recency contradiction; (8) portfolio
 tinted dashes; (9) chart toggle covers x-axis label; (10) illustrative-curve
 disclosure; (11) NITs. Iteration 12 = full sweep.
+
+## 2026-07-10T13:00Z — Iteration 11: mobile stat-grid 2x2 (audit8 #3)
+
+The detail panel's 4-up stats row collapsed at 390px (labels crossing
+dividers, values overflowing, 3-line sublabel wraps). Now grid-cols-2 below
+sm with per-cell borders, min-w-0 + truncate on label/value/sub, and a
+smaller value size on mobile. Verified at 390px on SMA Crossover Pro;
+independent judge = PASS (clean 2x2, no overflow). Remaining audit8:
+(3) "Enable mock data" dev button in prod UI; (4) idle console 401/404
+churn; (5) mobile 24h-vol clip; (6) launchpad list scroll affordance;
+(7) signal recency contradiction; (8)–(11) minors/NITs. Iteration 12 =
+full sweep + fresh audit.

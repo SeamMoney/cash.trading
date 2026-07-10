@@ -240,15 +240,15 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
 
 function StatCard({ label, value, sub, good, warn }: { label: string; value: string; sub: string; good?: boolean; warn?: boolean }) {
   return (
-    <div className="px-5 py-4 first:pl-6 last:pr-6">
-      <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-zinc-600 mb-1.5">{label}</p>
+    <div className="min-w-0 border-b border-[#1e1e1e] px-4 py-4 odd:border-r odd:border-r-[#1e1e1e] sm:border-0 sm:px-5 sm:first:pl-6 sm:last:pr-6">
+      <p className="mb-1.5 truncate text-[10px] font-mono uppercase tracking-[0.15em] text-zinc-600">{label}</p>
       <p className={cn(
-        "text-[24px] font-display font-bold tabular-nums leading-none",
+        "truncate text-[20px] font-display font-bold tabular-nums leading-none sm:text-[24px]",
         warn ? "text-red-400" : good ? "text-emerald-400" : "text-zinc-200",
       )}>
         {value}
       </p>
-      <p className="text-[11px] text-zinc-600 mt-1 leading-tight">{sub}</p>
+      <p className="mt-1 truncate text-[11px] leading-tight text-zinc-600">{sub}</p>
     </div>
   );
 }
@@ -570,8 +570,10 @@ function IndicatorDetail({
       </div>
 
       {/* ── Key stats — floating, no cards ── */}
+      {/* 2x2 below sm — four columns at 390px collapse into each other
+          (labels crossing dividers, values overflowing cells). */}
       {ind.totalSims > 0 && (
-        <div className="grid grid-cols-4 divide-x divide-[#1e1e1e] border-y border-[#1e1e1e]">
+        <div className="grid grid-cols-2 border-y border-[#1e1e1e] sm:grid-cols-4 sm:divide-x sm:divide-[#1e1e1e]">
           <StatCard
             label="Win Rate"
             value={`${ind.profitablePct}%`}

@@ -210,3 +210,27 @@ three remaining lightweight-charts users (OnChainChart, EquityCurveChart,
 PineVisualPreview) matching ProCandleChart. Independent judge: PASS ×2.
 Remaining: (D) strategy-card stale/dup data (biggest known), (F) mobile
 24h-vol clip, (G) scroll affordances, (H) other minors + audit8 findings.
+
+## 2026-07-10T11:55Z — Iteration 9: strategy-card frozen-data honesty (audit8 #1 / backlog D)
+
+Investigation: the "identical vault addr" is REAL — both testnet strategies
+genuinely bind to Decibel vault 0x8939…ec6e via different StrategyVault
+objects (per seed comments in app/api/launchpad/indicators/route.ts); the
+placeholder "0xdecibel…" addrs were already filtered by isRealAptosAddress.
+The actual dishonesty was frozen engine data presented live. Fixes in
+TradePageClient cards: staleness computed from the on-chain buffer's last
+timestamp → muted "LAST HOLD/BUY/SELL" chips, amber "FROZEN Nd AGO" badge on
+live charts, "Win Rate" → "Backtest Win …% of sims", price row → "Price at
+freeze" with dimmed value + amber age. First judge pass returned
+PASS/PASS/FAIL (price still too prominent); fixed and re-judged → PASS.
+
+audit8 backlog (worst first, remaining): (1) CONNECT WALLET primary CTA
+rendered disabled and never clickable — NEXT ITERATION; (2) mobile launchpad
+detail stat grid collapses/overlaps at 390px; (3) "Enable mock data" dev
+button ships in prod UI bottom-right; (4) idle console churn: repeated 401s
++ a 404 from a poller; (5) mobile 24h-vol clip (abbreviate to $17.3M);
+(6) launchpad list scroll affordance; (7) list-vs-detail signal recency
+contradiction (SELL 42d vs LAST BUY 94d — different sources); (8) portfolio
+random green/red tinted dashes; (9) chart toggle covers x-axis label;
+(10) illustrative-curve disclosure too small; (11) NITs (price-tag overlap,
+dev-speak empty copy, Pine preview label clip, mobile sheet mostly empty).

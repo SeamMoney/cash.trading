@@ -174,3 +174,15 @@ OnChainChart still renders the TradingView attribution logo bottom-left —
 disable via layout.attributionLogo like ProCandleChart. Next worst: (B)
 mobile launchpad tap → no visible response (auto-scroll to detail), then
 (C) portfolio PnL amber zero-state, (D) strategy-card stale/dup data.
+
+## 2026-07-10T10:25Z — Iteration 6: mobile launchpad auto-scroll (backlog B)
+
+Below lg the detail panel stacks under the full 16-row list (~1700px down);
+tapping a strategy looked like a no-op. Selecting now smooth-scrolls the
+detail panel into view on <1024px viewports (scroll-mt-16 for the header),
+desktop untouched. Verified on 390px: tap on "SMA Crossover Pro" lands the
+viewport on its detail (title, staleness-cued signal, live chart).
+Independent judge: PASS. Remaining: (C) portfolio PnL amber zero-state
+block, (D) strategy-card stale/dup data, (E) "YOU ARE LONGING" copy,
+(F) mobile 24h-vol clip, (G) launchpad scroll affordances, (H) minors +
+OnChainChart attribution logo.

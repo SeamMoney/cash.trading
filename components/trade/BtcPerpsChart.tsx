@@ -1861,7 +1861,10 @@ function BtcPerpsChartComponent({
             decibelLiveAtRef.current = Date.now();
             setUseBtcFallback(false);
             setSecondCandles((prev) => updateSecondCandlesWithPrice(prev, livePrice, Date.now()));
-            setHasInitialHistory(true);
+            // A bare price tick is NOT history — flipping hasInitialHistory
+            // here hid the loader ~1s in and rendered the whole window as a
+            // flat backfill from one point (the mobile "broken L" first
+            // paint). Trades/candles/bootstrap flip it instead.
           }
 
           if (message.topic === `trades:${marketAddress}` && Array.isArray(message.trades) && message.trades.length > 0) {

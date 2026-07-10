@@ -1012,8 +1012,23 @@ function SignalProductsPanel({
             const live = liveStates[ind.address.toLowerCase()];
             const isLive = Boolean(ind.pkg);
             const sig = live?.signal ?? ind.lastSignal ?? 0;
-            const sigLabel = SIG_LABEL_TRADE[sig] ?? "HOLD";
-            const sigColor = SIG_COLOR[sig] ?? SIG_COLOR[0];
+            // The on-chain engine freezes at its last crank; presenting a
+            // months-old price/signal as live is worse than saying nothing.
+            const lastDataSec = live?.timestamps?.[live.timestamps.length - 1] ?? 0;
+            const engineAgeDays =
+              lastDataSec > 0 ? Math.floor((Date.now() / 1000 - lastDataSec) / 86_400) : 0;
+            const engineStale =
+              lastDataSec > 0 && Date.now() - lastDataSec * 1000 > 30 * 60_000;
+            const engineAgeLabel =
+              engineAgeDays >= 1
+                ? `${engineAgeDays}d ago`
+                : `${Math.max(1, Math.floor((Date.now() / 1000 - lastDataSec) / 3600))}h ago`;
+            const sigLabel = engineStale
+              ? `LAST ${SIG_LABEL_TRADE[sig] ?? "HOLD"}`
+              : SIG_LABEL_TRADE[sig] ?? "HOLD";
+            const sigColor = engineStale
+              ? { bg: "border-zinc-700/40 bg-zinc-800/40", text: "text-zinc-500" }
+              : SIG_COLOR[sig] ?? SIG_COLOR[0];
             const sharpe = (ind.meanSharpe / 1000).toFixed(2);
             const subscriberCount = Math.max(1, Math.round(ind.simsFunded / 100));
             const showUnlock = ind.isProprietary && !isSubscribed(ind.address);
@@ -1089,13 +1104,21 @@ function SignalProductsPanel({
                     <div className="mt-0.5 text-[14px] font-bold text-purple-300">{sharpe}</div>
                   </div>
                   <div className="border-l border-[#241a2e] bg-[#160e1a] px-3 py-2.5">
-                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Win Rate</div>
-                    <div className="mt-0.5 text-[14px] font-bold text-white">{ind.profitablePct}%</div>
+                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Backtest Win</div>
+                    <div className="mt-0.5 text-[14px] font-bold text-white">
+                      {ind.profitablePct}%
+                      <span className="ml-1 text-[9px] font-medium normal-case text-[#555]">of sims</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Chart */}
-                <div className="mt-3 h-[120px] touch-pan-x">
+                <div className="relative mt-3 h-[120px] touch-pan-x">
+                  {engineStale && liveChart && (
+                    <span className="absolute right-1 top-0 z-10 rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
+                      frozen {engineAgeLabel}
+                    </span>
+                  )}
                   {chartPoints.length >= 2 ? (
                     <AreaChart
                       data={chartPoints as unknown as Record<string, unknown>[]}
@@ -1146,8 +1169,15 @@ function SignalProductsPanel({
                   </div>
                   {isLive && live && (
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>Last price</span>
-                      <span className="text-[#777]">${live.lastPrice.toLocaleString()}</span>
+                      <span>{engineStale ? "Price at freeze" : "Last price"}</span>
+                      <span className="text-[#777]">
+                        <span className={engineStale ? "text-zinc-600" : undefined}>
+                          ${live.lastPrice.toLocaleString()}
+                        </span>
+                        {engineStale && (
+                          <span className="text-amber-500/80">{` · ${engineAgeLabel}`}</span>
+                        )}
+                      </span>
                     </div>
                   )}
                 </div>

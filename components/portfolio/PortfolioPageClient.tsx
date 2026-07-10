@@ -577,6 +577,9 @@ export function PortfolioPageClient() {
     () => buildPortfolioSeries(overview, positions),
     [overview, positions],
   );
+  // Without real account data the synthesized series renders as a floating
+  // colored block that reads as a chart bug — show an honest empty state.
+  const hasChartData = connected && (overview !== null || positions.length > 0);
   const totalPnl = overview?.unrealizedPnl ?? positions.reduce((sum, item) => sum + (item.estimatedPnl ?? 0), 0);
   const allTimeReturn =
     overview?.equity && overview.equity - totalPnl !== 0
@@ -922,27 +925,38 @@ export function PortfolioPageClient() {
               </div>
             </div>
             <div className="mt-6 h-[360px] min-h-[260px]">
-              <AreaChart
-                data={chartData as unknown as Record<string, unknown>[]}
-                xDataKey="date"
-                aspectRatio="auto"
-                className="h-full"
-                margin={{ top: 28, right: 12, bottom: 28, left: 48 }}
-                animationDuration={0}
-              >
-                <Grid horizontal vertical={false} numTicksRows={5} stroke="rgba(255,255,255,0.18)" strokeDasharray="4,4" fadeHorizontal={false} />
-                <Area
-                  dataKey="pnl"
-                  fill="#e8774f"
-                  fillOpacity={0.16}
-                  stroke="#d6d1ca"
-                  strokeWidth={1.4}
-                  gradientToOpacity={0}
-                  curve={curveLinear}
-                  animate={false}
-                  showHighlight={false}
-                />
-              </AreaChart>
+              {hasChartData ? (
+                <AreaChart
+                  data={chartData as unknown as Record<string, unknown>[]}
+                  xDataKey="date"
+                  aspectRatio="auto"
+                  className="h-full"
+                  margin={{ top: 28, right: 12, bottom: 28, left: 48 }}
+                  animationDuration={0}
+                >
+                  <Grid horizontal vertical={false} numTicksRows={5} stroke="rgba(255,255,255,0.18)" strokeDasharray="4,4" fadeHorizontal={false} />
+                  <Area
+                    dataKey="pnl"
+                    fill="#e8774f"
+                    fillOpacity={0.16}
+                    stroke="#d6d1ca"
+                    strokeWidth={1.4}
+                    gradientToOpacity={0}
+                    curve={curveLinear}
+                    animate={false}
+                    showHighlight={false}
+                  />
+                </AreaChart>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a]">
+                  <span className="text-[13px] text-zinc-500">
+                    {connected ? "No trading history yet" : "Connect a wallet to see your PnL history"}
+                  </span>
+                  <span className="text-[11px] text-zinc-700">
+                    Realized and unrealized PnL will chart here once your Decibel account has activity.
+                  </span>
+                </div>
+              )}
             </div>
           </section>
         </section>

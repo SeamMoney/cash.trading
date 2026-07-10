@@ -86,3 +86,29 @@ Work this backlog, same protocol, one item per iteration:
 ## PROGRESS LOG
 
 (append-only; newest last)
+
+## 2026-07-10T07:45Z — Iteration 1: dither background legibility (judge findings #1+#2)
+
+Sweep: tsc 0 · markets 60 w/ categories · positions 54 named + openOrders=rest
+(warm) · 0 console errors on all 5 pages · per-category candles < 1s warm.
+Fresh-eyes judge (full audit) returned 20 ranked findings; #1/#2 were one root
+cause: the yellow Dithering shader bled through translucent cards on
+/automation and /points, making the bot config form and leaderboard barely
+readable. Fix: colorFront #ffff00→#5a5a00 + dim overlay 60%→80% in
+components/dashboard/background.tsx. Verify: independent judge = PASS.
+
+Judge backlog (worst first, remaining): (3) points page shows $0.00 zeros +
+6s spinner instead of skeletons on load; (4) Portfolio header broken — dim
+".trading" logo + duplicate gray Sign In button; (5) mobile home chart y-scale
+clips flat at container top; (6) ~700px dead void below mobile order panel;
+(7) strategy-vault cards: identical vault addr + "last price" on different
+strategies, two dead purple chart rects, all "WIN RATE 100%"; (8) portfolio
+PnL chart renders as disconnected dashes (looks broken) when logged out;
+(9) chart mode toggle clips last x-axis label; (10) "YOU ARE LONGING" copy →
+"You are long"; (11) inconsistent empty states (+$0.00 green vs —);
+(12) launchpad list hard-clips mid-row, no scroll affordance; (13) Execution:
+WAITING badge with no wallet; (14) automation sub-tabs reuse main-nav names,
+High-Risk default; (15) "DECIBEL VAULTS [0]" dead header; (16) mobile
+portfolio tab row clipped; (17) disabled Withdraw with no reason; (18) price
+mid-flip glyph artifact; (19) duplicate connect-wallet copy; (20) Unlock
+button with no context. Dev-overlay "1 Issue" pill flagged — read dev log.

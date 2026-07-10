@@ -10,7 +10,7 @@ export function DashboardBackground() {
       <div className="absolute inset-0 translate-y-[25%] scale-125">
         <MemoizedDithering
           colorBack="#00000000"
-          colorFront="#ffff00"
+          colorFront="#5a5a00"
           speed={0.43}
           shape="wave"
           type="4x4"
@@ -23,7 +23,9 @@ export function DashboardBackground() {
           }}
         />
       </div>
-      <div className="absolute inset-0 bg-black/60" />
+      {/* Heavier dim so the shader never bleeds through translucent cards
+          (leaderboard rows, bot config form) and text stays readable. */}
+      <div className="absolute inset-0 bg-black/80" />
     </div>
   )
 }

@@ -327,3 +327,27 @@ mobile 24h-volume mid-digit clip and tidies OI + vault-card stats
 everywhere it's used. Verified at 390px: "24h Volume $17.9M", no clip.
 Judge PASS. Remaining: (4) load-time 401/404/504; (6) launchpad list scroll
 affordance; (11) flat frozen sparklines; minors/NITs + audit16 findings.
+
+## 2026-07-10T16:00Z — Iteration 17: /points hydration mismatch (audit16 #1)
+
+audit16 confirmed the hydration error fires on EVERY clean /points load
+(not HMR): useState initializers read localStorage, so the client's first
+render (LIVE badge from cached stats) differed from the server's. The
+provider now initializes empty and hydrates the cache in a post-mount
+useEffect (prev-value-preserving). Verified: two clean loads, zero dev-
+overlay issues, page renders real values. Judge PASS.
+
+audit16 merged backlog (worst remaining): (2) identical "Price at freeze
+$70,083.5" on cards frozen 10d apart reads canned — both read the same
+market oracle so it IS the same price; consider showing per-card freeze
+context or suppressing the second; (3) first points fetch ~10-12s with no
+progress hint; (4) load-time 3x401/2x504/1x404 on /; (5-audit16) header
+strip still clips Open Interest mid-glyph (scrollWidth 528 vs 356) — needs
+scroll affordance or tighter cells; (6) launchpad list scroll affordance
+(4/16 visible); (11) flat purple frozen sparklines; deploy-tab overlaps
+("(Zeiierman)no wallet", left-edge label clips, config-vs-script mismatch);
+"SMA Crossover Live" named-Live-badged-TESTING; "$292 all-time PnL on
+$23.8M TVL" implausible-looking; three 100% backtest cards in a row;
+portfolio tinted dashes; toggle x-axis overlap; disclosure size; sheet
+void; dot misalign; Push Price tooltip; PnL heading. Portfolio dev-speak
+copy NOT OBSERVED by audit16 (possibly stale finding).

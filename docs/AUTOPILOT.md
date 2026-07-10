@@ -159,3 +159,18 @@ empty purple chart rects, all "WIN RATE 100%" (audit4 #2 / old #7);
 header clip; (G) launchpad list scroll affordance + wrapped-row status dot;
 (H) minor: order-book empty rows, SMA tag overlap, stats tile wrap, double
 ellipsis, leaderboard 13-20s spinner.
+
+## 2026-07-10T10:00Z — Iteration 5: launchpad stale engine data cues (backlog A)
+
+The detail panel presented the frozen testnet engine's last-crank values
+("BUY $68,527", footer price/fast/slow) as current, ~7% off the live chart.
+Fixes: useLiveSignal now carries dataTime (freshest ON-CHAIN timestamp, not
+poll time); when >30min old the header renders muted "LAST BUY · $68,527 ·
+94d ago" and the chart footer shows an amber "ENGINE DATA 94D AGO" chip with
+values dimmed. Caught + fixed a units bug en route (timeAgo takes ms; chain
+time is seconds → "20623d ago"). Independent judge: PASS ×3 (header
+historical, footer chip, no remaining ambiguity). New nit for backlog:
+OnChainChart still renders the TradingView attribution logo bottom-left —
+disable via layout.attributionLogo like ProCandleChart. Next worst: (B)
+mobile launchpad tap → no visible response (auto-scroll to detail), then
+(C) portfolio PnL amber zero-state, (D) strategy-card stale/dup data.

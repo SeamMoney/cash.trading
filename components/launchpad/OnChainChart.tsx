@@ -166,7 +166,19 @@ interface OnChainState {
   signal: number; fastLine: number; slowLine: number; lastPrice: number;
   lastSignalTime: number; totalPushed: number; totalSignals: number;
   inPosition: boolean; entryPrice: number; realizedGainBps: number;
+  /** Unix-seconds timestamps of the on-chain price buffer (last = freshest). */
+  timestamps?: number[];
   error?: string; onChain?: boolean;
+}
+
+const ENGINE_STALE_AFTER_MS = 30 * 60_000;
+
+function engineDataAgo(sec: number): string {
+  const mins = Math.floor((Date.now() / 1000 - sec) / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 interface DecibelExecution {
@@ -640,13 +652,36 @@ export function OnChainChart({
       <div className="flex items-center gap-4 px-3 py-1.5 border-t border-[#1e1e1e] text-[10px] text-zinc-600 flex-wrap">
         {hasOnChain ? (
           <>
-            <Stat label="price"  value={`$${onChain!.lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color="zinc-300" />
-            {indicatorType !== 2 && indicatorType !== 3 && (
-              <>
-                <Stat label="fast"   value={`$${onChain!.fastLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color="emerald-400" />
-                <Stat label="slow"   value={`$${onChain!.slowLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color="orange-400"  />
-              </>
-            )}
+            {(() => {
+              // The engine values freeze at the last crank — presenting a
+              // weeks-old price as current next to the live chart is worse
+              // than saying nothing. Dim the values and date them when old.
+              const lastDataSec =
+                onChain!.timestamps?.[onChain!.timestamps.length - 1] ??
+                onChain!.lastSignalTime ?? 0;
+              const stale =
+                lastDataSec > 0 &&
+                Date.now() - lastDataSec * 1000 > ENGINE_STALE_AFTER_MS;
+              const valueColor = stale ? "zinc-600" : "zinc-300";
+              const fastColor = stale ? "zinc-600" : "emerald-400";
+              const slowColor = stale ? "zinc-600" : "orange-400";
+              return (
+                <>
+                  {stale && (
+                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono font-semibold uppercase text-amber-400">
+                      engine data {engineDataAgo(lastDataSec)}
+                    </span>
+                  )}
+                  <Stat label="price"  value={`$${onChain!.lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={valueColor} />
+                  {indicatorType !== 2 && indicatorType !== 3 && (
+                    <>
+                      <Stat label="fast"   value={`$${onChain!.fastLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color={fastColor} />
+                      <Stat label="slow"   value={`$${onChain!.slowLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color={slowColor}  />
+                    </>
+                  )}
+                </>
+              );
+            })()}
             <a
               href={explorerAccountUrl(indicatorAddr)}
               target="_blank"

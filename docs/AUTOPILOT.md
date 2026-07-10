@@ -303,3 +303,16 @@ and restarted, no data lost. Remaining: (13) automation-embedded points
 zeros; (5) mobile 24h-vol abbreviate; (4) load-time 401/404/504; (6) list
 scroll affordance; (11) flat sparkline blocks; minors/NITs. Iteration 16 =
 full sweep.
+
+## 2026-07-10T14:55Z — Iteration 15: points zero-stats poisoned cache (audit12 #13)
+
+The automation-embedded points view (same PointsStats component) showed
+"$0.00" tiles because a poisoned localStorage cache (globalStats cached
+from a failed fetch, all zeros) suppressed the skeletons. Two guards in
+contexts/points-data-context.tsx: readCache treats an all-zero globalStats
+as absent (skeletons show), and the merge never publishes an all-zero stats
+object (keeps prior value/null when both upstreams fail). Verified: early
+frame all-skeletons, final frame $23.78M/$23.78M/2,519,845/125. Judge PASS
+both frames. Remaining: (5) mobile 24h-vol abbreviate; (4) load-time
+401/404/504; (6) list scroll affordance; (11) flat sparkline blocks;
+minors/NITs. NEXT = ITERATION 16 FULL SWEEP.

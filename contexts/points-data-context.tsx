@@ -90,6 +90,13 @@ function readCache(addr: string | null): CachedData | null {
     const cached: CachedData = JSON.parse(raw)
     // Only use cache if same wallet (or both disconnected)
     if (cached.userAddr !== addr) return null
+    // An all-zero globalStats is a poisoned entry (cached from a failed
+    // fetch); using it suppresses the loading skeletons and renders
+    // "$0.00 deposited" as if real. Treat it as no cached stats.
+    const gs = cached.globalStats
+    if (gs && !gs.total_deposited && !gs.total_dlp && !gs.total_points) {
+      cached.globalStats = null as unknown as CachedData['globalStats']
+    }
     return cached
   } catch {
     return null
@@ -216,8 +223,17 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
           merged.total_dlp = (merged.total_dlp || 0) + (vaultTotal.totalTvl || 0)
           merged.total_deposited = (merged.total_deposited || 0) + (vaultTotal.totalTvl || 0)
         }
-        resolvedTotal = merged
-        setGlobalStats(merged)
+        // If both upstreams failed we'd publish an all-zero stats object,
+        // which renders as "$0.00 deposited" instead of the skeletons —
+        // keep the previous value (or null) so the UI stays honest.
+        const hasRealData =
+          (merged.total_deposited || 0) > 0 ||
+          (merged.total_dlp || 0) > 0 ||
+          (merged.total_points || 0) > 0
+        if (hasRealData) {
+          resolvedTotal = merged
+          setGlobalStats(merged)
+        }
         setLoading(false)
       }).catch(() => {})
 

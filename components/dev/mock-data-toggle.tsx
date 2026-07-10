@@ -5,6 +5,10 @@ import { useMockData } from '@/contexts/mock-data-context'
 export function MockDataToggle() {
   const { isMockMode, toggleMockMode } = useMockData()
 
+  // Dev affordance only — one accidental tap in production swaps every
+  // surface to fake data with no visible explanation.
+  if (process.env.NODE_ENV === "production") return null
+
   return (
     <button
       onClick={toggleMockMode}

@@ -351,3 +351,17 @@ $23.8M TVL" implausible-looking; three 100% backtest cards in a row;
 portfolio tinted dashes; toggle x-axis overlap; disclosure size; sheet
 void; dot misalign; Push Price tooltip; PnL heading. Portfolio dev-speak
 copy NOT OBSERVED by audit16 (possibly stale finding).
+
+## 2026-07-10T16:40Z — Iteration 18: load-time 401 burst (audit12 #4 / audit16 known)
+
+Root cause found: fetchPreferredJson deliberately tried the DIRECT Decibel
+REST URL first from the browser on mainnet — those endpoints now reject
+anonymous calls, so every markets/prices/candles/trades fetch logged a 401
+and burned a round-trip before the proxy fallback succeeded. Now proxy-
+first always; direct URL kept as last resort. Verified: clean load = zero
+401s (was 3–6); judge PASS with live page render. Residual single 404
+~13s post-load: not fetch-based (65s fetch-trap caught nothing) — likely a
+one-off <img> asset; downgraded to NIT. Remaining: header strip OI clip
+(scroll affordance); launchpad list affordance; flat frozen sparklines;
+identical price-at-freeze presentation; slow first points fetch hint;
+deploy-tab overlaps; minors/NITs. Iteration 20 = full sweep.

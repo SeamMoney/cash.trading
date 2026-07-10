@@ -185,16 +185,15 @@ async function fetchPreferredJson<T>(
   publicUrl: string,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
-  const preferDirect =
-    isBrowserRuntime() && getDecibelPublicNetwork() === "mainnet";
-  const firstUrl = preferDirect ? publicUrl : proxyUrl;
-  const secondUrl = preferDirect ? proxyUrl : publicUrl;
-
+  // Always proxy-first: the Decibel REST endpoints now reject anonymous
+  // browser calls (401), so the old direct-first mainnet path guaranteed a
+  // failed round-trip and a console error on every fetch before falling
+  // back. The direct URL stays as a last resort if the proxy is down.
   try {
-    return await fetchJson<T>(firstUrl, timeoutMs);
+    return await fetchJson<T>(proxyUrl, timeoutMs);
   } catch (firstError) {
     try {
-      return await fetchJson<T>(secondUrl, timeoutMs);
+      return await fetchJson<T>(publicUrl, timeoutMs);
     } catch {
       throw firstError;
     }

@@ -263,3 +263,28 @@ independent judge = PASS (clean 2x2, no overflow). Remaining audit8:
 churn; (5) mobile 24h-vol clip; (6) launchpad list scroll affordance;
 (7) signal recency contradiction; (8)–(11) minors/NITs. Iteration 12 =
 full sweep + fresh audit.
+
+## 2026-07-10T13:40Z — Iterations 12–13: mock toggle gated + mobile first-paint
+
+It12 (full sweep): API bar green (60 markets · 59 positions · openOrders=rest
+· indexed=ok). Shipped: mock-data toggle now dev-only — verified against a
+real `next start` on :3100 (absent in prod, present in dev), judge PASS.
+It13 (audit12 arrived): #1 hydration mismatch on /points did NOT reproduce
+on a clean load — occurred mid-HMR during the audit; treating as dev
+artifact, will re-check next sweep. Fixed #2 instead: mobile chart's broken
+"L" first paint — a bare market_price tick flipped hasInitialHistory,
+hiding the loader ~1s in and rendering the window as a flat one-point
+backfill; ticks no longer count as history (trades/candles/bootstrap do).
+Verified 4s + 12s frames; judge PASS both.
+
+audit12 remaining backlog (worst first): (3) launchpad list-vs-detail signal
+contradiction (SELL 42d vs LAST BUY 94d, systemic — two different sources:
+seed lastSignal vs on-chain lastSignalTime); (4) load-time 3x401/404/504
+console errors (idle churn is fixed); (5) mobile 24h-vol clip → abbreviate;
+(6) launchpad list scroll affordance; (13) automation-embedded points view
+shows $0.00 zeros (needs the it2 skeleton treatment); (11) frozen card
+sparklines render as flat purple blocks; (8) portfolio tinted dashes;
+(9) toggle covers x-axis label; (14–19) NITs (illustrative disclosure,
+avatar clip "CAS|", APT input contrast, Push Price tooltip, PnL heading on
+Portfolio Val, list row dot misalign, dev-speak empty copy, mobile sheet
+void).

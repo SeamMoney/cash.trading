@@ -788,7 +788,9 @@ export function PortfolioPageClient() {
   }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
 
   return (
-    <div className="min-h-screen bg-black text-zinc-200">
+    // cash-trade-theme scopes the neon accent vars; without it the Header's
+    // logo/Sign-In fall back to the near-black :root --accent and look dead.
+    <div className="cash-trade-theme min-h-screen bg-black text-zinc-200">
       <Header />
       <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
         <div className="mb-5 flex items-center justify-between gap-4">

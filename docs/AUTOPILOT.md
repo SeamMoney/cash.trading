@@ -123,3 +123,14 @@ null, real value after. Loaded state verified live ($23.78M / 2,517,865 /
 Dev-overlay "1 Issue" pill: no errors in dev log or browser console now —
 treating as transient. Next worst: #4 Portfolio header (dim ".trading" logo,
 duplicate gray Sign In) or #5 mobile chart y-clip.
+
+## 2026-07-10T08:20Z — Iteration 3: Portfolio header dead accent (judge #4)
+
+Root cause: the neon accent vars live in `.cash-trade-theme`; PortfolioPage
+Client's wrapper lacked the class, so the Header's `text-accent` logo half and
+`bg-accent` Sign In fell back to :root's near-black accent — "broken gray
+header" on that page only. Added the class to the wrapper. Verified on
+desktop + mobile screenshots; independent judge = PASS. Note: portfolio PnL
+chart (judge #8, disconnected dashes when logged out) confirmed still present
+in the new screenshots — remains in backlog. Next worst: #5 mobile home chart
+y-scale clip, #6 mobile dead void, #7 vault-card data bugs, #8 PnL chart.

@@ -24,7 +24,17 @@ export type BklitPlotCandle = ChartCandle;
 export type BklitPlotLine = {
   id: string;
   color: string;
+  dash?: string;
+  width?: number;
   data: Array<{ time: number; value: number }>;
+};
+
+export type BklitPlotMarker = {
+  id: string;
+  time: number;
+  price: number;
+  side: "buy" | "sell";
+  label?: string;
 };
 
 type BklitCandlePlotProps = {
@@ -33,6 +43,7 @@ type BklitCandlePlotProps = {
   intervalSeconds: number;
   levels?: Array<{ id: string; price: number; color: string }>;
   lines?: BklitPlotLine[];
+  markers?: BklitPlotMarker[];
   onInspect?: (candle: BklitPlotCandle | null) => void;
   priceDecimals: number;
 };
@@ -128,11 +139,46 @@ function PlotLines({ lines }: { lines: BklitPlotLine[] }) {
           data={line.data}
           key={line.id}
           stroke={line.color}
-          strokeWidth={1.25}
+          strokeDasharray={line.dash}
+          strokeWidth={line.width ?? 1.25}
           x={(point) => xScale(new Date(point.time * 1000)) ?? 0}
           y={(point) => yScale(point.value) ?? 0}
         />
       ))}
+    </g>
+  );
+}
+
+function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
+  const { innerHeight, xScale, yScale } = useChartStable();
+  return (
+    <g aria-hidden="true" className="pointer-events-none font-mono">
+      {markers.map((marker) => {
+        const x = xScale(new Date(marker.time * 1000));
+        const rawY = yScale(marker.price);
+        if (x == null || rawY == null) return null;
+        const buy = marker.side === "buy";
+        const y = Math.max(12, Math.min(innerHeight - 12, rawY + (buy ? 8 : -8)));
+        const color = buy ? "#22c55e" : "#ef4444";
+        const points = buy
+          ? `${x},${y - 5} ${x - 4},${y + 2} ${x + 4},${y + 2}`
+          : `${x},${y + 5} ${x - 4},${y - 2} ${x + 4},${y - 2}`;
+        return (
+          <g key={marker.id}>
+            <polygon fill={color} points={points} />
+            <text
+              fill={color}
+              fontSize={8}
+              fontWeight={800}
+              textAnchor="middle"
+              x={x}
+              y={y + (buy ? 12 : -7)}
+            >
+              {marker.label ?? (buy ? "B" : "S")}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -169,7 +215,7 @@ function PlotAxes({ intervalSeconds, priceDecimals }: { intervalSeconds: number;
     <g aria-hidden="true" className="pointer-events-none font-mono">
       {xTicks.map((tick) => (
         <text
-          fill="var(--chart-label)"
+          fill="var(--chart-label, #7f7f7f)"
           fontSize={10}
           key={tick.getTime()}
           textAnchor="middle"
@@ -182,7 +228,7 @@ function PlotAxes({ intervalSeconds, priceDecimals }: { intervalSeconds: number;
       {yTicks.map((tick) => (
         <text
           dominantBaseline="middle"
-          fill="var(--chart-label)"
+          fill="var(--chart-label, #7f7f7f)"
           fontSize={10}
           key={tick}
           x={innerWidth + 10}
@@ -291,6 +337,7 @@ function BklitCandlePlotComponent({
   intervalSeconds,
   levels = [],
   lines = [],
+  markers = [],
   onInspect,
   priceDecimals,
 }: BklitCandlePlotProps) {
@@ -306,6 +353,13 @@ function BklitCandlePlotComponent({
   const xDomainSlotCount = latest && first
     ? Math.max(points.length + 3, Math.round((latest.time - first.time) / intervalSeconds) + 4)
     : points.length + 3;
+  const lineValues = lines.flatMap((line) => line.data.map((point) => point.value));
+  const yDomain = lineValues.length > 0
+    ? [
+        Math.min(...points.map((point) => point.low), ...lineValues),
+        Math.max(...points.map((point) => point.high), ...lineValues),
+      ] as [number, number]
+    : undefined;
 
   if (!latest) return null;
 
@@ -329,6 +383,7 @@ function BklitCandlePlotComponent({
         touchAction="none"
         xDomain={xDomain}
         xDomainSlotCount={xDomainSlotCount}
+        yDomain={yDomain}
         yPaddingRatio={0.08}
       >
         <PlotGrid />
@@ -347,6 +402,7 @@ function BklitCandlePlotComponent({
           showHoverFade={false}
         />
         <PlotLines lines={lines} />
+        <PlotMarkers markers={markers} />
         <PlotLevels levels={levels} />
         <PlotAxes intervalSeconds={intervalSeconds} priceDecimals={priceDecimals} />
         <CurrentPrice

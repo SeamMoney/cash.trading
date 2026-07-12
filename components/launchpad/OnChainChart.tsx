@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * IndicatorChart (replaces OnChainChart) — TradingView-style candlestick chart
+ * IndicatorChart (replaces OnChainChart) — local bklit candlestick chart
  * with real indicator overlays, sub-panes for RSI/MACD, and BUY/SELL markers.
  *
  * Data layers:
@@ -17,9 +17,20 @@
  *  4 = Bollinger Bands — upper/mid/lower bands overlaid on price
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { explorerAccountUrl } from "@/lib/constants";
+import {
+  BklitCandlePlot,
+  type BklitPlotLine,
+  type BklitPlotMarker,
+} from "@/components/trade/BklitCandlePlot";
+import {
+  LaunchpadIndicatorPane,
+  type LaunchpadIndicatorLine,
+  type LaunchpadIndicatorPoint,
+} from "@/components/launchpad/LaunchpadIndicatorPane";
+import { appendLivePriceCandle } from "@/lib/trade/candleSeries";
 
 // ─── TA computation (mirrors Move contract math) ─────────────────────────────
 
@@ -198,6 +209,16 @@ const TFS = [
 ] as const;
 type TF = typeof TFS[number];
 
+function timeframeSeconds(tf: TF) {
+  return tf.resolution === "D" ? 86_400 : Number(tf.resolution) * 60;
+}
+
+function displayPriceDecimals(price: number) {
+  if (price >= 100) return 2;
+  if (price >= 1) return 4;
+  return 6;
+}
+
 const INDICATOR_LABEL: Record<number, string> = {
   0: "SMA", 1: "EMA", 2: "RSI", 3: "MACD", 4: "BB",
 };
@@ -228,12 +249,6 @@ export function OnChainChart({
   indicatorType = 0, shortPeriod = 10, longPeriod = 30, thirdPeriod = 0,
   refreshMs = 15_000, decibelMarket, decibelSize = 0.001,
 }: Props) {
-  const mainRef = useRef<HTMLDivElement>(null);
-  const subRef  = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chartsRef = useRef<{ main: any; sub: any } | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const candleSeriesRef = useRef<any>(null);
   const candleAbortRef = useRef<AbortController | null>(null);
   const onChainAbortRef = useRef<AbortController | null>(null);
 
@@ -362,10 +377,9 @@ export function OnChainChart({
   }, [fetchOnChain, refreshMs]);
 
   // ── Fast Pyth price polling — updates chart every 5s ─────────────────────
-  const livePriceRef = useRef(0);
+  const intervalSeconds = timeframeSeconds(tf);
 
   useEffect(() => {
-    if (candles.length === 0) return;
     let cancelled = false;
 
     async function tick() {
@@ -375,28 +389,23 @@ export function OnChainChart({
         const d = await res.json();
         const price = d.price as number;
         if (!price || price <= 0 || cancelled) return;
-
-        livePriceRef.current = price;
-
-        // Update the last candle with the live price
-        if (candleSeriesRef.current) {
-          const last = candles[candles.length - 1];
-          candleSeriesRef.current.update({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            time: last.time as any,
-            open: last.open,
-            high: Math.max(last.high, price),
-            low: Math.min(last.low, price),
-            close: price,
-          });
-        }
+        const timestamp = Number(d.timestamp);
+        const liveTime = Number.isFinite(timestamp) && timestamp > 0
+          ? timestamp
+          : Date.now() / 1_000;
+        setCandles((current) => appendLivePriceCandle(
+          current,
+          price,
+          liveTime,
+          intervalSeconds,
+        ));
       } catch { /* ignore */ }
     }
 
     tick();
     const t = setInterval(tick, 5_000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [asset, candles]);
+  }, [asset, intervalSeconds]);
 
   // ── Push price (keeper) ─────────────────────────────────────────────────────
   async function pushPrice() {
@@ -421,226 +430,105 @@ export function OnChainChart({
     finally { setPushing(false); }
   }
 
-  // ── Build charts ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!mainRef.current || candles.length === 0) return;
-    let disposed = false;
+  // ── Build bklit series ─────────────────────────────────────────────────────
+  const chartLayers = useMemo(() => {
+    const prices = candles.map((candle) => candle.close);
+    const times = candles.map((candle) => candle.time);
+    const mainLines: BklitPlotLine[] = [];
+    const subLines: LaunchpadIndicatorLine[] = [];
+    let histogram: LaunchpadIndicatorPoint[] = [];
+    let guides: Array<{ id: string; value: number; color: string }> = [];
+    let subDomain: [number, number] | undefined;
+    let subLabel = "";
 
-    import("lightweight-charts").then(({ createChart, ColorType, LineStyle }) => {
-      if (disposed || !mainRef.current) return;
+    const toPoints = (values: (number | null)[]) => values.flatMap((value, index) => (
+      value !== null && Number.isFinite(value)
+        ? [{ time: times[index], value }]
+        : []
+    ));
 
-      // Destroy previous instances
-      chartsRef.current?.main?.remove();
-      chartsRef.current?.sub?.remove();
-      chartsRef.current = null;
-
-      const prices = candles.map((c) => c.close);
-      const times  = candles.map((c) => c.time);
-      const hasSubPane = indicatorType === 2 || indicatorType === 3;
-
-      const baseOpts = {
-        layout: {
-          background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#52525b",
-          fontSize: 10,
-          attributionLogo: false,
+    if (indicatorType === 0 || indicatorType === 1) {
+      const label = indicatorType === 0 ? "SMA" : "EMA";
+      const calculate = indicatorType === 0 ? sma : ema;
+      mainLines.push(
+        {
+          id: `${label}-${shortPeriod}`,
+          color: "#22c55e",
+          dash: "4 4",
+          width: 1,
+          data: toPoints(calculate(prices, shortPeriod)),
         },
-        grid: {
-          vertLines: { color: "#18181b" },
-          horzLines: { color: "#18181b" },
+        {
+          id: `${label}-${longPeriod}`,
+          color: "#f97316",
+          dash: "4 4",
+          width: 1,
+          data: toPoints(calculate(prices, longPeriod)),
         },
-        crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: "#27272a" },
-        timeScale: { borderColor: "#27272a", timeVisible: true },
-      };
-
-      // ── Main chart (candlesticks) ─────────────────────────────────────────
-      const mainH = 420;
-
-      const main = createChart(mainRef.current!, {
-        ...baseOpts,
-        width: mainRef.current!.clientWidth,
-        height: mainH,
+      );
+    } else if (indicatorType === 2) {
+      subLabel = `RSI(${shortPeriod})`;
+      subDomain = [0, 100];
+      guides = [
+        { id: "overbought", value: 70, color: "#ef444460" },
+        { id: "oversold", value: 30, color: "#22c55e60" },
+      ];
+      subLines.push({
+        id: "rsi",
+        color: "#a78bfa",
+        data: toPoints(rsi(prices, shortPeriod)),
       });
+    } else if (indicatorType === 3) {
+      const fast = shortPeriod || 12;
+      const slow = longPeriod || 26;
+      const signalPeriod = thirdPeriod || 9;
+      const result = macd(prices, fast, slow, signalPeriod);
+      subLabel = `MACD(${fast},${slow},${signalPeriod})`;
+      guides = [{ id: "zero", value: 0, color: "#52525b80" }];
+      subLines.push(
+        { id: "macd", color: "#22c55e", data: toPoints(result.macd) },
+        { id: "signal", color: "#f97316", data: toPoints(result.signal) },
+      );
+      histogram = toPoints(result.hist);
+    } else if (indicatorType === 4) {
+      const bands = bollinger(prices, shortPeriod, (thirdPeriod || 20) / 10);
+      mainLines.push(
+        { id: "bb-upper", color: "#60a5fa", width: 1, data: toPoints(bands.upper) },
+        { id: "bb-mid", color: "#60a5fa80", dash: "4 4", width: 1, data: toPoints(bands.mid) },
+        { id: "bb-lower", color: "#60a5fa", width: 1, data: toPoints(bands.lower) },
+      );
+    }
 
-      // Candlestick series
-      const candleSeries = main.addCandlestickSeries({
-        upColor:         "#22c55e",
-        downColor:       "#ef4444",
-        borderUpColor:   "#22c55e",
-        borderDownColor: "#ef4444",
-        wickUpColor:     "#22c55e",
-        wickDownColor:   "#ef4444",
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const candleData = candles.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close }));
-      candleSeries.setData(candleData);
-      candleSeriesRef.current = candleSeries;
-
-      // Volume histogram (subtle, bottom 20% of chart)
-      if (candles.some((c) => c.volume)) {
-        const volSeries = main.addHistogramSeries({
-          priceFormat:  { type: "volume" },
-          priceScaleId: "vol",
-        });
-        main.priceScale("vol").applyOptions({
-          scaleMargins: { top: 0.82, bottom: 0 },
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        volSeries.setData(candles.map((c) => ({
-          time:  c.time as any,
-          value: c.volume || 0,
-          color: c.close >= c.open ? "#22c55e18" : "#ef444418",
-        })));
-      }
-
-      // ── Indicator overlay on price chart ────────────────────────────────
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toSeries = (vals: (number | null)[]): any[] =>
-        vals.map((v, i) => v !== null ? { time: times[i] as any, value: v } : null).filter(Boolean);
-
-      if (indicatorType === 0 || indicatorType === 1) {
-        const label  = indicatorType === 0 ? "SMA" : "EMA";
-        const fn     = indicatorType === 0 ? sma : ema;
-        const fSer   = main.addLineSeries({ color: "#22c55e", lineWidth: 1, lineStyle: LineStyle.Dashed,
-          title: `${label}${shortPeriod}`, priceLineVisible: false, lastValueVisible: false });
-        const sSer   = main.addLineSeries({ color: "#f97316", lineWidth: 1, lineStyle: LineStyle.Dashed,
-          title: `${label}${longPeriod}`,  priceLineVisible: false, lastValueVisible: false });
-        fSer.setData(toSeries(fn(prices, shortPeriod)));
-        sSer.setData(toSeries(fn(prices, longPeriod)));
-
-      } else if (indicatorType === 4) {
-        const mult = (thirdPeriod || 20) / 10;
-        const bb   = bollinger(prices, shortPeriod, mult);
-        const uSer = main.addLineSeries({ color: "#60a5fa", lineWidth: 1,
-          title: "BB Upper", priceLineVisible: false, lastValueVisible: false });
-        const mSer = main.addLineSeries({ color: "#60a5fa80", lineWidth: 1, lineStyle: LineStyle.Dashed,
-          title: "BB Mid",   priceLineVisible: false, lastValueVisible: false });
-        const lSer = main.addLineSeries({ color: "#60a5fa", lineWidth: 1,
-          title: "BB Lower", priceLineVisible: false, lastValueVisible: false });
-        uSer.setData(toSeries(bb.upper));
-        mSer.setData(toSeries(bb.mid));
-        lSer.setData(toSeries(bb.lower));
-      }
-
-      // ── BUY/SELL markers on candlestick series ───────────────────────────
-      const markers = computeMarkers(prices, times, indicatorType, shortPeriod, longPeriod, thirdPeriod);
-      if (markers.length) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        candleSeries.setMarkers(markers.map((m) => ({
-          time:     m.time as any,
-          position: m.signal === 1 ? "belowBar" : "aboveBar",
-          color:    m.signal === 1 ? "#22c55e" : "#ef4444",
-          shape:    m.signal === 1 ? "arrowUp" : "arrowDown",
-          text:     m.signal === 1 ? "B" : "S",
-          size:     1,
-        })));
-      }
-
-      main.timeScale().fitContent();
-
-      // ── Sub-pane chart (RSI or MACD) ─────────────────────────────────────
-      let sub: ReturnType<typeof createChart> | null = null;
-
-      if (hasSubPane && subRef.current) {
-        sub = createChart(subRef.current, {
-          ...baseOpts,
-          width:  subRef.current.clientWidth,
-          height: 120,
-          timeScale: { ...baseOpts.timeScale, visible: false },
-          rightPriceScale: { borderColor: "#27272a", scaleMargins: { top: 0.1, bottom: 0.1 } },
-        });
-
-        if (indicatorType === 2) {
-          // RSI
-          const rsiVals  = rsi(prices, shortPeriod);
-          const firstIdx = rsiVals.findIndex((v) => v !== null);
-          const lastIdx  = prices.length - 1;
-
-          const rsiSer = sub.addLineSeries({ color: "#a78bfa", lineWidth: 2,
-            title: `RSI(${shortPeriod})`, priceLineVisible: false, lastValueVisible: true });
-          rsiSer.setData(toSeries(rsiVals));
-
-          const mkRef = (v: number) => [
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            { time: times[firstIdx] as any, value: v },
-            { time: times[lastIdx]  as any, value: v },
-          ];
-          const ob = sub.addLineSeries({ color: "#ef444460", lineWidth: 1, lineStyle: LineStyle.Dashed,
-            priceLineVisible: false, lastValueVisible: false });
-          const os = sub.addLineSeries({ color: "#22c55e60", lineWidth: 1, lineStyle: LineStyle.Dashed,
-            priceLineVisible: false, lastValueVisible: false });
-          ob.setData(mkRef(70));
-          os.setData(mkRef(30));
-
-        } else if (indicatorType === 3) {
-          // MACD
-          const fast2 = shortPeriod || 12;
-          const slow2 = longPeriod  || 26;
-          const sig2  = thirdPeriod || 9;
-          const res   = macd(prices, fast2, slow2, sig2);
-
-          const histSer  = sub.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
-          const macdSer  = sub.addLineSeries({ color: "#22c55e", lineWidth: 2,
-            title: `MACD(${fast2},${slow2})`, priceLineVisible: false, lastValueVisible: false });
-          const sigSer   = sub.addLineSeries({ color: "#f97316",  lineWidth: 2,
-            title: `Sig(${sig2})`,            priceLineVisible: false, lastValueVisible: false });
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          histSer.setData(res.hist.map((v, i) => v !== null
-            ? { time: times[i] as any, value: v, color: v >= 0 ? "#22c55e40" : "#ef444440" }
-            : null).filter(Boolean) as any[]);
-          macdSer.setData(toSeries(res.macd));
-          sigSer.setData(toSeries(res.signal));
-        }
-
-        // Sync scrolling / zooming between charts (prevent infinite loop with flag)
-        let syncing = false;
-        main.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-          if (syncing || !range || !sub) return;
-          syncing = true;
-          sub.timeScale().setVisibleLogicalRange(range);
-          syncing = false;
-        });
-        sub.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-          if (syncing || !range) return;
-          syncing = true;
-          main.timeScale().setVisibleLogicalRange(range);
-          syncing = false;
-        });
-      }
-
-      chartsRef.current = { main, sub };
-
-      // Resize observer
-      const ro = new ResizeObserver(() => {
-        if (mainRef.current) main.applyOptions({ width: mainRef.current.clientWidth });
-        if (subRef.current && sub) sub.applyOptions({ width: subRef.current.clientWidth });
-      });
-      ro.observe(mainRef.current!);
-      if (subRef.current && sub) ro.observe(subRef.current);
-
-      // Cleanup
-      return () => {
-        ro.disconnect();
-        if (!disposed) {
-          main.remove();
-          sub?.remove();
-          chartsRef.current = null;
-        }
-      };
+    const candlesByTime = new Map(candles.map((candle) => [candle.time, candle]));
+    const markers: BklitPlotMarker[] = computeMarkers(
+      prices,
+      times,
+      indicatorType,
+      shortPeriod,
+      longPeriod,
+      thirdPeriod,
+    ).flatMap((marker, index) => {
+      const candle = candlesByTime.get(marker.time);
+      if (!candle) return [];
+      const buy = marker.signal === 1;
+      return [{
+        id: `${marker.time}:${marker.signal}:${index}`,
+        time: marker.time,
+        price: buy ? candle.low : candle.high,
+        side: buy ? "buy" as const : "sell" as const,
+        label: buy ? "B" : "S",
+      }];
     });
 
-    return () => { disposed = true; };
-  // Rebuilds when candles or indicator config changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, indicatorType, shortPeriod, longPeriod, thirdPeriod]);
+    return { guides, histogram, mainLines, markers, subDomain, subLabel, subLines };
+  }, [candles, indicatorType, longPeriod, shortPeriod, thirdPeriod]);
 
   // ── Derived display values ───────────────────────────────────────────────────
   const hasOnChain  = !!onChain && onChain.onChain !== false && !onChain.error;
   const sig         = onChain?.signal ?? 0;
   const iLabel      = INDICATOR_LABEL[indicatorType] ?? "Indicator";
   const hasSubPane  = indicatorType === 2 || indicatorType === 3;
+  const latestPrice = candles.at(-1)?.close ?? onChain?.lastPrice ?? 0;
 
   return (
     <div className="rounded-xl border border-[#2a2a2a] bg-[#0d0d0d] overflow-hidden">
@@ -720,8 +608,27 @@ export function OnChainChart({
       </div>
 
       {/* ── Chart area ──────────────────────────────────────────────────────── */}
-      <div ref={mainRef} className="w-full" />
-      {hasSubPane && <div ref={subRef} className="w-full border-t border-[#1e1e1e]" />}
+      <div className="relative h-[420px] w-full">
+        {candles.length > 0 && (
+          <BklitCandlePlot
+            candles={candles}
+            currentPrice={latestPrice}
+            intervalSeconds={intervalSeconds}
+            lines={chartLayers.mainLines}
+            markers={chartLayers.markers}
+            priceDecimals={displayPriceDecimals(latestPrice)}
+          />
+        )}
+      </div>
+      {hasSubPane && (
+        <LaunchpadIndicatorPane
+          domain={chartLayers.subDomain}
+          guides={chartLayers.guides}
+          histogram={chartLayers.histogram}
+          label={chartLayers.subLabel}
+          lines={chartLayers.subLines}
+        />
+      )}
 
       {/* ── Stats row ───────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 px-3 py-1.5 border-t border-[#1e1e1e] text-[10px] text-zinc-600 flex-wrap">

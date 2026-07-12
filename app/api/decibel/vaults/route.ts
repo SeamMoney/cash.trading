@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAptosFullnodeApiKey } from "@/lib/decibel";
+import { getAptosFullnodeApiKey, isValidAptosAddress } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,9 @@ const VAULT_CACHE_HEADERS = {
 };
 const VAULT_ERROR_CACHE_HEADERS = {
   "Cache-Control": "public, max-age=0, s-maxage=5, stale-while-revalidate=30",
+};
+const VAULT_UNAVAILABLE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
 
 export interface DecibelVault {
@@ -68,8 +71,40 @@ function unavailableVaults(reason: string) {
   }
   return NextResponse.json(
     { vaults: [], fetchedAt: Date.now(), unavailable: true, reason },
-    { headers: VAULT_ERROR_CACHE_HEADERS },
+    { status: 502, headers: VAULT_UNAVAILABLE_HEADERS },
   );
+}
+
+function validatePage(value: unknown): DecibelVaultPage {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Decibel vaults returned invalid data");
+  }
+  const page = value as Partial<DecibelVaultPage>;
+  if (
+    !Array.isArray(page.items) ||
+    !Number.isSafeInteger(page.total_count) ||
+    Number(page.total_count) < 0 ||
+    !Number.isFinite(page.total_value_locked) ||
+    Number(page.total_value_locked) < 0 ||
+    !Number.isFinite(page.total_volume) ||
+    Number(page.total_volume) < 0
+  ) {
+    throw new Error("Decibel vaults returned invalid pagination data");
+  }
+  for (const vault of page.items) {
+    if (
+      !vault ||
+      typeof vault !== "object" ||
+      !isValidAptosAddress(vault.address) ||
+      typeof vault.name !== "string" ||
+      !isValidAptosAddress(vault.manager) ||
+      vault.status !== "active" ||
+      (vault.tvl !== null && (!Number.isFinite(vault.tvl) || vault.tvl < 0))
+    ) {
+      throw new Error("Decibel vaults returned an invalid vault");
+    }
+  }
+  return page as DecibelVaultPage;
 }
 
 export async function GET() {
@@ -99,7 +134,7 @@ export async function GET() {
       if (!res.ok) {
         throw new Error(`Decibel vaults API returned ${res.status}`);
       }
-      return res.json() as Promise<DecibelVaultPage>;
+      return validatePage(await res.json() as unknown);
     };
 
     const firstPage = await fetchPage(0);
@@ -111,16 +146,23 @@ export async function GET() {
     ) {
       remainingOffsets.push(offset);
     }
+    if (firstPage.total_count > MAX_VAULT_OFFSET + VAULT_PAGE_SIZE) {
+      throw new Error("Decibel vault pagination exceeded the safety limit");
+    }
     const remainingPages = await Promise.all(remainingOffsets.map(fetchPage));
     const vaults = [
       ...(firstPage.items ?? []),
       ...remainingPages.flatMap((page) => page.items ?? []),
     ];
+    const uniqueVaults = new Map(vaults.map((vault) => [vault.address.toLowerCase(), vault]));
+    if (uniqueVaults.size !== firstPage.total_count) {
+      throw new Error("Decibel vault pagination was incomplete or duplicated");
+    }
     const fetchedAt = Date.now();
 
-    if (vaults.length > 0) {
+    if (uniqueVaults.size > 0) {
       lastGood = {
-        vaults,
+        vaults: [...uniqueVaults.values()],
         fetchedAt,
         totalCount: firstPage.total_count,
         totalValueLocked: firstPage.total_value_locked,
@@ -129,7 +171,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      vaults,
+      vaults: [...uniqueVaults.values()],
       fetchedAt,
       totalCount: firstPage.total_count,
       totalValueLocked: firstPage.total_value_locked,

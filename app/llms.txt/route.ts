@@ -17,10 +17,11 @@ const LLMS_TXT = `# cash.trading Data API
 
 ## Conventions
 
-- All endpoints are GET and return JSON with Cache-Control: no-store.
+- All endpoints are GET. Live account/market reads use Cache-Control: no-store;
+  shared discovery responses may use short CDN caches and stale-while-revalidate.
 - \`market\` parameters accept a market name (e.g. \`BTC/USD\`) or a 0x market
   object address. Names are resolved server-side.
-- When upstream data is unavailable the response carries
+- When upstream data is unavailable the non-2xx response carries
   \`{"unavailable": true, "reason": "..."}\` instead of fabricated values.
   \`null\` fields mean "not available", never zero.
 - Rate limits are per-IP per-route (HTTP 429 with \`retryAfterS\` when
@@ -35,7 +36,7 @@ Returns: { network, markets: [{ name, address, markPrice, midPrice,
 oraclePrice, fundingRateBps, isFundingPositive, openInterest, maxLeverage,
 tickSize, minSize, lotSize, mode, szDecimals, pxDecimals,
 volume24h /* base units */, volume24hUsd, change24hPct /* percent */ }] }
-Note: omitting ?network defaults to testnet.
+Note: production defaults to mainnet; pass ?network explicitly in integrations.
 
 ### GET /api/decibel/candlesticks?market=BTC/USD&interval=5m&bars=300
 OHLCV candles. Intervals: 1m 5m 15m 30m 1h 2h 4h 8h 12h 1d 3d 1w 1mo.

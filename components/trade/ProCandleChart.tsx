@@ -27,7 +27,6 @@ import { getDecibelPublicNetwork } from "@/lib/decibel-public";
 import {
   aggregateChartCandles,
   appendLivePriceCandle,
-  interpolateOneSecondCandles,
   mergeCanonicalCandles,
 } from "@/lib/trade/candleSeries";
 
@@ -45,8 +44,8 @@ interface ProCandleChartProps {
   liquidationLines: LiquidationLine[];
   overlayMode: OverlayMode;
   latestPrice: number;
+  latestPriceTime: number;
   minuteCandles: BklitPlotCandle[];
-  nowSeconds: number;
   secondCandles: BklitPlotCandle[];
 }
 
@@ -151,8 +150,8 @@ function ProCandleChartComponent({
   liquidationLines,
   overlayMode,
   latestPrice,
+  latestPriceTime,
   minuteCandles,
-  nowSeconds,
   secondCandles,
 }: ProCandleChartProps) {
   const [interval, setChartInterval] = useState<ProChartInterval>(loadStoredInterval);
@@ -237,18 +236,15 @@ function ProCandleChartComponent({
   }, [active, interval, intervalSeconds, market.marketAddr, market.marketName, remoteInterval, remoteKey]);
 
   const sourceCandles = useMemo(() => {
-    const liveTime = Math.max(secondCandles.at(-1)?.time ?? 0, nowSeconds);
-    const continuousSeconds = interpolateOneSecondCandles(
-      appendLivePriceCandle(secondCandles, latestPrice, liveTime, 1),
-    );
-    if (!remoteInterval) return aggregateChartCandles(continuousSeconds, intervalSeconds);
+    const observedSeconds = aggregateChartCandles(secondCandles, 1);
+    if (!remoteInterval) return aggregateChartCandles(observedSeconds, intervalSeconds);
     const canonical = remoteResult.key === remoteKey ? remoteResult.candles : [];
     const withMinutes = interval === "1m"
       ? mergeCanonicalCandles(canonical, minuteCandles, intervalSeconds)
       : canonical;
-    const merged = mergeCanonicalCandles(withMinutes, continuousSeconds, intervalSeconds);
-    return appendLivePriceCandle(merged, latestPrice, liveTime, intervalSeconds);
-  }, [interval, intervalSeconds, latestPrice, minuteCandles, nowSeconds, remoteInterval, remoteKey, remoteResult, secondCandles]);
+    const merged = mergeCanonicalCandles(withMinutes, observedSeconds, intervalSeconds);
+    return appendLivePriceCandle(merged, latestPrice, latestPriceTime, intervalSeconds);
+  }, [interval, intervalSeconds, latestPrice, latestPriceTime, minuteCandles, remoteInterval, remoteKey, remoteResult, secondCandles]);
 
   const maxOffset = Math.max(0, sourceCandles.length - MIN_VISIBLE_BARS);
   const safeOffset = clamp(offsetFromEnd, 0, maxOffset);
@@ -427,9 +423,9 @@ export const ProCandleChart = memo(
   (previous, next) => (
     previous.active === next.active
     && previous.latestPrice === next.latestPrice
+    && previous.latestPriceTime === next.latestPriceTime
     && previous.liquidationLines === next.liquidationLines
     && previous.minuteCandles === next.minuteCandles
-    && previous.nowSeconds === next.nowSeconds
     && previous.overlayMode === next.overlayMode
     && previous.secondCandles === next.secondCandles
     && previous.market.marketAddr === next.market.marketAddr

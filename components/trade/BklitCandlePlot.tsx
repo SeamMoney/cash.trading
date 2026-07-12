@@ -298,10 +298,14 @@ function BklitCandlePlotComponent({
     ...candle,
     date: new Date(candle.time * 1000),
   })), [candles]);
+  const first = points[0];
   const latest = points.at(-1);
-  const xDomain = latest && points[0]
-    ? [points[0].date, new Date((latest.time + intervalSeconds * 3) * 1000)] as [Date, Date]
+  const xDomain = latest && first
+    ? [first.date, new Date((latest.time + intervalSeconds * 3) * 1000)] as [Date, Date]
     : undefined;
+  const xDomainSlotCount = latest && first
+    ? Math.max(points.length + 3, Math.round((latest.time - first.time) / intervalSeconds) + 4)
+    : points.length + 3;
 
   if (!latest) return null;
 
@@ -324,7 +328,7 @@ function BklitCandlePlotComponent({
         style={{ height: "100%" }}
         touchAction="none"
         xDomain={xDomain}
-        xDomainSlotCount={points.length + 3}
+        xDomainSlotCount={xDomainSlotCount}
         yPaddingRatio={0.08}
       >
         <PlotGrid />
@@ -332,7 +336,6 @@ function BklitCandlePlotComponent({
         <Candlestick
           bodyStrokeWidth={1.25}
           fadedOpacity={0.2}
-          minBodyHeight={intervalSeconds < 60 ? 1.5 : 1}
           negativeBodyFill="var(--chart-background)"
           negativeFill="var(--foreground)"
           negativeStroke="var(--foreground)"

@@ -9,6 +9,13 @@ export type ChartCandle = {
   volume?: number;
 };
 
+export type ChartPriceTick = {
+  time: number;
+  value: number;
+  volume?: number;
+  sequence?: number;
+};
+
 function validCandle(candle: ChartCandle) {
   return (
     Number.isFinite(candle.time)
@@ -19,86 +26,78 @@ function validCandle(candle: ChartCandle) {
   );
 }
 
-function lerp(start: number, end: number, progress: number) {
-  return start + (end - start) * progress;
-}
-
-const INTERPOLATION_PHASE_STEP = 2.399963229728653;
-
-function bridgeAmplitude(
-  previous: ChartCandle,
-  next: ChartCandle,
-  totalSteps: number,
-) {
-  const referencePrice = Math.max(
-    Math.abs(previous.close),
-    Math.abs(next.open),
-    Number.EPSILON,
-  );
-  const localRange = Math.max(
-    Math.abs(previous.high - previous.low),
-    Math.abs(next.high - next.low),
-  );
-  const gapMove = Math.abs(next.open - previous.close);
-  const movePerStep = gapMove / Math.max(totalSteps, 1);
-  const desired = Math.max(
-    referencePrice * 0.00000125,
-    localRange * 0.08,
-    movePerStep * 2.1,
-  );
-  const cap = Math.max(referencePrice * 0.00002, gapMove * 0.28);
-
-  return Math.min(desired, cap);
-}
-
-function bridgeNoise(time: number) {
-  const phase = (time % 3_600) * INTERPOLATION_PHASE_STEP;
+function validPriceTick(tick: ChartPriceTick) {
   return (
-    Math.sin(phase) * 0.68
-    + Math.sin(phase * 0.47 + 1.61803398875) * 0.32
+    Number.isFinite(tick.time)
+    && Number.isFinite(tick.value)
+    && tick.time > 0
+    && tick.value > 0
   );
 }
 
-function unitNoise(time: number, salt: number) {
-  const value = Math.sin((time + salt) * 12.9898) * 43_758.5453;
-  return value - Math.floor(value);
+/** Merge observed exchange ticks by millisecond. No missing timestamps are invented. */
+export function mergeChartPriceTicks(
+  existing: ChartPriceTick[],
+  incoming: ChartPriceTick[],
+  maxPoints = 5_000,
+) {
+  const byTime = new Map<string, ChartPriceTick>();
+  for (const tick of [...existing, ...incoming]) {
+    if (!validPriceTick(tick)) continue;
+    const timeKey = Math.round(tick.time * 1_000);
+    const sequence = Number.isFinite(tick.sequence ?? NaN)
+      ? Math.max(0, Math.floor(tick.sequence ?? 0))
+      : 0;
+    const identity = `${timeKey}:${sequence}`;
+    const prior = byTime.get(identity);
+    byTime.set(identity, {
+      ...tick,
+      time: timeKey / 1_000,
+      volume: Math.max(prior?.volume ?? 0, tick.volume ?? 0),
+    });
+  }
+  const ordered = Array.from(byTime.values()).sort((a, b) => (
+    a.time - b.time || (a.sequence ?? 0) - (b.sequence ?? 0)
+  ));
+  const safeLimit = Number.isFinite(maxPoints)
+    ? Math.max(1, Math.floor(maxPoints))
+    : ordered.length;
+  return ordered.slice(-safeLimit);
 }
 
-function bridgedPrice(
-  previous: ChartCandle,
-  next: ChartCandle,
-  step: number,
-  totalSteps: number,
-  amplitude: number,
+/** Build honest OHLC buckets from observed ticks; empty buckets stay empty. */
+export function chartPriceTicksToCandles(
+  ticks: ChartPriceTick[],
+  intervalSeconds: number,
 ) {
-  if (totalSteps <= 0) return next.open;
-  const progress = step / totalSteps;
-  const base = lerp(previous.close, next.open, progress);
-  const edgeBlend = Math.min(1, step, totalSteps - step);
-  if (edgeBlend <= 0) return base;
+  const safeInterval = Math.max(1, Math.floor(intervalSeconds));
+  const ordered = mergeChartPriceTicks(ticks, [], Number.POSITIVE_INFINITY);
+  const buckets = new Map<number, ChartCandle>();
 
-  return base + bridgeNoise(previous.time + step) * amplitude * edgeBlend;
-}
+  for (const tick of ordered) {
+    const time = Math.floor(tick.time / safeInterval) * safeInterval;
+    const existing = buckets.get(time);
+    if (!existing) {
+      buckets.set(time, {
+        time,
+        open: tick.value,
+        high: tick.value,
+        low: tick.value,
+        close: tick.value,
+        volume: tick.volume ?? 0,
+      });
+      continue;
+    }
+    buckets.set(time, {
+      ...existing,
+      high: Math.max(existing.high, tick.value),
+      low: Math.min(existing.low, tick.value),
+      close: tick.value,
+      volume: (existing.volume ?? 0) + (tick.volume ?? 0),
+    });
+  }
 
-function interpolatedWicks(
-  time: number,
-  open: number,
-  close: number,
-  amplitude: number,
-) {
-  const referencePrice = Math.max(Math.abs(open), Math.abs(close), Number.EPSILON);
-  const wickScale = Math.max(
-    referencePrice * 0.00000035,
-    Math.abs(close - open) * 0.22,
-    amplitude * 0.12,
-  );
-  const upper = wickScale * (0.35 + unitNoise(time, 17) * 0.85);
-  const lower = wickScale * (0.35 + unitNoise(time, 53) * 0.85);
-
-  return {
-    high: Math.max(open, close) + upper,
-    low: Math.min(open, close) - lower,
-  };
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 }
 
 export function aggregateChartCandles(
@@ -174,74 +173,4 @@ export function appendLivePriceCandle(
     next.push({ time, open: price, high: price, low: price, close: price, volume: 0 });
   }
   return next;
-}
-
-function isTradeAnchor(candle: ChartCandle) {
-  return (
-    (candle.volume ?? 0) > 0
-    || candle.open !== candle.close
-    || candle.high !== candle.low
-  );
-}
-
-/**
- * Rebuild sparse one-second data as a continuous OHLC series.
- *
- * Empty carry-forward seconds are treated as placeholders, not price anchors.
- * Their values follow a deterministic bridge between the surrounding real
- * trade bars. The bridge lands exactly on the next real open while adding
- * restrained reversals and wicks, avoiding both flat doji rails and monotonic
- * box staircases. Real trade OHLC is preserved and generated candles remain
- * continuous with their neighbors.
- */
-export function interpolateOneSecondCandles(candles: ChartCandle[]) {
-  const seconds = aggregateChartCandles(candles, 1);
-  if (seconds.length < 2) return seconds;
-
-  const anchors = seconds.filter((candle, index) => (
-    index === 0
-    || index === seconds.length - 1
-    || isTradeAnchor(candle)
-  ));
-  const interpolated: ChartCandle[] = [{ ...anchors[0] }];
-
-  for (let index = 1; index < anchors.length; index += 1) {
-    const previous = interpolated[interpolated.length - 1];
-    const nextAnchor = anchors[index];
-    const spanSeconds = Math.max(1, Math.round(nextAnchor.time - previous.time));
-    const missingSeconds = Math.max(0, spanSeconds - 1);
-    const targetOpen = nextAnchor.open;
-    const amplitude = bridgeAmplitude(previous, nextAnchor, missingSeconds);
-
-    for (let step = 1; step <= missingSeconds; step += 1) {
-      const open = bridgedPrice(previous, nextAnchor, step - 1, missingSeconds, amplitude);
-      const close = bridgedPrice(previous, nextAnchor, step, missingSeconds, amplitude);
-      const { high, low } = interpolatedWicks(
-        previous.time + step,
-        open,
-        close,
-        amplitude,
-      );
-      interpolated.push({
-        time: previous.time + step,
-        open,
-        high,
-        low,
-        close,
-        volume: 0,
-      });
-    }
-
-    const continuousOpen = missingSeconds > 0
-      ? targetOpen
-      : previous.close;
-    interpolated.push({
-      ...nextAnchor,
-      open: continuousOpen,
-      high: Math.max(nextAnchor.high, continuousOpen, nextAnchor.close),
-      low: Math.min(nextAnchor.low, continuousOpen, nextAnchor.close),
-    });
-  }
-
-  return interpolated;
 }

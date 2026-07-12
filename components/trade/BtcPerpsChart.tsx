@@ -23,8 +23,9 @@ import {
   withLiveTail,
 } from "@/lib/trade/lineData";
 import {
-  appendLivePriceCandle,
-  interpolateOneSecondCandles,
+  chartPriceTicksToCandles,
+  mergeChartPriceTicks,
+  type ChartPriceTick,
 } from "@/lib/trade/candleSeries";
 
 type TradeSample = {
@@ -63,7 +64,6 @@ const ONE_SECOND_WINDOW_SECS = 12 * 60;
 const MINUTE_HISTORY_MS = 12 * 60 * 60 * 1000;
 const DECIBEL_VOLUME_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_DECIBEL_MINUTE_CANDLES = Math.ceil(DECIBEL_VOLUME_WINDOW_MS / 60_000) + 5;
-const SECOND_TRADE_LIMIT = 1800;
 const INITIAL_TRADE_LIMIT = 900;
 const LIVE_TRADE_REFRESH_LIMIT = 240;
 const BTC_FALLBACK_ACTIVATE_MS = 3500;
@@ -101,6 +101,32 @@ const LINE_WINDOW_OPTIONS: WindowOption[] = [
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function tradesToPriceTicks(trades: TradeSample[]): ChartPriceTick[] {
+  const ordered = trades
+    .map((trade, index) => ({ trade, index }))
+    .sort((a, b) => (
+      a.trade.transaction_unix_ms - b.trade.transaction_unix_ms
+      || a.index - b.index
+    ));
+  let previousTimestamp = Number.NaN;
+  let sequence = -1;
+
+  return ordered.map(({ trade }) => {
+    if (trade.transaction_unix_ms === previousTimestamp) {
+      sequence += 1;
+    } else {
+      previousTimestamp = trade.transaction_unix_ms;
+      sequence = 0;
+    }
+    return {
+      time: trade.transaction_unix_ms / 1_000,
+      value: trade.price,
+      volume: Number.isFinite(trade.size ?? NaN) ? Math.abs(trade.size ?? 0) : 0,
+      sequence,
+    };
+  });
 }
 
 function toCandlePoint(candle: DecibelRestCandle): ChartCandlePoint {
@@ -164,218 +190,6 @@ function aggregateCandles(candles: CandlePoint[], bucketSecs: number) {
   }
 
   return Array.from(grouped.values()).sort((a, b) => a.time - b.time);
-}
-
-function buildSecondCandlesFromTrades(
-  trades: TradeSample[],
-  fallbackPrice: number,
-  nowMs: number,
-) {
-  const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
-  const currentSec = Math.floor(nowMs / 1000);
-  const oldestTradeSec = sorted.length > 0
-    ? Math.floor(sorted[0].transaction_unix_ms / 1000)
-    : currentSec - ONE_SECOND_WINDOW_SECS + 1;
-  const startSec = Math.max(currentSec - ONE_SECOND_WINDOW_SECS + 1, oldestTradeSec);
-  const tradesBySecond = new Map<number, TradeSample[]>();
-
-  for (const trade of sorted) {
-    const sec = Math.floor(trade.transaction_unix_ms / 1000);
-    if (sec < startSec) continue;
-    const bucket = tradesBySecond.get(sec);
-    if (bucket) {
-      bucket.push(trade);
-    } else {
-      tradesBySecond.set(sec, [trade]);
-    }
-  }
-
-  const firstTradePrice = sorted.length > 0 ? sorted[0].price : fallbackPrice;
-  let lastClose = Number.isFinite(firstTradePrice) && firstTradePrice > 0 ? firstTradePrice : fallbackPrice;
-  const candles: ChartCandlePoint[] = [];
-
-  for (let sec = startSec; sec <= currentSec; sec += 1) {
-    const bucket = tradesBySecond.get(sec) ?? [];
-
-    if (bucket.length === 0) {
-      candles.push({
-        time: sec,
-        open: lastClose,
-        high: lastClose,
-        low: lastClose,
-        close: lastClose,
-        volume: 0,
-      });
-      continue;
-    }
-
-    const open = bucket[0].price;
-    const close = bucket[bucket.length - 1].price;
-    let high = open;
-    let low = open;
-    let volume = 0;
-
-    for (const trade of bucket) {
-      if (trade.price > high) high = trade.price;
-      if (trade.price < low) low = trade.price;
-      if (Number.isFinite(trade.size ?? NaN)) volume += Math.abs(trade.size ?? 0);
-    }
-
-    candles.push({
-      time: sec,
-      open,
-      high,
-      low,
-      close,
-      volume,
-    });
-    lastClose = close;
-  }
-
-  return candles;
-}
-
-function mergeTradesIntoSecondCandles(
-  candles: CandlePoint[],
-  trades: TradeSample[],
-  fallbackPrice: number,
-  nowMs: number,
-) {
-  if (trades.length === 0) return candles;
-
-  const next = candles.slice().sort((a, b) => a.time - b.time) as ChartCandlePoint[];
-  const sorted = [...trades].sort((a, b) => a.transaction_unix_ms - b.transaction_unix_ms);
-  let latestTime = next[next.length - 1]?.time ?? 0;
-  let latestClose = next[next.length - 1]?.close ?? fallbackPrice;
-
-  for (const trade of sorted) {
-    const price = trade.price;
-    const tradeSize = Number.isFinite(trade.size ?? NaN) ? Math.abs(trade.size ?? 0) : 0;
-    const sec = Math.floor(trade.transaction_unix_ms / 1000);
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(sec)) continue;
-
-    const previous = next[next.length - 1];
-    if (previous && sec < previous.time) {
-      // Late websocket frames after tab restore must not rewrite committed
-      // history or append out-of-order candles.
-      continue;
-    }
-
-    const index = next.findIndex((candle) => candle.time === sec);
-    if (index >= 0) {
-      const candle = next[index];
-      next[index] = {
-        ...candle,
-        high: Math.max(candle.high, price),
-        low: Math.min(candle.low, price),
-        close: price,
-        volume: ((candle as ChartCandlePoint).volume ?? 0) + tradeSize,
-      };
-      if (sec >= latestTime) {
-        latestTime = sec;
-        latestClose = price;
-      }
-      continue;
-    }
-
-    if (!previous) {
-      next.push({
-        time: sec,
-        open: price,
-        high: price,
-        low: price,
-        close: price,
-        volume: tradeSize,
-      });
-      latestTime = sec;
-      latestClose = price;
-      continue;
-    }
-
-    for (let fillSec = previous.time + 1; fillSec < sec; fillSec += 1) {
-      next.push({
-        time: fillSec,
-        open: latestClose,
-        high: latestClose,
-        low: latestClose,
-        close: latestClose,
-        volume: 0,
-      });
-    }
-
-    next.push({
-      time: sec,
-      open: latestClose,
-      high: Math.max(latestClose, price),
-      low: Math.min(latestClose, price),
-      close: price,
-      volume: tradeSize,
-    });
-    latestTime = sec;
-    latestClose = price;
-  }
-
-  return updateSecondCandlesWithPrice(
-    next.slice(-ONE_SECOND_WINDOW_SECS),
-    latestClose,
-    nowMs
-  );
-}
-
-function updateSecondCandlesWithPrice(candles: CandlePoint[], nextPrice: number, nowMs: number) {
-  if (!Number.isFinite(nextPrice) || nextPrice <= 0) return candles;
-
-  const currentSec = Math.floor(nowMs / 1000);
-  const next = candles.slice() as ChartCandlePoint[];
-  const last = next[next.length - 1];
-
-  if (!last) {
-    return [{
-      time: currentSec,
-      open: nextPrice,
-      high: nextPrice,
-      low: nextPrice,
-      close: nextPrice,
-      volume: 0,
-    }];
-  }
-
-  if (last.time === currentSec) {
-    next[next.length - 1] = {
-      ...last,
-      high: Math.max(last.high, nextPrice),
-      low: Math.min(last.low, nextPrice),
-      close: nextPrice,
-    };
-    return next;
-  }
-
-  if (last.time > currentSec) {
-    return next.sort((a, b) => a.time - b.time).slice(-ONE_SECOND_WINDOW_SECS);
-  }
-
-  let prevClose = last.close;
-  for (let sec = last.time + 1; sec < currentSec; sec += 1) {
-    next.push({
-      time: sec,
-      open: prevClose,
-      high: prevClose,
-      low: prevClose,
-      close: prevClose,
-      volume: 0,
-    });
-  }
-
-  next.push({
-    time: currentSec,
-    open: prevClose,
-    high: Math.max(prevClose, nextPrice),
-    low: Math.min(prevClose, nextPrice),
-    close: nextPrice,
-    volume: 0,
-  });
-
-  return next.slice(-ONE_SECOND_WINDOW_SECS);
 }
 
 function upsertMinuteCandle(candles: CandlePoint[], candle: DecibelRestCandle) {
@@ -470,26 +284,22 @@ function mergeLivelinePoints(...groups: LivelinePoint[][]) {
 
 function buildHybridVisibleLinePoints(
   minuteCandles: CandlePoint[],
-  secondCandles: CandlePoint[],
+  priceTicks: LivelinePoint[],
   startTime: number,
   endTime: number,
 ) {
-  const visibleSecondCandles = secondCandles.filter(
-    (candle) => candle.time >= startTime && candle.time <= endTime,
+  const visibleTicks = priceTicks.filter(
+    (tick) => tick.time >= startTime && tick.time <= endTime,
   );
-  const recentStart = visibleSecondCandles[0]?.time ?? endTime;
+  const recentStart = visibleTicks[0]?.time ?? endTime;
   const historicalPoints = candlesToCloseLinePoints(
     minuteCandles.filter(
       (candle) => candle.time >= startTime - 60 && candle.time < recentStart,
     ),
     INTERVAL_SECONDS["1m"],
   );
-  const recentPoints = candlesToCloseLinePoints(
-    visibleSecondCandles,
-    INTERVAL_SECONDS["1s"],
-  );
 
-  return mergeLivelinePoints(historicalPoints, recentPoints);
+  return mergeLivelinePoints(historicalPoints, visibleTicks);
 }
 
 function shiftLinePoints(points: LivelinePoint[], offsetSecs: number) {
@@ -563,7 +373,8 @@ function BtcPerpsChartComponent({
   const marketKey = `${market.marketName}:${market.marketAddr ?? ""}`;
   const marketAddress = market.marketAddr;
   const isMobile = useIsMobile();
-  const [secondCandles, setSecondCandles] = useState<CandlePoint[]>([]);
+  const [decibelTradeTicks, setDecibelTradeTicks] = useState<ChartPriceTick[]>([]);
+  const [decibelMarkTicks, setDecibelMarkTicks] = useState<ChartPriceTick[]>([]);
   const [minuteCandles, setMinuteCandles] = useState<CandlePoint[]>([]);
   const [coinbaseMinuteCandles, setCoinbaseMinuteCandles] = useState<CandlePoint[]>([]);
   const [coinbaseHistorySecondCandles, setCoinbaseHistorySecondCandles] = useState<CandlePoint[]>([]);
@@ -657,15 +468,30 @@ function BtcPerpsChartComponent({
     return Array.from(byTime.values()).sort((a, b) => a.time - b.time).slice(-ONE_SECOND_WINDOW_SECS);
   }, [coinbaseCandles, coinbaseHistorySecondCandles, coinbaseLiveCandle, useCoinbaseLineFeed]);
 
-  const activeSecondCandles = useMemo(
-    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : secondCandles),
-    [coinbaseSecondCandles, secondCandles, useCoinbaseLineFeed],
+  const coinbasePriceTicks = useMemo(
+    () => (useCoinbaseLineFeed
+      ? mergeLivelinePoints(coinbaseHistoryTicks, coinbaseTicks)
+      : []),
+    [coinbaseHistoryTicks, coinbaseTicks, useCoinbaseLineFeed],
   );
-  const visualSecondCandles = useMemo(
-    () => interpolateOneSecondCandles(
-      appendLivePriceCandle(activeSecondCandles, snapshot.price, chartNowSec, 1),
-    ),
-    [activeSecondCandles, chartNowSec, snapshot.price],
+  const decibelChartTicks = useMemo(() => {
+    const firstMarkTime = decibelMarkTicks[0]?.time;
+    const historicalTrades = firstMarkTime == null
+      ? decibelTradeTicks
+      : decibelTradeTicks.filter((tick) => tick.time < firstMarkTime);
+    return mergeChartPriceTicks(historicalTrades, decibelMarkTicks);
+  }, [decibelMarkTicks, decibelTradeTicks]);
+  const decibelSecondCandles = useMemo(
+    () => chartPriceTicksToCandles(decibelChartTicks, 1).slice(-ONE_SECOND_WINDOW_SECS),
+    [decibelChartTicks],
+  );
+  const observedSecondCandles = useMemo(
+    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : decibelSecondCandles),
+    [coinbaseSecondCandles, decibelSecondCandles, useCoinbaseLineFeed],
+  );
+  const activePriceTicks = useMemo<LivelinePoint[]>(
+    () => (useCoinbaseLineFeed ? coinbasePriceTicks : decibelChartTicks),
+    [coinbasePriceTicks, decibelChartTicks, useCoinbaseLineFeed],
   );
   const activeMinuteCandles = useMemo(
     () => (useCoinbaseLineFeed ? coinbaseMinuteCandles : minuteCandles),
@@ -679,6 +505,7 @@ function BtcPerpsChartComponent({
     spanSecs: number;
   } | null>(null);
   const lineInteractionRef = useRef<HTMLDivElement | null>(null);
+  const [lineColor, setLineColor] = useState(market.color);
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
   const lineViewResetKeyRef = useRef<string | null>(null);
@@ -698,14 +525,24 @@ function BtcPerpsChartComponent({
     return () => interactionNode.removeEventListener("wheel", preventPageScroll);
   }, []);
 
+  useEffect(() => {
+    const interactionNode = lineInteractionRef.current;
+    if (!interactionNode) return;
+    const tokenColor = getComputedStyle(interactionNode)
+      .getPropertyValue("--chart-line-primary")
+      .trim();
+    setLineColor(tokenColor || market.color);
+  }, [market.color]);
+
   const lineBounds = useMemo(() => {
-    const earliest = activeMinuteCandles[0]?.time ?? visualSecondCandles[0]?.time ?? null;
-    const latest = visualSecondCandles[visualSecondCandles.length - 1]?.time
+    const earliest = activeMinuteCandles[0]?.time ?? activePriceTicks[0]?.time ?? null;
+    const latest = activePriceTicks[activePriceTicks.length - 1]?.time
+      ?? observedSecondCandles[observedSecondCandles.length - 1]?.time
       ?? activeMinuteCandles[activeMinuteCandles.length - 1]?.time
       ?? null;
 
     return { earliest, latest };
-  }, [activeMinuteCandles, visualSecondCandles]);
+  }, [activeMinuteCandles, activePriceTicks, observedSecondCandles]);
 
   const lineResolvedEndTime = useMemo(() => {
     if (lineBounds.latest == null) return null;
@@ -715,13 +552,13 @@ function BtcPerpsChartComponent({
   }, [lineBounds.latest, lineEndTime]);
 
   const lineInterval = useMemo(
-    () => (visualSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
-    [lineWindowSecs, visualSecondCandles.length],
+    () => (observedSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
+    [lineWindowSecs, observedSecondCandles.length],
   );
 
   const lineHistoryCandles = useMemo(
-    () => buildLineHistory(activeMinuteCandles, visualSecondCandles, lineInterval),
-    [activeMinuteCandles, lineInterval, visualSecondCandles],
+    () => buildLineHistory(activeMinuteCandles, observedSecondCandles, lineInterval),
+    [activeMinuteCandles, lineInterval, observedSecondCandles],
   );
 
   const lineVisibleCandles = useMemo(() => {
@@ -737,35 +574,17 @@ function BtcPerpsChartComponent({
     () => {
       if (lineResolvedEndTime == null) return [];
       const startTime = lineResolvedEndTime - lineWindowSecs;
-      const latestCoinbaseTick = useCoinbaseLineFeed
-        ? coinbaseTicks[coinbaseTicks.length - 1] ?? coinbaseHistoryTicks[coinbaseHistoryTicks.length - 1]
-        : null;
       const isLiveWindow = lineEndTime == null;
-      const liveTime = isLiveWindow
-        ? lineResolvedEndTime
-        : Math.min(lineResolvedEndTime, lineBounds.latest ?? lineResolvedEndTime);
-      const liveValue = latestCoinbaseTick?.value ?? snapshot.price;
+      const latestObservedTick = activePriceTicks[activePriceTicks.length - 1];
 
-      if (useCoinbaseLineFeed && lineInterval === "1s") {
-        // Reconstruct committed history from canonical sources every render
-        // (acceptance #4: resume must rebuild from sorted arrays, not from
-        // animated path state). Then attach the live tick via withLiveTail,
-        // which never mutates a committed point.
-        const canonicalPoints = dedupeAndSort([
-          ...buildHybridVisibleLinePoints(
+      if (lineInterval === "1s" && activePriceTicks.length > 0) {
+        return clipLineWindow(
+          buildHybridVisibleLinePoints(
             activeMinuteCandles,
-            visualSecondCandles,
+            activePriceTicks,
             startTime,
             lineResolvedEndTime,
           ),
-          ...coinbaseHistoryTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
-          ...coinbaseTicks.filter((point) => point.time >= startTime - 2 && point.time <= lineResolvedEndTime),
-        ]);
-        const pointsWithTail = isLiveWindow
-          ? withLiveTail(canonicalPoints, liveValue, liveTime)
-          : canonicalPoints;
-        return clipLineWindow(
-          pointsWithTail,
           startTime,
           lineResolvedEndTime,
         );
@@ -774,8 +593,12 @@ function BtcPerpsChartComponent({
       const canonicalPoints = dedupeAndSort(
         candlesToCloseLinePoints(lineVisibleCandles, INTERVAL_SECONDS[lineInterval]),
       );
-      const pointsWithTail = isLiveWindow
-        ? withLiveTail(canonicalPoints, liveValue, liveTime)
+      const pointsWithTail = isLiveWindow && latestObservedTick
+        ? withLiveTail(
+            canonicalPoints,
+            latestObservedTick.value,
+            latestObservedTick.time,
+          )
         : canonicalPoints;
       return clipLineWindow(
         pointsWithTail,
@@ -785,17 +608,12 @@ function BtcPerpsChartComponent({
     },
     [
       activeMinuteCandles,
-      coinbaseHistoryTicks,
-      coinbaseTicks,
+      activePriceTicks,
       lineInterval,
-      lineBounds.latest,
       lineEndTime,
       lineResolvedEndTime,
       lineVisibleCandles,
       lineWindowSecs,
-      snapshot.price,
-      useCoinbaseLineFeed,
-      visualSecondCandles,
     ],
   );
   const renderTimeOffset = lineResolvedEndTime == null ? 0 : chartNowSec - lineResolvedEndTime;
@@ -804,11 +622,10 @@ function BtcPerpsChartComponent({
     [lineData, renderTimeOffset],
   );
   const renderSecondCandles = useMemo(
-    () => shiftCandles(visualSecondCandles, renderTimeOffset),
-    [renderTimeOffset, visualSecondCandles],
+    () => shiftCandles(observedSecondCandles, renderTimeOffset),
+    [observedSecondCandles, renderTimeOffset],
   );
   const displayedLineValue = lineData[lineData.length - 1]?.value ?? snapshot.price;
-  const displayedCandleValue = visualSecondCandles[visualSecondCandles.length - 1]?.close ?? snapshot.price;
 
   const lineBootstrapReady = useMemo(() => {
     if (!useCoinbaseLineFeed) return false;
@@ -1145,19 +962,9 @@ function BtcPerpsChartComponent({
             || snapshotRef.current.price
             || latestMinuteClose
             || market.seedPrice;
-          setCoinbaseHistoryTicks(
-            rawTrades.map((trade) => ({
-              time: trade.transaction_unix_ms / 1000,
-              value: trade.price,
-            })),
-          );
-          setCoinbaseHistorySecondCandles(
-            buildSecondCandlesFromTrades(
-              rawTrades,
-              bootstrapPrice,
-              Date.now(),
-            ),
-          );
+          const historyTicks = mergeChartPriceTicks([], tradesToPriceTicks(rawTrades));
+          setCoinbaseHistoryTicks(historyTicks);
+          setCoinbaseHistorySecondCandles(chartPriceTicksToCandles(historyTicks, 1));
           setSnapshot((prev) => ({
             connected: prev.connected,
             fundingRateBps: prev.fundingRateBps,
@@ -1280,7 +1087,11 @@ function BtcPerpsChartComponent({
         const history = toHistoryCandlePoints(data.candles);
         if (history.length > 0) {
           setMinuteCandles(aggregateCandles(history, 60));
-          setSecondCandles(history.slice(-ONE_SECOND_WINDOW_SECS));
+          const historyTicks = history.map((candle) => ({
+            time: candle.time,
+            value: candle.close,
+          }));
+          setDecibelTradeTicks((liveTicks) => mergeChartPriceTicks(historyTicks, liveTicks));
           setHasInitialHistory(true);
         }
       } catch {
@@ -1304,7 +1115,10 @@ function BtcPerpsChartComponent({
           oraclePrice: nextPrice * 1.0004,
           price: nextPrice,
         }));
-        setSecondCandles((prev) => updateSecondCandlesWithPrice(prev, nextPrice, Date.now()));
+        setDecibelMarkTicks((prev) => mergeChartPriceTicks(prev, [{
+          time: Date.now() / 1_000,
+          value: nextPrice,
+        }]));
         setHasInitialHistory(true);
       } catch {
         // Keep the existing fallback state if the ticker misses a beat.
@@ -1337,7 +1151,8 @@ function BtcPerpsChartComponent({
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }
-      setSecondCandles([]);
+      setDecibelTradeTicks([]);
+      setDecibelMarkTicks([]);
       setMinuteCandles([]);
       setCoinbaseMinuteCandles([]);
       setCoinbaseHistorySecondCandles([]);
@@ -1368,7 +1183,8 @@ function BtcPerpsChartComponent({
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }
-      setSecondCandles([]);
+      setDecibelTradeTicks([]);
+      setDecibelMarkTicks([]);
       setMinuteCandles([]);
       setHasInitialHistory(false);
       setSnapshot({
@@ -1425,9 +1241,17 @@ function BtcPerpsChartComponent({
           setMinuteCandles(toCandlePoints(candlesResult.value));
         }
 
-        if (tradesResult.status === "fulfilled" && tradesResult.value.length > 0) {
-          setSecondCandles(buildSecondCandlesFromTrades(tradesResult.value, nextPrice, now));
-        }
+        const initialTradeTicks = tradesResult.status === "fulfilled"
+          ? tradesToPriceTicks(tradesResult.value)
+          : [];
+        const initialMarkTicks = priceEntry
+          ? [{
+            time: priceEntry.transaction_unix_ms / 1_000,
+            value: nextPrice,
+          }]
+          : [];
+        setDecibelTradeTicks((liveTicks) => mergeChartPriceTicks(initialTradeTicks, liveTicks));
+        setDecibelMarkTicks((liveTicks) => mergeChartPriceTicks(initialMarkTicks, liveTicks));
 
         setHasInitialHistory(
           (candlesResult.status === "fulfilled" && candlesResult.value.length > 0)
@@ -1435,7 +1259,8 @@ function BtcPerpsChartComponent({
         );
       } catch {
         if (cancelled) return;
-        setSecondCandles([]);
+        setDecibelTradeTicks([]);
+        setDecibelMarkTicks([]);
         setHasInitialHistory(false);
         setSnapshot({
           connected: false,
@@ -1491,13 +1316,10 @@ function BtcPerpsChartComponent({
         decibelLiveAtRef.current = Date.now();
         setUseBtcFallback(false);
 
-        setSecondCandles((prev) =>
-          updateSecondCandlesWithPrice(
-            prev,
-            price.mark_px ?? price.mid_px ?? price.oracle_px,
-            Date.now(),
-          )
-        );
+        setDecibelMarkTicks((prev) => mergeChartPriceTicks(prev, [{
+          time: price.transaction_unix_ms / 1_000,
+          value: price.mark_px ?? price.mid_px ?? price.oracle_px,
+        }]));
         setHasInitialHistory(true);
       } catch {
         if (!cancelled) {
@@ -1520,9 +1342,7 @@ function BtcPerpsChartComponent({
         const trades = await fetchDecibelMainnetTrades(marketAddress, LIVE_TRADE_REFRESH_LIMIT);
         if (cancelled) return;
 
-        setSecondCandles((prev) =>
-          mergeTradesIntoSecondCandles(prev, trades, snapshotRef.current.price, Date.now())
-        );
+        setDecibelTradeTicks((prev) => mergeChartPriceTicks(prev, tradesToPriceTicks(trades)));
         if (trades.length > 0) {
           setHasInitialHistory(true);
         }
@@ -1586,6 +1406,7 @@ function BtcPerpsChartComponent({
               mid_px: number;
               open_interest: number;
               oracle_px: number;
+              transaction_unix_ms: number;
             };
             trades?: DecibelRestTrade[];
             candle?: DecibelRestCandle;
@@ -1604,7 +1425,10 @@ function BtcPerpsChartComponent({
             });
             decibelLiveAtRef.current = Date.now();
             setUseBtcFallback(false);
-            setSecondCandles((prev) => updateSecondCandlesWithPrice(prev, livePrice, Date.now()));
+            setDecibelMarkTicks((prev) => mergeChartPriceTicks(prev, [{
+              time: message.price!.transaction_unix_ms / 1_000,
+              value: livePrice,
+            }]));
             // A bare price tick is NOT history — flipping hasInitialHistory
             // here hid the loader ~1s in and rendered the whole window as a
             // flat backfill from one point (the mobile "broken L" first
@@ -1614,9 +1438,10 @@ function BtcPerpsChartComponent({
           if (message.topic === `trades:${marketAddress}` && Array.isArray(message.trades) && message.trades.length > 0) {
             decibelLiveAtRef.current = Date.now();
             setUseBtcFallback(false);
-            setSecondCandles((prev) =>
-              mergeTradesIntoSecondCandles(prev, message.trades ?? [], snapshotRef.current.price, Date.now())
-            );
+            setDecibelTradeTicks((prev) => mergeChartPriceTicks(
+              prev,
+              tradesToPriceTicks(message.trades ?? []),
+            ));
             setHasInitialHistory(true);
           }
 
@@ -1645,12 +1470,6 @@ function BtcPerpsChartComponent({
       stream?.close();
     };
   }, [active, btcFallbackEnabled, marketAddress, useBtcFallback, useCoinbaseLineFeed]);
-
-  // Derive a render-time live candle from the latest shifted second candle for Liveline.
-  const liveCandle = useMemo(() => {
-    if (renderSecondCandles.length === 0) return undefined;
-    return renderSecondCandles[renderSecondCandles.length - 1];
-  }, [renderSecondCandles]);
 
   // Moving-average overlay — derived purely from the data already rendered, so the
   // overlay always shows exactly what the chart shows (no extra fetches/feeds).
@@ -1722,11 +1541,11 @@ function BtcPerpsChartComponent({
         market={market}
         active={active}
         latestPrice={snapshot.price}
+        latestPriceTime={activePriceTicks[activePriceTicks.length - 1]?.time ?? chartNowSec}
         liquidationLines={liquidationLines}
         minuteCandles={activeMinuteCandles}
-        nowSeconds={chartNowSec}
         overlayMode={overlayMode}
-        secondCandles={visualSecondCandles}
+        secondCandles={observedSecondCandles}
       />
     );
   }
@@ -1739,7 +1558,7 @@ function BtcPerpsChartComponent({
           <TetherLoader size={52} label="Loading" />
         </div>
       )}
-      {/* Single Liveline instance — handles both line and candle modes */}
+      {/* Liveline receives only real line ticks. Candle rendering is isolated above. */}
       <div
         ref={lineInteractionRef}
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
@@ -1751,18 +1570,11 @@ function BtcPerpsChartComponent({
         style={{ touchAction: "none", overscrollBehavior: "contain" }}
       >
         <Liveline
-          mode={mode}
           data={renderLineData}
           series={indicatorSeries.length > 0 ? indicatorSeries : undefined}
-          value={mode === "line" ? displayedLineValue : displayedCandleValue}
-          candles={renderSecondCandles}
-          candleWidth={1}
-          liveCandle={liveCandle}
-          lineMode={mode === "line"}
-          lineData={renderLineData}
-          lineValue={displayedLineValue}
+          value={displayedLineValue}
           theme="dark"
-          color={market.color}
+          color={lineColor}
           window={Math.max(MIN_LINE_WINDOW_SECS, lineWindowSecs)}
           grid
           scrub
@@ -1773,7 +1585,7 @@ function BtcPerpsChartComponent({
           fill={false}
           lerpSpeed={0.35}
           formatValue={(value: number) => formatPerpPrice(value, market.priceDecimals)}
-          loading={loading && lineData.length === 0 && visualSecondCandles.length === 0}
+          loading={loading && lineData.length === 0 && observedSecondCandles.length === 0}
           emptyText=""
           padding={linePadding}
           paused={!active}

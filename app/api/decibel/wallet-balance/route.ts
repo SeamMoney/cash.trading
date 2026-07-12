@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getAptosFullnodeApiKey,
   getDecibelCollateralMetadata,
+  resolveDecibelNetwork,
   USDC_DECIMALS,
   type DecibelNetwork,
 } from "@/lib/decibel";
@@ -15,7 +16,7 @@ const NO_STORE_HEADERS = {
 };
 
 function getRequestNetwork(req: NextRequest): DecibelNetwork {
-  return req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(req.nextUrl.searchParams.get("network"));
 }
 
 function getFullnodeUrl(network: DecibelNetwork) {
@@ -69,8 +70,16 @@ async function readWalletBalance(address: string, network: DecibelNetwork) {
 }
 
 export async function GET(req: NextRequest) {
+  const rawAddress = req.nextUrl.searchParams.get("address") ?? "";
+  if (!/^0x[a-fA-F0-9]+$/.test(rawAddress.trim())) {
+    return NextResponse.json(
+      { error: "A valid Aptos address is required." },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
   try {
-    const address = normalizeAddress(req.nextUrl.searchParams.get("address") ?? "");
+    const address = normalizeAddress(rawAddress);
     const network = getRequestNetwork(req);
     const { balance, raw, metadata } = await readWalletBalance(address, network);
 

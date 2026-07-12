@@ -3,6 +3,7 @@ import {
   type DecibelNetwork,
   DECIBEL_PACKAGE,
   MAINNET_DECIBEL_PACKAGE,
+  resolveDecibelNetwork,
 } from "@/lib/decibel";
 import { getFastSubaccounts } from "@/lib/decibel-chain";
 
@@ -16,7 +17,7 @@ import { getFastSubaccounts } from "@/lib/decibel-chain";
  * refuse duplicate account creation before opening a wallet signature prompt.
  */
 function getRequestNetwork(value: unknown): DecibelNetwork {
-  return value === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(value);
 }
 
 export async function POST(req: NextRequest) {

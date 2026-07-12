@@ -9,7 +9,13 @@
 
 import { NextResponse } from "next/server";
 import { getReadDex, getAllMarketAddresses, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork } from "@/lib/decibel-sdk";
-import { MARKETS, DECIBEL_PACKAGE } from "@/lib/decibel-client";
+import {
+  MARKETS,
+  MAINNET_MARKETS,
+  DECIBEL_PACKAGE,
+  MAINNET_DECIBEL_PACKAGE,
+} from "@/lib/decibel-client";
+import packageJson from "@/package.json";
 
 export const runtime = 'nodejs';
 
@@ -25,11 +31,11 @@ export async function GET() {
     packageAddressMatch: boolean;
     marketsCount: number;
     pricesCount: number;
-    markets: Array<{ name: string; address: string; hardcodedMatch: boolean }>;
+    markets: Array<{ name: string; address: string; hardcodedMatch: boolean | null }>;
     errors: string[];
   } = {
     success: true,
-    sdkVersion: "0.3.1",
+    sdkVersion: packageJson.dependencies["@decibeltrade/sdk"].replace(/^[^\d]*/, ""),
     network: String(config.network),
     packageAddress: config.deployment.package,
     packageAddressMatch: false,
@@ -40,17 +46,21 @@ export async function GET() {
   };
 
   try {
+    const expectedPackage = net === "mainnet" ? MAINNET_DECIBEL_PACKAGE : DECIBEL_PACKAGE;
+    const knownMarkets: Record<string, { address: string }> =
+      net === "mainnet" ? MAINNET_MARKETS : MARKETS;
+
     // Check if SDK package address matches our hardcoded one
     results.packageAddressMatch =
-      config.deployment.package.toLowerCase() === DECIBEL_PACKAGE.toLowerCase();
+      config.deployment.package.toLowerCase() === expectedPackage.toLowerCase();
 
     // Test 1: Get all markets
-    const markets = await getAllMarketAddresses();
+    const markets = await getAllMarketAddresses(net);
     results.marketsCount = markets.length;
 
     // Compare with our hardcoded markets
     results.markets = markets.map((m) => {
-      const hardcodedMarket = MARKETS[m.name as keyof typeof MARKETS];
+      const hardcodedMarket = knownMarkets[m.name];
       return {
         name: m.name,
         address: m.address,
@@ -58,21 +68,23 @@ export async function GET() {
         szDecimals: m.szDecimals,
         pxDecimals: m.pxDecimals,
         hardcodedAddress: hardcodedMarket?.address || "NOT_FOUND",
-        hardcodedMatch: hardcodedMarket?.address?.toLowerCase() === m.address.toLowerCase(),
+        hardcodedMatch: hardcodedMarket
+          ? hardcodedMarket.address.toLowerCase() === m.address.toLowerCase()
+          : null,
       };
     });
 
     // Test 2: Get all prices
-    const readDex = getReadDex();
+    const readDex = getReadDex(net);
     const prices = await readDex.marketPrices.getAll();
     results.pricesCount = Array.isArray(prices) ? prices.length : 0;
 
     // Check for any mismatched addresses (indicates testnet reset)
-    const mismatchedMarkets = results.markets.filter((m) => !m.hardcodedMatch);
+    const mismatchedMarkets = results.markets.filter((m) => m.hardcodedMatch === false);
     if (mismatchedMarkets.length > 0) {
       results.errors.push(
         `WARNING: ${mismatchedMarkets.length} markets have different addresses than hardcoded. ` +
-          `Testnet may have been reset! Update lib/decibel-client.ts and lib/bot-engine.ts`
+          `${net} market constants need review.`
       );
       // Still consider it a success - just a warning
     }

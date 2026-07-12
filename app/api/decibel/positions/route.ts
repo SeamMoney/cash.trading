@@ -12,6 +12,7 @@ import {
   getReadDex,
   MARKETS,
   PRICE_DECIMALS,
+  resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
 
@@ -45,7 +46,7 @@ interface OpenOrder {
 }
 
 function getRequestNetwork(req: NextRequest): DecibelNetwork {
-  return req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(req.nextUrl.searchParams.get("network"));
 }
 
 async function fetchOpenOrders(address: string, network: DecibelNetwork): Promise<{

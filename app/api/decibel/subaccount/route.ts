@@ -3,6 +3,7 @@ import { getFastSubaccounts } from "@/lib/decibel-chain";
 import {
   getDecibelCollateralMetadata,
   getReadDex,
+  resolveDecibelNetwork,
   type DecibelNetwork,
   USDC_DECIMALS,
 } from "@/lib/decibel";
@@ -25,7 +26,7 @@ type RestSubaccount = {
 };
 
 function getRequestNetwork(req: NextRequest): DecibelNetwork {
-  return req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(req.nextUrl.searchParams.get("network"));
 }
 
 function collateral(network: DecibelNetwork) {

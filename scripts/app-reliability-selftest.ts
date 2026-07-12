@@ -176,7 +176,13 @@ for (const fabricatedMetric of ["2.0139", "67.28%", "41.67%"] as const) {
 }
 assert.match(portfolioPage, /cash\.trading does not fabricate missing history/);
 assert.match(portfolioPage, /withdrawingRef\.current/);
+assert.match(portfolioPage, /withdrawalTokenRef/);
+assert.match(portfolioPage, /closingActionTokensRef/);
+assert.match(portfolioPage, /cancelingActionTokensRef/);
+assert.match(portfolioPage, /actionContextRef\.current !== requestContext/);
 assert.match(portfolioPage, /isValidAptosAddress\(recipient\)/);
+assert.ok(!portfolioPage.includes("overview?.equity ?? 0"), "an unavailable portfolio must not render as zero equity");
+assert.ok(!portfolioPage.includes("position.estimatedPnl ?? 0"), "an unavailable position mark must not render as zero PnL");
 assert.ok(
   portfolioPage.indexOf("await waitForTransactionConfirmation(cancel.hash)")
     < portfolioPage.indexOf("openOrders: prev.openOrders.filter"),

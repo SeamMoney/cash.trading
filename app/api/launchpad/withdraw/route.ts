@@ -152,7 +152,7 @@ export async function POST(req: Request) {
       payoutPath: "treasury_usdt_transfer",
       payoutId,
       txHash,
-      explorerUrl: explorerTxUrl(txHash),
+      explorerUrl: explorerTxUrl(txHash, "testnet"),
       paidEarningsUsdt: earnings,
       pendingEarningsUsdt: 0,
       indicatorAddr,

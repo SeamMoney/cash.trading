@@ -259,7 +259,7 @@ export function ScheduledJobsPanel({ extraJobs = [] }: Props) {
                   <span className="text-[9px] text-zinc-700 font-mono">{job.gasDeposit} APT gas</span>
                   {job.indicatorAddr && (
                     <a
-                      href={explorerAccountUrl(job.indicatorAddr)}
+                      href={explorerAccountUrl(job.indicatorAddr, "testnet")}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[9px] font-mono text-purple-400/60 hover:text-purple-300 underline underline-offset-2 decoration-purple-400/20 transition-colors"

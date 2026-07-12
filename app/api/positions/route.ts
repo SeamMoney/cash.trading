@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMarkPrice } from '@/lib/price-feed'
 import { createAuthenticatedAptos, getActiveNetwork } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 // Market configs for size/price decimals (updated Feb 5, 2026 - all markets now use 8 szDecimals)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -25,6 +26,9 @@ export const runtime = 'nodejs'
  * Query params: userSubaccount (required)
  */
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const { searchParams } = new URL(request.url)
     const userSubaccount = searchParams.get('userSubaccount')

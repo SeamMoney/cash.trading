@@ -1,7 +1,15 @@
 export const MERCHANT_ADDRESS =
   process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "0x1";
 
-export const APTOS_NETWORK = process.env.NEXT_PUBLIC_APTOS_NETWORK ?? "testnet";
+export type AptosNetworkName = "mainnet" | "testnet";
+
+const configuredNetwork =
+  process.env.NEXT_PUBLIC_DECIBEL_NETWORK ??
+  process.env.NEXT_PUBLIC_APTOS_NETWORK ??
+  process.env.DECIBEL_NETWORK;
+
+export const APTOS_NETWORK: AptosNetworkName =
+  configuredNetwork === "mainnet" ? "mainnet" : "testnet";
 
 export const X402_CONTRACT =
   process.env.X402_CONTRACT_ADDRESS ??
@@ -12,13 +20,19 @@ export const FACILITATOR_URL =
 
 export const EXPLORER_URL = "https://explorer.aptoslabs.com";
 
-export function explorerTxUrl(txHash: string): string {
-  const net = APTOS_NETWORK === "mainnet" ? "" : "?network=testnet";
+export function explorerTxUrl(
+  txHash: string,
+  network: AptosNetworkName = APTOS_NETWORK,
+): string {
+  const net = network === "mainnet" ? "" : "?network=testnet";
   return `${EXPLORER_URL}/txn/${txHash}${net}`;
 }
 
-export function explorerAccountUrl(address: string): string {
-  const net = APTOS_NETWORK === "mainnet" ? "" : "?network=testnet";
+export function explorerAccountUrl(
+  address: string,
+  network: AptosNetworkName = APTOS_NETWORK,
+): string {
+  const net = network === "mainnet" ? "" : "?network=testnet";
   return `${EXPLORER_URL}/account/${address}${net}`;
 }
 

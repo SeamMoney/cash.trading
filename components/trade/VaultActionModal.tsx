@@ -198,6 +198,7 @@ export function VaultActionModal({
             ownerWallet: ownerWallet || undefined,
             marketName: marketName || indicator.assets?.[0],
             allocationPct,
+            network: indicator.network,
           }),
         });
         extractResponse = (await extractRes.json().catch(() => ({}))) as Record<string, unknown>;

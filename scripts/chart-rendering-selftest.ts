@@ -116,11 +116,13 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
+const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
 const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const pinePreviewSource = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
 const equityCurveSource = readFileSync("components/launchpad/EquityCurveChart.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
+const fallbackCandleSource = readFileSync("hooks/useBtcCandles.ts", "utf8");
 const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
 assert.ok(
@@ -139,6 +141,13 @@ assert.ok(
 );
 assert.ok(!equityCurveSource.includes("lightweight-charts"), "the equity curve must not use TradingView");
 assert.ok(!packageSource.includes('"lightweight-charts"'), "TradingView must not remain an installed dependency");
+assert.ok(!fallbackCandleSource.includes("generateBackfillTicks"), "fallback lines must not invent price history");
+assert.ok(!fallbackCandleSource.includes("ensureBody"), "fallback candles must not mutate real OHLC values for appearance");
+assert.ok(!fallbackCandleSource.includes("isOutlier"), "fallback candles must not silently discard observed volatility");
+assert.ok(
+  chartShellSource.includes("usePriceCandles(\n    marketConfig.id"),
+  "the classic fallback must request the selected asset instead of hard-coding BTC",
+);
 assert.ok(
   !plotSource.includes("minBodyHeight="),
   "real dojis must not be inflated into artificial box bodies",

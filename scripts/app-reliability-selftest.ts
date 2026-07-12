@@ -16,6 +16,9 @@ const decibelFaucetRoute = readFileSync("app/api/decibel/faucet/route.ts", "utf8
 const moveSourceRoute = readFileSync("app/api/launchpad/move-source/route.ts", "utf8");
 const strategyVaultsRoute = readFileSync("app/api/launchpad/strategy-vaults/route.ts", "utf8");
 const predepositData = readFileSync("lib/mainnet-predeposit.ts", "utf8");
+const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
+const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
+const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
 const marketRefreshRoute = readFileSync("app/api/markets/refresh/route.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies: Record<string, string>;
@@ -63,6 +66,10 @@ assert.match(moveSourceRoute, /contracts\/strategy-vaults\/sources/);
 assert.match(strategyVaultsRoute, /function databaseUnavailable/);
 assert.match(predepositData, /let depositorsInFlight/);
 assert.match(predepositData, /const INDEXER_TIMEOUT_MS = 3_500/);
+assert.match(cashRewardsRoute, /reason: 'database_not_configured'/);
+assert.match(legacyBacktestRoute, /process\.env\.NODE_ENV === 'production'/);
+assert.match(launchpadBacktestRoute, /A valid indicatorAddr is required/);
+assert.match(launchpadBacktestRoute, /numSims must be an integer from 1 to 10,000/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 

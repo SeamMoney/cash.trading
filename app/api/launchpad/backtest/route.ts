@@ -1,24 +1,57 @@
 import { NextResponse } from "next/server";
 import { runRandomizedBacktests, runBacktest } from "@/lib/launchpad/keeper";
 import { fetchPythCandles } from "@/lib/launchpad/pyth";
+import { PYTH_FEED_IDS } from "@/lib/launchpad/constants";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const APTOS_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const {
-      indicatorAddr,
-      params = [10, 30],
-      numSims = 100,
-      asset = "BTC/USD",
-      timeframe = "60",
-      startSeed,
-      indicatorType = 0,   // 0=SMA, 1=EMA, 2=RSI, 3=MACD, 4=BB
-    } = body;
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) {
+      return NextResponse.json({ error: "A JSON request body is required" }, { status: 400 });
+    }
 
-    if (numSims > 10000) {
-      return NextResponse.json({ error: "Max 10,000 simulations per request" }, { status: 400 });
+    const indicatorAddr = typeof body.indicatorAddr === "string" ? body.indicatorAddr : "";
+    if (!APTOS_ADDRESS_RE.test(indicatorAddr)) {
+      return NextResponse.json({ error: "A valid indicatorAddr is required" }, { status: 400 });
+    }
+
+    const numSims = Number(body.numSims ?? 100);
+    if (!Number.isInteger(numSims) || numSims < 1 || numSims > 10_000) {
+      return NextResponse.json({ error: "numSims must be an integer from 1 to 10,000" }, { status: 400 });
+    }
+
+    const params = body.params ?? [10, 30];
+    if (
+      !Array.isArray(params) ||
+      params.length < 1 ||
+      params.length > 8 ||
+      params.some((value) => !Number.isInteger(value) || value < 1 || value > 1_000)
+    ) {
+      return NextResponse.json(
+        { error: "params must contain 1 to 8 positive integers no greater than 1,000" },
+        { status: 400 },
+      );
+    }
+
+    const asset = typeof body.asset === "string" ? body.asset : "BTC/USD";
+    if (!(asset in PYTH_FEED_IDS)) {
+      return NextResponse.json({ error: "Unsupported backtest asset" }, { status: 400 });
+    }
+
+    const indicatorType = Number(body.indicatorType ?? 0);
+    if (!Number.isInteger(indicatorType) || indicatorType < 0 || indicatorType > 4) {
+      return NextResponse.json({ error: "indicatorType must be an integer from 0 to 4" }, { status: 400 });
+    }
+
+    const startSeed = body.startSeed;
+    const seedText = startSeed === undefined ? String(Date.now()) : String(startSeed);
+    if (!/^\d{1,30}$/.test(seedText)) {
+      return NextResponse.json({ error: "startSeed must be a positive integer" }, { status: 400 });
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -33,7 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const seed = startSeed ? BigInt(startSeed) : BigInt(Date.now());
+    const seed = BigInt(seedText);
 
     // Baseline run (unshuffled) — used for equity curve
     const baseLine = runBacktest({ candles, params, initialCapital: 10000, positionSizePct: 100, indicatorType });

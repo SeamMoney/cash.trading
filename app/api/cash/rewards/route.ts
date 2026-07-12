@@ -26,6 +26,13 @@ function serializeReward(reward: {
 }
 
 export async function GET(request: NextRequest) {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      { unavailable: true, reason: 'database_not_configured' },
+      { status: 503 }
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')?.toLowerCase()
@@ -85,7 +92,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching CASH rewards:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch CASH rewards' },
+      { error: 'Failed to fetch CASH rewards' },
       { status: 500 }
     )
   }
@@ -103,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (!adminSecret && process.env.NODE_ENV === 'production') {
       return NextResponse.json(
         { error: 'Set CASH_REWARD_ADMIN_SECRET or CRON_SECRET before enabling reward processing' },
-        { status: 500 }
+        { status: 503 }
       )
     }
 
@@ -118,7 +125,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error processing CASH rewards:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process CASH rewards' },
+      { error: 'Failed to process CASH rewards' },
       { status: 500 }
     )
   }

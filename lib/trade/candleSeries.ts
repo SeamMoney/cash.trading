@@ -23,6 +23,44 @@ function lerp(start: number, end: number, progress: number) {
   return start + (end - start) * progress;
 }
 
+const INTERPOLATION_PHASE_STEP = 2.399963229728653;
+
+function flatBridgeAmplitude(previous: ChartCandle, next: ChartCandle) {
+  const referencePrice = Math.max(
+    Math.abs(previous.close),
+    Math.abs(next.open),
+    Number.EPSILON,
+  );
+  const localRange = Math.max(
+    Math.abs(previous.high - previous.low),
+    Math.abs(next.high - next.low),
+  );
+
+  return Math.min(
+    referencePrice * 0.00001,
+    Math.max(referencePrice * 0.0000015, localRange * 0.015),
+  );
+}
+
+function bridgedPrice(
+  previous: ChartCandle,
+  next: ChartCandle,
+  step: number,
+  totalSteps: number,
+  amplitude: number,
+) {
+  if (totalSteps <= 0) return next.open;
+  const progress = step / totalSteps;
+  const base = lerp(previous.close, next.open, progress);
+  const edgeBlend = Math.min(1, step, totalSteps - step);
+  if (edgeBlend <= 0 || Math.abs(next.open - previous.close) > amplitude) {
+    return base;
+  }
+
+  const phase = ((previous.time + step) % 3_600) * INTERPOLATION_PHASE_STEP;
+  return base + Math.sin(phase) * amplitude * edgeBlend;
+}
+
 export function aggregateChartCandles(
   candles: ChartCandle[],
   intervalSeconds: number,
@@ -110,9 +148,10 @@ function isTradeAnchor(candle: ChartCandle) {
  * Rebuild sparse one-second data as a continuous OHLC series.
  *
  * Empty carry-forward seconds are treated as placeholders, not price anchors.
- * Their values are linearly bridged between the surrounding real trade bars,
- * producing one candle per second without the long dotted plateaus and abrupt
- * vertical jumps caused by repeating the previous close until the next trade.
+ * Their values bridge between the surrounding real trade bars. Truly flat
+ * spans receive a sub-basis-point, endpoint-preserving texture so each empty
+ * second renders as a candle instead of a long doji rail. Real trade OHLC is
+ * preserved and every generated candle remains continuous with its neighbors.
  */
 export function interpolateOneSecondCandles(candles: ChartCandle[]) {
   const seconds = aggregateChartCandles(candles, 1);
@@ -131,10 +170,11 @@ export function interpolateOneSecondCandles(candles: ChartCandle[]) {
     const spanSeconds = Math.max(1, Math.round(nextAnchor.time - previous.time));
     const missingSeconds = Math.max(0, spanSeconds - 1);
     const targetOpen = nextAnchor.open;
+    const amplitude = flatBridgeAmplitude(previous, nextAnchor);
 
     for (let step = 1; step <= missingSeconds; step += 1) {
-      const open = lerp(previous.close, targetOpen, (step - 1) / missingSeconds);
-      const close = lerp(previous.close, targetOpen, step / missingSeconds);
+      const open = bridgedPrice(previous, nextAnchor, step - 1, missingSeconds, amplitude);
+      const close = bridgedPrice(previous, nextAnchor, step, missingSeconds, amplitude);
       interpolated.push({
         time: previous.time + step,
         open,

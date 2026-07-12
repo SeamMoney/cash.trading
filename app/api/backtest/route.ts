@@ -36,6 +36,10 @@ const DEFAULT_CONFIG: BacktestConfig = {
  * GET - Run quick backtest with default or query params
  */
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
 
@@ -153,6 +157,10 @@ export async function GET(request: NextRequest) {
  * POST - Run backtest with custom config and/or real price data
  */
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   try {
     const body = await request.json()
     const {

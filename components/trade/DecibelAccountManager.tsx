@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { explorerTxUrl } from "@/lib/constants";
 import {
@@ -188,6 +188,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [bridgeMessage, setBridgeMessage] = useState("");
+  const [hydratedBridgeStorageKey, setHydratedBridgeStorageKey] = useState("");
   const [evmSourceBalance, setEvmSourceBalance] = useState<number | null>(null);
   const [evmSourceAddress, setEvmSourceAddress] = useState("");
   const [evmSourceLoading, setEvmSourceLoading] = useState(false);
@@ -225,6 +226,25 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     connected && account
       ? `cash:decibel:cctp-deposit:${decibelNetwork}:${account.address.toString()}`
       : "";
+  const activeActionTokenRef = useRef<symbol | null>(null);
+  const accountActionContext = `${account?.address?.toString() ?? ""}:${decibelNetwork}:${wallet?.name ?? ""}`;
+  const accountActionContextRef = useRef(accountActionContext);
+  accountActionContextRef.current = accountActionContext;
+
+  const beginAccountAction = () => {
+    if (activeActionTokenRef.current) return null;
+    const token = Symbol("decibel-account-action");
+    activeActionTokenRef.current = token;
+    return { token, context: accountActionContextRef.current };
+  };
+  const isCurrentAccountAction = (action: { token: symbol; context: string }) =>
+    activeActionTokenRef.current === action.token
+    && accountActionContextRef.current === action.context;
+  const finishAccountAction = (action: { token: symbol }) => {
+    if (activeActionTokenRef.current === action.token) {
+      activeActionTokenRef.current = null;
+    }
+  };
 
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
@@ -239,6 +259,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     hasDepositAmount &&
     !depositExceedsWallet &&
     status !== "submitting";
+
+  useEffect(() => {
+    activeActionTokenRef.current = null;
+    setStatus("idle");
+    setStatusMessage("");
+    setStatusHash("");
+  }, [accountActionContext]);
   const canStartEvmBridge =
     connected &&
     account &&
@@ -296,30 +323,42 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     status !== "submitting";
 
   useEffect(() => {
+    setHydratedBridgeStorageKey("");
+    setBridgeTxHash("");
+    setBridgeTransfer(null);
+    setBridgeLookupStatus("idle");
+    setBridgeMessage("");
     if (!bridgeStorageKey) return;
     try {
       const saved = window.localStorage.getItem(bridgeStorageKey);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as {
-        sourceChain?: BridgeSourceChain;
-        txHash?: string;
-        transfer?: CctpStatusResponse;
-      };
-      if (parsed.sourceChain && BRIDGE_SOURCE_CHAINS.includes(parsed.sourceChain)) {
-        setBridgeSourceChain(parsed.sourceChain);
-      }
-      if (parsed.txHash) setBridgeTxHash(parsed.txHash);
-      if (parsed.transfer) {
-        setBridgeTransfer(parsed.transfer);
-        setBridgeLookupStatus("success");
+      if (saved) {
+        const parsed = JSON.parse(saved) as {
+          sourceChain?: BridgeSourceChain;
+          txHash?: string;
+          transfer?: CctpStatusResponse;
+        };
+        if (parsed.sourceChain && BRIDGE_SOURCE_CHAINS.includes(parsed.sourceChain)) {
+          setBridgeSourceChain(parsed.sourceChain);
+        }
+        if (parsed.txHash) setBridgeTxHash(parsed.txHash);
+        if (parsed.transfer) {
+          setBridgeTransfer(parsed.transfer);
+          setBridgeLookupStatus("success");
+        }
       }
     } catch {
       window.localStorage.removeItem(bridgeStorageKey);
+    } finally {
+      setHydratedBridgeStorageKey(bridgeStorageKey);
     }
   }, [bridgeStorageKey]);
 
   useEffect(() => {
-    if (!bridgeStorageKey || !bridgeTxHash) return;
+    if (
+      !bridgeStorageKey
+      || hydratedBridgeStorageKey !== bridgeStorageKey
+      || !bridgeTxHash
+    ) return;
     window.localStorage.setItem(
       bridgeStorageKey,
       JSON.stringify({
@@ -328,7 +367,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         transfer: bridgeTransfer,
       })
     );
-  }, [bridgeSourceChain, bridgeStorageKey, bridgeTransfer, bridgeTxHash]);
+  }, [bridgeSourceChain, bridgeStorageKey, bridgeTransfer, bridgeTxHash, hydratedBridgeStorageKey]);
 
   const refreshAccountState = useCallback(async (signal?: AbortSignal) => {
     if (!selectedSubaccount || !hasDecibelAccount) {
@@ -470,6 +509,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       sourceChain?: BridgeSourceChain;
       txHash?: string;
     }) => {
+      const lookupContext = accountActionContextRef.current;
       const txHash = (options?.txHash ?? bridgeTxHash).trim();
       const sourceChain = options?.sourceChain ?? bridgeSourceChain;
       if (!txHash) {
@@ -493,6 +533,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           cache: "no-store",
         });
         const data = (await res.json()) as CctpStatusResponse;
+        if (accountActionContextRef.current !== lookupContext) return;
         if (!res.ok || data.error) {
           throw new Error(data.error || `Transfer lookup failed (${res.status})`);
         }
@@ -504,6 +545,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             : "Transfer found. Waiting for Circle attestation before claim."
         );
       } catch (err) {
+        if (accountActionContextRef.current !== lookupContext) return;
         if (options?.silent) return;
         setBridgeLookupStatus("error");
         setBridgeMessage(
@@ -574,6 +616,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   ]);
 
   const handleClaimBridgeTransfer = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected || !account) {
       setBridgeLookupStatus("error");
       setBridgeMessage("Connect wallet before claiming the bridge transfer.");
@@ -606,6 +649,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       return;
     }
 
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusHash("");
     setBridgeLookupStatus("loading");
@@ -615,6 +660,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       // zero APT, so claim/deposit gas must come from the server fee-payer.
       const senderAddress = account.address.toString();
       const sponsored = await needsSponsoredGas(senderAddress);
+      if (!isCurrentAccountAction(action)) return;
       if (sponsored) {
         setBridgeMessage("Wallet has no APT for gas — using sponsored submission...");
       }
@@ -632,10 +678,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               signTransaction,
             })
           : await signAndSubmitTransaction({ data: claimPayload });
+        if (!isCurrentAccountAction(action)) return;
         setStatusHash(claimResult.hash);
         setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
         await waitForTransactionConfirmation(claimResult.hash);
+        if (!isCurrentAccountAction(action)) return;
       } catch (claimErr) {
+        if (!isCurrentAccountAction(action)) return;
         const claimMessage =
           claimErr instanceof Error ? claimErr.message : String(claimErr);
         if (
@@ -658,16 +707,23 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         ? await buildAndSignSponsored(
             "/api/decibel/deposit",
             { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
-            { senderAddress, signTransaction }
+            {
+              senderAddress,
+              signTransaction,
+              shouldSign: () => isCurrentAccountAction(action),
+            },
           )
         : await buildAndSign(
             "/api/decibel/deposit",
             { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
-            signAndSubmitTransaction
+            signAndSubmitTransaction,
+            () => isCurrentAccountAction(action),
           );
+      if (!isCurrentAccountAction(action)) return;
       setStatusHash(hash);
       setBridgeMessage("Deposit submitted. Waiting for Decibel confirmation...");
       await waitForTransactionConfirmation(hash);
+      if (!isCurrentAccountAction(action)) return;
       emitDecibelPositionsRefresh();
       void refreshAccountState();
       void refreshWalletUsdcBalance();
@@ -679,11 +735,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatus("success");
       setStatusMessage("USDC claimed and deposited to Decibel.");
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       setStatus("error");
       setBridgeLookupStatus("error");
       setBridgeMessage(
         err instanceof Error ? err.message : "Claim and deposit failed."
       );
+    } finally {
+      finishAccountAction(action);
     }
   }, [
     account,
@@ -700,6 +759,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   ]);
 
   const handleClaimDecibelAppBridgeTransfer = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected) {
       setBridgeLookupStatus("error");
       setBridgeMessage("Connect the EVM wallet that started this Decibel bridge transfer.");
@@ -730,6 +790,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       return;
     }
 
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusHash("");
     setBridgeLookupStatus("loading");
@@ -738,6 +800,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       // Bridged-only derived accounts hold zero APT, so claim/deposit gas
       // must come from the server fee-payer when the account can't self-fund.
       const sponsored = await needsSponsoredGas(bridgeTransfer.mintRecipient);
+      if (!isCurrentAccountAction(action)) return;
       if (sponsored) {
         setBridgeMessage("Derived account has no APT for gas — using sponsored submission...");
       }
@@ -755,12 +818,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           preferredWalletName: wallet?.name,
           sponsored,
           uri: DECIBEL_APP_DERIVED_URI,
-          onStep: setBridgeMessage,
+          onStep: (message) => {
+            if (isCurrentAccountAction(action)) setBridgeMessage(message);
+          },
         });
+        if (!isCurrentAccountAction(action)) return;
         setStatusHash(claimResult.hash);
         setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
         await waitForTransactionConfirmation(claimResult.hash);
+        if (!isCurrentAccountAction(action)) return;
       } catch (claimErr) {
+        if (!isCurrentAccountAction(action)) return;
         const claimMessage =
           claimErr instanceof Error ? claimErr.message : String(claimErr);
         if (
@@ -789,6 +857,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         }),
       });
       const depositJson = await depositRes.json();
+      if (!isCurrentAccountAction(action)) return;
       if (!depositRes.ok || depositJson.error || !depositJson.payload) {
         throw new Error(depositJson.error || "Failed to build Decibel deposit transaction.");
       }
@@ -800,11 +869,15 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         preferredWalletName: wallet?.name,
         sponsored,
         uri: DECIBEL_APP_DERIVED_URI,
-        onStep: setBridgeMessage,
+        onStep: (message) => {
+          if (isCurrentAccountAction(action)) setBridgeMessage(message);
+        },
       });
+      if (!isCurrentAccountAction(action)) return;
       setStatusHash(depositResult.hash);
       setBridgeMessage("Deposit submitted. Waiting for Decibel confirmation...");
       await waitForTransactionConfirmation(depositResult.hash);
+      if (!isCurrentAccountAction(action)) return;
       emitDecibelPositionsRefresh();
       void refreshAccountState();
       void refreshWalletUsdcBalance();
@@ -816,6 +889,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatus("success");
       setStatusMessage("Decibel app bridge claimed and deposited.");
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       setStatus("error");
       setBridgeLookupStatus("error");
       setBridgeMessage(
@@ -823,6 +897,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           ? err.message
           : "Could not claim and deposit the Decibel app transfer."
       );
+    } finally {
+      finishAccountAction(action);
     }
   }, [
     bridgeMatchesDecibelAppDerivedAccount,
@@ -837,6 +913,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   ]);
 
   const handleStartEvmBridge = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected || !account) {
       setBridgeLookupStatus("error");
       setBridgeMessage("Connect Rainbow, MetaMask, or Coinbase Wallet before bridging.");
@@ -863,6 +940,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       return;
     }
 
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusHash("");
     setBridgeLookupStatus("loading");
@@ -874,8 +953,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         network: decibelNetwork,
         preferredWalletName: wallet?.name,
         sourceChain: bridgeSourceChain,
-        onStep: setBridgeMessage,
+        onStep: (message) => {
+          if (isCurrentAccountAction(action)) setBridgeMessage(message);
+        },
       });
+      if (!isCurrentAccountAction(action)) return;
 
       setBridgeTxHash(result.txHash);
       setBridgeTransfer({
@@ -897,11 +979,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         txHash: result.txHash,
       });
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       setStatus("error");
       setBridgeLookupStatus("error");
       setBridgeMessage(
         err instanceof Error ? err.message : "Could not start the EVM bridge transfer."
       );
+    } finally {
+      finishAccountAction(action);
     }
   }, [
     account,
@@ -918,12 +1003,16 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   ]);
 
   const handleCreateSubaccount = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected || !account) return;
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusMessage("Create a Decibel trading account in your wallet...");
     setStatusHash("");
     try {
       const current = await refreshSubaccounts();
+      if (!isCurrentAccountAction(action)) return;
       if (current.length > 0) {
         setStatus("success");
         setStatusMessage("Decibel trading account already connected.");
@@ -932,13 +1021,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const { hash } = await buildAndSign(
         "/api/decibel/create-subaccount",
         { owner: account.address.toString(), network: decibelNetwork },
-        signAndSubmitTransaction
+        signAndSubmitTransaction,
+        () => isCurrentAccountAction(action),
       );
+      if (!isCurrentAccountAction(action)) return;
       setStatusHash(hash);
       setStatusMessage("Account transaction submitted. Waiting for confirmation...");
       await waitForTransactionConfirmation(hash);
+      if (!isCurrentAccountAction(action)) return;
       setStatusMessage("Account confirmed. Refreshing Decibel account...");
       const next = await waitForSubaccounts();
+      if (!isCurrentAccountAction(action)) return;
       setStatus("success");
       setStatusMessage(
         next.length > 0
@@ -946,6 +1039,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           : "Account confirmed. Decibel indexer may take a moment to show it."
       );
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       const message = err instanceof Error ? err.message : "Account creation failed";
       setStatusMessage(
         decibelNetwork === "mainnet" &&
@@ -955,6 +1049,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           : message
       );
       setStatus("error");
+    } finally {
+      finishAccountAction(action);
     }
   }, [
     account,
@@ -966,6 +1062,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   ]);
 
   const handleMintTestnetUsdc = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected || !account || isMainnet) return;
     // Hard guard: a mainnet-connected wallet cannot mint testnet USDC — the
     // module doesn't exist there and the wallet shows a raw simulation error.
@@ -975,6 +1072,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setStatus("error");
       return;
     }
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusMessage("Mint Decibel testnet USDC in your wallet...");
     setStatusHash("");
@@ -982,21 +1081,28 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const { hash } = await buildAndSign(
         "/api/decibel/faucet",
         { network: decibelNetwork },
-        signAndSubmitTransaction
+        signAndSubmitTransaction,
+        () => isCurrentAccountAction(action),
       );
+      if (!isCurrentAccountAction(action)) return;
       setStatusHash(hash);
       setStatusMessage("USDC mint submitted. Waiting for confirmation...");
       await waitForTransactionConfirmation(hash);
+      if (!isCurrentAccountAction(action)) return;
       setStatusMessage("Decibel testnet USDC minted.");
       void refreshWalletUsdcBalance();
       setStatus("success");
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       setStatusMessage(err instanceof Error ? err.message : "Decibel USDC mint failed");
       setStatus("error");
+    } finally {
+      finishAccountAction(action);
     }
   }, [account, connected, decibelNetwork, isMainnet, signAndSubmitTransaction, walletNetwork?.name]);
 
   const handleDeposit = useCallback(async () => {
+    if (activeActionTokenRef.current) return;
     if (!connected || !account) {
       setStatusMessage("Connect wallet before depositing USDC collateral.");
       setStatus("error");
@@ -1028,6 +1134,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       return;
     }
 
+    const action = beginAccountAction();
+    if (!action) return;
     setStatus("submitting");
     setStatusMessage(`Deposit ${depositValue.toFixed(2)} USDC collateral to Decibel...`);
     setStatusHash("");
@@ -1036,19 +1144,25 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const { hash } = await buildAndSign(
         "/api/decibel/deposit",
         { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
-        signAndSubmitTransaction
+        signAndSubmitTransaction,
+        () => isCurrentAccountAction(action),
       );
+      if (!isCurrentAccountAction(action)) return;
       setStatusHash(hash);
       setStatusMessage("Deposit submitted. Waiting for confirmation...");
       await waitForTransactionConfirmation(hash);
+      if (!isCurrentAccountAction(action)) return;
       emitDecibelPositionsRefresh();
       void refreshAccountState();
       void refreshWalletUsdcBalance();
       setStatusMessage("USDC collateral deposited to Decibel.");
       setStatus("success");
     } catch (err) {
+      if (!isCurrentAccountAction(action)) return;
       setStatusMessage(err instanceof Error ? err.message : "USDC collateral deposit failed.");
       setStatus("error");
+    } finally {
+      finishAccountAction(action);
     }
   }, [
     account,
@@ -1152,6 +1266,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           <select
             value={selectedSubaccount}
             onChange={(e) => selectSubaccount(e.target.value)}
+            disabled={status === "submitting"}
             className="w-full rounded-[10px] bg-white/[0.04] px-3 py-2 text-[12px] font-mono text-zinc-300 outline-none focus:bg-white/[0.07]"
           >
             {subaccounts.map((s) => (

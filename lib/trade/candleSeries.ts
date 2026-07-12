@@ -25,7 +25,11 @@ function lerp(start: number, end: number, progress: number) {
 
 const INTERPOLATION_PHASE_STEP = 2.399963229728653;
 
-function flatBridgeAmplitude(previous: ChartCandle, next: ChartCandle) {
+function bridgeAmplitude(
+  previous: ChartCandle,
+  next: ChartCandle,
+  totalSteps: number,
+) {
   const referencePrice = Math.max(
     Math.abs(previous.close),
     Math.abs(next.open),
@@ -35,11 +39,29 @@ function flatBridgeAmplitude(previous: ChartCandle, next: ChartCandle) {
     Math.abs(previous.high - previous.low),
     Math.abs(next.high - next.low),
   );
-
-  return Math.min(
-    referencePrice * 0.00001,
-    Math.max(referencePrice * 0.0000015, localRange * 0.015),
+  const gapMove = Math.abs(next.open - previous.close);
+  const movePerStep = gapMove / Math.max(totalSteps, 1);
+  const desired = Math.max(
+    referencePrice * 0.00000125,
+    localRange * 0.08,
+    movePerStep * 2.1,
   );
+  const cap = Math.max(referencePrice * 0.00002, gapMove * 0.28);
+
+  return Math.min(desired, cap);
+}
+
+function bridgeNoise(time: number) {
+  const phase = (time % 3_600) * INTERPOLATION_PHASE_STEP;
+  return (
+    Math.sin(phase) * 0.68
+    + Math.sin(phase * 0.47 + 1.61803398875) * 0.32
+  );
+}
+
+function unitNoise(time: number, salt: number) {
+  const value = Math.sin((time + salt) * 12.9898) * 43_758.5453;
+  return value - Math.floor(value);
 }
 
 function bridgedPrice(
@@ -53,12 +75,30 @@ function bridgedPrice(
   const progress = step / totalSteps;
   const base = lerp(previous.close, next.open, progress);
   const edgeBlend = Math.min(1, step, totalSteps - step);
-  if (edgeBlend <= 0 || Math.abs(next.open - previous.close) > amplitude) {
-    return base;
-  }
+  if (edgeBlend <= 0) return base;
 
-  const phase = ((previous.time + step) % 3_600) * INTERPOLATION_PHASE_STEP;
-  return base + Math.sin(phase) * amplitude * edgeBlend;
+  return base + bridgeNoise(previous.time + step) * amplitude * edgeBlend;
+}
+
+function interpolatedWicks(
+  time: number,
+  open: number,
+  close: number,
+  amplitude: number,
+) {
+  const referencePrice = Math.max(Math.abs(open), Math.abs(close), Number.EPSILON);
+  const wickScale = Math.max(
+    referencePrice * 0.00000035,
+    Math.abs(close - open) * 0.22,
+    amplitude * 0.12,
+  );
+  const upper = wickScale * (0.35 + unitNoise(time, 17) * 0.85);
+  const lower = wickScale * (0.35 + unitNoise(time, 53) * 0.85);
+
+  return {
+    high: Math.max(open, close) + upper,
+    low: Math.min(open, close) - lower,
+  };
 }
 
 export function aggregateChartCandles(
@@ -148,10 +188,11 @@ function isTradeAnchor(candle: ChartCandle) {
  * Rebuild sparse one-second data as a continuous OHLC series.
  *
  * Empty carry-forward seconds are treated as placeholders, not price anchors.
- * Their values bridge between the surrounding real trade bars. Truly flat
- * spans receive a sub-basis-point, endpoint-preserving texture so each empty
- * second renders as a candle instead of a long doji rail. Real trade OHLC is
- * preserved and every generated candle remains continuous with its neighbors.
+ * Their values follow a deterministic bridge between the surrounding real
+ * trade bars. The bridge lands exactly on the next real open while adding
+ * restrained reversals and wicks, avoiding both flat doji rails and monotonic
+ * box staircases. Real trade OHLC is preserved and generated candles remain
+ * continuous with their neighbors.
  */
 export function interpolateOneSecondCandles(candles: ChartCandle[]) {
   const seconds = aggregateChartCandles(candles, 1);
@@ -170,16 +211,22 @@ export function interpolateOneSecondCandles(candles: ChartCandle[]) {
     const spanSeconds = Math.max(1, Math.round(nextAnchor.time - previous.time));
     const missingSeconds = Math.max(0, spanSeconds - 1);
     const targetOpen = nextAnchor.open;
-    const amplitude = flatBridgeAmplitude(previous, nextAnchor);
+    const amplitude = bridgeAmplitude(previous, nextAnchor, missingSeconds);
 
     for (let step = 1; step <= missingSeconds; step += 1) {
       const open = bridgedPrice(previous, nextAnchor, step - 1, missingSeconds, amplitude);
       const close = bridgedPrice(previous, nextAnchor, step, missingSeconds, amplitude);
+      const { high, low } = interpolatedWicks(
+        previous.time + step,
+        open,
+        close,
+        amplitude,
+      );
       interpolated.push({
         time: previous.time + step,
         open,
-        high: Math.max(open, close),
-        low: Math.min(open, close),
+        high,
+        low,
         close,
         volume: 0,
       });

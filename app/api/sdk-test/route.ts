@@ -18,8 +18,16 @@ import {
 import packageJson from "@/package.json";
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+
   const net = getActiveNetwork();
   const config = net === 'mainnet' ? MAINNET_CONFIG : TESTNET_CONFIG;
 

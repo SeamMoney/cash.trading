@@ -43,6 +43,11 @@ const legacyBotRoutes = [
 const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
 const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
 const serverBotConfig = readFileSync("components/bot/server-bot-config.tsx", "utf8");
+const tvImportRoute = readFileSync("app/api/launchpad/tv-import/route.ts", "utf8");
+const decibelPublicRoute = readFileSync("app/api/decibel/public/route.ts", "utf8");
+const sdkTestRoute = readFileSync("app/api/sdk-test/route.ts", "utf8");
+const botDebugRoute = readFileSync("app/api/bot/debug/route.ts", "utf8");
+const dlpBenchmarkRoute = readFileSync("app/api/dlp/benchmark/route.ts", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
 };
@@ -159,6 +164,18 @@ for (const [path, source] of legacyBotRoutes) {
 assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);
 assert.match(serverBotConfig, /wallet authorization is being hardened/);
 assert.match(serverBotConfig, /automationEnabled && connected/);
+assert.match(tvImportRoute, /parseTradingViewScriptUrl/);
+assert.match(tvImportRoute, /parsed\.protocol !== "https:"/);
+assert.match(tvImportRoute, /redirect: "error"/);
+assert.match(tvImportRoute, /readTextWithinLimit/);
+assert.match(tvImportRoute, /checkApiRateLimit\(req, "launchpad-tv-import"/);
+assert.ok(!tvImportRoute.includes("fetch(rawUrl"), "the Pine importer must never fetch an unvalidated URL");
+assert.match(decibelPublicRoute, /checkApiRateLimit\(req, "decibel-public"/);
+assert.match(decibelPublicRoute, /APTOS_ADDRESS_RE/);
+assert.match(decibelPublicRoute, /end - start > intervalMs \* 990/);
+assert.match(sdkTestRoute, /process\.env\.NODE_ENV === 'production'/);
+assert.match(botDebugRoute, /process\.env\.NODE_ENV === 'production'/);
+assert.match(dlpBenchmarkRoute, /reason: 'dlp_benchmark_not_enabled'/);
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDecibelAccountOverview } from '@/lib/decibel-api'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 // Decibel testnet DLP vault backstop_liquidator subaccount
 const DLP_VAULT_SUBACCOUNT = '0x1aa8a40a749aacc063fd541f17ab13bd1e87f3eca8de54d73b6552263571e3d9'
@@ -21,6 +22,17 @@ function netPnl(ov: any): number {
 }
 
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      {
+        unavailable: true,
+        reason: 'dlp_benchmark_not_enabled',
+        error: 'The legacy testnet DLP benchmark is not available on mainnet.',
+      },
+      { status: 501, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const cloneSubaccount = searchParams.get('cloneSubaccount') || ''
@@ -59,4 +71,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-

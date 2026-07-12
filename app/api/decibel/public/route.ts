@@ -4,6 +4,7 @@ import {
   resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,14 @@ const DECIBEL_BASES: Record<DecibelNetwork, string> = {
 };
 const DEFAULT_TIMEOUT_MS = 4500;
 const DEFAULT_CANDLE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const APTOS_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
+const CANDLE_INTERVAL_MS: Record<string, number> = {
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "30m": 1_800_000,
+  "1h": 3_600_000,
+};
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
@@ -112,6 +121,17 @@ function getNetwork(searchParams: URLSearchParams): DecibelNetwork {
 }
 
 export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-public", 120, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const { searchParams } = req.nextUrl;
   const resource = searchParams.get("resource");
   const timeoutMs = getTimeout(searchParams);
@@ -130,7 +150,7 @@ export async function GET(req: NextRequest) {
 
     if (resource === "bundle" || resource === "bootstrap") {
       const marketName = searchParams.get("marketName");
-      if (!marketName) {
+      if (!marketName || marketName.length > 64) {
         return NextResponse.json(
           { error: "marketName is required" },
           { status: 400, headers: NO_STORE_HEADERS }
@@ -188,9 +208,9 @@ export async function GET(req: NextRequest) {
 
     if (resource === "trades") {
       const marketAddr = searchParams.get("marketAddr");
-      if (!marketAddr) {
+      if (!marketAddr || !APTOS_ADDRESS_RE.test(marketAddr)) {
         return NextResponse.json(
-          { error: "marketAddr is required" },
+          { error: "a valid marketAddr is required" },
           { status: 400, headers: NO_STORE_HEADERS }
         );
       }
@@ -209,9 +229,26 @@ export async function GET(req: NextRequest) {
       const startTime = searchParams.get("startTime");
       const endTime = searchParams.get("endTime");
 
-      if (!marketAddr || !startTime || !endTime) {
+      if (!marketAddr || !APTOS_ADDRESS_RE.test(marketAddr) || !startTime || !endTime) {
         return NextResponse.json(
-          { error: "marketAddr, startTime, and endTime are required" },
+          { error: "a valid marketAddr, startTime, and endTime are required" },
+          { status: 400, headers: NO_STORE_HEADERS },
+        );
+      }
+
+      const intervalMs = CANDLE_INTERVAL_MS[interval];
+      const start = Number(startTime);
+      const end = Number(endTime);
+      if (
+        !intervalMs ||
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start <= 0 ||
+        start >= end ||
+        end - start > intervalMs * 990
+      ) {
+        return NextResponse.json(
+          { error: "invalid candle interval or time range" },
           { status: 400, headers: NO_STORE_HEADERS },
         );
       }
@@ -230,7 +267,11 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Decibel proxy request failed";
-    const status = message.includes("aborted") ? 504 : 500;
-    return NextResponse.json({ error: message }, { status, headers: NO_STORE_HEADERS });
+    const timedOut = message.includes("aborted");
+    console.error("[decibel-public] upstream request failed:", message);
+    return NextResponse.json(
+      { error: timedOut ? "Decibel request timed out" : "Decibel data is temporarily unavailable" },
+      { status: timedOut ? 504 : 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

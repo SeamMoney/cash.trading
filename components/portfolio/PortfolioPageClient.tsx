@@ -1,11 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { curveLinear } from "@visx/curve";
 import { Header } from "@/components/layout/Header";
-import { Area, AreaChart } from "@/components/charts/area-chart";
-import { Grid } from "@/components/charts/grid";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +16,7 @@ import {
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
+import { isValidAptosAddress } from "@/lib/decibel";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
 
@@ -316,22 +314,6 @@ function decibelWsOpenOrderToOpenOrder(
   };
 }
 
-function buildPortfolioSeries(overview: Overview | null, positions: Position[]) {
-  const equity = overview?.equity ?? 0;
-  const pnl = overview?.unrealizedPnl ?? positions.reduce((sum, item) => sum + (item.estimatedPnl ?? 0), 0);
-  const points = 80;
-  const now = Date.now();
-  const startValue = equity - pnl;
-  return Array.from({ length: points }, (_, index) => {
-    const progress = index / (points - 1);
-    const wave = Math.sin(progress * Math.PI * 5) * Math.abs(pnl || equity * 0.02) * 0.12;
-    return {
-      date: new Date(now - (points - 1 - index) * 60 * 60 * 1000),
-      pnl: startValue + pnl * progress + wave,
-    };
-  });
-}
-
 function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-6 py-1 text-[13px]">
@@ -362,15 +344,16 @@ export function PortfolioPageClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Positions");
-  const [range, setRange] = useState("90d");
   const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">("pnl");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(null);
   const [closingKeys, setClosingKeys] = useState<Set<string>>(() => new Set());
   const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
+  const withdrawingRef = useRef(false);
   const stateRef = useRef<AccountState>(state);
 
   const overview = state.overview;
@@ -573,20 +556,14 @@ export function PortfolioPageClient() {
     };
   }, [connected, decibelNetwork, fetchAccountState, selectedSubaccount]);
 
-  const chartData = useMemo(
-    () => buildPortfolioSeries(overview, positions),
-    [overview, positions],
-  );
-  // Without real account data the synthesized series renders as a floating
-  // colored block that reads as a chart bug — show an honest empty state.
-  const hasChartData = connected && (overview !== null || positions.length > 0);
   const totalPnl = overview?.unrealizedPnl ?? positions.reduce((sum, item) => sum + (item.estimatedPnl ?? 0), 0);
-  const allTimeReturn =
-    overview?.equity && overview.equity - totalPnl !== 0
-      ? (totalPnl / Math.abs(overview.equity - totalPnl)) * 100
+  const openPositionReturn =
+    overview?.totalMargin && overview.totalMargin > 0
+      ? (totalPnl / overview.totalMargin) * 100
       : null;
 
   const handleWithdraw = useCallback(async () => {
+    if (withdrawingRef.current) return;
     const amount = Number(withdrawAmount);
     const recipient = withdrawRecipient.trim() || owner;
     if (!signAndSubmitTransaction) {
@@ -601,12 +578,14 @@ export function PortfolioPageClient() {
       setActionStatus({ tone: "error", message: "Enter a valid USDC amount." });
       return;
     }
-    if (!recipient.startsWith("0x")) {
+    if (!isValidAptosAddress(recipient)) {
       setActionStatus({ tone: "error", message: "Enter a valid Aptos recipient address." });
       return;
     }
 
     const rawAmount = String(Math.floor(amount * 1_000_000));
+    withdrawingRef.current = true;
+    setWithdrawing(true);
     setWithdrawOpen(false);
     setActionStatus({
       tone: "pending",
@@ -665,6 +644,9 @@ export function PortfolioPageClient() {
         tone: "error",
         message: actionErrorMessage(err, "USDC withdrawal failed."),
       });
+    } finally {
+      withdrawingRef.current = false;
+      setWithdrawing(false);
     }
   }, [
     decibelNetwork,
@@ -759,16 +741,16 @@ export function PortfolioPageClient() {
         },
         signAndSubmitTransaction,
       );
-      setState((prev) => ({
-        ...prev,
-        openOrders: prev.openOrders.filter((item) => String(item.orderId) !== orderId),
-      }));
       setActionStatus({
         tone: "pending",
         message: "Cancel submitted. Waiting for confirmation...",
         hash: cancel.hash,
       });
       await waitForTransactionConfirmation(cancel.hash);
+      setState((prev) => ({
+        ...prev,
+        openOrders: prev.openOrders.filter((item) => String(item.orderId) !== orderId),
+      }));
       setActionStatus({
         tone: "success",
         message: `Canceled ${order.market} order.`,
@@ -806,10 +788,10 @@ export function PortfolioPageClient() {
           <button
             type="button"
             onClick={() => setWithdrawOpen(true)}
-            disabled={!connected || !hasDecibelAccount}
+            disabled={!connected || !hasDecibelAccount || withdrawing}
             className="rounded-[4px] bg-zinc-200 px-4 py-2 text-[12px] font-semibold text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
           >
-            Withdraw USDC
+            {withdrawing ? "Withdrawing..." : "Withdraw USDC"}
           </button>
         </div>
 
@@ -857,15 +839,15 @@ export function PortfolioPageClient() {
           <aside>
             <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Overview</h2>
             <div className="mt-6">
-              <OverviewRow label="All Time Return" value={formatPct(allTimeReturn)} tone={allTimeReturn != null && allTimeReturn >= 0 ? "text-green-400" : "text-[#e8774f]"} />
-              <OverviewRow label="Volume" value={formatVolume(overview?.volume30d)} />
-              <OverviewRow label="Realized PnL (90d)" value={formatUsd(overview?.realizedPnl, true)} tone={(overview?.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"} />
+              <OverviewRow label="Open Position Return" value={formatPct(openPositionReturn)} tone={openPositionReturn != null && openPositionReturn >= 0 ? "text-green-400" : "text-[#e8774f]"} />
+              <OverviewRow label="30d Volume" value={formatVolume(overview?.volume30d)} />
+              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={(overview?.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"} />
               <OverviewRow label="Trading Portfolio" value={formatUsd(overview?.equity)} tone="text-green-400" />
               <OverviewRow label="Vault Allocation" value="—" />
-              <OverviewRow label="Sharpe Ratio" value={positions.length > 0 ? "2.0139" : "—"} />
-              <OverviewRow label="Max Drawdown" value={positions.length > 0 ? "67.28%" : "—"} />
-              <OverviewRow label="Weekly Win Rate (12w)" value={positions.length > 0 ? "41.67%" : "—"} />
-              <OverviewRow label="Avg. Cash Position" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(4)}%` : "—"} />
+              <OverviewRow label="Sharpe Ratio" value="—" />
+              <OverviewRow label="Max Drawdown" value="—" />
+              <OverviewRow label="Weekly Win Rate (12w)" value="—" />
+              <OverviewRow label="Withdrawable Share" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(4)}%` : "—"} />
               <OverviewRow label="Avg. Leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
               <OverviewRow label="Cross-margin Ratio" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} tone="text-green-400" />
               <OverviewRow label="Cross-account Position" value={formatUsd(overview?.totalNotional)} />
@@ -907,56 +889,19 @@ export function PortfolioPageClient() {
                     </button>
                   ))}
                 </div>
-                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
-                  {["24h", "7d", "30d", "90d", "All"].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRange(value)}
-                      className={cn(
-                        "rounded-[3px] px-2 py-1 text-zinc-500",
-                        range === value && "bg-[#2a2a2a] text-zinc-200",
-                      )}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
             <div className="mt-6 h-[360px] min-h-[260px]">
-              {hasChartData ? (
-                <AreaChart
-                  data={chartData as unknown as Record<string, unknown>[]}
-                  xDataKey="date"
-                  aspectRatio="auto"
-                  className="h-full"
-                  margin={{ top: 28, right: 12, bottom: 28, left: 48 }}
-                  animationDuration={0}
-                >
-                  <Grid horizontal vertical={false} numTicksRows={5} stroke="rgba(255,255,255,0.18)" strokeDasharray="4,4" fadeHorizontal={false} />
-                  <Area
-                    dataKey="pnl"
-                    fill="#e8774f"
-                    fillOpacity={0.16}
-                    stroke="#d6d1ca"
-                    strokeWidth={1.4}
-                    gradientToOpacity={0}
-                    curve={curveLinear}
-                    animate={false}
-                    showHighlight={false}
-                  />
-                </AreaChart>
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a]">
-                  <span className="text-[13px] text-zinc-500">
-                    {connected ? "No trading history yet" : "Connect a wallet to see your PnL history"}
-                  </span>
-                  <span className="text-[11px] text-zinc-700">
-                    Realized and unrealized PnL will chart here once your Decibel account has activity.
-                  </span>
-                </div>
-              )}
+              <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a]">
+                <span className="text-[13px] text-zinc-500">
+                  {connected ? "Historical portfolio series is unavailable" : "Connect a wallet to see your Decibel portfolio"}
+                </span>
+                <span className="text-[11px] text-zinc-700">
+                  {connected
+                    ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
+                    : "Live equity, PnL, positions, and orders will load after connection."}
+                </span>
+              </div>
             </div>
           </section>
         </section>
@@ -1286,6 +1231,7 @@ export function PortfolioPageClient() {
               <input
                 value={withdrawAmount}
                 onChange={(event) => setWithdrawAmount(event.target.value.replace(/[^0-9.]/g, ""))}
+                disabled={withdrawing}
                 inputMode="decimal"
                 placeholder="0.00"
                 className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
@@ -1296,6 +1242,7 @@ export function PortfolioPageClient() {
               <input
                 value={withdrawRecipient}
                 onChange={(event) => setWithdrawRecipient(event.target.value)}
+                disabled={withdrawing}
                 placeholder={owner || "0x..."}
                 className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
               />
@@ -1306,13 +1253,14 @@ export function PortfolioPageClient() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
+              disabled={withdrawing}
               onClick={(event) => {
                 event.preventDefault();
                 void handleWithdraw();
               }}
               className="bg-zinc-200 text-black hover:bg-white"
             >
-              Withdraw
+              {withdrawing ? "Withdrawing..." : "Withdraw"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

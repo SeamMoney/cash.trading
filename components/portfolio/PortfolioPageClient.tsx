@@ -354,7 +354,13 @@ export function PortfolioPageClient() {
   const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
   const withdrawingRef = useRef(false);
+  const withdrawalTokenRef = useRef<symbol | null>(null);
+  const closingActionTokensRef = useRef(new Map<string, symbol>());
+  const cancelingActionTokensRef = useRef(new Map<string, symbol>());
   const stateRef = useRef<AccountState>(state);
+  const actionContext = `${owner}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+  const actionContextRef = useRef(actionContext);
+  actionContextRef.current = actionContext;
 
   const overview = state.overview;
   const positions = state.positions;
@@ -367,6 +373,19 @@ export function PortfolioPageClient() {
     stateRef.current = state;
   }, [state]);
 
+  useEffect(() => {
+    withdrawalTokenRef.current = null;
+    withdrawingRef.current = false;
+    closingActionTokensRef.current.clear();
+    cancelingActionTokensRef.current.clear();
+    setWithdrawing(false);
+    setClosingKeys(new Set());
+    setCancelingOrderIds(new Set());
+    setActionStatus(null);
+    setState({ positions: [], openOrders: [], overview: null });
+    setError("");
+  }, [actionContext]);
+
   const fetchAccountState = useCallback(async () => {
     if (!connected || !selectedSubaccount) {
       setState({ positions: [], openOrders: [], overview: null });
@@ -376,6 +395,7 @@ export function PortfolioPageClient() {
 
     abortRef.current?.abort();
     const controller = new AbortController();
+    const requestContext = actionContextRef.current;
     abortRef.current = controller;
     setLoading(true);
     setError("");
@@ -394,6 +414,7 @@ export function PortfolioPageClient() {
       if (!res.ok || json.error) {
         throw new Error(json.error || "Failed to load Decibel portfolio");
       }
+      if (controller.signal.aborted || actionContextRef.current !== requestContext) return;
       setState({
         positions: Array.isArray(json.positions) ? json.positions : [],
         openOrders: Array.isArray(json.openOrders) ? json.openOrders : [],
@@ -401,6 +422,7 @@ export function PortfolioPageClient() {
       });
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
+      if (actionContextRef.current !== requestContext) return;
       setError(err instanceof Error ? err.message : "Failed to load portfolio");
     } finally {
       if (abortRef.current === controller) {
@@ -423,6 +445,7 @@ export function PortfolioPageClient() {
 
   useEffect(() => {
     if (!connected || !selectedSubaccount || typeof window === "undefined") return;
+    const streamContext = actionContextRef.current;
     let stream: EventSource | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const params = new URLSearchParams({
@@ -441,10 +464,13 @@ export function PortfolioPageClient() {
 
     const scheduleRefresh = (delay = 250) => {
       if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => void fetchAccountState(), delay);
+      refreshTimer = setTimeout(() => {
+        if (actionContextRef.current === streamContext) void fetchAccountState();
+      }, delay);
     };
 
     const handleMessage = (event: MessageEvent) => {
+      if (actionContextRef.current !== streamContext) return;
       try {
         const message = JSON.parse(event.data) as {
           topic?: string;
@@ -556,14 +582,14 @@ export function PortfolioPageClient() {
     };
   }, [connected, decibelNetwork, fetchAccountState, selectedSubaccount]);
 
-  const totalPnl = overview?.unrealizedPnl ?? positions.reduce((sum, item) => sum + (item.estimatedPnl ?? 0), 0);
+  const totalPnl = overview?.unrealizedPnl ?? null;
   const openPositionReturn =
-    overview?.totalMargin && overview.totalMargin > 0
+    totalPnl != null && overview?.totalMargin && overview.totalMargin > 0
       ? (totalPnl / overview.totalMargin) * 100
       : null;
 
   const handleWithdraw = useCallback(async () => {
-    if (withdrawingRef.current) return;
+    if (withdrawingRef.current || withdrawalTokenRef.current) return;
     const amount = Number(withdrawAmount);
     const recipient = withdrawRecipient.trim() || owner;
     if (!signAndSubmitTransaction) {
@@ -584,6 +610,12 @@ export function PortfolioPageClient() {
     }
 
     const rawAmount = String(Math.floor(amount * 1_000_000));
+    const token = Symbol("portfolio-withdrawal");
+    const startedInContext = actionContextRef.current;
+    const isCurrentWithdrawal = () =>
+      withdrawalTokenRef.current === token
+      && actionContextRef.current === startedInContext;
+    withdrawalTokenRef.current = token;
     withdrawingRef.current = true;
     setWithdrawing(true);
     setWithdrawOpen(false);
@@ -599,13 +631,17 @@ export function PortfolioPageClient() {
         "/api/decibel/withdraw",
         { subaccount: selectedSubaccount, amount: rawAmount, network: decibelNetwork },
         signAndSubmitTransaction,
+        isCurrentWithdrawal,
       );
-      setActionStatus({
-        tone: "pending",
-        message: "Withdrawal submitted. Waiting for confirmation...",
-        hash: withdraw.hash,
-      });
+      if (isCurrentWithdrawal()) {
+        setActionStatus({
+          tone: "pending",
+          message: "Withdrawal submitted. Waiting for confirmation...",
+          hash: withdraw.hash,
+        });
+      }
       await waitForTransactionConfirmation(withdraw.hash);
+      if (!isCurrentWithdrawal()) return;
 
       if (recipient.toLowerCase() !== owner.toLowerCase()) {
         setActionStatus({
@@ -617,6 +653,7 @@ export function PortfolioPageClient() {
           "/api/decibel/transfer-usdc",
           { recipient, amount: rawAmount, network: decibelNetwork },
           signAndSubmitTransaction,
+          isCurrentWithdrawal,
         );
         setActionStatus({
           tone: "pending",
@@ -624,6 +661,7 @@ export function PortfolioPageClient() {
           hash: transfer.hash,
         });
         await waitForTransactionConfirmation(transfer.hash);
+        if (!isCurrentWithdrawal()) return;
         setActionStatus({
           tone: "success",
           message: `Withdrew and transferred ${amount.toFixed(2)} USDC.`,
@@ -640,13 +678,18 @@ export function PortfolioPageClient() {
       emitDecibelPositionsRefresh();
       void fetchAccountState();
     } catch (err) {
-      setActionStatus({
-        tone: "error",
-        message: actionErrorMessage(err, "USDC withdrawal failed."),
-      });
+      if (isCurrentWithdrawal()) {
+        setActionStatus({
+          tone: "error",
+          message: actionErrorMessage(err, "USDC withdrawal failed."),
+        });
+      }
     } finally {
-      withdrawingRef.current = false;
-      setWithdrawing(false);
+      if (withdrawalTokenRef.current === token) {
+        withdrawalTokenRef.current = null;
+        withdrawingRef.current = false;
+        setWithdrawing(false);
+      }
     }
   }, [
     decibelNetwork,
@@ -661,6 +704,7 @@ export function PortfolioPageClient() {
 
   const handleClosePosition = useCallback(async (position: Position) => {
     const key = positionKey(position);
+    if (closingActionTokensRef.current.has(key)) return;
     const price = position.markPrice ?? position.entryPrice;
     const size = Math.abs(position.size);
     if (!signAndSubmitTransaction || !selectedSubaccount) {
@@ -671,6 +715,9 @@ export function PortfolioPageClient() {
       setActionStatus({ tone: "error", message: `No usable price for ${position.market}.` });
       return;
     }
+    const token = Symbol(key);
+    const startedInContext = actionContextRef.current;
+    closingActionTokensRef.current.set(key, token);
     setClosingKeys((prev) => new Set(prev).add(key));
     setActionStatus({ tone: "pending", message: `Sign close order for ${position.market}.` });
     try {
@@ -688,36 +735,49 @@ export function PortfolioPageClient() {
           network: decibelNetwork,
         },
         signAndSubmitTransaction,
+        () =>
+          closingActionTokensRef.current.get(key) === token
+          && actionContextRef.current === startedInContext,
       );
-      setActionStatus({
-        tone: "pending",
-        message: "Close submitted. Waiting for confirmation...",
-        hash: close.hash,
-      });
+      if (actionContextRef.current === startedInContext) {
+        setActionStatus({
+          tone: "pending",
+          message: "Close submitted. Waiting for confirmation...",
+          hash: close.hash,
+        });
+      }
       await waitForTransactionConfirmation(close.hash);
-      setActionStatus({
-        tone: "success",
-        message: `Close confirmed for ${position.market}.`,
-        hash: close.hash,
-      });
-      emitDecibelPositionsRefresh();
-      void fetchAccountState();
+      if (actionContextRef.current === startedInContext) {
+        setActionStatus({
+          tone: "success",
+          message: `Close confirmed for ${position.market}.`,
+          hash: close.hash,
+        });
+        emitDecibelPositionsRefresh();
+        void fetchAccountState();
+      }
     } catch (err) {
-      setActionStatus({
-        tone: "error",
-        message: actionErrorMessage(err, `Failed to close ${position.market}.`),
-      });
+      if (actionContextRef.current === startedInContext) {
+        setActionStatus({
+          tone: "error",
+          message: actionErrorMessage(err, `Failed to close ${position.market}.`),
+        });
+      }
     } finally {
-      setClosingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+      if (closingActionTokensRef.current.get(key) === token) {
+        closingActionTokensRef.current.delete(key);
+        setClosingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
 
   const handleCancelOrder = useCallback(async (order: OpenOrder) => {
     const orderId = String(order.orderId);
+    if (cancelingActionTokensRef.current.has(orderId)) return;
     if (!signAndSubmitTransaction || !selectedSubaccount) {
       setActionStatus({ tone: "error", message: "Connect a wallet and Decibel account first." });
       return;
@@ -727,6 +787,9 @@ export function PortfolioPageClient() {
       return;
     }
 
+    const token = Symbol(orderId);
+    const startedInContext = actionContextRef.current;
+    cancelingActionTokensRef.current.set(orderId, token);
     setCancelingOrderIds((prev) => new Set(prev).add(orderId));
     setActionStatus({ tone: "pending", message: `Sign cancel for ${order.market} order.` });
     try {
@@ -740,35 +803,47 @@ export function PortfolioPageClient() {
           network: decibelNetwork,
         },
         signAndSubmitTransaction,
+        () =>
+          cancelingActionTokensRef.current.get(orderId) === token
+          && actionContextRef.current === startedInContext,
       );
-      setActionStatus({
-        tone: "pending",
-        message: "Cancel submitted. Waiting for confirmation...",
-        hash: cancel.hash,
-      });
+      if (actionContextRef.current === startedInContext) {
+        setActionStatus({
+          tone: "pending",
+          message: "Cancel submitted. Waiting for confirmation...",
+          hash: cancel.hash,
+        });
+      }
       await waitForTransactionConfirmation(cancel.hash);
-      setState((prev) => ({
-        ...prev,
-        openOrders: prev.openOrders.filter((item) => String(item.orderId) !== orderId),
-      }));
-      setActionStatus({
-        tone: "success",
-        message: `Canceled ${order.market} order.`,
-        hash: cancel.hash,
-      });
-      emitDecibelPositionsRefresh();
-      void fetchAccountState();
+      if (actionContextRef.current === startedInContext) {
+        setState((prev) => ({
+          ...prev,
+          openOrders: prev.openOrders.filter((item) => String(item.orderId) !== orderId),
+        }));
+        setActionStatus({
+          tone: "success",
+          message: `Canceled ${order.market} order.`,
+          hash: cancel.hash,
+        });
+        emitDecibelPositionsRefresh();
+        void fetchAccountState();
+      }
     } catch (err) {
-      setActionStatus({
-        tone: "error",
-        message: actionErrorMessage(err, `Failed to cancel order ${orderId}.`),
-      });
+      if (actionContextRef.current === startedInContext) {
+        setActionStatus({
+          tone: "error",
+          message: actionErrorMessage(err, `Failed to cancel order ${orderId}.`),
+        });
+      }
     } finally {
-      setCancelingOrderIds((prev) => {
-        const next = new Set(prev);
-        next.delete(orderId);
-        return next;
-      });
+      if (cancelingActionTokensRef.current.get(orderId) === token) {
+        cancelingActionTokensRef.current.delete(orderId);
+        setCancelingOrderIds((prev) => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+      }
     }
   }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
 
@@ -799,15 +874,15 @@ export function PortfolioPageClient() {
           {[
             {
               label: "Portfolio Value",
-              value: formatUsd(overview?.equity ?? 0),
-              raw: overview?.equity ?? 0,
+              value: formatUsd(overview?.equity),
+              raw: overview?.equity,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "PnL",
               value: formatUsd(totalPnl, true),
               raw: totalPnl,
-              tone: totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]",
+              tone: totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]",
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
             },
             {
@@ -859,7 +934,8 @@ export function PortfolioPageClient() {
               <div>
                 <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Profit/Loss</h2>
                 <NumberTicker
-                  value={chartMetric === "pnl" ? totalPnl : overview?.equity ?? 0}
+                  value={chartMetric === "pnl" ? totalPnl : overview?.equity}
+                  fallback="—"
                   format={{
                     style: "currency",
                     currency: "USD",
@@ -944,7 +1020,7 @@ export function PortfolioPageClient() {
                     <td>{formatUsd(overview?.collateral)}</td>
                     <td>{formatUsd(overview?.crossWithdrawable)}</td>
                     <td>{formatUsd(overview?.equity)}</td>
-                    <td className={totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(totalPnl, true)}</td>
+                    <td className={totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(totalPnl, true)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1047,8 +1123,8 @@ export function PortfolioPageClient() {
                 <div className="px-4 py-12 text-center text-zinc-600">No open positions</div>
               ) : positions.map((position) => {
                 const key = positionKey(position);
-                const pnl = position.estimatedPnl ?? 0;
-                const pnlPct = position.marginUsed > 0 ? (pnl / position.marginUsed) * 100 : null;
+                const pnl = position.estimatedPnl;
+                const pnlPct = pnl != null && position.marginUsed > 0 ? (pnl / position.marginUsed) * 100 : null;
                 return (
                   <div key={key} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
                     <div className="flex items-start justify-between gap-3">
@@ -1096,7 +1172,7 @@ export function PortfolioPageClient() {
                       </div>
                       <div className="text-right">
                         <div className="text-zinc-600">Est. PnL</div>
-                        <div className={cn("mt-0.5 font-mono tabular-nums", pnl >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                        <div className={cn("mt-0.5 font-mono tabular-nums", pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]")}>
                           {formatUsd(pnl, true)}
                           {pnlPct !== null && (
                             <span className="ml-1 text-zinc-500">
@@ -1116,7 +1192,7 @@ export function PortfolioPageClient() {
                         <div className="text-zinc-600">Margin / Funding</div>
                         <div className="mt-0.5 font-mono tabular-nums">
                           {formatUsd(position.marginUsed)}
-                          <span className={cn("ml-2", (position.unrealizedFunding ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                          <span className={cn("ml-2", position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]")}>
                             {formatUsd(position.unrealizedFunding, true)}
                           </span>
                         </div>
@@ -1149,7 +1225,7 @@ export function PortfolioPageClient() {
                     <tr><td colSpan={11} className="px-4 py-12 text-center text-zinc-600">No open positions</td></tr>
                   ) : positions.map((position) => {
                     const key = positionKey(position);
-                    const pnl = position.estimatedPnl ?? 0;
+                    const pnl = position.estimatedPnl;
                     return (
                       <tr key={key} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
                         <td>
@@ -1162,10 +1238,10 @@ export function PortfolioPageClient() {
                         <td>{formatUsd(position.value)}</td>
                         <td>{formatPrice(position.entryPrice)}</td>
                         <td>{formatPrice(position.markPrice)}</td>
-                        <td className={pnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(pnl, true)}</td>
+                        <td className={pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(pnl, true)}</td>
                         <td>{formatPrice(position.estimatedLiquidationPrice)}</td>
                         <td>{formatUsd(position.marginUsed)} {position.isIsolated ? "(Iso)" : "(Cross)"}</td>
-                        <td className={(position.unrealizedFunding ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(position.unrealizedFunding, true)}</td>
+                        <td className={position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(position.unrealizedFunding, true)}</td>
                         <td>-- / --</td>
                         <td>
                           <button

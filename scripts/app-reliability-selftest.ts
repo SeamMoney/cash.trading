@@ -136,6 +136,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   pnpm?: { overrides?: Record<string, string> };
   packageManager?: string;
 };
+const nextConfig = readFileSync("next.config.mjs", "utf8");
 
 assert.match(vaultRoute, /const VAULT_PAGE_SIZE = 1_000;/);
 assert.match(vaultRoute, /status: "active"/);
@@ -460,6 +461,15 @@ assert.match(decibelStreamRoute, /\[a-fA-F0-9\]\{1,64\}/);
 assert.match(decibelStreamRoute, /STREAM_LIFETIME_MS = 4 \* 60 \* 1_000/);
 assert.match(decibelStreamRoute, /reason: "scheduled_reconnect"/);
 assert.match(decibelStreamRoute, /if \(lifetimeTimer\) clearTimeout\(lifetimeTimer\)/);
+assert.ok(!nextConfig.includes("ignoreBuildErrors"), "production builds must fail on TypeScript errors");
+for (const header of [
+  "X-Content-Type-Options",
+  "X-Frame-Options",
+  "Referrer-Policy",
+  "Permissions-Policy",
+] as const) {
+  assert.ok(nextConfig.includes(header), `production responses must set ${header}`);
+}
 assert.match(decibelMarketsRoute, /checkApiRateLimit\(req, "decibel-markets"/);
 assert.match(decibelVaultStatusRoute, /isValidAptosAddress/);
 assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);

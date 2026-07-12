@@ -1,9 +1,13 @@
 import { AccountAddress } from "@aptos-labs/ts-sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { getDecibelCollateralMetadata, type DecibelNetwork } from "@/lib/decibel";
+import {
+  getDecibelCollateralMetadata,
+  resolveDecibelNetwork,
+  type DecibelNetwork,
+} from "@/lib/decibel";
 
 function getRequestNetwork(value: unknown): DecibelNetwork {
-  return value === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(value);
 }
 
 function normalizeAddress(address: string) {

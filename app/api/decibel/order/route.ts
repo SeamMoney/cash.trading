@@ -5,6 +5,7 @@ import {
   getDecibelPackage,
   getDecibelMarketConfigFromRegistry,
   PRICE_DECIMALS,
+  resolveDecibelNetwork,
   TAKER_FEE,
   MAKER_REBATE,
   type DecibelNetwork,
@@ -18,7 +19,7 @@ const NO_STORE_HEADERS = {
 };
 
 function getRequestNetwork(value: unknown): DecibelNetwork {
-  return value === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(value);
 }
 
 function getAptos(network: DecibelNetwork) {

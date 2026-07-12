@@ -2,16 +2,15 @@
  * Decibel SDK Singleton
  *
  * This module provides initialized SDK instances for read/write operations.
- * Uses @decibeltrade/sdk v0.4.0
+ * Uses @decibeltrade/sdk v0.7.0
  *
  * Configuration from dev chat:
  * - noFeePayer: true (fee payer had issues on testnet)
  * - skipSimulate: true (faster)
  *
- * SDK v0.4.0 changes (Mar 2, 2026):
+ * The current SDK keeps the mainnet deployment config and typed readers in one place.
  * - MAINNET_CONFIG now points to live contract (0x50ead) — no more override needed
  * - New readers: VaultsReader, TradingPointsReader, GlobalPointsStatsReader
- * - CompatVersion V0_4
  *
  * @see https://docs.decibel.trade/typescript-sdk/overview
  */

@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
+function databaseUnavailable() {
+  if (process.env.DATABASE_URL) return null;
+  return NextResponse.json(
+    { unavailable: true, reason: "database_not_configured" },
+    { status: 503 },
+  );
+}
+
 function clampAllocationPct(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 5;
@@ -10,35 +18,46 @@ function clampAllocationPct(value: unknown): number {
 }
 
 export async function GET(req: Request) {
+  const unavailable = databaseUnavailable();
+  if (unavailable) return unavailable;
+
   const url = new URL(req.url);
   const owner = url.searchParams.get("owner");
   const indicator = url.searchParams.get("indicator");
   const status = url.searchParams.get("status");
 
-  const strategyVaults = await prisma.strategyVault.findMany({
-    where: {
-      ...(owner ? { ownerWallet: owner } : {}),
-      ...(indicator ? { indicatorAddr: indicator } : {}),
-      ...(status ? { status } : {}),
-    },
-    include: {
-      decisions: {
-        orderBy: { observedAt: "desc" },
-        take: 5,
+  try {
+    const strategyVaults = await prisma.strategyVault.findMany({
+      where: {
+        ...(owner ? { ownerWallet: owner } : {}),
+        ...(indicator ? { indicatorAddr: indicator } : {}),
+        ...(status ? { status } : {}),
       },
-      executions: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
+      include: {
+        decisions: {
+          orderBy: { observedAt: "desc" },
+          take: 5,
+        },
+        executions: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
       },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-  });
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    });
 
-  return NextResponse.json({ strategyVaults });
+    return NextResponse.json({ strategyVaults });
+  } catch (error) {
+    console.error("[strategy-vaults] GET failed:", error);
+    return NextResponse.json({ error: "Failed to load strategy vaults" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
+  const unavailable = databaseUnavailable();
+  if (unavailable) return unavailable;
+
   try {
     const body = await req.json() as {
       indicatorAddr?: string;
@@ -87,13 +106,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, strategyVault });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to save strategy vault";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[strategy-vaults] POST failed:", error);
+    return NextResponse.json({ error: "Failed to save strategy vault" }, { status: 500 });
   }
 }
 
 export async function PATCH(req: Request) {
+  const unavailable = databaseUnavailable();
+  if (unavailable) return unavailable;
+
   try {
     const body = await req.json() as {
       id?: string;
@@ -147,8 +168,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true, strategyVault });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to update strategy vault";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[strategy-vaults] PATCH failed:", error);
+    return NextResponse.json({ error: "Failed to update strategy vault" }, { status: 500 });
   }
 }

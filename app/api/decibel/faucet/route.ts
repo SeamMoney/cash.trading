@@ -3,6 +3,7 @@ import {
   type DecibelNetwork,
   getDecibelPackage,
   getReadDex,
+  resolveDecibelNetwork,
   USDC_DECIMALS,
 } from "@/lib/decibel";
 
@@ -15,7 +16,7 @@ import {
  * Body: { amount?: string } where amount is raw USDC units.
  */
 function getBodyNetwork(value: unknown): DecibelNetwork {
-  return value === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(value);
 }
 
 export async function POST(req: NextRequest) {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const network = req.nextUrl.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  const network = resolveDecibelNetwork(req.nextUrl.searchParams.get("network"));
   if (network === "mainnet") {
     return NextResponse.json({
       enabled: false,

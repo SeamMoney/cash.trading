@@ -10,6 +10,12 @@ const launchpadCrankRoute = readFileSync("app/api/launchpad/crank/route.ts", "ut
 const launchpadDeployForm = readFileSync("components/launchpad/DeployForm.tsx", "utf8");
 const testTradeRoute = readFileSync("app/api/bot/test-trade/route.ts", "utf8");
 const statsRoute = readFileSync("app/api/stats/route.ts", "utf8");
+const decibelCore = readFileSync("lib/decibel.ts", "utf8");
+const decibelMarketsRoute = readFileSync("app/api/decibel/markets/route.ts", "utf8");
+const decibelFaucetRoute = readFileSync("app/api/decibel/faucet/route.ts", "utf8");
+const moveSourceRoute = readFileSync("app/api/launchpad/move-source/route.ts", "utf8");
+const strategyVaultsRoute = readFileSync("app/api/launchpad/strategy-vaults/route.ts", "utf8");
+const predepositData = readFileSync("lib/mainnet-predeposit.ts", "utf8");
 const marketRefreshRoute = readFileSync("app/api/markets/refresh/route.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies: Record<string, string>;
@@ -47,6 +53,14 @@ assert.match(testTradeRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.ok(!testTradeRoute.includes("PRIVATE_KEY preview"), "private-key fragments must never be logged");
 assert.ok(!testTradeRoute.includes("error.stack"), "API responses must not expose server stacks");
 assert.match(statsRoute, /reason: 'database_not_configured'/);
+assert.match(decibelCore, /export function resolveDecibelNetwork/);
+assert.match(decibelCore, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
+assert.match(decibelMarketsRoute, /resolveDecibelNetwork/);
+assert.match(decibelFaucetRoute, /resolveDecibelNetwork/);
+assert.match(moveSourceRoute, /contracts\/strategy-vaults\/sources/);
+assert.match(strategyVaultsRoute, /function databaseUnavailable/);
+assert.match(predepositData, /let depositorsInFlight/);
+assert.match(predepositData, /const INDEXER_TIMEOUT_MS = 3_500/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 

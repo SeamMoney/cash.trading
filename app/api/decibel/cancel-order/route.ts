@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildDecibelCancelOrderPayload,
   getDecibelMarketConfigFromRegistry,
+  resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
 
 export const runtime = "nodejs";
 
 function getRequestNetwork(value: unknown): DecibelNetwork {
-  return value === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(value);
 }
 
 export async function POST(req: NextRequest) {

@@ -8,13 +8,11 @@ import { join } from "path";
 
 export const runtime = "nodejs";
 
-const CONTRACTS_DIR = join(process.cwd(), "contracts/indicator-launchpad/sources");
+const CONTRACTS_DIR = join(process.cwd(), "contracts/strategy-vaults/sources");
 
 const ALLOWED_FILES: Record<string, string> = {
   indicator: "indicator.move",
-  bonding_curve: "bonding_curve.move",
-  backtester: "backtester.move",
-  scheduled_txns: "scheduled_txns.move",
+  strategy_vault: "strategy_vault.move",
   math_lib: "math_lib.move",
 };
 

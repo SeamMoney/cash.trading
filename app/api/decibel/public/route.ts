@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAptosFullnodeApiKey } from "@/lib/decibel";
+import {
+  getAptosFullnodeApiKey,
+  resolveDecibelNetwork,
+  type DecibelNetwork,
+} from "@/lib/decibel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-type DecibelNetwork = "mainnet" | "testnet";
 
 const DECIBEL_BASES: Record<DecibelNetwork, string> = {
   mainnet: "https://api.mainnet.aptoslabs.com/decibel/api/v1",
@@ -106,7 +108,7 @@ function getTimeout(searchParams: URLSearchParams) {
 }
 
 function getNetwork(searchParams: URLSearchParams): DecibelNetwork {
-  return searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(searchParams.get("network"));
 }
 
 export async function GET(req: NextRequest) {

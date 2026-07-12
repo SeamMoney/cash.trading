@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getFastMarkets } from "@/lib/decibel-chain";
-import { getAptosFullnodeApiKey, getReadDex, type DecibelNetwork } from "@/lib/decibel";
+import {
+  getAptosFullnodeApiKey,
+  getReadDex,
+  resolveDecibelNetwork,
+  type DecibelNetwork,
+} from "@/lib/decibel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +18,7 @@ const NO_STORE_HEADERS = {
 
 function getRequestNetwork(req: Request): DecibelNetwork {
   const url = new URL(req.url);
-  return url.searchParams.get("network") === "mainnet" ? "mainnet" : "testnet";
+  return resolveDecibelNetwork(url.searchParams.get("network"));
 }
 
 function asNumber(value: unknown): number | null {

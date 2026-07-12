@@ -221,27 +221,41 @@ export async function getMainnetUserBalance(userAddr: string): Promise<MainnetUs
 // Depositor List (via indexer with caching)
 // ============================================================
 
-let depositorsCache: { data: MainnetDepositor[]; timestamp: number } | null = null
+let depositorsCache: { data: MainnetDepositor[]; timestamp: number; ttl: number } | null = null
+let depositorsInFlight: Promise<MainnetDepositor[]> | null = null
 const DEPOSITORS_CACHE_TTL = 300_000 // 5 minutes
+const DEPOSITORS_FALLBACK_CACHE_TTL = 60_000
+const INDEXER_TIMEOUT_MS = 3_500
 
 export async function getMainnetDepositors(): Promise<MainnetDepositor[]> {
   // Check cache
-  if (depositorsCache && Date.now() - depositorsCache.timestamp < DEPOSITORS_CACHE_TTL) {
+  if (depositorsCache && Date.now() - depositorsCache.timestamp < depositorsCache.ttl) {
     return depositorsCache.data
   }
+  if (depositorsInFlight) return depositorsInFlight
+
+  depositorsInFlight = (async () => {
+    try {
+      const depositors = await fetchDepositorsFromIndexer()
+      depositorsCache = { data: depositors, timestamp: Date.now(), ttl: DEPOSITORS_CACHE_TTL }
+      return depositors
+    } catch (error) {
+      console.error('Error fetching depositors from indexer, using fallback:', error)
+      if (depositorsCache) return depositorsCache.data
+      const fallback = getSeedDepositors()
+      depositorsCache = {
+        data: fallback,
+        timestamp: Date.now(),
+        ttl: DEPOSITORS_FALLBACK_CACHE_TTL,
+      }
+      return fallback
+    }
+  })()
 
   try {
-    const depositors = await fetchDepositorsFromIndexer()
-    depositorsCache = { data: depositors, timestamp: Date.now() }
-    return depositors
-  } catch (error) {
-    console.error('Error fetching depositors from indexer, using fallback:', error)
-    // Return cached data if available, even if stale
-    if (depositorsCache) {
-      return depositorsCache.data
-    }
-    // Fall back to seed data from initial launch snapshot
-    return getSeedDepositors()
+    return await depositorsInFlight
+  } finally {
+    depositorsInFlight = null
   }
 }
 
@@ -292,11 +306,20 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
       }
     }`
 
-    const response = await fetch(INDEXER_URL, {
-      method: 'POST',
-      headers: aptosAuthHeaders(),
-      body: JSON.stringify({ query }),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), INDEXER_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(INDEXER_URL, {
+        method: 'POST',
+        headers: aptosAuthHeaders(),
+        body: JSON.stringify({ query }),
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (!response.ok) {
       const text = await response.text()

@@ -2,7 +2,7 @@
  * Decibel SDK Singleton + Constants
  *
  * Mirrors patterns from cash.trading/lib/decibel-sdk.ts and decibel-client.ts.
- * Uses @decibeltrade/sdk v0.3.1 with real DecibelReadDex for market data,
+ * Uses @decibeltrade/sdk v0.7.0 with real DecibelReadDex for market data,
  * orderbook depth, positions, and account overview.
  */
 
@@ -26,9 +26,16 @@ export type DecibelNetwork = "testnet" | "mainnet";
 
 export function getActiveNetwork(): DecibelNetwork {
   const env =
-    process.env.DECIBEL_NETWORK || process.env.NEXT_PUBLIC_APTOS_NETWORK;
+    process.env.DECIBEL_NETWORK ||
+    process.env.NEXT_PUBLIC_DECIBEL_NETWORK ||
+    process.env.NEXT_PUBLIC_APTOS_NETWORK;
   if (env === "mainnet") return "mainnet";
   return "testnet";
+}
+
+export function resolveDecibelNetwork(value: unknown): DecibelNetwork {
+  if (value === "mainnet" || value === "testnet") return value;
+  return getActiveNetwork();
 }
 
 function getConfig(network?: DecibelNetwork): DecibelConfig {

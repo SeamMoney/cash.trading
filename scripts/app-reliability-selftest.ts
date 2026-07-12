@@ -26,6 +26,22 @@ const decibelFaucetRoute = readFileSync("app/api/decibel/faucet/route.ts", "utf8
 const moveSourceRoute = readFileSync("app/api/launchpad/move-source/route.ts", "utf8");
 const strategyVaultsRoute = readFileSync("app/api/launchpad/strategy-vaults/route.ts", "utf8");
 const predepositData = readFileSync("lib/mainnet-predeposit.ts", "utf8");
+const predepositBalancesRoute = readFileSync("app/api/predeposit/balances/route.ts", "utf8");
+const predepositEventsRoute = readFileSync("app/api/predeposit/events/route.ts", "utf8");
+const predepositLeaderboardRoute = readFileSync("app/api/predeposit/leaderboard/route.ts", "utf8");
+const predepositPointsRoute = readFileSync("app/api/predeposit/points/route.ts", "utf8");
+const predepositTotalRoute = readFileSync("app/api/predeposit/total/route.ts", "utf8");
+const predepositUserRoute = readFileSync("app/api/predeposit/user/route.ts", "utf8");
+const vaultTotalRoute = readFileSync("app/api/vault/total/route.ts", "utf8");
+const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
+const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
+const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
+const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
+const decibelPoints = readFileSync("lib/decibel-points.ts", "utf8");
+const pointsStats = readFileSync("components/points/points-stats.tsx", "utf8");
+const pointsCalculator = readFileSync("components/points/points-calculator.tsx", "utf8");
+const pointsLeaderboard = readFileSync("components/points/leaderboard.tsx", "utf8");
+const farmingTips = readFileSync("components/points/farming-tips.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
 const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
 const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
@@ -59,6 +75,7 @@ const legacyBotRoutes = [
   "app/api/cron/bot-tick/route.ts",
   "app/api/portfolio/route.ts",
   "app/api/positions/route.ts",
+  "app/api/stats/route.ts",
 ].map((path) => [path, readFileSync(path, "utf8")] as const);
 const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
 const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
@@ -144,6 +161,59 @@ assert.match(strategyVaultsRoute, /function databaseUnavailable/);
 assert.match(strategyVaultsRoute, /launchpad_automation_not_enabled/);
 assert.match(predepositData, /let depositorsInFlight/);
 assert.match(predepositData, /const INDEXER_TIMEOUT_MS = 3_500/);
+assert.match(predepositData, /const FULLNODE_TIMEOUT_MS = 5_000/);
+assert.match(predepositData, /AbortSignal\.timeout\(FULLNODE_TIMEOUT_MS\)/);
+assert.match(predepositData, /const MAX_INDEXER_PAGES = 200/);
+assert.ok(
+  !predepositData.includes("dlp_balance: 0,\n      ua_balance: 0"),
+  "failed mainnet balance reads must not masquerade as a zero balance",
+);
+for (const [path, source] of [
+  ["predeposit balances", predepositBalancesRoute],
+  ["predeposit events", predepositEventsRoute],
+  ["predeposit leaderboard", predepositLeaderboardRoute],
+  ["predeposit points", predepositPointsRoute],
+  ["predeposit total", predepositTotalRoute],
+  ["predeposit user", predepositUserRoute],
+  ["vault total", vaultTotalRoute],
+  ["vault user", vaultUserRoute],
+] as const) {
+  assert.match(source, /checkApiRateLimit/, `${path} must be rate limited`);
+  assert.match(source, /unavailable: true/, `${path} must identify unavailable upstream data`);
+  assert.match(source, /status: 502/, `${path} must not return a successful zero on upstream failure`);
+}
+assert.match(pointsDataContext, /!response\.ok \|\| !json \|\| json\.unavailable/);
+assert.match(walletWatcher, /if \(!pointsRes\.ok \|\| !balancesRes\.ok\)/);
+assert.match(walletWatcher, /network=mainnet/);
+assert.match(depositHistory, /timestamp < 1_000_000_000_000/);
+assert.match(depositHistory, /network=mainnet/);
+assert.match(predepositData, /user_transactions/);
+assert.match(predepositData, /transactions\/by_version/);
+assert.match(predepositData, /::predeposit::WithdrawEvent/);
+assert.match(predepositEventsRoute, /rawEventKind === 'promote'/);
+assert.match(predepositData, /has_depositor_transitioned/);
+assert.match(predepositData, /::predeposit::LaunchTransitionEvent/);
+assert.match(decibelPoints, /\/points\/global/);
+assert.match(decibelPoints, /\/points_leaderboard/);
+assert.match(decibelPoints, /\/points\/amps/);
+assert.match(decibelPoints, /AbortSignal\.timeout\(REQUEST_TIMEOUT_MS\)/);
+assert.match(predepositTotalRoute, /getDecibelGlobalPoints/);
+assert.match(predepositLeaderboardRoute, /getDecibelPointsLeaderboard/);
+assert.match(predepositPointsRoute, /getDecibelOwnerPoints/);
+assert.match(predepositUserRoute, /getDecibelOwnerPoints/);
+assert.match(pointsDataContext, /cash_trading_points_cache_v2/);
+assert.match(pointsDataContext, /vaultTotal\.protocolTvl/);
+assert.match(pointsStats, /Season 1/);
+assert.match(pointsLeaderboard, /Vault AMPs/);
+assert.ok(!pointsCalculator.includes("POINTS_RATE"), "the AMPs scenario must not use the obsolete S0 formula");
+assert.ok(!pointsCalculator.includes("HYPE was"), "the AMPs scenario must not imply an unrelated token valuation");
+assert.ok(!farmingTips.includes("Automated volume generation"), "points tips must not encourage artificial volume");
+assert.match(vaultTotalRoute, /limit: 1000, strict: true/);
+assert.match(vaultTotalRoute, /vault\.status === 'active'/);
+assert.match(vaultTotalRoute, /protocolTvl/);
+assert.match(vaultUserRoute, /'mainnet', true/);
+assert.match(decibelPoints, /typeof value !== 'number'/);
+assert.match(readFileSync("lib/decibel-api.ts", "utf8"), /VAULT_READ_TIMEOUT_MS = 12_000/);
 assert.match(cashRewardsRoute, /reason: 'database_not_configured'/);
 assert.match(legacyBacktestRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.match(launchpadBacktestRoute, /A valid indicatorAddr is required/);

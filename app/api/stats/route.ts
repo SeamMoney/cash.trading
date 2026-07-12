@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getDecibelAccountOverview, type VolumeWindow } from '@/lib/decibel-api'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 
@@ -16,6 +17,9 @@ export const runtime = 'nodejs'
  *   - decibel: (optional) 'true' to include volume from Decibel API (more accurate)
  */
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   if (!process.env.DATABASE_URL) {
     return NextResponse.json(
       { unavailable: true, reason: 'database_not_configured' },

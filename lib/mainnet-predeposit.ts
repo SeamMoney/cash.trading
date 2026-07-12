@@ -7,6 +7,8 @@
  * - Client-side points calculation based on time-weighted formula
  */
 
+import { isValidAptosAddress, normalizeAptosAddress } from '@/lib/decibel'
+
 // Mainnet constants
 export const MAINNET_PACKAGE = '0xc5939ec6e7e656cb6fed9afa155e390eb2aa63ba74e73157161829b2f80e1538'
 export const MAINNET_PREDEPOSIT_OBJECT = '0xbd0c23dbc2e9ac041f5829f79b4c4c1361ddfa2125d5072a96b817984a013d69'
@@ -15,6 +17,7 @@ export const USDC_DECIMALS = 6
 
 const FULLNODE_URL = process.env.APTOS_MAINNET_FULLNODE_URL || 'https://api.mainnet.aptoslabs.com/v1'
 const INDEXER_URL = process.env.APTOS_MAINNET_INDEXER_URL || 'https://api.mainnet.aptoslabs.com/v1/graphql'
+const FULLNODE_TIMEOUT_MS = 5_000
 
 // Anonymous indexer queries hit Geomi's per-IP rate limits (429s flip DLP/points
 // to $0). Authenticate server-side with whichever Aptos/Geomi key is configured.
@@ -100,13 +103,17 @@ async function callViewFunction(
       type_arguments: typeArgs,
       arguments: args,
     }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(FULLNODE_TIMEOUT_MS),
   })
 
   if (!response.ok) {
-    throw new Error(`View function ${functionId} failed: ${response.status} ${await response.text()}`)
+    throw new Error(`View function ${functionId} failed (${response.status})`)
   }
 
-  return response.json()
+  const data = await response.json() as unknown
+  if (!Array.isArray(data)) throw new Error(`View function ${functionId} returned invalid data`)
+  return data as string[]
 }
 
 // ============================================================
@@ -133,6 +140,16 @@ export async function getMainnetGlobalStats(): Promise<MainnetGlobalStats> {
     const dlpTotalUsd = Number(dlpTotal[0]) / 10 ** USDC_DECIMALS
     const uaTotalUsd = Number(uaTotal[0]) / 10 ** USDC_DECIMALS
     const dlpCapUsd = Number(dlpCap[0]) / 10 ** USDC_DECIMALS
+    if (
+      !Number.isFinite(dlpTotalUsd) ||
+      !Number.isFinite(uaTotalUsd) ||
+      !Number.isFinite(dlpCapUsd) ||
+      dlpTotalUsd < 0 ||
+      uaTotalUsd < 0 ||
+      dlpCapUsd < 0
+    ) {
+      throw new Error('Predeposit global stats returned invalid data')
+    }
 
     // Get depositor count from cached depositor list
     const depositors = await getMainnetDepositors()
@@ -159,16 +176,8 @@ export async function getMainnetGlobalStats(): Promise<MainnetGlobalStats> {
     return stats
   } catch (error) {
     console.error('Error fetching mainnet global stats:', error)
-    return {
-      total_deposited: 0,
-      total_dlp: 0,
-      total_ua: 0,
-      dlp_cap: 30_000_000,
-      depositor_count: 0,
-      total_points: 0,
-      is_deposit_paused: false,
-      status: 'error',
-    }
+    if (globalStatsCache) return globalStatsCache.data
+    throw error
   }
 }
 
@@ -177,43 +186,47 @@ export async function getMainnetGlobalStats(): Promise<MainnetGlobalStats> {
 // ============================================================
 
 export async function getMainnetUserBalance(userAddr: string): Promise<MainnetUserBalance> {
-  try {
-    const result = await callViewFunction('predepositor_balance', [
+  if (!isValidAptosAddress(userAddr)) {
+    throw new Error('Invalid Aptos account address')
+  }
+  const normalizedUser = normalizeAptosAddress(userAddr, 'account')
+  const result = await callViewFunction('predepositor_balance', [
+    MAINNET_PREDEPOSIT_OBJECT,
+    normalizedUser,
+  ])
+
+  const dlpBalance = Number(result[0]) / 10 ** USDC_DECIMALS
+  const uaBalance = Number(result[1]) / 10 ** USDC_DECIMALS
+  if (
+    !Number.isFinite(dlpBalance) ||
+    !Number.isFinite(uaBalance) ||
+    dlpBalance < 0 ||
+    uaBalance < 0
+  ) {
+    throw new Error('Predeposit balance returned invalid data')
+  }
+  let resolvedDlpBalance = dlpBalance
+  let resolvedUaBalance = uaBalance
+  if (dlpBalance === 0 && uaBalance === 0) {
+    const transitioned = await callViewFunction('has_depositor_transitioned', [
       MAINNET_PREDEPOSIT_OBJECT,
-      userAddr,
+      normalizedUser,
     ])
-
-    const dlpBalance = Number(result[0]) / 10 ** USDC_DECIMALS
-    const uaBalance = Number(result[1]) / 10 ** USDC_DECIMALS
-    const totalDeposited = dlpBalance + uaBalance
-
-    // Find deposit time from cached depositor list for points calculation
-    const depositors = await getMainnetDepositors()
-    const depositor = depositors.find(
-      (d) => d.address.toLowerCase() === userAddr.toLowerCase()
-    )
-
-    const points = depositor
-      ? calculateDepositorPoints(depositor)
-      : calculatePointsFromAmount(totalDeposited)
-
-    return {
-      account: userAddr,
-      dlp_balance: dlpBalance,
-      ua_balance: uaBalance,
-      total_deposited: totalDeposited,
-      points,
-      first_deposit_time: depositor?.first_deposit_time,
+    const transitionedValue = transitioned[0] as unknown
+    if (transitionedValue === true || transitionedValue === 'true') {
+      const contributions = await getTransitionContributions(normalizedUser)
+      resolvedDlpBalance = contributions.dlp
+      resolvedUaBalance = contributions.ua
     }
-  } catch (error) {
-    console.error(`Error fetching balance for ${userAddr}:`, error)
-    return {
-      account: userAddr,
-      dlp_balance: 0,
-      ua_balance: 0,
-      total_deposited: 0,
-      points: 0,
-    }
+  }
+  const totalDeposited = resolvedDlpBalance + resolvedUaBalance
+
+  return {
+    account: normalizedUser,
+    dlp_balance: resolvedDlpBalance,
+    ua_balance: resolvedUaBalance,
+    total_deposited: totalDeposited,
+    points: 0,
   }
 }
 
@@ -226,6 +239,125 @@ let depositorsInFlight: Promise<MainnetDepositor[]> | null = null
 const DEPOSITORS_CACHE_TTL = 300_000 // 5 minutes
 const DEPOSITORS_FALLBACK_CACHE_TTL = 60_000
 const INDEXER_TIMEOUT_MS = 3_500
+const MAX_INDEXER_PAGES = 200
+const TRANSITION_CACHE_TTL_MS = 300_000
+const transitionCache = new Map<
+  string,
+  { data: { dlp: number; ua: number }; timestamp: number }
+>()
+
+async function getTransitionContributions(userAddr: string): Promise<{ dlp: number; ua: number }> {
+  const cached = transitionCache.get(userAddr)
+  if (cached && Date.now() - cached.timestamp < TRANSITION_CACHE_TTL_MS) return cached.data
+
+  const transitionFunction = `${MAINNET_PACKAGE}::predeposit::transition_depositors`
+  const query = `query {
+    account_transactions(
+      where: {
+        account_address: { _eq: "${userAddr}" }
+        user_transaction: { entry_function_id_str: { _eq: "${transitionFunction}" } }
+      }
+      order_by: { transaction_version: desc }
+      limit: 10
+    ) {
+      transaction_version
+    }
+  }`
+  const response = await fetch(INDEXER_URL, {
+    method: 'POST',
+    headers: aptosAuthHeaders(),
+    body: JSON.stringify({ query }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(INDEXER_TIMEOUT_MS),
+  })
+  if (!response.ok) throw new Error(`Transition index lookup failed (${response.status})`)
+
+  const payload = await response.json() as unknown
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Transition index lookup returned invalid data')
+  }
+  const payloadRecord = payload as Record<string, unknown>
+  if (payloadRecord.errors) throw new Error('Transition index lookup returned an error')
+  if (
+    !payloadRecord.data ||
+    typeof payloadRecord.data !== 'object' ||
+    Array.isArray(payloadRecord.data)
+  ) {
+    throw new Error('Transition index lookup returned invalid data')
+  }
+  const rows = (payloadRecord.data as Record<string, unknown>).account_transactions
+  if (!Array.isArray(rows)) throw new Error('Transition index lookup returned invalid data')
+
+  const versions = rows.map((value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('Transition index lookup returned an invalid version')
+    }
+    const version = Number((value as Record<string, unknown>).transaction_version)
+    if (!Number.isSafeInteger(version) || version < 0) {
+      throw new Error('Transition index lookup returned an invalid version')
+    }
+    return version
+  })
+
+  for (const version of versions) {
+    const transactionResponse = await fetch(`${FULLNODE_URL}/transactions/by_version/${version}`, {
+      headers: aptosAuthHeaders(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(FULLNODE_TIMEOUT_MS),
+    })
+    if (!transactionResponse.ok) {
+      throw new Error(`Transition transaction lookup failed (${transactionResponse.status})`)
+    }
+    const transaction = await transactionResponse.json() as unknown
+    if (!transaction || typeof transaction !== 'object' || Array.isArray(transaction)) {
+      throw new Error('Transition transaction returned invalid data')
+    }
+    const events = (transaction as Record<string, unknown>).events
+    if (!Array.isArray(events)) throw new Error('Transition transaction returned invalid data')
+
+    for (const value of events) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const event = value as Record<string, unknown>
+      if (
+        event.type !== `${MAINNET_PACKAGE}::predeposit::LaunchTransitionEvent` ||
+        !event.data ||
+        typeof event.data !== 'object' ||
+        Array.isArray(event.data)
+      ) {
+        continue
+      }
+      const data = event.data as Record<string, unknown>
+      if (
+        typeof data.depositor !== 'string' ||
+        !isValidAptosAddress(data.depositor) ||
+        normalizeAptosAddress(data.depositor, 'depositor').toLowerCase() !==
+          userAddr.toLowerCase() ||
+        typeof data.dlp_contribution !== 'string' ||
+        !/^\d+$/.test(data.dlp_contribution) ||
+        typeof data.ua_contribution !== 'string' ||
+        !/^\d+$/.test(data.ua_contribution)
+      ) {
+        continue
+      }
+      const contributions = {
+        dlp: Number(data.dlp_contribution) / 10 ** USDC_DECIMALS,
+        ua: Number(data.ua_contribution) / 10 ** USDC_DECIMALS,
+      }
+      if (
+        !Number.isFinite(contributions.dlp) ||
+        !Number.isFinite(contributions.ua) ||
+        contributions.dlp < 0 ||
+        contributions.ua < 0
+      ) {
+        throw new Error('Transition transaction returned invalid contributions')
+      }
+      transitionCache.set(userAddr, { data: contributions, timestamp: Date.now() })
+      return contributions
+    }
+  }
+
+  throw new Error('Transition contributions were not found')
+}
 
 export async function getMainnetDepositors(): Promise<MainnetDepositor[]> {
   // Check cache
@@ -287,7 +419,7 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
   let offset = 0
   const limit = 100
 
-  while (true) {
+  while (offset / limit < MAX_INDEXER_PAGES) {
     const query = `query {
       fungible_asset_activities(
         where: {
@@ -322,8 +454,7 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
     }
 
     if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`Indexer query failed: ${response.status} ${text}`)
+      throw new Error(`Indexer query failed (${response.status})`)
     }
 
     const data = await response.json()
@@ -337,6 +468,9 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
 
     if (events.length < limit) break
     offset += limit
+  }
+  if (offset / limit >= MAX_INDEXER_PAGES) {
+    throw new Error('Indexer pagination exceeded the safety limit')
   }
 
   // Group by depositor address
@@ -377,7 +511,11 @@ async function fetchDepositorsFromIndexer(): Promise<MainnetDepositor[]> {
 // ============================================================
 
 function calculateDepositorPoints(depositor: MainnetDepositor): number {
-  const depositTimeMs = new Date(depositor.first_deposit_time + 'Z').getTime()
+  const depositTime = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(depositor.first_deposit_time)
+    ? depositor.first_deposit_time
+    : `${depositor.first_deposit_time}Z`
+  const depositTimeMs = new Date(depositTime).getTime()
+  if (!Number.isFinite(depositTimeMs) || !Number.isFinite(depositor.total_deposited)) return 0
   const nowMs = Date.now()
   const secondsHeld = Math.max(0, (nowMs - depositTimeMs) / 1000)
   const amountUsd = depositor.total_deposited / 10 ** USDC_DECIMALS
@@ -431,7 +569,10 @@ export async function getMainnetLeaderboard(
 
 export async function getMainnetUserDepositEvents(
   userAddr: string,
-  options: { limit?: number } = {}
+  options: {
+    limit?: number
+    eventKind?: 'deposit' | 'withdraw' | 'promote'
+  } = {}
 ): Promise<Array<{
   event_kind: string
   fund_type: string
@@ -439,50 +580,159 @@ export async function getMainnetUserDepositEvents(
   balance_after: string
   timestamp: number
   transaction_version: number
+  tx_hash: string
 }>> {
-  const { limit = 50 } = options
-
-  try {
-    const query = `query {
-      fungible_asset_activities(
-        where: {
-          asset_type: { _eq: "${MAINNET_USDC_METADATA}" }
-          entry_function_id_str: { _eq: "${MAINNET_PACKAGE}::predeposit::deposit" }
-          type: { _eq: "0x1::fungible_asset::Withdraw" }
-          owner_address: { _eq: "${userAddr}" }
-        }
-        order_by: { transaction_timestamp: desc }
-        limit: ${limit}
-      ) {
-        transaction_version
-        amount
-        transaction_timestamp
-      }
-    }`
-
-    const response = await fetch(INDEXER_URL, {
-      method: 'POST',
-      headers: aptosAuthHeaders(),
-      body: JSON.stringify({ query }),
-    })
-
-    if (!response.ok) throw new Error(`Indexer query failed: ${response.status}`)
-
-    const data = await response.json()
-    if (data.errors) throw new Error(data.errors[0]?.message)
-
-    const events = data.data?.fungible_asset_activities || []
-
-    return events.map((e: { amount: number; transaction_timestamp: string; transaction_version: number }) => ({
-      event_kind: 'deposit',
-      fund_type: 'dlp',
-      amount: (Number(e.amount) / 10 ** USDC_DECIMALS).toFixed(2),
-      balance_after: '0', // Would need cumulative calc
-      timestamp: new Date(e.transaction_timestamp + 'Z').getTime() / 1000,
-      transaction_version: Number(e.transaction_version),
-    }))
-  } catch (error) {
-    console.error(`Error fetching deposit events for ${userAddr}:`, error)
-    return []
+  const { limit = 50, eventKind } = options
+  if (!isValidAptosAddress(userAddr)) throw new Error('Invalid Aptos account address')
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new Error('limit must be an integer from 1 to 100')
   }
+  const normalizedUser = normalizeAptosAddress(userAddr, 'account')
+  const relevantFunctions = [
+    `${MAINNET_PACKAGE}::predeposit::deposit`,
+    `${MAINNET_PACKAGE}::predeposit::withdraw_dlp`,
+    `${MAINNET_PACKAGE}::predeposit::withdraw_ua_from_entry`,
+  ]
+
+  const query = `query {
+    user_transactions(
+      where: {
+        sender: { _eq: "${normalizedUser}" }
+        entry_function_id_str: { _in: ${JSON.stringify(relevantFunctions)} }
+      }
+      order_by: { version: desc }
+      limit: ${limit}
+    ) {
+      version
+    }
+  }`
+
+  const response = await fetch(INDEXER_URL, {
+    method: 'POST',
+    headers: aptosAuthHeaders(),
+    body: JSON.stringify({ query }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(INDEXER_TIMEOUT_MS),
+  })
+
+  if (!response.ok) throw new Error(`Indexer query failed (${response.status})`)
+
+  const data = await response.json() as unknown
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Indexer returned invalid transaction data')
+  }
+  const dataRecord = data as Record<string, unknown>
+  if (dataRecord.errors) throw new Error('Indexer returned a query error')
+  if (!dataRecord.data || typeof dataRecord.data !== 'object' || Array.isArray(dataRecord.data)) {
+    throw new Error('Indexer returned invalid transaction data')
+  }
+  const transactionRows = (dataRecord.data as Record<string, unknown>).user_transactions
+  if (!Array.isArray(transactionRows)) {
+    throw new Error('Indexer returned invalid transaction data')
+  }
+  const versions: number[] = transactionRows.map((row: unknown) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('Indexer returned an invalid transaction version')
+    }
+    const version = Number((row as Record<string, unknown>).version)
+    if (!Number.isSafeInteger(version) || version < 0) {
+      throw new Error('Indexer returned an invalid transaction version')
+    }
+    return version
+  })
+
+  const transactions: unknown[] = []
+  for (let offset = 0; offset < versions.length; offset += 10) {
+    const batch = await Promise.all(versions.slice(offset, offset + 10).map(async (version: number) => {
+      const transactionResponse = await fetch(`${FULLNODE_URL}/transactions/by_version/${version}`, {
+        headers: aptosAuthHeaders(),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(FULLNODE_TIMEOUT_MS),
+      })
+      if (!transactionResponse.ok) {
+        throw new Error(`Transaction ${version} lookup failed (${transactionResponse.status})`)
+      }
+      return transactionResponse.json() as Promise<unknown>
+    }))
+    transactions.push(...batch)
+  }
+
+  const parsedEvents: Array<{
+    event_kind: string
+    fund_type: string
+    amount: string
+    balance_after: string
+    timestamp: number
+    transaction_version: number
+    tx_hash: string
+  }> = []
+
+  for (const value of transactions) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('Fullnode returned invalid transaction data')
+    }
+    const transaction = value as Record<string, unknown>
+    const transactionVersion = Number(transaction.version)
+    const timestampMicros = typeof transaction.timestamp === 'string'
+      ? Number(transaction.timestamp)
+      : Number.NaN
+    const txHash = typeof transaction.hash === 'string' ? transaction.hash : ''
+    if (
+      !Number.isSafeInteger(transactionVersion) ||
+      transactionVersion < 0 ||
+      !Number.isFinite(timestampMicros) ||
+      timestampMicros < 0 ||
+      !/^0x[0-9a-fA-F]{64}$/.test(txHash) ||
+      !Array.isArray(transaction.events)
+    ) {
+      throw new Error('Fullnode returned invalid transaction fields')
+    }
+
+    for (const rawEvent of transaction.events) {
+      if (!rawEvent || typeof rawEvent !== 'object' || Array.isArray(rawEvent)) continue
+      const event = rawEvent as Record<string, unknown>
+      if (typeof event.type !== 'string' || !event.data || typeof event.data !== 'object') continue
+      const eventData = event.data as Record<string, unknown>
+      if (
+        typeof eventData.depositor !== 'string' ||
+        !isValidAptosAddress(eventData.depositor) ||
+        normalizeAptosAddress(eventData.depositor, 'depositor').toLowerCase() !==
+          normalizedUser.toLowerCase() ||
+        typeof eventData.amount !== 'string' ||
+        !/^\d+$/.test(eventData.amount)
+      ) {
+        continue
+      }
+
+      let kind: 'deposit' | 'withdraw' | 'promote' | null = null
+      let fundType: 'ua' | 'dlp' = 'ua'
+      if (event.type === `${MAINNET_PACKAGE}::predeposit::DepositEvent`) {
+        kind = 'deposit'
+      } else if (event.type === `${MAINNET_PACKAGE}::predeposit::PromoteEvent`) {
+        kind = 'promote'
+        fundType = 'dlp'
+      } else if (event.type === `${MAINNET_PACKAGE}::predeposit::WithdrawEvent`) {
+        kind = 'withdraw'
+        fundType = eventData.is_dlp_else_ua === true || eventData.is_dlp_else_ua === 'true'
+          ? 'dlp'
+          : 'ua'
+      }
+      if (!kind || (eventKind && kind !== eventKind)) continue
+
+      const rawAmount = BigInt(eventData.amount)
+      const cents = (rawAmount + 5_000n) / 10_000n
+      const amount = `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`
+      parsedEvents.push({
+        event_kind: kind,
+        fund_type: fundType,
+        amount,
+        balance_after: '',
+        timestamp: timestampMicros / 1_000_000,
+        transaction_version: transactionVersion,
+        tx_hash: txHash,
+      })
+    }
+  }
+
+  return parsedEvents.slice(0, limit)
 }

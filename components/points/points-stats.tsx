@@ -1,43 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Trophy, TrendingUp, Users, Wallet, RefreshCw, Loader2 } from "lucide-react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { usePointsData } from "@/contexts/points-data-context"
 import { ShareCard } from "./share-card"
 
 export function PointsStats() {
-  const { account, connected } = useWallet()
+  const { connected } = useWallet()
   const { globalStats, userData, vaultUserData, loading, refresh } = usePointsData()
-  const [countdown, setCountdown] = useState<string>('')
-
-  useEffect(() => {
-    const launchDate = new Date('2026-02-11T00:30:00Z')
-
-    const updateCountdown = () => {
-      const now = new Date()
-      const diff = now.getTime() - launchDate.getTime()
-
-      if (diff < 0) {
-        const absDiff = Math.abs(diff)
-        const d = Math.floor(absDiff / (1000 * 60 * 60 * 24))
-        const h = Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-        const m = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60))
-        const s = Math.floor((absDiff % (1000 * 60)) / 1000)
-        setCountdown(`${d}d ${h}h ${m}m ${s}s`)
-        return
-      }
-
-      const d = Math.floor(diff / (1000 * 60 * 60 * 24))
-      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      setCountdown(`${d}d ${h}h ${m}m elapsed`)
-    }
-
-    updateCountdown()
-    const interval = setInterval(updateCountdown, 1000)
-    return () => clearInterval(interval)
-  }, [])
 
   const formatNumber = (num: number | string) => {
     const n = typeof num === 'string' ? parseFloat(num) : num
@@ -70,7 +40,7 @@ export function PointsStats() {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] sm:text-xs font-mono text-zinc-500 uppercase tracking-widest whitespace-nowrap">
-            DLP
+            AMPs
           </span>
           {isLive && (
             <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-primary whitespace-nowrap">
@@ -78,9 +48,7 @@ export function PointsStats() {
               Live
             </span>
           )}
-          {countdown && (
-            <span className="text-[10px] font-mono text-zinc-600 hidden sm:inline">{countdown}</span>
-          )}
+          <span className="text-[10px] font-mono text-zinc-600 hidden sm:inline">Season 1</span>
         </div>
         <button
           onClick={refresh}
@@ -112,7 +80,7 @@ export function PointsStats() {
         <div className="bg-black/40 border border-white/10 px-2.5 py-2">
           <div className="text-zinc-500 text-[9px] sm:text-[10px] font-mono uppercase mb-0.5 flex items-center gap-1">
             <Wallet className="w-3 h-3 shrink-0 hidden sm:block" />
-            Deposited
+            TVL
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
             {globalStat(() => formatNumber(globalStats!.total_deposited || 0))}
@@ -132,7 +100,7 @@ export function PointsStats() {
         <div className="bg-black/40 border border-white/10 px-2.5 py-2">
           <div className="text-zinc-500 text-[9px] sm:text-[10px] font-mono uppercase mb-0.5 flex items-center gap-1">
             <Trophy className="w-3 h-3 shrink-0 hidden sm:block" />
-            Points
+            AMPs
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
             {globalStat(() =>
@@ -144,7 +112,7 @@ export function PointsStats() {
         <div className="bg-black/40 border border-white/10 px-2.5 py-2">
           <div className="text-zinc-500 text-[9px] sm:text-[10px] font-mono uppercase mb-0.5 flex items-center gap-1">
             <Users className="w-3 h-3 shrink-0 hidden sm:block" />
-            Depositors
+            Users
           </div>
           <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
             {globalStat(() => (globalStats!.depositor_count || 0).toLocaleString())}
@@ -159,6 +127,7 @@ export function PointsStats() {
             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Your Stats</span>
             <ShareCard
               points={userData?.points || 0}
+              rank={userData?.rank ?? undefined}
               totalDeposited={vaultUserData?.totalDeposited?.toString() || userData?.total_deposited || '0'}
               dlpBalance={vaultUserData?.currentValue?.toString() || userData?.dlp_balance || '0'}
             />
@@ -166,7 +135,9 @@ export function PointsStats() {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">DLP Value</div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
+                {vaultUserData?.currentValue ? 'DLP Value' : 'DLP Contributed'}
+              </div>
               <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
                 {formatNumber(vaultUserData?.currentValue || userData?.dlp_balance || '0')}
               </div>
@@ -180,26 +151,20 @@ export function PointsStats() {
             </div>
 
             <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Vault PnL</div>
-              <div className={`text-base sm:text-lg font-mono font-bold tabular-nums leading-tight ${
-                (vaultUserData?.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}>
-                {vaultUserData?.totalPnl != null
-                  ? `${vaultUserData.totalPnl >= 0 ? '+' : ''}${formatNumber(Math.abs(vaultUserData.totalPnl))}`
-                  : '$0.00'}
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Vault AMPs</div>
+              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
+                {(userData?.vault_points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
-                {(userData?.points || 0) > 0 ? 'Points (est.)' : 'Predeposit'}
+                Total AMPs
               </div>
-              <div className="text-base sm:text-lg font-mono font-bold text-zinc-400 tabular-nums leading-tight">
-                {(userData?.points || 0) > 0
-                  ? (userData?.points || 0) < 1
-                    ? (userData?.points || 0).toFixed(4)
-                    : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                  : formatNumber(userData?.ua_balance || '0')}
+              <div className="text-base sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
+                {(userData?.points || 0) < 1
+                  ? (userData?.points || 0).toFixed(4)
+                  : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </div>
             </div>
           </div>

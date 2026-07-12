@@ -5,11 +5,12 @@ import { History, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, ExternalLink
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 
 interface BalanceEvent {
-  timestamp: string
+  timestamp: string | number
   event_kind: 'deposit' | 'withdraw' | 'promote' | 'transition'
   fund_type: 'ua' | 'dlp'
   amount: string
   tx_hash?: string
+  transaction_version?: number
 }
 
 export function DepositHistory() {
@@ -34,6 +35,9 @@ export function DepositHistory() {
 
       const res = await fetch(`/api/predeposit/events?${params}`)
       const data = await res.json()
+      if (!res.ok || data.unavailable) {
+        throw new Error(data.error || 'Deposit history is temporarily unavailable')
+      }
       setEvents(data.events || [])
     } catch (error) {
       console.error('Error fetching deposit history:', error)
@@ -55,8 +59,11 @@ export function DepositHistory() {
     return `$${n.toFixed(2)}`
   }
 
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp)
+  const formatDate = (timestamp: string | number) => {
+    const numericTimestamp = typeof timestamp === 'number' && timestamp < 1_000_000_000_000
+      ? timestamp * 1000
+      : timestamp
+    const date = new Date(numericTimestamp)
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -171,46 +178,49 @@ export function DepositHistory() {
               </div>
             ) : (
               <div className="divide-y divide-white/5">
-                {events.map((event, idx) => (
-                  <div
-                    key={`${event.timestamp}-${idx}`}
-                    className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-black/40 border border-white/10">
-                        {getEventIcon(event.event_kind)}
+                {events.map((event, idx) => {
+                  const transactionRef = event.tx_hash ?? event.transaction_version
+                  return (
+                    <div
+                      key={`${event.timestamp}-${idx}`}
+                      className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-black/40 border border-white/10">
+                          {getEventIcon(event.event_kind)}
+                        </div>
+                        <div>
+                          <div className={`text-sm font-mono ${getEventColor(event.event_kind)}`}>
+                            {getEventLabel(event.event_kind, event.fund_type)}
+                          </div>
+                          <div className="text-[10px] font-mono text-zinc-600">
+                            {formatDate(event.timestamp)}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className={`text-sm font-mono ${getEventColor(event.event_kind)}`}>
-                          {getEventLabel(event.event_kind, event.fund_type)}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className={`text-lg font-mono font-bold ${getEventColor(event.event_kind)}`}>
+                            {event.event_kind === 'deposit' ? '+' : ''}{formatAmount(event.amount)}
+                          </div>
+                          <div className="text-[10px] font-mono text-zinc-600 uppercase">
+                            {event.fund_type}
+                          </div>
                         </div>
-                        <div className="text-[10px] font-mono text-zinc-600">
-                          {formatDate(event.timestamp)}
-                        </div>
+                        {transactionRef !== undefined && (
+                          <a
+                            href={`https://explorer.aptoslabs.com/txn/${transactionRef}?network=mainnet`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-zinc-500 hover:text-primary transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className={`text-lg font-mono font-bold ${getEventColor(event.event_kind)}`}>
-                          {event.event_kind === 'deposit' ? '+' : ''}{formatAmount(event.amount)}
-                        </div>
-                        <div className="text-[10px] font-mono text-zinc-600 uppercase">
-                          {event.fund_type}
-                        </div>
-                      </div>
-                      {event.tx_hash && (
-                        <a
-                          href={`https://explorer.aptoslabs.com/txn/${event.tx_hash}?network=testnet`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-zinc-500 hover:text-primary transition-colors"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

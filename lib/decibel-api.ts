@@ -14,6 +14,7 @@ import { getActiveNetwork } from './decibel-sdk'
 
 const TESTNET_API_URL = 'https://api.testnet.aptoslabs.com/decibel/api/v1'
 const MAINNET_API_URL = 'https://api.mainnet.aptoslabs.com/decibel/api/v1'
+const VAULT_READ_TIMEOUT_MS = 12_000
 
 export type VolumeWindow = '7d' | '14d' | '30d' | '90d'
 
@@ -376,9 +377,10 @@ export async function getVaults(
     network?: 'testnet' | 'mainnet'
     vaultType?: 'user' | 'protocol'
     limit?: number
+    strict?: boolean
   } = {}
 ): Promise<{ items: VaultInfo[]; total_value_locked?: number; total_count?: number }> {
-  const { network = getActiveNetwork(), vaultType, limit = 50 } = options
+  const { network = getActiveNetwork(), vaultType, limit = 50, strict = false } = options
 
   try {
     const baseUrl = getBaseUrl(network)
@@ -389,20 +391,29 @@ export async function getVaults(
 
     const response = await fetch(`${baseUrl}/vaults?${params}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(VAULT_READ_TIMEOUT_MS),
     })
 
     if (!response.ok) {
+      if (strict) throw new Error(`Decibel vaults request failed (${response.status})`)
       console.error(`Decibel vaults API error: ${response.status} ${response.statusText}`)
       return { items: [] }
     }
 
     const data = await response.json()
+    const items = data?.items || (Array.isArray(data) ? data : null)
+    if (!Array.isArray(items)) {
+      if (strict) throw new Error('Decibel vaults returned invalid data')
+      return { items: [] }
+    }
     return {
-      items: data.items || (Array.isArray(data) ? data : []),
+      items,
       total_value_locked: data.total_value_locked,
       total_count: data.total_count,
     }
   } catch (error) {
+    if (strict) throw error
     console.error('Error fetching vaults:', error)
     return { items: [] }
   }
@@ -413,24 +424,34 @@ export async function getVaults(
  */
 export async function getAccountVaultPerformance(
   userAddr: string,
-  network: 'testnet' | 'mainnet' = getActiveNetwork()
+  network: 'testnet' | 'mainnet' = getActiveNetwork(),
+  strict = false,
 ): Promise<VaultPerformance[]> {
   try {
     const baseUrl = getBaseUrl(network)
     const apiKey = getApiKey()
 
-    const response = await fetch(`${baseUrl}/account_vault_performance?account=${userAddr}`, {
+    const params = new URLSearchParams({ account: userAddr, limit: '1000', offset: '0' })
+    const response = await fetch(`${baseUrl}/account_vault_performance?${params}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(VAULT_READ_TIMEOUT_MS),
     })
 
     if (!response.ok) {
+      if (strict) throw new Error(`Decibel vault performance request failed (${response.status})`)
       console.error(`Decibel vault performance API error: ${response.status} ${response.statusText}`)
       return []
     }
 
     const data = await response.json()
+    if (!Array.isArray(data) && !Array.isArray(data?.items)) {
+      if (strict) throw new Error('Decibel vault performance returned invalid data')
+      return []
+    }
     return normalizeArrayResponse<VaultPerformance>(data)
   } catch (error) {
+    if (strict) throw error
     console.error('Error fetching vault performance:', error)
     return []
   }

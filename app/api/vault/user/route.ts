@@ -1,15 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccountVaultPerformance } from '@/lib/decibel-api'
+import { checkApiRateLimit } from '@/lib/api-rate-limit'
+import { isValidAptosAddress, normalizeAptosAddress } from '@/lib/decibel'
+
+export const dynamic = 'force-dynamic'
+
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
 
 export async function GET(request: NextRequest) {
+  const rate = checkApiRateLimit(request, 'vault-user', 30, 60_000)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'rate limited', retryAfterS: rate.retryAfterS },
+      { status: 429, headers: { ...NO_STORE_HEADERS, 'Retry-After': String(rate.retryAfterS ?? 60) } },
+    )
+  }
   const account = request.nextUrl.searchParams.get('account')
 
-  if (!account) {
-    return NextResponse.json({ error: 'Missing account parameter' }, { status: 400 })
+  if (!isValidAptosAddress(account)) {
+    return NextResponse.json(
+      { error: 'A valid account parameter is required' },
+      { status: 400, headers: NO_STORE_HEADERS },
+    )
   }
+  const normalizedAccount = normalizeAptosAddress(account, 'account')
 
   try {
-    const performances = await getAccountVaultPerformance(account)
+    const performances = await getAccountVaultPerformance(normalizedAccount, 'mainnet', true)
 
     // Sum across all vaults the user has deposited into
     let totalDeposited = 0
@@ -46,14 +63,18 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      account,
+      account: normalizedAccount,
       totalDeposited,
       currentValue,
       totalPnl,
       vaults,
-    })
+    }, { headers: NO_STORE_HEADERS })
   } catch (error) {
-    console.error('Error fetching vault user data:', error)
-    return NextResponse.json({ error: 'Failed to fetch vault data' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Vault user lookup failed'
+    console.error('Error fetching vault user data:', message)
+    return NextResponse.json(
+      { unavailable: true, error: 'Vault data is temporarily unavailable' },
+      { status: 502, headers: NO_STORE_HEADERS },
+    )
   }
 }

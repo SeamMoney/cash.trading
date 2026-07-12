@@ -15,7 +15,9 @@ const NAV_ITEMS = [
   { href: "/trade", label: "Trade" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
-  { href: "/automation", label: "Automation" },
+  ...(process.env.NODE_ENV !== "production"
+    ? [{ href: "/automation", label: "Automation" }]
+    : []),
   { href: "/points", label: "Points" },
 ];
 

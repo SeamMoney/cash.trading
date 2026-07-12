@@ -234,6 +234,7 @@ const SIG_BG    = [
 
 interface Props {
   indicatorAddr: string;
+  packageAddress?: string;
   asset: string;
   indicatorType?: number;
   shortPeriod?: number;
@@ -245,7 +246,7 @@ interface Props {
 }
 
 export function OnChainChart({
-  indicatorAddr, asset,
+  indicatorAddr, packageAddress, asset,
   indicatorType = 0, shortPeriod = 10, longPeriod = 30, thirdPeriod = 0,
   refreshMs = 15_000, decibelMarket, decibelSize = 0.001,
 }: Props) {
@@ -333,8 +334,11 @@ export function OnChainChart({
     const controller = new AbortController();
     onChainAbortRef.current = controller;
     try {
+      const packageQuery = packageAddress
+        ? `&pkg=${encodeURIComponent(packageAddress)}`
+        : "";
       const res = await fetch(
-        `/api/launchpad/on-chain?addr=${indicatorAddr}`,
+        `/api/launchpad/on-chain?addr=${encodeURIComponent(indicatorAddr)}${packageQuery}`,
         { signal: controller.signal },
       );
       const data = await res.json().catch(() => null) as OnChainState | null;
@@ -361,7 +365,7 @@ export function OnChainChart({
         });
       }
     }
-  }, [indicatorAddr]);
+  }, [indicatorAddr, packageAddress]);
 
   useEffect(() => {
     void fetchCandles();

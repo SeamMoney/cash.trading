@@ -42,6 +42,7 @@ export function BotDashboard() {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [indicatorNames, setIndicatorNames] = useState<Record<string, string>>({});
+  const [indicatorPackages, setIndicatorPackages] = useState<Record<string, string>>({});
 
   // Live data
   const [livePrice, setLivePrice] = useState(0);
@@ -76,10 +77,13 @@ export function BotDashboard() {
         if (!res.ok) return;
         const data = await res.json();
         const map: Record<string, string> = {};
+        const packages: Record<string, string> = {};
         for (const ind of data.indicators ?? []) {
           map[ind.address] = ind.name;
+          if (typeof ind.pkg === "string" && ind.pkg) packages[ind.address] = ind.pkg;
         }
         setIndicatorNames(map);
+        setIndicatorPackages(packages);
       } catch { /* ignore */ }
     }
     loadNames();
@@ -92,6 +96,7 @@ export function BotDashboard() {
   const botName = bot
     ? (bot.indicatorName || indicatorNames[bot.indicatorAddr] || bot.indicatorAddr?.slice(0, 10))
     : "Bot";
+  const botPackage = bot?.indicatorAddr ? indicatorPackages[bot.indicatorAddr] : undefined;
 
   // ── Fast Pyth price polling (every 5s) ──────────────────────────────────
   useEffect(() => {
@@ -137,12 +142,15 @@ export function BotDashboard() {
     let cancelled = false;
     async function poll() {
       try {
-        const res = await fetch(`/api/launchpad/on-chain?addr=${bot.indicatorAddr}&type=state`);
+        const packageQuery = botPackage ? `&pkg=${encodeURIComponent(botPackage)}` : "";
+        const res = await fetch(`/api/launchpad/on-chain?addr=${encodeURIComponent(bot.indicatorAddr)}&type=state${packageQuery}`);
         if (!res.ok || cancelled) return;
         const d = await res.json();
         if (!cancelled) {
           const newSig = d.signal ?? 0;
-          const price = typeof d.lastPrice === "number" ? (d.lastPrice > 1000 ? d.lastPrice : d.lastPrice / 1e8) : 0;
+          const price = typeof d.lastPrice === "number" && Number.isFinite(d.lastPrice) && d.lastPrice > 0
+            ? d.lastPrice
+            : 0;
 
           // Detect signal change and show toast
           if (prevSignalRef.current >= 0 && newSig !== prevSignalRef.current && newSig !== 0) {
@@ -159,7 +167,9 @@ export function BotDashboard() {
           setOnChainState({
             signal: newSig,
             lastPrice: price,
-            entryPrice: typeof d.entryPrice === "number" ? (d.entryPrice > 1000 ? d.entryPrice : d.entryPrice / 1e8) : 0,
+            entryPrice: typeof d.entryPrice === "number" && Number.isFinite(d.entryPrice) && d.entryPrice > 0
+              ? d.entryPrice
+              : 0,
           });
         }
       } catch { /* ignore */ }
@@ -167,7 +177,7 @@ export function BotDashboard() {
     poll();
     const t = setInterval(poll, 15_000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [bot?.indicatorAddr]);
+  }, [bot?.indicatorAddr, botPackage]);
 
   async function cancelJob(jobId: number) {
     setCancellingId(jobId);
@@ -315,6 +325,7 @@ export function BotDashboard() {
         <div className="rounded-2xl border border-[#2a2a2a] overflow-hidden">
           <OnChainChart
             indicatorAddr={bot.indicatorAddr}
+            packageAddress={botPackage}
             asset={asset}
             indicatorType={0}
             shortPeriod={10}

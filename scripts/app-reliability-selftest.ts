@@ -37,6 +37,9 @@ const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
 const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
 const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
+const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
+const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
+const botOrderHistory = readFileSync("components/bot/order-history-table.tsx", "utf8");
 const decibelPoints = readFileSync("lib/decibel-points.ts", "utf8");
 const pointsStats = readFileSync("components/points/points-stats.tsx", "utf8");
 const pointsCalculator = readFileSync("components/points/points-calculator.tsx", "utf8");
@@ -57,6 +60,7 @@ const launchpadSignalsRoute = readFileSync("app/api/launchpad/signals/route.ts",
 const launchpadCurveRoute = readFileSync("app/api/launchpad/curve/route.ts", "utf8");
 const launchpadIndicatorsRoute = readFileSync("app/api/launchpad/indicators/route.ts", "utf8");
 const launchpadCreateRoute = readFileSync("app/api/launchpad/create/route.ts", "utf8");
+const launchpadVerifyRoute = readFileSync("app/api/launchpad/verify/route.ts", "utf8");
 const creatorDashboard = readFileSync("components/launchpad/CreatorDashboard.tsx", "utf8");
 const launchpadWithdrawRoute = readFileSync("app/api/launchpad/withdraw/route.ts", "utf8");
 const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.ts", "utf8");
@@ -124,6 +128,9 @@ assert.match(vaultRoute, /status: "active"/);
 assert.match(vaultRoute, /remainingOffsets\.map\(fetchPage\)/);
 assert.match(vaultRoute, /s-maxage=30, stale-while-revalidate=300/);
 assert.match(vaultRoute, /next: \{ revalidate: 30 \}/);
+assert.match(vaultRoute, /status: 502, headers: VAULT_UNAVAILABLE_HEADERS/);
+assert.match(vaultRoute, /function validatePage/);
+assert.match(vaultRoute, /uniqueVaults\.size !== firstPage\.total_count/);
 assert.ok(!vaultRoute.includes("/vaults?limit=50"), "vault discovery must not stop at 50");
 assert.ok(
   !vaultRoute.includes("v.status === \"active\" && (v.tvl ?? 0) > 0"),
@@ -215,6 +222,21 @@ assert.match(vaultUserRoute, /'mainnet', true/);
 assert.match(decibelPoints, /typeof value !== 'number'/);
 assert.match(readFileSync("lib/decibel-api.ts", "utf8"), /VAULT_READ_TIMEOUT_MS = 12_000/);
 assert.match(cashRewardsRoute, /reason: 'database_not_configured'/);
+assert.match(cashRewardsRoute, /checkApiRateLimit\(request, 'cash-rewards-read'/);
+assert.match(cashRewardsRoute, /checkApiRateLimit\(request, 'cash-rewards-process'/);
+assert.match(cashRewardsRoute, /isValidAptosAddress\(rawWalletAddress\)/);
+assert.match(cashRewardsRoute, /MAX_BODY_BYTES = 4_000/);
+for (const [name, source] of [
+  ["dashboard history", dashboardHistory],
+  ["bot status history", botStatusMonitor],
+  ["bot order history", botOrderHistory],
+] as const) {
+  assert.match(source, /explorerTxUrl/);
+  assert.ok(
+    !source.includes("?network=testnet"),
+    `${name} must follow the configured Decibel network`,
+  );
+}
 assert.match(legacyBacktestRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.match(launchpadBacktestRoute, /A valid indicatorAddr is required/);
 assert.match(launchpadBacktestRoute, /numSims must be an integer from 1 to 10,000/);
@@ -244,7 +266,21 @@ assert.match(launchpadSignalsRoute, /streamUrl\.searchParams\.set\("indicators"/
 assert.match(launchpadSignalStreamRoute, /requested\.length > 32/);
 assert.match(launchpadSignalStreamRoute, /isProprietarySignalIndicator/);
 assert.match(launchpadSignalStreamRoute, /checkApiRateLimit\(req, "launchpad-signal-stream"/);
+assert.match(launchpadVerifyRoute, /checkApiRateLimit\(req, "launchpad-verify"/);
+assert.match(launchpadVerifyRoute, /SOURCE_HASH_RE/);
+assert.match(launchpadVerifyRoute, /clientConfig: \{ API_KEY: apiKey \}/);
+assert.match(launchpadVerifyRoute, /withTimeout/);
+assert.match(launchpadVerifyRoute, /artifact_registry_unavailable/);
+assert.match(launchpadVerifyRoute, /registryUnavailable/);
 assert.match(launchpadCurveRoute, /bonding_curve_not_deployed/);
+assert.match(launchpadCurveRoute, /checkApiRateLimit\(req, "launchpad-curve-read"/);
+assert.match(launchpadCurveRoute, /checkApiRateLimit\(req, "launchpad-curve-payload"/);
+assert.match(launchpadCurveRoute, /const MAX_BODY_BYTES = 4_000/);
+assert.match(launchpadCurveRoute, /const U64_MAX/);
+assert.ok(
+  launchpadCurveRoute.indexOf("if (!launchpadPackage)") < launchpadCurveRoute.indexOf("const rawBody"),
+  "the disabled bonding curve must fail closed before reading a request body",
+);
 assert.ok(!launchpadCurveRoute.includes("currentPrice: 0.00005"), "bonding-curve prices must not be fabricated");
 assert.match(launchpadIndicatorsRoute, /discoverOnChainIndicators/);
 assert.match(launchpadIndicatorsRoute, /checkApiRateLimit\(req, "launchpad-indicators"/);
@@ -259,6 +295,12 @@ assert.ok(!launchpadCreateRoute.includes("Math.random"), "strategy creation must
 assert.ok(!launchpadCreateRoute.includes("indicatorRegistry"), "unconfirmed strategies must not enter the marketplace");
 assert.match(launchpadCreateRoute, /indicatorAddr: null/);
 assert.match(launchpadCreateRoute, /pineScript\.length > 100_000/);
+assert.match(launchpadCreateRoute, /checkApiRateLimit\(req, "launchpad-create"/);
+assert.match(launchpadCreateRoute, /MAX_BODY_BYTES = 120_000/);
+assert.ok(
+  !launchpadCreateRoute.includes("{ error: message }"),
+  "transpiler internals must not leak to clients",
+);
 assert.match(launchpadDeployForm, /IndicatorCreated/);
 assert.match(launchpadDeployForm, /LAUNCHPAD_CONTRACT,\s*\]\s*,/);
 assert.match(launchpadDeployForm, /::indicator::set_proprietary/);

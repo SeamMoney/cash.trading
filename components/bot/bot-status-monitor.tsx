@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
 import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, Timer, Square, X, Loader2, Coins } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { explorerTxUrl } from "@/lib/constants"
 
 // Size decimals for each market (for proper display) - all markets now use 8 decimals
 const SIZE_DECIMALS: Record<string, number> = {
@@ -1172,7 +1173,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     </div>
                     {order.txHash && order.txHash !== 'waiting' && (
                       <a
-                        href={`https://explorer.aptoslabs.com/txn/${order.txHash}?network=testnet`}
+                        href={explorerTxUrl(order.txHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[9px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"

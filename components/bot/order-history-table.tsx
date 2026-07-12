@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { ExternalLink, TrendingUp, TrendingDown, Clock, Check, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { explorerTxUrl } from "@/lib/constants"
 
 interface OrderHistoryProps {
   orders: Array<{
@@ -115,7 +116,7 @@ export function OrderHistoryTable({ orders, currentSessionId }: OrderHistoryProp
 
                 {order.txHash && (
                   <a
-                    href={`https://explorer.aptoslabs.com/txn/${order.txHash}?network=testnet`}
+                    href={explorerTxUrl(order.txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 text-primary hover:text-primary/80 text-xs"

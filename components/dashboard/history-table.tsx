@@ -8,6 +8,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { useMockData } from "@/contexts/mock-data-context"
 import { MOCK_TRADES } from "@/lib/mock-data"
+import { explorerTxUrl } from "@/lib/constants"
 
 interface Trade {
   id: string
@@ -238,7 +239,7 @@ export function HistoryTable() {
                   <TableCell className="text-right pr-6">
                     {trade.txHash && trade.txHash !== 'waiting' ? (
                       <a
-                        href={`https://explorer.aptoslabs.com/txn/${trade.txHash}?network=testnet`}
+                        href={explorerTxUrl(trade.txHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-xs font-mono text-zinc-500 hover:text-primary transition-colors"
@@ -349,7 +350,7 @@ export function HistoryTable() {
               {trade.txHash && trade.txHash !== 'waiting' && (
                 <div className="pl-3 pt-2 border-t border-white/5">
                   <a
-                    href={`https://explorer.aptoslabs.com/txn/${trade.txHash}?network=testnet`}
+                    href={explorerTxUrl(trade.txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-mono text-zinc-500 hover:text-primary transition-colors"

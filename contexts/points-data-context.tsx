@@ -139,6 +139,9 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false)
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const mountedRef = useRef(true)
+  const requestIdRef = useRef(0)
+  const activeAddrRef = useRef(addr)
+  activeAddrRef.current = addr
 
   useEffect(() => {
     const cached = readCache(addr)
@@ -152,6 +155,13 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
   }, [addr])
 
   const fetchAll = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    const isCurrentRequest = () => (
+      mountedRef.current
+      && requestIdRef.current === requestId
+      && activeAddrRef.current === addr
+    )
+
     if (isMockMode) {
       setGlobalStats({
         total_points: 1049,
@@ -203,7 +213,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
       // 1) User points — FASTEST, single view function, render the instant it lands
       if (addr) {
         userJsonP.then((json) => {
-          if (!mountedRef.current || !json) return
+          if (!isCurrentRequest() || !json) return
           const ud: UserData = {
             points: json.points || 0,
             dlp_balance: json.dlp_balance || '0',
@@ -224,7 +234,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
       // 1b) Vault user data — fast, render immediately
       if (addr) {
         vaultUserP.then((json) => {
-          if (!mountedRef.current || !json) return
+          if (!isCurrentRequest() || !json) return
           const vd: VaultUserData = {
             totalDeposited: json.totalDeposited || 0,
             currentValue: json.currentValue || 0,
@@ -239,7 +249,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
       // 2) Global stats — medium speed, render when ready
       // Also merge vault TVL data
       Promise.all([totalJsonP, vaultTotalP]).then(([predeposit, vaultTotal]) => {
-        if (!mountedRef.current) return
+        if (!isCurrentRequest()) return
         const merged = { ...predeposit }
         if (vaultTotal) {
           merged.vault_tvl = vaultTotal.totalTvl || 0
@@ -262,7 +272,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
           setGlobalStats(merged)
         }
       }).catch(() => {}).finally(() => {
-        if (mountedRef.current) setLoading(false)
+        if (isCurrentRequest()) setLoading(false)
       })
 
       // 3) Leaderboard — slowest, wait for all to finish for user injection
@@ -273,7 +283,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         vaultUserP.catch(() => null),
       ])
 
-      if (!mountedRef.current) return
+      if (!isCurrentRequest()) return
 
       // Use already-resolved user data, or parse now if the .then hasn't fired yet
       const predepositData = resolvedUser || (userJson ? {
@@ -379,7 +389,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error fetching points data:', error)
     } finally {
-      if (mountedRef.current) {
+      if (isCurrentRequest()) {
         setLoading(false)
         setLeaderboardLoading(false)
       }
@@ -403,6 +413,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(fetchAll, 30000)
     return () => {
       mountedRef.current = false
+      requestIdRef.current += 1
       clearInterval(interval)
     }
   }, [fetchAll])

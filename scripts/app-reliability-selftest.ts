@@ -48,6 +48,12 @@ const decibelPublicRoute = readFileSync("app/api/decibel/public/route.ts", "utf8
 const sdkTestRoute = readFileSync("app/api/sdk-test/route.ts", "utf8");
 const botDebugRoute = readFileSync("app/api/bot/debug/route.ts", "utf8");
 const dlpBenchmarkRoute = readFileSync("app/api/dlp/benchmark/route.ts", "utf8");
+const decibelPositionsRoute = readFileSync("app/api/decibel/positions/route.ts", "utf8");
+const decibelSubaccountRoute = readFileSync("app/api/decibel/subaccount/route.ts", "utf8");
+const decibelWalletBalanceRoute = readFileSync("app/api/decibel/wallet-balance/route.ts", "utf8");
+const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8");
+const decibelVaultStatusRoute = readFileSync("app/api/decibel/vaults/status/route.ts", "utf8");
+const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
 };
@@ -176,6 +182,22 @@ assert.match(decibelPublicRoute, /end - start > intervalMs \* 990/);
 assert.match(sdkTestRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.match(botDebugRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.match(dlpBenchmarkRoute, /reason: 'dlp_benchmark_not_enabled'/);
+assert.match(decibelCore, /export function isValidAptosAddress/);
+assert.match(decibelPositionsRoute, /decibel-positions-hot/);
+assert.match(decibelPositionsRoute, /isValidAptosAddress\(address\)/);
+assert.ok(!decibelPositionsRoute.includes("unavailable: ${indexedResult.error}"));
+assert.match(decibelSubaccountRoute, /checkApiRateLimit\(req, "decibel-subaccount"/);
+assert.match(decibelSubaccountRoute, /isValidAptosAddress\(address\)/);
+assert.match(decibelWalletBalanceRoute, /checkApiRateLimit\(req, "decibel-wallet-balance"/);
+assert.match(decibelWalletBalanceRoute, /AbortSignal\.timeout\(4_000\)/);
+assert.ok(!decibelWalletBalanceRoute.includes("response.text()"), "wallet balance errors must not echo upstream bodies");
+assert.match(decibelStreamRoute, /checkApiRateLimit\(req, "decibel-stream"/);
+assert.match(decibelStreamRoute, /resolveDecibelNetwork/);
+assert.match(decibelStreamRoute, /\[a-fA-F0-9\]\{1,64\}/);
+assert.match(decibelMarketsRoute, /checkApiRateLimit\(req, "decibel-markets"/);
+assert.match(decibelVaultStatusRoute, /isValidAptosAddress/);
+assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);
+assert.match(vaultActionModal, /network: indicator\.network/);
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",

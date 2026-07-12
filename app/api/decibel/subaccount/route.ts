@@ -3,10 +3,12 @@ import { getFastSubaccounts } from "@/lib/decibel-chain";
 import {
   getDecibelCollateralMetadata,
   getReadDex,
+  isValidAptosAddress,
   resolveDecibelNetwork,
   type DecibelNetwork,
   USDC_DECIMALS,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +53,7 @@ function lookupErrorMessage(error: unknown) {
   if (error instanceof Error && error.name === "AbortError") {
     return "Decibel REST lookup timed out.";
   }
-  return message || "Decibel REST lookup failed.";
+  return "Decibel account lookup is temporarily unavailable.";
 }
 
 async function fetchRestSubaccounts(address: string, network: DecibelNetwork): Promise<{
@@ -97,9 +99,20 @@ async function fetchRestSubaccounts(address: string, network: DecibelNetwork): P
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
   const network = getRequestNetwork(req);
-  if (!address) {
+  const rate = checkApiRateLimit(req, "decibel-subaccount", 30, 60_000);
+  if (!rate.allowed) {
     return NextResponse.json(
-      { error: "Missing address parameter" },
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
+  if (!isValidAptosAddress(address)) {
+    return NextResponse.json(
+      { error: "A valid Aptos address is required" },
       { status: 400, headers: NO_STORE_HEADERS }
     );
   }
@@ -107,7 +120,8 @@ export async function GET(req: NextRequest) {
   const startedAt = Date.now();
   let chainError: string | null = null;
   const chainSubaccounts = await getFastSubaccounts(address, network).catch((error) => {
-    chainError = error instanceof Error ? error.message : "Decibel chain lookup failed.";
+    console.error("[decibel-subaccount] chain lookup failed:", error);
+    chainError = "Decibel account lookup is temporarily unavailable.";
     return [];
   });
   const restResult =

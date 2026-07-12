@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAptosFullnodeApiKey, type DecibelNetwork } from "@/lib/decibel";
+import {
+  getAptosFullnodeApiKey,
+  resolveDecibelNetwork,
+  type DecibelNetwork,
+} from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 300;
 
 const DECIBEL_WS_URLS: Record<DecibelNetwork, string> = {
   testnet: "wss://api.testnet.aptoslabs.com/decibel/ws",
@@ -21,14 +27,12 @@ const NO_STORE_HEADERS = {
 };
 
 const MARKET_TOPIC_PATTERN =
-  /^(all_market_prices|market_price:0x[a-fA-F0-9]+|market_candlestick:0x[a-fA-F0-9]+:(?:1m|5m|15m|30m|1h|2h|4h|8h|12h|1d|3d|1w|1mo)|trades:0x[a-fA-F0-9]+|depth:0x[a-fA-F0-9]+(?::(?:1|2|5|10|100|1000))?)$/;
+  /^(all_market_prices|market_price:0x[a-fA-F0-9]{1,64}|market_candlestick:0x[a-fA-F0-9]{1,64}:(?:1m|5m|15m|30m|1h|2h|4h|8h|12h|1d|3d|1w|1mo)|trades:0x[a-fA-F0-9]{1,64}|depth:0x[a-fA-F0-9]{1,64}(?::(?:1|2|5|10|100|1000))?)$/;
 const ACCOUNT_TOPIC_PATTERN =
-  /^(account_open_orders|order_updates|account_positions|account_overview|user_trades|notifications|withdraw_queue|bulk_orders|bulk_order_fills|bulk_order_rejections|twap_order_updates|twap_fills|twap_rejections):0x[a-fA-F0-9]+$/;
+  /^(account_open_orders|order_updates|account_positions|account_overview|user_trades|notifications|withdraw_queue|bulk_orders|bulk_order_fills|bulk_order_rejections|twap_order_updates|twap_fills|twap_rejections):0x[a-fA-F0-9]{1,64}$/;
 
 function getNetwork(req: NextRequest): DecibelNetwork {
-  return req.nextUrl.searchParams.get("network") === "mainnet"
-    ? "mainnet"
-    : "testnet";
+  return resolveDecibelNetwork(req.nextUrl.searchParams.get("network"));
 }
 
 function getTopics(req: NextRequest) {
@@ -39,7 +43,7 @@ function getTopics(req: NextRequest) {
     .filter((topic) => topic.length > 0)
     .filter((topic, index, all) => all.indexOf(topic) === index)
     .filter((topic) => MARKET_TOPIC_PATTERN.test(topic) || ACCOUNT_TOPIC_PATTERN.test(topic))
-    .slice(0, 20);
+    .slice(0, 12);
 }
 
 function encodeSse(payload: unknown) {
@@ -47,6 +51,17 @@ function encodeSse(payload: unknown) {
 }
 
 export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-stream", 30, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const network = getNetwork(req);
   const topics = getTopics(req);
   const apiKey = getAptosFullnodeApiKey(network);
@@ -91,7 +106,13 @@ export async function GET(req: NextRequest) {
         }
       };
 
-      ws = new WebSocket(DECIBEL_WS_URLS[network], ["decibel", apiKey]);
+      try {
+        ws = new WebSocket(DECIBEL_WS_URLS[network], ["decibel", apiKey]);
+      } catch {
+        send({ type: "error", message: "Decibel WebSocket unavailable" });
+        cleanup();
+        return;
+      }
       keepAlive = setInterval(() => enqueue(": keepalive\n\n"), 25_000);
 
       ws.addEventListener("open", () => {
@@ -119,7 +140,7 @@ export async function GET(req: NextRequest) {
         cleanup();
       });
 
-      req.signal.addEventListener("abort", cleanup);
+      req.signal.addEventListener("abort", cleanup, { once: true });
     },
     cancel() {
       closed = true;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReadDex } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 
@@ -10,13 +11,35 @@ export const runtime = "nodejs";
  * depth reader, so this route reports unavailable instead of inventing levels.
  */
 export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-depth", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterS ?? 60) } },
+    );
+  }
+
   const marketParam = req.nextUrl.searchParams.get("market");
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") || "15");
+  const limitParam = req.nextUrl.searchParams.get("limit") || "15";
+  const limit = Number(limitParam);
 
   if (!marketParam) {
     return NextResponse.json(
       { error: "Missing market parameter (e.g. BTC-USD or BTC/USD)" },
       { status: 400 }
+    );
+  }
+
+  if (
+    !/^[A-Z0-9]{1,12}[/-][A-Z0-9]{1,12}$/i.test(marketParam) ||
+    !/^\d{1,3}$/.test(limitParam) ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 100
+  ) {
+    return NextResponse.json(
+      { error: "market or limit is invalid" },
+      { status: 400 },
     );
   }
 
@@ -50,6 +73,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch orderbook depth";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[decibel-depth] lookup failed:", message);
+    return NextResponse.json({ error: "Decibel depth data is temporarily unavailable" }, { status: 502 });
   }
 }

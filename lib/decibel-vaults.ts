@@ -4,10 +4,10 @@ import {
   getActiveNetwork,
   getDecibelCollateralMetadata,
   getDecibelPackage,
+  normalizeAptosAddress,
   USDC_DECIMALS,
   type DecibelNetwork,
 } from "@/lib/decibel";
-import { BOT_OPERATOR } from "@/lib/decibel-client";
 
 export type DecibelVaultPayloadKind =
   | "create"
@@ -95,12 +95,11 @@ const MAX_U64 = 18_446_744_073_709_551_615n;
 export function buildCreateDecibelVaultPayload(
   args: CreateDecibelVaultArgs
 ): DecibelVaultPayloadResult {
-  const network = args.network ?? getActiveNetwork();
+  const network = resolveVaultNetwork(args.network);
   const packageAddress = getDecibelPackage(network);
-  const contributionAsset = stringOrDefault(
-    args.contributionAsset,
-    getDecibelCollateralMetadata(network)
-  );
+  const contributionAsset = args.contributionAsset === undefined
+    ? getDecibelCollateralMetadata(network)
+    : requireAddress(args.contributionAsset, "contributionAsset");
   const subaccount = resolveSubaccount(args.subaccount, args.owner, network);
   const amountRaw = parseHumanOrRawAmount({
     human: args.initialFunding ?? args.amount ?? "0",
@@ -109,28 +108,39 @@ export function buildCreateDecibelVaultPayload(
     allowZero: true,
   });
 
-  const vaultName = requireNonEmptyString(args.vaultName ?? args.name, "vaultName");
-  const vaultShareSymbol = requireNonEmptyString(
-    args.vaultShareSymbol ?? args.shareSymbol,
-    "vaultShareSymbol"
+  const vaultName = requireBoundedString(
+    args.vaultName ?? args.name,
+    "vaultName",
+    64,
   );
-  const vaultDescription = stringOrDefault(
+  const vaultShareSymbol = requireBoundedString(
+    args.vaultShareSymbol ?? args.shareSymbol,
+    "vaultShareSymbol",
+    16,
+  );
+  const vaultDescription = boundedStringOrDefault(
     args.vaultDescription ?? args.description,
-    ""
+    "",
+    "vaultDescription",
+    2_000,
   );
   const vaultSocialLinks = parseStringArray(
     args.vaultSocialLinks ?? args.socialLinks,
     "vaultSocialLinks"
   );
-  const vaultShareIconUri = stringOrDefault(
+  const vaultShareIconUri = boundedStringOrDefault(
     args.vaultShareIconUri ?? args.shareIconUri,
-    ""
+    "",
+    "vaultShareIconUri",
+    2_048,
   );
-  const vaultShareProjectUri = stringOrDefault(
+  const vaultShareProjectUri = boundedStringOrDefault(
     args.vaultShareProjectUri ?? args.shareProjectUri,
-    ""
+    "",
+    "vaultShareProjectUri",
+    2_048,
   );
-  const feeBps = parseNonNegativeInteger(args.feeBps ?? 0, "feeBps");
+  const feeBps = parseBasisPoints(args.feeBps ?? 0, "feeBps");
   const feeIntervalS = parseNonNegativeInteger(
     args.feeIntervalS ?? 0,
     "feeIntervalS"
@@ -181,7 +191,7 @@ export function buildCreateDecibelVaultPayload(
 export function buildActivateDecibelVaultPayload(
   args: VaultAddressArgs
 ): DecibelVaultPayloadResult {
-  const network = args.network ?? getActiveNetwork();
+  const network = resolveVaultNetwork(args.network);
   const packageAddress = getDecibelPackage(network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
 
@@ -200,7 +210,7 @@ export function buildActivateDecibelVaultPayload(
 export function buildDepositDecibelVaultPayload(
   args: VaultSubaccountAmountArgs
 ): DecibelVaultPayloadResult {
-  const network = args.network ?? getActiveNetwork();
+  const network = resolveVaultNetwork(args.network);
   const packageAddress = getDecibelPackage(network);
   const contributionAsset = getDecibelCollateralMetadata(network);
   const subaccount = resolveSubaccount(args.subaccount, args.owner, network);
@@ -229,7 +239,7 @@ export function buildDepositDecibelVaultPayload(
 export function buildWithdrawDecibelVaultPayload(
   args: WithdrawDecibelVaultArgs
 ): DecibelVaultPayloadResult {
-  const network = args.network ?? getActiveNetwork();
+  const network = resolveVaultNetwork(args.network);
   const packageAddress = getDecibelPackage(network);
   const subaccount = resolveSubaccount(args.subaccount, args.owner, network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
@@ -256,11 +266,11 @@ export function buildWithdrawDecibelVaultPayload(
 export function buildDelegateDecibelVaultPayload(
   args: DelegateDecibelVaultArgs
 ): DecibelVaultPayloadResult {
-  const network = args.network ?? getActiveNetwork();
+  const network = resolveVaultNetwork(args.network);
   const packageAddress = getDecibelPackage(network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
   const delegate = requireAddress(
-    args.delegate ?? args.accountToDelegateTo ?? BOT_OPERATOR,
+    args.delegate ?? args.accountToDelegateTo,
     "delegate"
   );
   const expirationTimestampSecs =
@@ -298,6 +308,12 @@ function resolveSubaccount(
   return derivePrimarySubaccountAddress(ownerAddress, network);
 }
 
+function resolveVaultNetwork(value: unknown): DecibelNetwork {
+  if (value === undefined || value === null) return getActiveNetwork();
+  if (value === "testnet" || value === "mainnet") return value;
+  throw new Error("network must be testnet or mainnet");
+}
+
 function derivePrimarySubaccountAddress(owner: string, network: DecibelNetwork) {
   const packageAddress = AccountAddress.fromString(getDecibelPackage(network));
   const deriver = createObjectAddress(
@@ -315,45 +331,60 @@ function derivePrimarySubaccountAddress(owner: string, network: DecibelNetwork) 
 }
 
 function requireAddress(value: unknown, fieldName: string) {
-  const address = requireNonEmptyString(value, fieldName);
-  try {
-    AccountAddress.fromString(address);
-  } catch {
-    throw new Error(`${fieldName} must be a valid Aptos address`);
-  }
-  return address;
+  return normalizeAptosAddress(value, fieldName);
 }
 
-function requireNonEmptyString(value: unknown, fieldName: string) {
+function requireBoundedString(
+  value: unknown,
+  fieldName: string,
+  maxLength: number,
+) {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${fieldName} is required`);
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) {
+    throw new Error(`${fieldName} must be at most ${maxLength} characters`);
+  }
+  return trimmed;
 }
 
-function stringOrDefault(value: unknown, fallback: string) {
+function boundedStringOrDefault(
+  value: unknown,
+  fallback: string,
+  fieldName: string,
+  maxLength: number,
+) {
   if (value === undefined || value === null) return fallback;
-  if (typeof value !== "string") throw new Error("expected string value");
-  return value.trim();
+  if (typeof value !== "string") throw new Error(`${fieldName} must be a string`);
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) {
+    throw new Error(`${fieldName} must be at most ${maxLength} characters`);
+  }
+  return trimmed;
 }
 
 function parseStringArray(value: unknown, fieldName: string) {
   if (value === undefined || value === null || value === "") return [];
-  if (Array.isArray(value)) {
-    return value.map((item, index) => {
+  const items = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : null;
+  if (!items) throw new Error(`${fieldName} must be an array of strings`);
+  if (items.length > 8) throw new Error(`${fieldName} must contain at most 8 links`);
+  return items
+    .map((item, index) => {
       if (typeof item !== "string") {
         throw new Error(`${fieldName}[${index}] must be a string`);
       }
-      return item.trim();
-    });
-  }
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  throw new Error(`${fieldName} must be an array of strings`);
+      const trimmed = item.trim();
+      if (trimmed.length > 2_048) {
+        throw new Error(`${fieldName}[${index}] must be at most 2048 characters`);
+      }
+      return trimmed;
+    })
+    .filter(Boolean);
 }
 
 function parseBoolean(value: unknown, fieldName: string) {
@@ -374,11 +405,21 @@ function parseNonNegativeInteger(value: unknown, fieldName: string) {
   if (typeof value === "number" && !Number.isSafeInteger(value)) {
     throw new Error(`${fieldName} must be a safe integer`);
   }
-  const text = String(value);
+  const text = String(value).trim();
   if (!/^\d+$/.test(text)) {
     throw new Error(`${fieldName} must be a non-negative integer`);
   }
-  return assertU64(BigInt(text), fieldName).toString();
+  const canonical = text.replace(/^0+(?=\d)/, "");
+  if (canonical.length > 20) throw new Error(`${fieldName} must fit in u64`);
+  return assertU64(BigInt(canonical), fieldName).toString();
+}
+
+function parseBasisPoints(value: unknown, fieldName: string) {
+  const bps = parseNonNegativeInteger(value, fieldName);
+  if (BigInt(bps) > 10_000n) {
+    throw new Error(`${fieldName} must be between 0 and 10000`);
+  }
+  return bps;
 }
 
 function parseHumanOrRawAmount({
@@ -412,9 +453,11 @@ function parseRawU64(value: unknown, fieldName: string, allowZero: boolean) {
   if (typeof value === "number" && !Number.isSafeInteger(value)) {
     throw new Error(`${fieldName} must be a safe integer`);
   }
-  const text = String(value);
+  const text = String(value).trim();
   if (!/^\d+$/.test(text)) throw new Error(`${fieldName} must be a raw integer`);
-  const amount = assertU64(BigInt(text), fieldName);
+  const canonical = text.replace(/^0+(?=\d)/, "");
+  if (canonical.length > 20) throw new Error(`${fieldName} must fit in u64`);
+  const amount = assertU64(BigInt(canonical), fieldName);
   if (!allowZero && amount <= 0n) throw new Error(`${fieldName} must be positive`);
   return amount.toString();
 }
@@ -424,6 +467,7 @@ function parseHumanFixed6(value: unknown, fieldName: string, allowZero: boolean)
     throw new Error(`${fieldName} must be a number`);
   }
   const text = String(value).trim();
+  if (text.length > 32) throw new Error(`${fieldName} must fit in u64`);
   if (!/^\d+(\.\d{1,6})?$/.test(text)) {
     throw new Error(`${fieldName} must be a positive decimal with up to 6 decimals`);
   }

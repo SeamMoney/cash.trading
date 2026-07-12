@@ -17,9 +17,6 @@ import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { dispatchPortfolioActivity, dispatchBalanceUpdate } from "@/lib/portfolio-events";
 import { cn } from "@/lib/utils";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
-import { useSubscription } from "@/lib/launchpad/use-subscription";
-import { ScheduleTradeModal } from "@/components/launchpad/ScheduleTradeModal";
-import type { IndicatorEntry } from "@/app/api/launchpad/indicators/route";
 import {
   getEstimatedLiquidationPrice,
   getPositionPnl,
@@ -741,7 +738,7 @@ interface GraduatedIndicator {
 
 const INDICATOR_TYPE_LABEL = ["SMA", "EMA", "RSI", "MACD", "BB", "Stoch", "SuperTrend", "Donchian"];
 
-/** Live on-chain state for indicators that exist as real objects (pkg set). */
+/** Live on-chain state for indicators returned by Aptos-backed discovery. */
 interface LiveIndicatorState {
   signal: number;
   lastPrice: number;
@@ -755,18 +752,18 @@ interface LiveIndicatorState {
 
 function useLiveIndicatorStates(indicators: GraduatedIndicator[]) {
   const [states, setStates] = useState<Record<string, LiveIndicatorState>>({});
-  const liveKey = indicators.filter((i) => i.pkg).map((i) => i.address).join(",");
+  const liveKey = indicators.map((i) => `${i.address}:${i.pkg ?? "legacy"}`).join(",");
 
   useEffect(() => {
     if (!liveKey) return;
     let cancelled = false;
     const load = async () => {
-      const live = indicators.filter((i) => i.pkg);
       const results = await Promise.all(
-        live.map(async (ind) => {
+        indicators.map(async (ind) => {
           try {
+            const packageQuery = ind.pkg ? `&pkg=${encodeURIComponent(ind.pkg)}` : "";
             const res = await fetch(
-              `/api/launchpad/on-chain?addr=${ind.address}&pkg=${ind.pkg}`,
+              `/api/launchpad/on-chain?addr=${ind.address}${packageQuery}`,
               { cache: "no-store" },
             );
             const data = await res.json();
@@ -789,28 +786,6 @@ function useLiveIndicatorStates(indicators: GraduatedIndicator[]) {
   }, [liveKey]);
 
   return states;
-}
-
-/** Seeded demo curve for strategies that aren't live yet — stable across renders. */
-function buildDemoStrategyCurve(ind: GraduatedIndicator): PnlPoint[] {
-  let seed = 0;
-  for (let i = 0; i < ind.address.length; i++) seed = (seed * 31 + ind.address.charCodeAt(i)) | 0;
-  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  const endPnl = (ind.meanSharpe / 1000) * 2.4;
-  const maxDD = Math.max(1, (ind.maxDrawdownBps ?? 500) / 100);
-  const vol = Math.min(1.6, Math.max(0.25, maxDD / 4));
-  const now = Date.now();
-  const span = 60 * 24 * 3600_000;
-  const M = 120;
-  const points: PnlPoint[] = [];
-  let pnl = 0;
-  for (let i = 0; i <= M; i++) {
-    points.push({ date: new Date(now - span + (i * span) / M), pnl: +pnl.toFixed(2) });
-    const expected = endPnl * (i / M);
-    pnl += endPnl / M + (rng() - 0.5) * 2 * vol + (expected - pnl) * 0.12;
-  }
-  points[points.length - 1] = { date: new Date(now), pnl: +endPnl.toFixed(2) };
-  return points;
 }
 
 interface StrategyVaultSummary {
@@ -859,14 +834,10 @@ function useGraduatedIndicators(enabled = true) {
 
 function SignalProductsPanel({
   enabled = true,
-  onDeploy,
-  onUnlock,
   onVaultAction,
   strategyVaultsByIndicator,
 }: {
   enabled?: boolean;
-  onDeploy: (ind: GraduatedIndicator) => void;
-  onUnlock: (ind: GraduatedIndicator) => void;
   onVaultAction: (
     mode: VaultActionMode,
     ind: GraduatedIndicator,
@@ -876,16 +847,12 @@ function SignalProductsPanel({
   strategyVaultsByIndicator: Record<string, StrategyVaultSummary>;
 }) {
   const indicators = useGraduatedIndicators(enabled);
-  const { isSubscribed } = useSubscription();
   const liveStates = useLiveIndicatorStates(indicators);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Live (real on-chain) strategies first, then demos by Sharpe desc.
+  // All entries come from Aptos-backed discovery; sort by verified backtest score.
   const sorted = [...indicators].sort((a, b) => {
-    const liveA = a.pkg ? 1 : 0;
-    const liveB = b.pkg ? 1 : 0;
-    if (liveA !== liveB) return liveB - liveA;
     return b.meanSharpe - a.meanSharpe;
   });
 
@@ -930,7 +897,6 @@ function SignalProductsPanel({
         >
           {sorted.map((ind) => {
             const live = liveStates[ind.address.toLowerCase()];
-            const isLive = Boolean(ind.pkg);
             const sig = live?.signal ?? ind.lastSignal ?? 0;
             // The on-chain engine freezes at its last crank; presenting a
             // months-old price/signal as live is worse than saying nothing.
@@ -950,8 +916,6 @@ function SignalProductsPanel({
               ? { bg: "border-zinc-700/40 bg-zinc-800/40", text: "text-zinc-500" }
               : SIG_COLOR[sig] ?? SIG_COLOR[0];
             const sharpe = (ind.meanSharpe / 1000).toFixed(2);
-            const subscriberCount = Math.max(1, Math.round(ind.simsFunded / 100));
-            const showUnlock = ind.isProprietary && !isSubscribed(ind.address);
             const strategyVault = strategyVaultsByIndicator[ind.address.toLowerCase()];
             const vaultAddress =
               strategyVault?.vaultAddr ??
@@ -959,15 +923,13 @@ function SignalProductsPanel({
             const typeLabel = INDICATOR_TYPE_LABEL[ind.indicatorType ?? -1];
             const paramsLabel = ind.params?.length ? `(${ind.params.join("/")})` : "";
 
-            // Chart: live strategies plot the real on-chain price buffer;
-            // demo strategies plot a seeded illustrative curve.
             const liveChart = live && live.prices.length >= 2
               ? live.prices.map((p, i) => ({
                   date: new Date((live.timestamps[i] ?? 0) * 1000 || Date.now()),
                   pnl: p,
                 }))
               : null;
-            const chartPoints = liveChart ?? buildDemoStrategyCurve(ind);
+            const chartPoints = liveChart ?? [];
             const chartColor = sig === 2 ? "#ef4444" : "#a855f7";
             // A frozen buffer of near-identical prices plots as a featureless
             // block; flag it so the card shows a designed frozen state instead.
@@ -992,20 +954,15 @@ function SignalProductsPanel({
                   <span className="truncate font-sans text-[15px] font-bold text-white">{ind.name}</span>
                   <span className={cn(
                     "flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                    isLive ? "bg-emerald-500/15 text-emerald-400" : "bg-zinc-700/50 text-zinc-400",
+                    "bg-emerald-500/15 text-emerald-400",
                   )}>
-                    {isLive && (
-                      <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400">
-                        <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
-                      </span>
-                    )}
-                    {isLive ? "Live" : "Demo"}
+                    <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    On-chain
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-[#555]">
                   {ind.assets[0]}
                   {typeLabel ? ` · ${typeLabel} ${paramsLabel}` : ""}
-                  {` · ${subscriberCount} subscribers`}
                 </p>
 
                 {/* Signal + position */}
@@ -1021,7 +978,7 @@ function SignalProductsPanel({
                       IN POSITION
                     </span>
                   )}
-                  {isLive && live && (
+                  {live && (
                     <span className="ml-auto text-[10px] text-[#555]">
                       {live.totalPushed} ticks · {live.totalSignals} signals
                     </span>
@@ -1085,16 +1042,14 @@ function SignalProductsPanel({
                         rows={(point) => [
                           {
                             color: chartColor,
-                            label: liveChart ? "Price" : "PnL",
-                            value: liveChart
-                              ? `$${(point.pnl as number).toLocaleString()}`
-                              : `${(point.pnl as number) >= 0 ? "+" : ""}${(point.pnl as number).toFixed(2)}%`,
+                            label: "Price",
+                            value: `$${(point.pnl as number).toLocaleString()}`,
                           },
                         ]}
                       />
                     </AreaChart>
                   ) : (
-                    <div className="flex h-full items-center justify-center text-[10px] text-[#333]">Loading chart...</div>
+                    <div className="flex h-full items-center justify-center text-[10px] text-[#555]">No on-chain price history</div>
                   )}
                 </div>
                 )}
@@ -1103,13 +1058,13 @@ function SignalProductsPanel({
                 <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
                   <div className="flex items-center justify-between text-[11px] text-[#444]">
                     <span>Strategy</span>
-                    <span className="text-[#777]">{isLive ? "On-chain enforced" : "Backtest demo"}</span>
+                    <span className="text-[#777]">On-chain verified</span>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-[#444]">
                     <span>Vault</span>
                     <span className="text-[#777]">{vaultAddress ? shortenAddr(vaultAddress) : "Not created"}</span>
                   </div>
-                  {isLive && live && (
+                  {live && (
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>{engineStale ? "Price at freeze" : "Last price"}</span>
                       <span className="text-[#777]">
@@ -1126,37 +1081,26 @@ function SignalProductsPanel({
 
                 {/* CTAs */}
                 <div className="mt-3 flex items-center gap-2">
-                  {showUnlock ? (
-                    <button
-                      type="button"
-                      onClick={() => onUnlock(ind)}
-                      className="flex-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-bold text-amber-400 transition-colors hover:bg-amber-500/20"
-                    >
-                      Unlock
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
-                        className={cn(
-                          "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors",
-                          vaultAddress
-                            ? "bg-accent text-black hover:bg-[#5dff3f]"
-                            : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
-                        )}
-                      >
-                        {vaultAddress ? "Invest" : "Create Vault"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeploy(ind)}
-                        className="flex-1 rounded-lg bg-purple-500 px-3 py-2 text-[12px] font-bold text-white transition-colors hover:bg-purple-400"
-                      >
-                        Deploy Bot
-                      </button>
-                    </>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
+                    className={cn(
+                      "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors",
+                      vaultAddress
+                        ? "bg-accent text-black hover:bg-[#5dff3f]"
+                        : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
+                    )}
+                  >
+                    {vaultAddress ? "Invest" : "Create Vault"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Persistent, wallet-authorized automation is not deployed"
+                    className="flex-1 cursor-not-allowed rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12px] font-bold text-zinc-600"
+                  >
+                    Automation unavailable
+                  </button>
                 </div>
               </div>
             );
@@ -1214,7 +1158,6 @@ export function TradePageClient({
   const [positions, setPositions] = useState<Position[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
-  const [deployTarget, setDeployTarget] = useState<GraduatedIndicator | null>(null);
   const [vaultAction, setVaultAction] = useState<{
     mode: VaultActionMode;
     indicator: GraduatedIndicator;
@@ -1224,7 +1167,6 @@ export function TradePageClient({
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
   const { account, signAndSubmitTransaction } = useWallet();
   const { selectedSubaccount } = useDecibelSubaccounts();
-  const { subscribe } = useSubscription();
   const isMobile = useIsMobile();
   const currentPriceRef = useRef(0);
   const queuedPriceRef = useRef(0);
@@ -1500,8 +1442,6 @@ export function TradePageClient({
         <div ref={signalsSectionRef} id="signals" className="mt-6 scroll-mt-20 animate-enter">
           <SignalProductsPanel
             enabled={signalsActive}
-            onDeploy={(ind) => setDeployTarget(ind)}
-            onUnlock={(ind) => { subscribe(ind.address, 29); setDeployTarget(ind); }}
             onVaultAction={(mode, ind, strategyVault, vaultAddress) =>
               setVaultAction({ mode, indicator: ind, strategyVault, vaultAddress })
             }
@@ -1514,40 +1454,6 @@ export function TradePageClient({
         <MobilePortfolioSheet>
           <DecibelPositions showOverview={false} />
         </MobilePortfolioSheet>
-      )}
-
-      {/* Deploy Bot Modal */}
-      {deployTarget && (
-        <ScheduleTradeModal
-          indicator={{
-            address: deployTarget.address,
-            creator: "",
-            name: deployTarget.name,
-            symbol: "",
-            description: "",
-            assets: deployTarget.assets,
-            createdAt: Date.now(),
-            curveAddr: deployTarget.address,
-            aptReserves: 0,
-            totalRaised: 0,
-            simsFunded: deployTarget.simsFunded,
-            isGraduated: true,
-            totalSims: deployTarget.simsFunded,
-            meanSharpe: deployTarget.meanSharpe,
-            profitablePct: deployTarget.profitablePct,
-            robustnessScore: 0,
-            maxDrawdownBps: 0,
-            vaultAddr: null,
-            lastSignal: deployTarget.lastSignal,
-            lastSignalTime: 0,
-            params: [],
-            indicatorType: 0,
-            isProprietary: deployTarget.isProprietary,
-          } satisfies IndicatorEntry}
-          isOpen={true}
-          onClose={() => setDeployTarget(null)}
-          onScheduled={() => setDeployTarget(null)}
-        />
       )}
 
       {vaultAction && (

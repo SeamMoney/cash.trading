@@ -12,12 +12,25 @@ import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
+function automationUnavailable() {
+  return NextResponse.json(
+    {
+      unavailable: true,
+      reason: "launchpad_automation_not_enabled",
+      error: "Launchpad automation requires persistent storage and wallet-signed authorization.",
+    },
+    { status: 501 },
+  );
+}
+
 export const scheduledJobRegistry: ScheduledJob[] = loadState<ScheduledJob[]>("scheduled-jobs", []);
 let nextJobId = scheduledJobRegistry.length > 0
   ? Math.max(...scheduledJobRegistry.map(j => j.jobId)) + 1
   : 0;
 
 export async function GET(req: Request) {
+  if (process.env.NODE_ENV === "production") return automationUnavailable();
+
   const url = new URL(req.url);
   const owner = url.searchParams.get("owner");
   const indicator = url.searchParams.get("indicator");
@@ -47,6 +60,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV === "production") return automationUnavailable();
+
   try {
     const body = await req.json() as {
       owner: string;
@@ -187,6 +202,8 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  if (process.env.NODE_ENV === "production") return automationUnavailable();
+
   try {
     const body = await req.json() as {
       jobId: number;
@@ -224,6 +241,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  if (process.env.NODE_ENV === "production") return automationUnavailable();
+
   const url = new URL(req.url);
   const jobIdParam = url.searchParams.get("jobId");
 

@@ -27,6 +27,10 @@ const launchpadIndicatorsRoute = readFileSync("app/api/launchpad/indicators/rout
 const launchpadCreateRoute = readFileSync("app/api/launchpad/create/route.ts", "utf8");
 const creatorDashboard = readFileSync("components/launchpad/CreatorDashboard.tsx", "utf8");
 const launchpadWithdrawRoute = readFileSync("app/api/launchpad/withdraw/route.ts", "utf8");
+const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.ts", "utf8");
+const launchpadGraduateRoute = readFileSync("app/api/launchpad/graduate/route.ts", "utf8");
+const launchpadPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
+const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies: Record<string, string>;
   pnpm?: { overrides?: Record<string, string> };
@@ -108,6 +112,18 @@ assert.ok(!creatorDashboard.includes("DAILY_DATA_90"), "creator earnings charts 
 assert.ok(!creatorDashboard.includes("RECENT_PAYOUTS"), "creator payouts must not be synthetic");
 assert.match(creatorDashboard, /indicators\?creator=/);
 assert.match(launchpadWithdrawRoute, /creator_payout_not_enabled/);
+assert.match(launchpadScheduledRoute, /launchpad_automation_not_enabled/);
+assert.match(launchpadGraduateRoute, /launchpad_graduation_not_deployed/);
+assert.ok(!launchpadGraduateRoute.includes("VAULT_ADDR_PLACEHOLDER"), "graduation must not return fake transactions");
+assert.ok(!launchpadPage.includes("Fund Strategy"), "the undeployed bonding curve must not ask users for APT");
+assert.ok(!launchpadPage.includes("Unlock · $29/mo"), "local browser state must not impersonate a paid subscription");
+assert.ok(!launchpadPage.includes("ScheduleTradeModal"), "disabled automation must not expose a fake deploy flow");
+assert.ok(!tradePage.includes("buildDemoStrategyCurve"), "strategy vault charts must not fabricate performance");
+assert.ok(!tradePage.includes("subscribers"), "strategy cards must not fabricate subscriber counts");
+assert.ok(!tradePage.includes("ScheduleTradeModal"), "the trade page must not expose disabled automation");
+assert.ok(!decibelDepthRoute.includes("generateSyntheticDepth"), "order-book depth must come from Decibel");
+assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
+assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",

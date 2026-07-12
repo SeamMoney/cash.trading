@@ -1,3 +1,7 @@
+import { NextRequest } from "next/server";
+
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
+
 export const dynamic = "force-dynamic";
 
 type CoinbaseTrade = {
@@ -12,14 +16,26 @@ const DEFAULT_TARGET_SPAN_SECS = 8 * 60;
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
+const COINBASE_TRADES_TIMEOUT_MS = 12_000;
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "coinbase-trades", 6, 60_000);
+  if (!rate.allowed) {
+    return Response.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const productId = searchParams.get("productId");
-  const targetSpanSecs = Math.min(
-    Math.max(Number(searchParams.get("targetSpanSecs")) || DEFAULT_TARGET_SPAN_SECS, 60),
-    30 * 60,
-  );
+  const rawTargetSpan = searchParams.get("targetSpanSecs");
+  const targetSpanSecs = rawTargetSpan === null
+    ? DEFAULT_TARGET_SPAN_SECS
+    : Number(rawTargetSpan);
 
   if (!productId || !/^[A-Z0-9-]{1,32}$/.test(productId)) {
     return Response.json(
@@ -28,7 +44,19 @@ export async function GET(req: Request) {
     );
   }
 
+  if (
+    !Number.isInteger(targetSpanSecs) ||
+    targetSpanSecs < 60 ||
+    targetSpanSecs > 30 * 60
+  ) {
+    return Response.json(
+      { error: "targetSpanSecs must be an integer from 60 to 1800" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
   try {
+    const upstreamSignal = AbortSignal.timeout(COINBASE_TRADES_TIMEOUT_MS);
     const trades: Array<{ price: number; transaction_unix_ms: number }> = [];
     const cutoffMs = Date.now() - targetSpanSecs * 1000;
     let afterCursor: string | null = null;
@@ -40,7 +68,10 @@ export async function GET(req: Request) {
         url.searchParams.set("after", afterCursor);
       }
 
-      const response = await fetch(url.toString(), { cache: "no-store" });
+      const response = await fetch(url.toString(), {
+        cache: "no-store",
+        signal: upstreamSignal,
+      });
       if (!response.ok) {
         throw new Error(`Coinbase trades request failed (${response.status})`);
       }
@@ -66,8 +97,9 @@ export async function GET(req: Request) {
     return Response.json({ trades }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch Coinbase trades";
+    console.error("[coinbase-trades] upstream failed:", message);
     return Response.json(
-      { trades: [], unavailable: true, reason: message },
+      { trades: [], unavailable: true, reason: "Coinbase trades are temporarily unavailable" },
       { headers: NO_STORE_HEADERS },
     );
   }

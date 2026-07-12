@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOT_OPERATOR } from '@/lib/decibel-client'
 import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 // Use authenticated Aptos client to avoid 429 rate limits
 const aptos = createAuthenticatedAptos()
@@ -9,6 +10,9 @@ const aptos = createAuthenticatedAptos()
  * Check if the bot operator has trading permissions for a user's subaccount
  */
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const { searchParams } = new URL(request.url)
     const userSubaccount = searchParams.get('userSubaccount')

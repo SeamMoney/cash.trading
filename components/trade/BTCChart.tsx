@@ -176,6 +176,7 @@ const TOKEN_LOGOS: Record<string, string> = {
   ADA: "/tokens/ada.svg",
   AMZN: "/tokens/amzn.svg",
   APT: "/tokens/apt.png",
+  AVAX: "/tokens/avax.svg",
   BNB: "/tokens/bnb.png",
   BTC: "/tokens/btc.png",
   CBRS: "/tokens/cbrs.svg",
@@ -828,6 +829,7 @@ export function BTCChart({
     if (marketsProp) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let requestController: AbortController | null = null;
 
     const loadMarkets = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -841,9 +843,13 @@ export function BTCChart({
 
       const firstLoad = liveMarketsRef.current.length === 0;
       setMarketsLoading(firstLoad);
+      requestController?.abort();
+      requestController = new AbortController();
+      const requestTimeout = setTimeout(() => requestController?.abort(), 12_000);
       try {
         const res = await fetch(`/api/decibel/markets?network=${network}`, {
           cache: "no-store",
+          signal: requestController.signal,
         });
         const json = await res.json();
         if (!res.ok || json.error) {
@@ -852,12 +858,15 @@ export function BTCChart({
         const apiMarkets = (Array.isArray(json.markets) ? json.markets : [])
           .map(apiMarketToMarket);
         const next = mergeMarketsWithFallback(apiMarkets, network);
-        if (!cancelled && next.length > 0 && !modalOpenRef.current) setLiveMarkets(next);
-      } catch {
-        if (!cancelled && !modalOpenRef.current) {
-          setLiveMarkets(getFallbackMarketsForNetwork(network));
+        if (!cancelled && next.length > 0 && !modalOpenRef.current) {
+          liveMarketsRef.current = next;
+          setLiveMarkets(next);
         }
+      } catch {
+        // Keep the last good registry. A transient refresh failure must not
+        // make dozens of live Decibel markets disappear from the selector.
       } finally {
+        clearTimeout(requestTimeout);
         if (!cancelled) {
           setMarketsLoading(false);
           timer = setTimeout(loadMarkets, MARKET_REFRESH_MS);
@@ -869,6 +878,7 @@ export function BTCChart({
 
     return () => {
       cancelled = true;
+      requestController?.abort();
       if (timer) clearTimeout(timer);
     };
   }, [marketsProp, network]);

@@ -51,7 +51,7 @@ const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a
 const PRICE_UI_COMMIT_MS = 250;
 
 function formatUsd(n: number | null): string {
-  if (n == null) return "$0";
+  if (n == null) return "—";
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
   return `$${n.toFixed(0)}`;
@@ -69,7 +69,7 @@ function useDecibelVaults(enabled = true) {
   const [loading, setLoading] = useState(true);
   const chartDataRef = useRef<Record<string, PnlPoint[]>>({});
   // Chart provenance per address: "real" = series from /api/decibel/vault-history,
-  // "unavailable" = history confirmed missing (no fake fallback), undefined = seeded demo.
+  // "unavailable" = history confirmed missing; undefined means still loading.
   const [chartKind, setChartKind] = useState<Record<string, "real" | "unavailable">>({});
   const historyRequestedRef = useRef<Set<string>>(new Set());
   const unavailableRef = useRef<Set<string>>(new Set());
@@ -197,10 +197,12 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
             style={{ WebkitOverflowScrolling: "touch" }}
           >
               {displayVaults.map((vault, index) => {
-                const pnlReturn = vault.all_time_return ?? 0;
-                const displayVolume = vault.volume_30d ?? vault.volume ?? 0;
-                const pnlNeg = pnlReturn < 0;
-                const pnlStr = `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
+                const pnlReturn = vault.all_time_return;
+                const displayVolume = vault.volume_30d ?? vault.volume;
+                const pnlNeg = pnlReturn != null && pnlReturn < 0;
+                const pnlStr = pnlReturn == null
+                  ? "—"
+                  : `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
                 const chartColor = pnlNeg ? "#ef4444" : VAULT_COLORS[index % VAULT_COLORS.length];
                 const chartPoints = chartData[vault.address] ?? [];
                 const chartIsReal = chartKind[vault.address] === "real";
@@ -244,7 +246,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     </div>
                     <div className="border-l border-[#1a2e1a] bg-[#0e1a0e] px-3 py-2.5">
                       <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Members</div>
-                      <div className="mt-0.5 text-[14px] font-bold text-white">{(vault.depositors ?? 0).toLocaleString()}</div>
+                      <div className="mt-0.5 text-[14px] font-bold text-white">{vault.depositors == null ? "—" : vault.depositors.toLocaleString()}</div>
                     </div>
                   </div>
 
@@ -258,7 +260,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     <div
                       className={cn(
                         "mt-0.5 text-[22px] font-bold tabular-nums",
-                        pnlNeg ? "text-red-400" : "text-green-400",
+                        pnlReturn == null ? "text-[#777]" : pnlNeg ? "text-red-400" : "text-green-400",
                       )}
                     >
                       {pnlStr}
@@ -315,33 +317,33 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>All-time PnL</span>
-                      <span className={cn((vault.all_time_pnl ?? 0) < 0 ? "text-red-400" : "text-green-400")}>
+                      <span className={cn(vault.all_time_pnl == null ? "text-[#777]" : vault.all_time_pnl < 0 ? "text-red-400" : "text-green-400")}>
                         {formatUsd(vault.all_time_pnl)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>APR</span>
-                      <span className="text-[#777]">{(vault.apr ?? 0).toFixed(2)}%</span>
+                      <span className="text-[#777]">{vault.apr == null ? "—" : `${vault.apr.toFixed(2)}%`}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Win Rate (12w)</span>
-                      <span className="text-[#777]">{((vault.weekly_win_rate_12w ?? 0) * 100).toFixed(0)}%</span>
+                      <span className="text-[#777]">{vault.weekly_win_rate_12w == null ? "—" : `${(vault.weekly_win_rate_12w * 100).toFixed(0)}%`}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Members</span>
-                      <span className="text-[#777]">{(vault.depositors ?? 0).toLocaleString()}</span>
+                      <span className="text-[#777]">{vault.depositors == null ? "—" : vault.depositors.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Profit Share</span>
-                      <span className="text-[#777]">{vault.profit_share ?? 0}%</span>
+                      <span className="text-[#777]">{vault.profit_share == null ? "—" : `${vault.profit_share}%`}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Sharpe Ratio</span>
-                      <span className="text-[#777]">{(vault.sharpe_ratio ?? 0).toFixed(2)}</span>
+                      <span className="text-[#777]">{vault.sharpe_ratio == null ? "—" : vault.sharpe_ratio.toFixed(2)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Max Drawdown</span>
-                      <span className="text-red-400">{(vault.max_drawdown ?? 0).toFixed(1)}%</span>
+                      <span className={vault.max_drawdown == null ? "text-[#777]" : "text-red-400"}>{vault.max_drawdown == null ? "—" : `${vault.max_drawdown.toFixed(1)}%`}</span>
                     </div>
                   </div>
                 </div>

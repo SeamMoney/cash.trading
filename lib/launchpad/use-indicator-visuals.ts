@@ -875,7 +875,7 @@ export function useIndicatorVisuals(
       renderedMarkers.splice(100);
     }
 
-    // Sort markers by time (lightweight-charts requires this)
+    // Keep markers chronological for deterministic rendering.
     renderedMarkers.sort((a, b) => a.time - b.time);
 
     // ── Hlines — pass through ─────────────────────────────────────────────

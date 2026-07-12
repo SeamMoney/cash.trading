@@ -213,9 +213,6 @@ importers:
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      lightweight-charts:
-        specifier: ^4.2.3
-        version: 4.2.3
       liveline:
         specifier: ^0.0.6
         version: 0.0.6(react@19.2.7)
@@ -3557,9 +3554,6 @@ packages:
     resolution: {integrity: sha512-GipyPsXO1anza0AOZdy69Im7hGFCNB7Y/NGjDlZGJ3GJJLtwNSb2vrzYrTYJRrRloVx7pl+bhUaTB8yiccPvFQ==}
     engines: {node: '> 0.1.90'}
 
-  fancy-canvas@2.1.0:
-    resolution: {integrity: sha512-nifxXJ95JNLFR2NgRV4/MxVP45G9909wJTEKz5fg/TZS20JJZA6hfgRVh/bC9bwl2zBtBNcYPjiBE4njQHVBwQ==}
-
   fast-check@4.8.0:
     resolution: {integrity: sha512-GOJ158CUMnN6cSahsv4+ExARvIDuzzinFjkp0E9WtiBa5zcVeLozVkWaE4IzFcc+Y48Wp1EDlUZsXRyAztQcSg==}
     engines: {node: '>=12.17.0'}
@@ -3978,9 +3972,6 @@ packages:
   lightningcss@1.30.2:
     resolution: {integrity: sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ==}
     engines: {node: '>= 12.0.0'}
-
-  lightweight-charts@4.2.3:
-    resolution: {integrity: sha512-5kS/2hY3wNYNzhnS8Gb+GAS07DX8GPF2YVDnd2NMC85gJVQ6RLU6YrXNgNJ6eg0AnWPwCnvaGtYmGky3HiLQEw==}
 
   liveline@0.0.6:
     resolution: {integrity: sha512-ZHw/Xgh1elzCc361YFRW4+rqGPl8dWdDDS26XYLxkn4uYBlEs5V6OajpIC75l2Lff1Q+I8TvBvav4rbLGHIpJg==}
@@ -8195,8 +8186,6 @@ snapshots:
 
   eyes@0.1.8: {}
 
-  fancy-canvas@2.1.0: {}
-
   fast-check@4.8.0:
     dependencies:
       pure-rand: 8.4.0
@@ -8586,10 +8575,6 @@ snapshots:
       lightningcss-linux-x64-musl: 1.30.2
       lightningcss-win32-arm64-msvc: 1.30.2
       lightningcss-win32-x64-msvc: 1.30.2
-
-  lightweight-charts@4.2.3:
-    dependencies:
-      fancy-canvas: 2.1.0
 
   liveline@0.0.6(react@19.2.7):
     dependencies:

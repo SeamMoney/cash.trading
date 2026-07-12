@@ -1,6 +1,6 @@
 /**
  * PineTS integration — runs PineScript through the PineTS runtime
- * and returns structured visual data for lightweight-charts rendering.
+ * and returns structured visual data for the local chart renderer.
  */
 
 import type { Candle } from "./types";

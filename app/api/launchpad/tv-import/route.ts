@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 /**
  * GET /api/launchpad/tv-import?url=<tradingview_script_url>
@@ -10,30 +11,109 @@ import { NextRequest, NextResponse } from "next/server";
  *   - Raw text inside <pre> or code blocks
  */
 
-const TV_URL_RE = /^https?:\/\/(www\.)?tradingview\.com\/script\//;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const MAX_URL_CHARS = 2_048;
+const MAX_HTML_BYTES = 2_000_000;
+const MAX_API_BYTES = 500_000;
+const MAX_SOURCE_CHARS = 100_000;
+
+function parseTradingViewScriptUrl(raw: string): URL | null {
+  if (!raw || raw.length > MAX_URL_CHARS) return null;
+
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      parsed.protocol !== "https:" ||
+      (host !== "tradingview.com" && host !== "www.tradingview.com") ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port ||
+      !parsed.pathname.startsWith("/script/") ||
+      parsed.pathname.length <= "/script/".length
+    ) {
+      return null;
+    }
+
+    return new URL(`${parsed.pathname}${parsed.search}`, "https://www.tradingview.com");
+  } catch {
+    return null;
+  }
+}
+
+async function readTextWithinLimit(response: Response, maxBytes: number): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error("upstream_response_too_large");
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new Error("upstream_response_too_large");
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("upstream_response_too_large");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+
+  return text + decoder.decode();
+}
 
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url");
+  const rate = checkApiRateLimit(req, "launchpad-tv-import", 10, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { "Cache-Control": "no-store", "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
 
-  if (!url) {
+  const rawUrl = req.nextUrl.searchParams.get("url");
+
+  if (!rawUrl) {
     return NextResponse.json({ error: "Missing ?url= parameter" }, { status: 400 });
   }
 
-  if (!TV_URL_RE.test(url)) {
+  const pageUrl = parseTradingViewScriptUrl(rawUrl);
+  if (!pageUrl) {
     return NextResponse.json(
-      { error: "URL must start with https://www.tradingview.com/script/" },
+      { error: "URL must be a valid https://www.tradingview.com/script/... address" },
       { status: 400 },
     );
   }
 
   try {
+    let html = "";
+
     // ── Strategy 0: TradingView pine-facade API ──────────────────────────────
     // Step 1: Fetch the HTML page to find the internal PUB;xxx script ID
     // Step 2: Call the pine-facade API with that ID to get the source
     {
       try {
-        const pageRes = await fetch(url, {
+        const pageRes = await fetch(pageUrl, {
           cache: "no-store",
+          redirect: "error",
           headers: {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             Accept: "text/html",
@@ -41,7 +121,8 @@ export async function GET(req: NextRequest) {
           signal: AbortSignal.timeout(10_000),
         });
         if (pageRes.ok) {
-          const pageHtml = await pageRes.text();
+          const pageHtml = await readTextWithinLimit(pageRes, MAX_HTML_BYTES);
+          html = pageHtml;
           // Extract internal PUB;xxx ID from the HTML
           const pubIdMatch = pageHtml.match(/"(PUB;[a-f0-9]+)"/);
           if (pubIdMatch) {
@@ -50,6 +131,7 @@ export async function GET(req: NextRequest) {
               `https://pine-facade.tradingview.com/pine-facade/get/${encodeURIComponent(pubId)}/last?no_4xx=true`,
               {
                 cache: "no-store",
+                redirect: "error",
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
                   Origin: "https://www.tradingview.com",
@@ -59,7 +141,9 @@ export async function GET(req: NextRequest) {
               },
             );
             if (apiRes.ok) {
-              const data = await apiRes.json() as { source?: string; scriptName?: string; description?: string };
+              const data = JSON.parse(
+                await readTextWithinLimit(apiRes, MAX_API_BYTES),
+              ) as { source?: string; scriptName?: string; description?: string };
               if (data.source && data.source.length > 30) {
                 return NextResponse.json({
                   source: cleanSource(data.source),
@@ -75,25 +159,28 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Fallback: HTML scraping ─────────────────────────────────────────────
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
+    if (!html) {
+      const res = await fetch(pageUrl, {
+        cache: "no-store",
+        redirect: "error",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
 
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `TradingView returned HTTP ${res.status}` },
-        { status: 502 },
-      );
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: `TradingView returned HTTP ${res.status}` },
+          { status: 502 },
+        );
+      }
+
+      html = await readTextWithinLimit(res, MAX_HTML_BYTES);
     }
-
-    const html = await res.text();
 
     // Extract title from <title> or og:title
     let title = "Untitled Indicator";
@@ -203,8 +290,20 @@ export async function GET(req: NextRequest) {
         { status: 504 },
       );
     }
+    if (message === "upstream_response_too_large") {
+      return NextResponse.json(
+        { error: "TradingView returned more data than this importer accepts." },
+        { status: 502 },
+      );
+    }
+    if (message === "pine_source_too_large") {
+      return NextResponse.json(
+        { error: `PineScript source exceeds the ${MAX_SOURCE_CHARS.toLocaleString()} character limit.` },
+        { status: 422 },
+      );
+    }
     return NextResponse.json(
-      { error: `Failed to fetch TradingView page: ${message}` },
+      { error: "Failed to fetch TradingView page." },
       { status: 502 },
     );
   }
@@ -225,7 +324,9 @@ function decodeHtmlEntities(str: string): string {
 }
 
 function cleanSource(source: string): string {
-  return source.trim().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const cleaned = source.trim().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (cleaned.length > MAX_SOURCE_CHARS) throw new Error("pine_source_too_large");
+  return cleaned;
 }
 
 /**

@@ -3,11 +3,19 @@ import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk'
 import { getActiveNetwork } from '@/lib/decibel-sdk'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 /**
  * Debug endpoint to check position and market data
  */
 export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const subaccount = searchParams.get('subaccount')

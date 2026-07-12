@@ -5,6 +5,7 @@ import { HistoryTable } from "@/components/dashboard/history-table"
 import { ServerBotConfig } from "@/components/bot/server-bot-config"
 import { PointsView } from "@/components/points/points-view"
 import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 
 export const metadata: Metadata = {
   title: "cash.trading - Farm Decibel Points",
@@ -12,6 +13,10 @@ export const metadata: Metadata = {
 }
 
 export default function Home() {
+  if (process.env.NODE_ENV === "production") {
+    redirect("/portfolio")
+  }
+
   return (
     <DashboardLayout>
       <Tabs defaultValue="volume" className="space-y-6">

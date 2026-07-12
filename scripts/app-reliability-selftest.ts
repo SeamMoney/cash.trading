@@ -71,6 +71,8 @@ const launchpadWithdrawRoute = readFileSync("app/api/launchpad/withdraw/route.ts
 const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.ts", "utf8");
 const launchpadGraduateRoute = readFileSync("app/api/launchpad/graduate/route.ts", "utf8");
 const launchpadPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
+const sharedHeader = readFileSync("components/layout/Header.tsx", "utf8");
+const automationPage = readFileSync("app/automation/page.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
 const sponsorSubmitRoute = readFileSync("app/api/decibel/sponsor-submit/route.ts", "utf8");
 const legacyBotRoutes = [
@@ -337,6 +339,9 @@ assert.ok(!launchpadGraduateRoute.includes("VAULT_ADDR_PLACEHOLDER"), "graduatio
 assert.ok(!launchpadPage.includes("Fund Strategy"), "the undeployed bonding curve must not ask users for APT");
 assert.ok(!launchpadPage.includes("Unlock · $29/mo"), "local browser state must not impersonate a paid subscription");
 assert.ok(!launchpadPage.includes("ScheduleTradeModal"), "disabled automation must not expose a fake deploy flow");
+assert.match(sharedHeader, /process\.env\.NODE_ENV !== "production"/);
+assert.match(automationPage, /process\.env\.NODE_ENV === "production"/);
+assert.match(automationPage, /redirect\("\/portfolio"\)/);
 assert.ok(!tradePage.includes("buildDemoStrategyCurve"), "strategy vault charts must not fabricate performance");
 assert.ok(!tradePage.includes("subscribers"), "strategy cards must not fabricate subscriber counts");
 assert.ok(!tradePage.includes("ScheduleTradeModal"), "the trade page must not expose disabled automation");

@@ -57,7 +57,6 @@ export function TradePanel({
   marketAddress,
   maxLeverage = 40,
   currentPrice = 0,
-  onPositionOpen,
   className,
 }: {
   market?: string;
@@ -66,7 +65,6 @@ export function TradePanel({
   marketAddress?: string;
   maxLeverage?: number;
   currentPrice?: number;
-  onPositionOpen?: (pos: { market: string; side: "long" | "short"; collateral: number; leverage: number }) => void;
   chartHeight?: number;
   className?: string;
 }) {
@@ -340,9 +338,6 @@ export function TradePanel({
         amount: collateral,
         market,
       });
-      if (hasMatchingPosition) {
-        onPositionOpen?.({ market, side, collateral, leverage });
-      }
       emitDecibelPositionsRefresh();
       setAmount("");
       setTimeout(() => {
@@ -373,7 +368,6 @@ export function TradePanel({
     market,
     marketAddress,
     marketStatus,
-    onPositionOpen,
     selectedSubaccount,
     side,
     signAndSubmitTransaction,

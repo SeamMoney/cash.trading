@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
+import {
+  pairOnChainTrades,
+  parseOnChainTradeVectors,
+  parseSafeUnsigned,
+} from "@/lib/launchpad/move-view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +21,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
+const VIEW_TIMEOUT_MS = 5_000;
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 const apiKey = process.env.GEOMI_API_KEY_TESTNET ?? process.env.APTOS_API_KEY_TESTNET;
@@ -27,7 +33,25 @@ const aptos = new Aptos(new AptosConfig({
 type ViewFn = `${string}::${string}::${string}`;
 
 async function safeView(fn: ViewFn, args: string[]) {
-  return aptos.view({ payload: { function: fn, functionArguments: args } });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      aptos.view({ payload: { function: fn, functionArguments: args } }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Aptos trade lookup timed out")), VIEW_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function isMissingIndicator(error: unknown): boolean {
+  const status = typeof error === "object" && error !== null && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : 0;
+  const message = error instanceof Error ? error.message : String(error);
+  return status === 404 || /not found|resource_not_found|does not exist|failed to borrow global resource/i.test(message);
 }
 
 export async function GET(req: NextRequest) {
@@ -60,93 +84,63 @@ export async function GET(req: NextRequest) {
     ]);
 
     // get_trade_stats returns (total_trades, win_trades, loss_trades, total_gain_bps, total_loss_bps)
-    const [totalTrades, winTrades, lossTrades, totalGainBps, totalLossBps] = statsResult as [
-      string, string, string, string, string
-    ];
-
-    // get_trades returns 6 parallel vectors:
-    // (ids, signals, prices, gains_bps, losses_bps, timestamps)
-    const [ids, signals, prices, gainsBps, lossesBps, timestamps] = tradesResult as [
-      string[], number[], string[], string[], string[], string[]
-    ];
-
-    const trades = ids.map((id, i) => ({
-      tradeId: Number(id),
-      signal: Number(signals[i]),        // 1=BUY entry, 2=SELL exit
-      price: Number(prices[i]) / 1e8,    // USD
-      gainBps: Number(gainsBps[i]),
-      lossBps: Number(lossesBps[i]),
-      timestamp: Number(timestamps[i]),
-      // Derived fields for UI
-      type: Number(signals[i]) === 1 ? "BUY" : "SELL",
-      pnlBps: Number(signals[i]) === 1
-        ? 0                              // entries have no P&L yet
-        : Number(gainsBps[i]) > 0
-          ? Number(gainsBps[i])          // positive for gains
-          : -Number(lossesBps[i]),       // negative for losses
-    }));
-
-    // Pair BUY entries with subsequent SELL exits for display
-    const pairs: Array<{
-      entryTrade: typeof trades[0];
-      exitTrade: typeof trades[0] | null;
-      pnlBps: number;
-      pnlPct: number;
-    }> = [];
-
-    let i = 0;
-    while (i < trades.length) {
-      if (trades[i].signal === 1) {
-        // BUY entry
-        const entry = trades[i];
-        const exit = trades[i + 1]?.signal === 2 ? trades[i + 1] : null;
-        pairs.push({
-          entryTrade: entry,
-          exitTrade: exit,
-          pnlBps: exit?.pnlBps ?? 0,
-          pnlPct: exit ? (exit.pnlBps / 100) : 0,
-        });
-        i += exit ? 2 : 1;
-      } else {
-        // Orphan SELL (e.g., migrated indicator where entry wasn't tracked)
-        i++;
-      }
+    if (!Array.isArray(statsResult) || statsResult.length !== 5) {
+      throw new Error("get_trade_stats returned an unexpected tuple");
     }
+    const totalTrades = parseSafeUnsigned(statsResult[0], "total trades");
+    const winTrades = parseSafeUnsigned(statsResult[1], "win trades");
+    const lossTrades = parseSafeUnsigned(statsResult[2], "loss trades");
+    const totalGainBps = parseSafeUnsigned(statsResult[3], "total gain bps");
+    const totalLossBps = parseSafeUnsigned(statsResult[4], "total loss bps");
 
-    const winRate = Number(totalTrades) > 0
-      ? Math.round((Number(winTrades) / Number(totalTrades)) * 100)
+    // Aptos serializes vector<u8> as a single 0x-prefixed byte string. Decode
+    // it before aligning it with the five ordinary vectors.
+    const trades = parseOnChainTradeVectors(tradesResult);
+    const pairs = pairOnChainTrades(trades);
+    const completedTrades = winTrades + lossTrades;
+
+    const winRate = completedTrades > 0
+      ? Math.round((winTrades / completedTrades) * 100)
       : 0;
 
-    const avgGainBps = Number(winTrades) > 0
-      ? Math.round(Number(totalGainBps) / Number(winTrades))
+    const avgGainBps = winTrades > 0
+      ? Math.round(totalGainBps / winTrades)
       : 0;
 
-    const avgLossBps = Number(lossTrades) > 0
-      ? Math.round(Number(totalLossBps) / Number(lossTrades))
+    const avgLossBps = lossTrades > 0
+      ? Math.round(totalLossBps / lossTrades)
       : 0;
 
     return NextResponse.json({
+      onChain: true,
       indicatorAddr: indicatorAddress,
       stats: {
-        totalTrades: Number(totalTrades),
-        winTrades: Number(winTrades),
-        lossTrades: Number(lossTrades),
-        totalGainBps: Number(totalGainBps),
-        totalLossBps: Number(totalLossBps),
+        totalTrades,
+        completedTrades,
+        winTrades,
+        lossTrades,
+        totalGainBps,
+        totalLossBps,
         winRate,
         avgGainBps,
         avgLossBps,
-        netPnlBps: Number(totalGainBps) - Number(totalLossBps),
+        netPnlBps: totalGainBps - totalLossBps,
       },
       trades,
       pairs,
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
+    if (isMissingIndicator(err)) {
+      return NextResponse.json(
+        { onChain: false, unavailable: false, reason: "indicator_not_found", trades: [], pairs: [] },
+        { status: 404, headers: NO_STORE_HEADERS },
+      );
+    }
     const message = err instanceof Error ? err.message : "Trade history lookup failed";
     console.warn("[launchpad-trades] lookup failed:", message);
     return NextResponse.json(
-      { onChain: false, trades: [], pairs: [] },
-      { status: 200, headers: NO_STORE_HEADERS },
+      { onChain: false, unavailable: true, reason: "aptos_testnet_unavailable", trades: [], pairs: [] },
+      { status: 502, headers: NO_STORE_HEADERS },
     );
   }
 }

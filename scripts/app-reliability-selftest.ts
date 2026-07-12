@@ -10,6 +10,11 @@ import {
   buildDelegateDecibelVaultPayload,
   buildDepositDecibelVaultPayload,
 } from "../lib/decibel-vaults";
+import {
+  decodeMoveU8Vector,
+  pairOnChainTrades,
+  parseOnChainTradeVectors,
+} from "../lib/launchpad/move-view";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -250,9 +255,16 @@ assert.match(launchpadPriceTickRoute, /checkApiRateLimit\(req, "launchpad-price-
 assert.match(launchpadPriceTickRoute, /Pyth returned invalid price data/);
 assert.match(launchpadOnChainRoute, /checkApiRateLimit\(req, "launchpad-on-chain"/);
 assert.match(launchpadOnChainRoute, /isValidAptosAddress\(addr\)/);
+assert.match(launchpadOnChainRoute, /parseScaledVectorView/);
+assert.match(launchpadOnChainRoute, /status: 502/);
 assert.ok(!launchpadOnChainRoute.includes("error: String(err)"));
 assert.match(launchpadTradesRoute, /checkApiRateLimit\(req, "launchpad-trades"/);
 assert.match(launchpadTradesRoute, /isValidAptosAddress\(addr\)/);
+assert.match(launchpadTradesRoute, /parseOnChainTradeVectors/);
+assert.match(launchpadTradesRoute, /completedTrades/);
+assert.match(launchpadTradesRoute, /status: 502/);
+assert.match(launchpadOnChainChart, /candleAbortRef/);
+assert.match(launchpadOnChainChart, /high < Math\.max\(open, close\)/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 assert.match(vercelIgnore, /^\.data$/m);
@@ -474,6 +486,22 @@ assert.throws(
   () => normalizeU128("340282366920938463463374607431768211456"),
   /within range/,
 );
+assert.deepEqual(decodeMoveU8Vector("0x010201"), [1, 2, 1]);
+assert.throws(() => decodeMoveU8Vector("0x010"), /Move byte vector/);
+const parsedMoveTrades = parseOnChainTradeVectors([
+  ["10", "11", "12", "13"],
+  "0x01010202",
+  ["100000000", "110000000", "120000000", "130000000"],
+  ["0", "0", "250", "0"],
+  ["0", "0", "0", "125"],
+  ["100", "101", "102", "103"],
+]);
+assert.deepEqual(parsedMoveTrades.map((trade) => trade.signal), [1, 1, 2, 2]);
+assert.equal(parsedMoveTrades[2].pnlBps, 250);
+const parsedMovePairs = pairOnChainTrades(parsedMoveTrades);
+assert.equal(parsedMovePairs.length, 1);
+assert.equal(parsedMovePairs[0].entryTrade.tradeId, 11);
+assert.equal(parsedMovePairs[0].exitTrade?.tradeId, 12);
 assert.equal(
   normalizeAptosAddress("0x1"),
   `0x${"0".repeat(63)}1`,

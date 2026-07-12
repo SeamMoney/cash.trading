@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
+import { parseSafeUnsigned, unwrapMoveVectorView } from "@/lib/launchpad/move-view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
+const VIEW_TIMEOUT_MS = 5_000;
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 // Use the testnet API key (same as the crank route) — the default fullnode
@@ -34,7 +36,36 @@ const aptos = new Aptos(new AptosConfig({
 type ViewFn = `${string}::${string}::${string}`;
 
 async function safeView(fn: ViewFn, args: string[]) {
-  return aptos.view({ payload: { function: fn, functionArguments: args } });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      aptos.view({ payload: { function: fn, functionArguments: args } }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Aptos indicator lookup timed out")), VIEW_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function isMissingIndicator(error: unknown): boolean {
+  const status = typeof error === "object" && error !== null && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : 0;
+  const message = error instanceof Error ? error.message : String(error);
+  return status === 404 || /not found|resource_not_found|does not exist|failed to borrow global resource/i.test(message);
+}
+
+function parseBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`${field} is not a boolean`);
+  return value;
+}
+
+function parseScaledVectorView(value: unknown, field: string, scale: number): number[] {
+  return unwrapMoveVectorView(value, field).map(
+    (entry, index) => parseSafeUnsigned(entry, `${field}[${index}]`) / scale,
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -71,26 +102,37 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === "prices") {
-      const [prices, timestamps] = await Promise.all([
+      const [pricesResult, timestampsResult] = await Promise.all([
         safeView(`${contractAt}::indicator::get_prices`, [indicatorAddress]),
         safeView(`${contractAt}::indicator::get_timestamps`, [indicatorAddress]),
       ]);
+      const prices = parseScaledVectorView(pricesResult, "prices", 1e8);
+      const timestamps = parseScaledVectorView(timestampsResult, "timestamps", 1);
+      if (prices.length !== timestamps.length) {
+        throw new Error("price and timestamp vectors are misaligned");
+      }
       return NextResponse.json({
-        prices: (prices as string[]).map((p) => Number(p) / 1e8),
-        timestamps: (timestamps as string[]).map((t) => Number(t)),
+        onChain: true,
+        prices,
+        timestamps,
       }, { headers: NO_STORE_HEADERS });
     }
 
     if (type === "position") {
-      const [inPos, entry, gain, loss] = await safeView(
+      const positionResult = await safeView(
         `${contractAt}::indicator::get_position`,
         [indicatorAddress],
       );
+      if (!Array.isArray(positionResult) || positionResult.length !== 4) {
+        throw new Error("get_position returned an unexpected tuple");
+      }
+      const [inPos, entry, gain, loss] = positionResult;
       return NextResponse.json({
-        inPosition: inPos,
-        entryPrice: Number(entry) / 1e8,
-        realizedGainBps: Number(gain),
-        realizedLossBps: Number(loss),
+        onChain: true,
+        inPosition: parseBoolean(inPos, "in position"),
+        entryPrice: parseSafeUnsigned(entry, "entry price") / 1e8,
+        realizedGainBps: parseSafeUnsigned(gain, "realized gain bps"),
+        realizedLossBps: parseSafeUnsigned(loss, "realized loss bps"),
       }, { headers: NO_STORE_HEADERS });
     }
 
@@ -110,33 +152,54 @@ export async function GET(req: NextRequest) {
       safeView(`${contractAt}::indicator::get_timestamps`, [indicatorAddress]),
     ]);
 
+    if (
+      !Array.isArray(signalResult) || signalResult.length !== 5 ||
+      !Array.isArray(statsResult) || statsResult.length !== 3 ||
+      !Array.isArray(positionResult) || positionResult.length !== 4
+    ) {
+      throw new Error("indicator state views returned an unexpected tuple");
+    }
     const [sig, fast, slow, price, sigTime] = signalResult;
     const [pushed, signals, graduated] = statsResult;
     const [inPos, entry, gain, loss] = positionResult;
+    const parsedSignal = parseSafeUnsigned(sig, "signal");
+    if (parsedSignal > 2) throw new Error("signal is outside the expected range");
+    const prices = parseScaledVectorView(pricesResult, "prices", 1e8);
+    const timestamps = parseScaledVectorView(timestampsResult, "timestamps", 1);
+    if (prices.length !== timestamps.length) {
+      throw new Error("price and timestamp vectors are misaligned");
+    }
 
     return NextResponse.json({
+      onChain: true,
       indicatorAddr: indicatorAddress,
-      signal: Number(sig),
-      fastLine: Number(fast) / 1e8,
-      slowLine: Number(slow) / 1e8,
-      lastPrice: Number(price) / 1e8,
-      lastSignalTime: Number(sigTime),
-      totalPushed: Number(pushed),
-      totalSignals: Number(signals),
-      isGraduated: graduated as boolean,
-      inPosition: inPos as boolean,
-      entryPrice: Number(entry) / 1e8,
-      realizedGainBps: Number(gain),
-      realizedLossBps: Number(loss),
-      prices: (pricesResult[0] as string[]).map((p) => Number(p) / 1e8),
-      timestamps: (timestampsResult[0] as string[]).map((t) => Number(t)),
+      signal: parsedSignal,
+      fastLine: parseSafeUnsigned(fast, "fast line") / 1e8,
+      slowLine: parseSafeUnsigned(slow, "slow line") / 1e8,
+      lastPrice: parseSafeUnsigned(price, "last price") / 1e8,
+      lastSignalTime: parseSafeUnsigned(sigTime, "last signal time"),
+      totalPushed: parseSafeUnsigned(pushed, "total pushed"),
+      totalSignals: parseSafeUnsigned(signals, "total signals"),
+      isGraduated: parseBoolean(graduated, "graduated"),
+      inPosition: parseBoolean(inPos, "in position"),
+      entryPrice: parseSafeUnsigned(entry, "entry price") / 1e8,
+      realizedGainBps: parseSafeUnsigned(gain, "realized gain bps"),
+      realizedLossBps: parseSafeUnsigned(loss, "realized loss bps"),
+      prices,
+      timestamps,
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
+    if (isMissingIndicator(err)) {
+      return NextResponse.json(
+        { onChain: false, unavailable: false, reason: "indicator_not_found" },
+        { status: 404, headers: NO_STORE_HEADERS },
+      );
+    }
     const message = err instanceof Error ? err.message : "Indicator lookup failed";
     console.warn("[launchpad-on-chain] lookup failed:", message);
     return NextResponse.json(
-      { onChain: false, unavailable: true },
-      { status: 200, headers: NO_STORE_HEADERS },
+      { onChain: false, unavailable: true, reason: "aptos_testnet_unavailable" },
+      { status: 502, headers: NO_STORE_HEADERS },
     );
   }
 }

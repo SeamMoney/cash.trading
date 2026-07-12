@@ -168,7 +168,7 @@ interface OnChainState {
   inPosition: boolean; entryPrice: number; realizedGainBps: number;
   /** Unix-seconds timestamps of the on-chain price buffer (last = freshest). */
   timestamps?: number[];
-  error?: string; onChain?: boolean;
+  error?: string; onChain?: boolean; unavailable?: boolean; reason?: string;
 }
 
 const ENGINE_STALE_AFTER_MS = 30 * 60_000;
@@ -234,10 +234,13 @@ export function OnChainChart({
   const chartsRef = useRef<{ main: any; sub: any } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const candleSeriesRef = useRef<any>(null);
+  const candleAbortRef = useRef<AbortController | null>(null);
+  const onChainAbortRef = useRef<AbortController | null>(null);
 
   const [candles,     setCandles]     = useState<Candle[]>([]);
   const [tf,          setTf]          = useState<TF>(TFS[0]);
   const [loadingC,    setLoadingC]    = useState(true);
+  const [candleError, setCandleError] = useState<string | null>(null);
   const [onChain,     setOnChain]     = useState<OnChainState | null>(null);
   const [pushing,     setPushing]     = useState(false);
   const [lastPush,    setLastPush]    = useState<string | null>(null);
@@ -261,32 +264,100 @@ export function OnChainChart({
 
   // ── Fetch Pyth OHLCV candles ────────────────────────────────────────────────
   const fetchCandles = useCallback(async () => {
+    candleAbortRef.current?.abort();
+    const controller = new AbortController();
+    candleAbortRef.current = controller;
     setLoadingC(true);
+    setCandleError(null);
+    setCandles([]);
     try {
-      const res  = await fetch(`/api/launchpad/candles?asset=${encodeURIComponent(asset)}&resolution=${tf.resolution}&days=${tf.days}`);
+      const res  = await fetch(
+        `/api/launchpad/candles?asset=${encodeURIComponent(asset)}&resolution=${tf.resolution}&days=${tf.days}`,
+        { signal: controller.signal },
+      );
+      if (!res.ok) throw new Error(`Candle history returned ${res.status}`);
       const data = await res.json() as { candles?: { timestamp: number; open: number; high: number; low: number; close: number; volume?: number }[] };
-      if (data.candles?.length) {
-        setCandles(data.candles.map((c) => ({
-          time: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
-        })));
+      if (!Array.isArray(data.candles)) throw new Error("Candle history returned an invalid payload");
+      const byTimestamp = new Map<number, Candle>();
+      for (const candle of data.candles) {
+        const { timestamp, open, high, low, close, volume } = candle;
+        if (
+          !Number.isSafeInteger(timestamp) || timestamp <= 0 ||
+          ![open, high, low, close].every(Number.isFinite) ||
+          open <= 0 || high <= 0 || low <= 0 || close <= 0 ||
+          high < Math.max(open, close) || low > Math.min(open, close) ||
+          (volume !== undefined && (!Number.isFinite(volume) || volume < 0))
+        ) {
+          continue;
+        }
+        byTimestamp.set(timestamp, {
+          time: timestamp,
+          open,
+          high,
+          low,
+          close,
+          volume,
+        });
       }
-    } catch { /* network error — chart stays empty */ }
-    finally { setLoadingC(false); }
+      if (!controller.signal.aborted) {
+        setCandles([...byTimestamp.values()].sort((a, b) => a.time - b.time));
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setCandleError("Price history is temporarily unavailable.");
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoadingC(false);
+    }
   }, [asset, tf]);
 
   // ── Fetch on-chain state ────────────────────────────────────────────────────
   const fetchOnChain = useCallback(async () => {
+    onChainAbortRef.current?.abort();
+    const controller = new AbortController();
+    onChainAbortRef.current = controller;
     try {
-      const res  = await fetch(`/api/launchpad/on-chain?addr=${indicatorAddr}`);
-      setOnChain(await res.json());
-    } catch { /* ignore */ }
+      const res = await fetch(
+        `/api/launchpad/on-chain?addr=${indicatorAddr}`,
+        { signal: controller.signal },
+      );
+      const data = await res.json().catch(() => null) as OnChainState | null;
+      if (!res.ok || !data) {
+        throw new Error(data?.reason ?? `On-chain state returned ${res.status}`);
+      }
+      if (!controller.signal.aborted) setOnChain(data);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setOnChain({
+          signal: 0,
+          fastLine: 0,
+          slowLine: 0,
+          lastPrice: 0,
+          lastSignalTime: 0,
+          totalPushed: 0,
+          totalSignals: 0,
+          inPosition: false,
+          entryPrice: 0,
+          realizedGainBps: 0,
+          onChain: false,
+          unavailable: true,
+          error: error instanceof Error ? error.message : "On-chain state is unavailable",
+        });
+      }
+    }
   }, [indicatorAddr]);
 
-  useEffect(() => { fetchCandles(); }, [fetchCandles]);
   useEffect(() => {
-    fetchOnChain();
-    const t = setInterval(fetchOnChain, refreshMs);
-    return () => clearInterval(t);
+    void fetchCandles();
+    return () => candleAbortRef.current?.abort();
+  }, [fetchCandles]);
+  useEffect(() => {
+    void fetchOnChain();
+    const t = setInterval(() => { void fetchOnChain(); }, refreshMs);
+    return () => {
+      clearInterval(t);
+      onChainAbortRef.current?.abort();
+    };
   }, [fetchOnChain, refreshMs]);
 
   // ── Fast Pyth price polling — updates chart every 5s ─────────────────────
@@ -699,7 +770,15 @@ export function OnChainChart({
             )}
           </>
         ) : (
-          <span className="text-zinc-700">{loadingC ? "Fetching Pyth candles…" : `${candles.length} candles · computed locally`}</span>
+          <span className="text-zinc-700">
+            {loadingC
+              ? "Fetching Pyth candles…"
+              : candleError
+                ? candleError
+                : onChain?.unavailable
+                  ? `${candles.length} candles · on-chain state temporarily unavailable`
+                  : `${candles.length} candles · computed locally`}
+          </span>
         )}
         {!loadingC && candles.length > 0 && (
           <span className="ml-auto text-zinc-700">{candles.length} {tf.label} candles</span>

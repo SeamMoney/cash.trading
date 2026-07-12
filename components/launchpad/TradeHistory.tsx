@@ -22,6 +22,7 @@ interface TradePair {
 
 interface TradeStats {
   totalTrades: number;
+  completedTrades: number;
   winTrades: number;
   lossTrades: number;
   totalGainBps: number;
@@ -63,20 +64,36 @@ export default function TradeHistory({ indicatorAddr }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch(`/api/launchpad/trades?addr=${indicatorAddr}`);
-        const json = await res.json();
-        if (json.error) { setError(json.error); return; }
-        setData(json);
+        const json = await res.json().catch(() => null) as (TradeData & {
+          error?: string;
+          reason?: string;
+        }) | null;
+        if (!res.ok || !json) {
+          throw new Error(
+            json?.reason === "indicator_not_found"
+              ? "No on-chain trade history exists for this indicator."
+              : "Trade history is temporarily unavailable.",
+          );
+        }
+        if (!cancelled) setData(json);
       } catch (e) {
-        setError(String(e));
+        if (!cancelled) {
+          setData(null);
+          setError(e instanceof Error ? e.message : "Trade history is temporarily unavailable.");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
-    load();
+    void load();
+    return () => { cancelled = true; };
   }, [indicatorAddr]);
 
   if (loading) {
@@ -91,17 +108,17 @@ export default function TradeHistory({ indicatorAddr }: Props) {
   if (error || !data) {
     return (
       <div className="text-sm text-zinc-500 py-2">
-        No attribution data — trades recorded after v2 upgrade only.
+        {error ?? "Trade history is temporarily unavailable."}
       </div>
     );
   }
 
   const { stats, trades, pairs } = data;
 
-  if (stats.totalTrades === 0) {
+  if (trades.length === 0) {
     return (
       <div className="text-sm text-zinc-500 py-2">
-        No trades recorded yet. Attribution starts on next signal crossover.
+        No signal crossovers recorded yet.
       </div>
     );
   }
@@ -110,7 +127,7 @@ export default function TradeHistory({ indicatorAddr }: Props) {
     <div className="space-y-4">
       {/* Stats strip */}
       <div className="grid grid-cols-4 gap-3">
-        <StatCell label="Trades" value={String(stats.totalTrades)} />
+        <StatCell label="Trades" value={String(stats.completedTrades)} />
         <StatCell
           label="Win rate"
           value={`${stats.winRate}%`}
@@ -142,7 +159,7 @@ export default function TradeHistory({ indicatorAddr }: Props) {
           </thead>
           <tbody>
             {pairs.map((pair, i) => (
-              <tr key={i} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-900/40 transition-colors">
+              <tr key={pair.entryTrade.tradeId} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-900/40 transition-colors">
                 <td className="px-3 py-2.5 text-zinc-600">{i + 1}</td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5">

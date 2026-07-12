@@ -464,6 +464,11 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   const positionsRef = useRef<Position[]>([]);
   const openOrdersRef = useRef<OpenOrder[]>([]);
   const overviewRef = useRef<Overview | null>(null);
+  const closingActionTokensRef = useRef(new Map<string, symbol>());
+  const cancelingActionTokensRef = useRef(new Map<string, symbol>());
+  const actionContext = `${ownerAddress}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+  const actionContextRef = useRef(actionContext);
+  actionContextRef.current = actionContext;
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
@@ -478,6 +483,14 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   useEffect(() => {
     overviewRef.current = overview;
   }, [overview]);
+
+  useEffect(() => {
+    closingActionTokensRef.current.clear();
+    cancelingActionTokensRef.current.clear();
+    setClosingPositionKeys(new Set());
+    setCancelingOrderIds(new Set());
+    setActionStatus(null);
+  }, [actionContext]);
 
   const loadSelectedSubaccount = useCallback(async (signal?: AbortSignal) => {
     if (!ownerAddress) {
@@ -616,6 +629,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   const handleClosePosition = useCallback(
     async (position: Position) => {
       const key = positionKey(position);
+      if (closingActionTokensRef.current.has(key)) return;
       const referencePrice = position.markPrice ?? position.entryPrice;
       const size = Math.abs(position.size);
 
@@ -648,6 +662,9 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         return;
       }
 
+      const token = Symbol(key);
+      const startedInContext = actionContextRef.current;
+      closingActionTokensRef.current.set(key, token);
       setClosingPosition(key, true);
       setActionStatus({
         tone: "pending",
@@ -668,29 +685,41 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
             subaccount: selectedSubaccount,
             network: decibelNetwork,
           },
-          signAndSubmitTransaction
+          signAndSubmitTransaction,
+          () =>
+            closingActionTokensRef.current.get(key) === token
+            && actionContextRef.current === startedInContext,
         );
 
-        setActionStatus({
-          tone: "pending",
-          message: "Close submitted. Waiting for confirmation...",
-          hash,
-        });
+        if (actionContextRef.current === startedInContext) {
+          setActionStatus({
+            tone: "pending",
+            message: "Close submitted. Waiting for confirmation...",
+            hash,
+          });
+        }
         emitDecibelPositionsRefresh();
         await waitForTransactionConfirmation(hash);
         emitDecibelPositionsRefresh();
-        setActionStatus({
-          tone: "success",
-          message: `Close confirmed for ${position.market}.`,
-          hash,
-        });
+        if (actionContextRef.current === startedInContext) {
+          setActionStatus({
+            tone: "success",
+            message: `Close confirmed for ${position.market}.`,
+            hash,
+          });
+        }
       } catch (error) {
-        setActionStatus({
-          tone: "error",
-          message: actionErrorMessage(error, `Failed to close ${position.market}.`),
-        });
+        if (actionContextRef.current === startedInContext) {
+          setActionStatus({
+            tone: "error",
+            message: actionErrorMessage(error, `Failed to close ${position.market}.`),
+          });
+        }
       } finally {
-        setClosingPosition(key, false);
+        if (closingActionTokensRef.current.get(key) === token) {
+          closingActionTokensRef.current.delete(key);
+          setClosingPosition(key, false);
+        }
       }
     },
     [
@@ -704,6 +733,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   const handleCancelOrder = useCallback(
     async (order: OpenOrder) => {
       const orderId = String(order.orderId);
+      if (cancelingActionTokensRef.current.has(orderId)) return;
       if (!selectedSubaccount) {
         setActionStatus({
           tone: "error",
@@ -726,6 +756,9 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         return;
       }
 
+      const token = Symbol(orderId);
+      const startedInContext = actionContextRef.current;
+      cancelingActionTokensRef.current.set(orderId, token);
       setCancelingOrder(orderId, true);
       setActionStatus({
         tone: "pending",
@@ -742,32 +775,44 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
             orderId,
             network: decibelNetwork,
           },
-          signAndSubmitTransaction
+          signAndSubmitTransaction,
+          () =>
+            cancelingActionTokensRef.current.get(orderId) === token
+            && actionContextRef.current === startedInContext,
         );
 
-        setOpenOrders((prev) =>
-          prev.filter((item) => String(item.orderId) !== orderId)
-        );
-        setActionStatus({
-          tone: "pending",
-          message: "Cancel submitted. Waiting for confirmation...",
-          hash,
-        });
+        if (actionContextRef.current === startedInContext) {
+          setActionStatus({
+            tone: "pending",
+            message: "Cancel submitted. Waiting for confirmation...",
+            hash,
+          });
+        }
         emitDecibelPositionsRefresh();
         await waitForTransactionConfirmation(hash);
         emitDecibelPositionsRefresh();
-        setActionStatus({
-          tone: "success",
-          message: `Order ${orderId} canceled.`,
-          hash,
-        });
+        if (actionContextRef.current === startedInContext) {
+          setOpenOrders((prev) =>
+            prev.filter((item) => String(item.orderId) !== orderId)
+          );
+          setActionStatus({
+            tone: "success",
+            message: `Order ${orderId} canceled.`,
+            hash,
+          });
+        }
       } catch (error) {
-        setActionStatus({
-          tone: "error",
-          message: actionErrorMessage(error, `Failed to cancel order ${orderId}.`),
-        });
+        if (actionContextRef.current === startedInContext) {
+          setActionStatus({
+            tone: "error",
+            message: actionErrorMessage(error, `Failed to cancel order ${orderId}.`),
+          });
+        }
       } finally {
-        setCancelingOrder(orderId, false);
+        if (cancelingActionTokensRef.current.get(orderId) === token) {
+          cancelingActionTokensRef.current.delete(orderId);
+          setCancelingOrder(orderId, false);
+        }
       }
     },
     [decibelNetwork, selectedSubaccount, setCancelingOrder, signAndSubmitTransaction]

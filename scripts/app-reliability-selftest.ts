@@ -44,6 +44,8 @@ const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8
 const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
+const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
+const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
 const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
@@ -183,6 +185,19 @@ assert.ok(!tradePage.includes("local-liq-"), "browser-only liquidations must not
 assert.ok(!tradePage.includes("onPositionOpen={"), "confirmed Decibel positions must not be duplicated in local state");
 assert.ok(!tradePage.includes("<PositionsTable"), "the page must show only the wallet-signed Decibel positions table");
 assert.ok(!tradePage.includes("<PnlCardModal"), "the page must not show locally calculated realized PnL as a confirmed close");
+const cancelOrderAction = positionsComponent.slice(
+  positionsComponent.indexOf("const handleCancelOrder"),
+  positionsComponent.indexOf("useEffect(() => {", positionsComponent.indexOf("const handleCancelOrder")),
+);
+assert.ok(
+  cancelOrderAction.indexOf("await waitForTransactionConfirmation(hash)")
+    < cancelOrderAction.indexOf("setOpenOrders((prev)"),
+  "an open order must remain visible until its cancellation confirms",
+);
+assert.match(positionsComponent, /closingActionTokensRef/);
+assert.match(positionsComponent, /cancelingActionTokensRef/);
+assert.match(tradePanel, /submissionTokenRef/);
+assert.match(tradePanel, /tradeContextRef/);
 assert.match(tradePage, /const displayVaults = \[\.\.\.vaults\]/);
 assert.ok(
   !tradePage.includes(".filter((v) => v.vault_type === \"protocol\""),

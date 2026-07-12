@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
+import { useCloudStatus } from "@/hooks/use-cloud-status"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info } from "lucide-react"
@@ -16,6 +17,8 @@ type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_sp
 export function ServerBotConfig() {
   const { account, connected, signAndSubmitTransaction } = useWallet()
   const { balance, subaccount } = useWalletBalance()
+  const { status: cloudStatus, loading: cloudStatusLoading } = useCloudStatus()
+  const automationEnabled = cloudStatus?.automationEnabled === true
 
   const [capital, setCapital] = useState<string>("")
   const [volumeTarget, setVolumeTarget] = useState<number>(10000)
@@ -40,6 +43,11 @@ export function ServerBotConfig() {
     const DELEGATION_CACHE_KEY = 'cash_trading_delegation_status'
 
     const checkDelegation = async () => {
+      if (!automationEnabled) {
+        setHasDelegation(false)
+        setCheckingDelegation(false)
+        return
+      }
       if (!subaccount) return
 
       // First, check localStorage cache
@@ -95,7 +103,7 @@ export function ServerBotConfig() {
     }
 
     checkDelegation()
-  }, [subaccount])
+  }, [automationEnabled, subaccount])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -248,6 +256,11 @@ export function ServerBotConfig() {
   }
 
   const handleDelegate = async () => {
+    if (!automationEnabled) {
+      setError("Automated bot execution is temporarily unavailable. Manual trading is unaffected.")
+      return
+    }
+
     if (!account || !subaccount) {
       setError("Please connect wallet first")
       return
@@ -306,6 +319,11 @@ export function ServerBotConfig() {
   }
 
   const handleStart = async () => {
+    if (!automationEnabled) {
+      setError("Automated bot execution is temporarily unavailable. Manual trading is unaffected.")
+      return
+    }
+
     if (!account || !subaccount || !capital) {
       setError("Please connect wallet and enter capital amount")
       return
@@ -402,7 +420,7 @@ export function ServerBotConfig() {
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
       {/* Bot Status Monitor */}
-      {connected && account && subaccount && (
+      {automationEnabled && connected && account && subaccount && (
         <BotStatusMonitor
           userWalletAddress={account.address.toString()}
           userSubaccount={subaccount}
@@ -428,6 +446,15 @@ export function ServerBotConfig() {
         </div>
 
         <div className="p-6 space-y-6 font-mono">
+          {!cloudStatusLoading && !automationEnabled && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 relative flex items-start gap-2">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-yellow-500" />
+              <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow-300">
+                Automated bot execution is temporarily unavailable while wallet authorization is being hardened. Manual trading is unaffected.
+              </p>
+            </div>
+          )}
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
@@ -783,7 +810,7 @@ export function ServerBotConfig() {
           )}
 
           {/* Delegation Section - only show when connected */}
-          {connected && !isRunning && !hasDelegation && !checkingDelegation && (
+          {automationEnabled && connected && !isRunning && !hasDelegation && !checkingDelegation && (
             <div className="space-y-3">
               <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
@@ -807,7 +834,7 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {connected && checkingDelegation && (
+          {automationEnabled && connected && checkingDelegation && (
             <div className="p-3 bg-zinc-500/10 border border-zinc-500/30 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-500" />
               <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
@@ -817,7 +844,7 @@ export function ServerBotConfig() {
             </div>
           )}
 
-          {connected && !isRunning && hasDelegation && (
+          {automationEnabled && connected && !isRunning && hasDelegation && (
             <div className="p-3 bg-green-500/10 border border-green-500/30 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
               <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
@@ -828,7 +855,7 @@ export function ServerBotConfig() {
           )}
 
           {/* Start Button - only show when not running (Stop button is in BotStatusMonitor) */}
-          {!isRunning && connected && (
+          {automationEnabled && !isRunning && connected && (
             <div className="space-y-2">
               <Button
                 onClick={handleStart}
@@ -857,7 +884,7 @@ export function ServerBotConfig() {
           )}
 
           {/* Connect Wallet prompt when not connected */}
-          {!connected && (
+          {automationEnabled && !connected && (
             <div className="p-4 bg-primary/10 border border-primary/30 relative text-center">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />

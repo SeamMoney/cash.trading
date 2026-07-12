@@ -31,8 +31,24 @@ const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.
 const launchpadGraduateRoute = readFileSync("app/api/launchpad/graduate/route.ts", "utf8");
 const launchpadPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
+const sponsorSubmitRoute = readFileSync("app/api/decibel/sponsor-submit/route.ts", "utf8");
+const legacyBotRoutes = [
+  "app/api/bot/start/route.ts",
+  "app/api/bot/stop/route.ts",
+  "app/api/bot/tick/route.ts",
+  "app/api/bot/delegate/route.ts",
+  "app/api/bot/close-position/route.ts",
+  "app/api/cron/bot-tick/route.ts",
+].map((path) => [path, readFileSync(path, "utf8")] as const);
+const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
+const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
+const serverBotConfig = readFileSync("components/bot/server-bot-config.tsx", "utf8");
+const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+  build?: { env?: Record<string, string> };
+};
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies: Record<string, string>;
+  engines?: { node?: string };
   pnpm?: { overrides?: Record<string, string> };
   packageManager?: string;
 };
@@ -76,6 +92,7 @@ assert.match(decibelMarketsRoute, /resolveDecibelNetwork/);
 assert.match(decibelFaucetRoute, /resolveDecibelNetwork/);
 assert.match(moveSourceRoute, /contracts\/strategy-vaults\/sources/);
 assert.match(strategyVaultsRoute, /function databaseUnavailable/);
+assert.match(strategyVaultsRoute, /launchpad_automation_not_enabled/);
 assert.match(predepositData, /let depositorsInFlight/);
 assert.match(predepositData, /const INDEXER_TIMEOUT_MS = 3_500/);
 assert.match(cashRewardsRoute, /reason: 'database_not_configured'/);
@@ -124,6 +141,24 @@ assert.ok(!tradePage.includes("ScheduleTradeModal"), "the trade page must not ex
 assert.ok(!decibelDepthRoute.includes("generateSyntheticDepth"), "order-book depth must come from Decibel");
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");
+assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-submit"/);
+assert.match(sponsorSubmitRoute, /checkRateLimitForKey\("sponsor-submit-sender"/);
+assert.match(sponsorSubmitRoute, /MAX_BODY_BYTES/);
+assert.ok(
+  !sponsorSubmitRoute.includes("BOT_OPERATOR_PRIVATE_KEY"),
+  "gas sponsorship must use a dedicated sponsor key",
+);
+assert.match(legacyBotGuard, /reason: "legacy_bot_api_not_enabled"/);
+for (const [path, source] of legacyBotRoutes) {
+  assert.match(
+    source,
+    /legacyBotAutomationUnavailable\(\)/,
+    `${path} must fail closed in production until wallet-signed authorization exists`,
+  );
+}
+assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);
+assert.match(serverBotConfig, /wallet authorization is being hardened/);
+assert.match(serverBotConfig, /automationEnabled && connected/);
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",
@@ -144,6 +179,8 @@ assert.equal(packageJson.dependencies.ws, "^8.21.0");
 assert.equal(packageJson.dependencies["@noble/hashes"], "1.8.0");
 assert.equal(packageJson.pnpm?.overrides?.["uuid@<11.1.1"], "11.1.1");
 assert.equal(packageJson.packageManager, "pnpm@10.19.0");
+assert.equal(packageJson.engines?.node, "22.x");
+assert.equal(vercelConfig.build?.env?.NODE_VERSION, "22");
 assert.ok(!existsSync("package-lock.json"), "the pnpm project must not ship a competing npm lockfile");
 
 console.log("app reliability self-test: passed");

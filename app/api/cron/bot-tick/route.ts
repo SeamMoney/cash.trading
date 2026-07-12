@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk'
 import { getAllMarketAddresses } from '@/lib/decibel-sdk'
 import type { BotConfig } from '@/lib/bot-engine'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
@@ -35,6 +36,9 @@ const TRADE_DELAY_MS: Record<string, number> = {
  * to maximize volume even when browser is closed
  */
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   const startTime = Date.now()
 
   try {

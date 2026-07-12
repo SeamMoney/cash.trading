@@ -35,6 +35,34 @@ export function CloudStatusIndicator({ compact = false }: CloudStatusIndicatorPr
     )
   }
 
+  if (!status.automationEnabled) {
+    if (compact) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <CloudOff className="w-4 h-4 text-yellow-400" />
+          <span className="text-[10px] text-yellow-400 font-mono uppercase tracking-wider">
+            Unavailable
+          </span>
+        </div>
+      )
+    }
+
+    return (
+      <div className="p-3 border relative bg-yellow-500/5 border-yellow-500/30">
+        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-current opacity-50" />
+        <div className="flex items-center gap-2">
+          <CloudOff className="w-5 h-5 text-yellow-400" />
+          <div>
+            <span className="font-mono text-xs uppercase tracking-widest font-bold text-yellow-400">
+              Automation Unavailable
+            </span>
+            <p className="text-[11px] text-zinc-500 mt-0.5">Manual trading is unaffected.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (compact) {
     return (
       <div className="flex items-center gap-1.5">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOT_OPERATOR } from '@/lib/decibel-client'
 import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 /**
  * Returns the transaction payload for delegating permissions to the bot
@@ -8,6 +9,9 @@ import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-
  * The frontend will sign this with the user's wallet
  */
 export async function POST(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const body = await request.json()
     const { userSubaccount } = body

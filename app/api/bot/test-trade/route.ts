@@ -9,6 +9,10 @@ export const maxDuration = 60
  * This bypasses the cron job and lets us test the bot directly
  */
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   try {
     const body = await request.json()
     const {
@@ -34,12 +38,10 @@ export async function POST(request: NextRequest) {
       strategy,
     })
 
-    // Validate env vars
-    console.log('🔍 Checking environment variables...')
-    const botKey = process.env.BOT_OPERATOR_PRIVATE_KEY
-    console.log('BOT_OPERATOR_PRIVATE_KEY exists:', !!botKey)
-    console.log('BOT_OPERATOR_PRIVATE_KEY length:', botKey?.length || 0)
-    console.log('BOT_OPERATOR_PRIVATE_KEY preview:', botKey?.substring(0, 30) + '...')
+    // Validate configuration without ever logging private-key material.
+    if (!process.env.BOT_OPERATOR_PRIVATE_KEY) {
+      return NextResponse.json({ error: 'Bot operator not configured' }, { status: 503 })
+    }
 
     // Create bot instance
     console.log('🤖 Creating bot engine instance...')
@@ -78,13 +80,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('❌ TEST TRADE ERROR:', error)
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
 
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-      },
+      { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

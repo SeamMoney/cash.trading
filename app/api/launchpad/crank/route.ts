@@ -1,5 +1,5 @@
 /**
- * Permissionless crank for trustless strategy vaults.
+ * Server-funded crank for automated trustless strategy vault upkeep.
  *
  * POST /api/launchpad/crank
  *   Body: { svAddr?: string, pkg?: string, module?: string }
@@ -7,8 +7,9 @@
  *   "strategy_vault" (the hand-written package); rail-deployed packages
  *   bundle everything into a module named "indicator". The contract reads the
  *   mark price from Decibel's perp engine itself, so this caller contributes
- *   nothing but gas + a timestamp. Anyone could run this crank; we expose it
- *   so the app/bot-runner can keep live strategies ticking.
+ *   nothing but gas + a timestamp. Browser users submit this transaction with
+ *   their own wallet; this path is reserved for authenticated keeper automation
+ *   so public traffic cannot drain the keeper's gas balance.
  *
  * GET /api/launchpad/crank — returns the default crank target + whether a
  * keeper key is configured (no secrets returned).
@@ -68,6 +69,16 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV === "production") {
+    const secret = process.env.LAUNCHPAD_KEEPER_API_SECRET ?? process.env.CRON_SECRET;
+    if (!secret) {
+      return NextResponse.json({ error: "Server crank is not configured" }, { status: 503 });
+    }
+    if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const svAddr = typeof body.svAddr === "string" ? body.svAddr : DEFAULT_SV;

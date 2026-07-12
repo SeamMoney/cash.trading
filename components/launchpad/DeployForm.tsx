@@ -906,25 +906,22 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     setCrankBusy(true);
     setCrankResult(null);
     try {
-      const res = await fetch("/api/launchpad/crank", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pkg, svAddr: binding, module: "indicator" }),
+      const res = await signAndSubmitTransaction({
+        data: {
+          function: `${pkg}::indicator::tick_oracle`,
+          typeArguments: [],
+          functionArguments: [binding, String(Math.floor(Date.now() / 1000))],
+        },
       });
-      const json = (await res.json()) as { hash?: string; success?: boolean; traded?: unknown[]; error?: string };
-      if (!res.ok || !json.success) {
-        setCrankResult(`crank failed: ${json.error ?? "unknown"}`);
-      } else {
-        setCrankResult(
-          `cranked ✓ tx ${json.hash?.slice(0, 14)}… — ${json.traded?.length ? `${json.traded.length} trade(s) placed` : "no signal flip this tick (indicator may still be warming up)"}`,
-        );
-      }
+      const hash = (res as { hash?: string }).hash;
+      if (!hash) throw new Error("Wallet returned no transaction hash");
+      setCrankResult(`crank submitted ✓ tx ${hash.slice(0, 14)}…`);
     } catch (err) {
       setCrankResult(`crank failed: ${err instanceof Error ? err.message : "request error"}`);
     } finally {
       setCrankBusy(false);
     }
-  }, [vaultDeploy]);
+  }, [vaultDeploy, signAndSubmitTransaction]);
 
   // Step 5 (Delegate): the Decibel vault admin grants the binding trading
   // rights. Reuses the existing payload builder from lib/decibel-vaults —

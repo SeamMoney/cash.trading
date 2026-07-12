@@ -38,6 +38,10 @@ export function resolveDecibelNetwork(value: unknown): DecibelNetwork {
   return getActiveNetwork();
 }
 
+export function isValidAptosAddress(value: unknown): value is string {
+  return typeof value === "string" && /^0x[0-9a-fA-F]{1,64}$/.test(value);
+}
+
 function getConfig(network?: DecibelNetwork): DecibelConfig {
   const net = network ?? getActiveNetwork();
   return net === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;

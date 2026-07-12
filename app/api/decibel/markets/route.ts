@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getFastMarkets } from "@/lib/decibel-chain";
 import {
   getAptosFullnodeApiKey,
@@ -6,6 +6,7 @@ import {
   resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -176,7 +177,18 @@ async function fetchSdkMarkets(network: DecibelNetwork) {
  * Fullnode-first market config and mark/oracle prices. Decibel REST prices are
  * used only as a short-timeout enrichment for mid price, funding, and timestamps.
  */
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-markets", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS, markets: [] },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const network = getRequestNetwork(req);
   const startedAt = Date.now();
 
@@ -229,7 +241,8 @@ export async function GET(req: Request) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch Decibel markets";
-    return NextResponse.json(fallbackMarkets(message, network), {
+    console.error("[decibel-markets] market read failed:", message);
+    return NextResponse.json(fallbackMarkets("market_data_unavailable", network), {
       headers: NO_STORE_HEADERS,
     });
   }

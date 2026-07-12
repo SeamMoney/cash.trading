@@ -10,11 +10,13 @@ import {
 import {
   getDecibelMarketNameForAddress,
   getReadDex,
+  isValidAptosAddress,
   MARKETS,
   PRICE_DECIMALS,
   resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 // The Decibel REST indexer round-trip runs ~1s from outside its region; the
 // old 250/600ms budgets guaranteed aborts, so open orders never rendered.
@@ -193,9 +195,25 @@ export async function GET(req: NextRequest) {
   const includeOpenOrders =
     req.nextUrl.searchParams.get("openOrders") !== "false" && !chainOnly;
 
-  if (!address) {
+  const rate = checkApiRateLimit(
+    req,
+    chainOnly ? "decibel-positions-hot" : "decibel-positions",
+    chainOnly ? 180 : 60,
+    60_000,
+  );
+  if (!rate.allowed) {
     return NextResponse.json(
-      { error: "Missing address parameter" },
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
+  if (!isValidAptosAddress(address)) {
+    return NextResponse.json(
+      { error: "A valid Aptos address is required" },
       { status: 400, headers: NO_STORE_HEADERS }
     );
   }
@@ -301,7 +319,7 @@ export async function GET(req: NextRequest) {
         mark: markSource,
         marketName: nameSource,
         indexed: indexedResult.error
-          ? `unavailable: ${indexedResult.error}`
+          ? "unavailable"
           : indexedResult.positions
           ? "ok"
           : "skipped",
@@ -315,9 +333,10 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to fetch Decibel positions";
+    console.error("[decibel-positions] account read failed:", message);
     return NextResponse.json(
-      { error: message },
-      { status: 500, headers: NO_STORE_HEADERS }
+      { error: "Decibel account data is temporarily unavailable" },
+      { status: 502, headers: NO_STORE_HEADERS }
     );
   }
 }

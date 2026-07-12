@@ -150,11 +150,13 @@ export function VaultActionModal({
               feeIntervalS: 0,
               contributionLockupDurationS: 0,
               initialFunding: "0",
+              network: indicator.network,
             }
           : {
               vaultAddress,
               subaccount,
               amount: requiresAmount ? amount.trim() : undefined,
+              network: indicator.network,
             };
 
       const response = await fetch(copy.endpoint, {

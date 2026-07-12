@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getAptosFullnodeApiKey,
   getDecibelCollateralMetadata,
+  isValidAptosAddress,
   resolveDecibelNetwork,
   USDC_DECIMALS,
   type DecibelNetwork,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +29,7 @@ function getFullnodeUrl(network: DecibelNetwork) {
 
 function normalizeAddress(address: string) {
   const trimmed = address.trim();
-  if (!/^0x[a-fA-F0-9]+$/.test(trimmed)) {
+  if (!isValidAptosAddress(trimmed)) {
     throw new Error("Invalid Aptos address.");
   }
   return trimmed;
@@ -50,6 +52,7 @@ async function readWalletBalance(address: string, network: DecibelNetwork) {
       },
       body,
       cache: "no-store",
+      signal: AbortSignal.timeout(4_000),
     });
 
   const apiKey = getAptosFullnodeApiKey(network);
@@ -59,8 +62,7 @@ async function readWalletBalance(address: string, network: DecibelNetwork) {
   }
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`USDC balance lookup failed (${response.status}): ${text}`);
+    throw new Error(`USDC balance lookup failed (${response.status})`);
   }
 
   const result = (await response.json()) as unknown[];
@@ -71,7 +73,18 @@ async function readWalletBalance(address: string, network: DecibelNetwork) {
 
 export async function GET(req: NextRequest) {
   const rawAddress = req.nextUrl.searchParams.get("address") ?? "";
-  if (!/^0x[a-fA-F0-9]+$/.test(rawAddress.trim())) {
+  const rate = checkApiRateLimit(req, "decibel-wallet-balance", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
+  if (!isValidAptosAddress(rawAddress.trim())) {
     return NextResponse.json(
       { error: "A valid Aptos address is required." },
       { status: 400, headers: NO_STORE_HEADERS },
@@ -92,9 +105,10 @@ export async function GET(req: NextRequest) {
       symbol: "USDC",
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
+    console.error("[decibel-wallet-balance] balance read failed:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to read USDC balance." },
-      { status: 500, headers: NO_STORE_HEADERS },
+      { error: "USDC balance is temporarily unavailable." },
+      { status: 502, headers: NO_STORE_HEADERS },
     );
   }
 }

@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     {
       try {
         const pageRes = await fetch(url, {
+          cache: "no-store",
           headers: {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             Accept: "text/html",
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest) {
             const apiRes = await fetch(
               `https://pine-facade.tradingview.com/pine-facade/get/${encodeURIComponent(pubId)}/last?no_4xx=true`,
               {
+                cache: "no-store",
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
                   Origin: "https://www.tradingview.com",
@@ -74,6 +76,7 @@ export async function GET(req: NextRequest) {
 
     // ── Fallback: HTML scraping ─────────────────────────────────────────────
     const res = await fetch(url, {
+      cache: "no-store",
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",

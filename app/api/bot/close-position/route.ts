@@ -109,7 +109,8 @@ export async function POST(request: NextRequest) {
       } else {
         // Fallback to on-chain
         const priceRes = await fetch(
-          `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddress}/resources`
+          `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddress}/resources`,
+          { cache: 'no-store' },
         )
         const priceResources = await priceRes.json()
         const priceResource = priceResources.find((r: any) =>

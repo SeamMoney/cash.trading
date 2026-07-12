@@ -307,7 +307,8 @@ export async function POST(request: NextRequest) {
 
           try {
             const marketRes = await fetch(
-              `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+              `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`,
+              { cache: 'no-store' },
             )
             const marketResources = await marketRes.json()
             const configResource = marketResources.find((r: any) =>
@@ -347,7 +348,8 @@ export async function POST(request: NextRequest) {
             } else {
               // Fallback to on-chain oracle
               const priceRes = await fetch(
-                `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`
+                `https://api.${getActiveNetwork() === 'mainnet' ? 'mainnet' : 'testnet'}.aptoslabs.com/v1/accounts/${marketAddr}/resources`,
+                { cache: 'no-store' },
               )
               const priceResources = await priceRes.json()
               const priceResource = priceResources.find((r: any) =>

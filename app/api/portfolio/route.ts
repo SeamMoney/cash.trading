@@ -71,7 +71,8 @@ async function fetchOnChainTrades(walletAddress: string, subaccount?: string): P
   try {
     // Fetch recent transactions for this wallet
     const txResponse = await fetch(
-      `${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=100`
+      `${APTOS_NODE}/accounts/${walletAddress}/transactions?limit=100`,
+      { cache: 'no-store' },
     )
 
     if (!txResponse.ok) {
@@ -419,7 +420,8 @@ export async function GET(request: NextRequest) {
     try {
       // Scan user wallet transactions for deposit events
       const txResponse = await fetch(
-        `${APTOS_NODE}/accounts/${userWalletAddress}/transactions?limit=100`
+        `${APTOS_NODE}/accounts/${userWalletAddress}/transactions?limit=100`,
+        { cache: 'no-store' },
       )
       if (txResponse.ok) {
         const transactions = await txResponse.json()
@@ -466,7 +468,7 @@ export async function GET(request: NextRequest) {
     // This ensures manual positions opened on Decibel UI show up in trade history
     if (activeSubaccount) {
       try {
-        const posResponse = await fetch(`${APTOS_NODE}/accounts/${activeSubaccount}/resources`)
+        const posResponse = await fetch(`${APTOS_NODE}/accounts/${activeSubaccount}/resources`, { cache: 'no-store' })
         if (posResponse.ok) {
           const resources = await posResponse.json()
           const positionsResource = resources.find((r: any) =>
@@ -487,7 +489,7 @@ export async function GET(request: NextRequest) {
               let marketName = 'Unknown'
               let pxDecimals = 6
               try {
-                const marketRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`)
+                const marketRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`, { cache: 'no-store' })
                 const marketResources = await marketRes.json()
                 const configResource = marketResources.find((r: any) =>
                   r.type.includes('perp_market_config::PerpMarketConfig')
@@ -517,7 +519,7 @@ export async function GET(request: NextRequest) {
                 // Get current price for PnL calculation
                 let currentPrice = entryPrice
                 try {
-                  const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`)
+                  const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketAddr}/resources`, { cache: 'no-store' })
                   const priceResources = await priceRes.json()
                   const priceResource = priceResources.find((r: any) =>
                     r.type.includes('price_management::Price')
@@ -581,7 +583,7 @@ export async function GET(request: NextRequest) {
           MARKET_NAMES[m.address.toLowerCase()] === marketName
         )
         if (marketConfig) {
-          const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketConfig.address}/resources`)
+          const priceRes = await fetch(`${APTOS_NODE}/accounts/${marketConfig.address}/resources`, { cache: 'no-store' })
           if (priceRes.ok) {
             const priceResources = await priceRes.json()
             const priceResource = priceResources.find((r: any) =>

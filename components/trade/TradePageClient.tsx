@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
@@ -70,22 +71,6 @@ interface DecibelVault {
 const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
 const PRICE_UI_COMMIT_MS = 250;
 
-// Display overrides for vault cards shown beside Decibel protocol vaults.
-// Decibel Protocol Vault uses 100% real API data — no override needed
-const GUILD_OVERRIDES: Record<string, {
-  displayName: string;
-  volume: number; pnl: number; traders: number; openInterest: number;
-  sharpe?: number; maxDrawdown?: number; profitShare?: number;
-  leader?: { name: string; avatar: string };
-}> = {
-  "Team Resonance":  { displayName: "Kaizen", volume: 33_567_859, pnl: 4.71,  traders: 20_000, openInterest: 935_122,  sharpe: 1.82, maxDrawdown: -3.1, profitShare: 10, leader: { name: "Brian Jung", avatar: "https://unavatar.io/x/thebrianjung" } },
-  "iLiquid":         { displayName: "The Whale Room", volume: 28_303_675, pnl: 3.84,  traders: 8_200, openInterest: 231_103,  sharpe: 1.45, maxDrawdown: -4.2, profitShare: 5, leader: { name: "Kyledoops", avatar: "https://unavatar.io/x/kyledoops" } },
-  "Phase Zero":      { displayName: "Options Insider", volume: 34_957_869, pnl: 2.17,  traders: 14_892, openInterest: 222_173,  sharpe: 1.23, maxDrawdown: -3.8, profitShare: 2, leader: { name: "DesiTrade", avatar: "https://unavatar.io/x/Desi_Trade" } },
-  "Echo Dynasty":    { displayName: "Scarface Trades", volume: 10_299_974, pnl: 1.93,  traders: 4_561, openInterest: 416_549,  sharpe: 1.07, maxDrawdown: -2.9, profitShare: 5, leader: { name: "Tony", avatar: "https://unavatar.io/x/ScarfaceTrades_" } },
-  "Signal9":         { displayName: "EmmanuelTrades", volume: 10_904_768, pnl: 1.52,  traders: 63_900, openInterest: 149_051,  sharpe: 0.94, maxDrawdown: -5.1, profitShare: 2, leader: { name: "Emmanuel", avatar: "https://unavatar.io/x/Emmanueltrades" } },
-  "Crypto Vikings":  { displayName: "American Dream", volume: 1_042_842,  pnl: 0.87,  traders: 3_200, openInterest: 78_200,   sharpe: 0.61, maxDrawdown: -6.8, profitShare: 10, leader: { name: "Chad Christian", avatar: "https://unavatar.io/x/ADTCoach" } },
-};
-
 function formatUsd(n: number | null): string {
   if (n == null) return "$0";
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -100,48 +85,6 @@ function shortenAddr(addr: string): string {
 
 interface PnlPoint { date: Date; pnl: number }
 
-/**
- * Build a PnL % curve from vault metrics.
- * Uses seeded PRNG so the chart is stable across re-renders.
- * Same smooth random walk for all vaults (including DLP protocol vault).
- */
-function buildPnlCurve(vault: DecibelVault): PnlPoint[] {
-  const now = Date.now();
-  const created = vault.created_at ?? now - 30 * 24 * 3600_000;
-  const age = Math.max(now - created, 3600_000);
-  const span = Math.min(age, 90 * 24 * 3600_000);
-
-  const endPnl = vault.all_time_return ?? 0;
-
-  // Seeded PRNG from vault address
-  let seed = 0;
-  for (let i = 0; i < vault.address.length; i++) seed = (seed * 31 + vault.address.charCodeAt(i)) | 0;
-  const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-
-  const M = 180;
-  const mStep = span / M;
-  const guild = GUILD_OVERRIDES[vault.name];
-  const maxDD = Math.abs(guild?.maxDrawdown ?? vault.max_drawdown ?? 5);
-  const sharpe = guild?.sharpe ?? vault.sharpe_ratio ?? 0;
-  const vol = sharpe !== 0 ? Math.min(2, Math.max(0.2, maxDD / 3)) : maxDD / 2.5;
-
-  const points: PnlPoint[] = [];
-  let pnl = 0;
-  const drift = endPnl / M;
-
-  for (let i = 0; i <= M; i++) {
-    const t = now - span + i * mStep;
-    points.push({ date: new Date(t), pnl: +pnl.toFixed(2) });
-    const noise = (rng() - 0.5) * 2 * vol;
-    const expected = endPnl * (i / M);
-    const revert = (expected - pnl) * 0.12;
-    pnl += drift + noise + revert;
-  }
-
-  points[points.length - 1] = { date: new Date(now), pnl: +endPnl.toFixed(2) };
-  return points;
-}
-
 function useDecibelVaults(enabled = true) {
   const [vaults, setVaults] = useState<DecibelVault[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,7 +97,7 @@ function useDecibelVaults(enabled = true) {
 
   const fetchVaults = useCallback(async () => {
     try {
-      const res = await fetch("/api/decibel/vaults");
+      const res = await fetch("/api/decibel/vaults", { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       const fetched: DecibelVault[] = data.vaults ?? [];
@@ -162,25 +105,10 @@ function useDecibelVaults(enabled = true) {
       // flaps, and a transient empty payload was wiping the whole section
       // ([6] → [0]) on the 30s poll.
       setVaults((prev) => (fetched.length > 0 ? fetched : prev));
-      setLoading(false);
       if (fetched.length === 0) return;
 
       for (const v of fetched) {
-        // Use guild PnL override if available
-        const guild = GUILD_OVERRIDES[v.name];
-        const effectivePnl = guild?.pnl ?? v.all_time_return ?? 0;
-        if (!chartDataRef.current[v.address] && !unavailableRef.current.has(v.address)) {
-          const vaultWithPnl = { ...v, all_time_return: effectivePnl };
-          chartDataRef.current[v.address] = buildPnlCurve(vaultWithPnl);
-        } else if (chartDataRef.current[v.address] && !historyRequestedRef.current.has(v.address)) {
-          const curve = chartDataRef.current[v.address];
-          curve[curve.length - 1] = { date: new Date(), pnl: effectivePnl };
-        }
-
-        // Upgrade to the real PnL series where Decibel has history (skip guild
-        // demo cards — their stats are intentionally illustrative). When history
-        // is confirmed unavailable, say so instead of showing a fake curve.
-        if (!guild && !historyRequestedRef.current.has(v.address)) {
+        if (!historyRequestedRef.current.has(v.address)) {
           historyRequestedRef.current.add(v.address);
           void (async () => {
             try {
@@ -188,7 +116,10 @@ function useDecibelVaults(enabled = true) {
                 `/api/decibel/vault-history?vault=${v.address}&range=30d&type=pnl`,
                 { cache: "no-store" },
               );
-              if (!hr.ok) return;
+              if (!hr.ok) {
+                historyRequestedRef.current.delete(v.address);
+                return;
+              }
               const hist = await hr.json();
               const points: { t: number; v: number }[] = hist.points ?? [];
               if (hist.unavailable || points.length < 2) {
@@ -210,6 +141,8 @@ function useDecibelVaults(enabled = true) {
       }
     } catch {
       // silently fail
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -228,15 +161,12 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Show vaults with overrides or real data; protocol vault first, then by PnL desc
-  const displayVaults = vaults
-    .filter((v) => v.vault_type === "protocol" || GUILD_OVERRIDES[v.name])
+  // Show every active Decibel vault; keep the protocol vault first.
+  const displayVaults = [...vaults]
     .sort((a, b) => {
       if (a.vault_type === "protocol") return -1;
       if (b.vault_type === "protocol") return 1;
-      const pnlA = GUILD_OVERRIDES[a.name]?.pnl ?? a.all_time_return ?? 0;
-      const pnlB = GUILD_OVERRIDES[b.name]?.pnl ?? b.all_time_return ?? 0;
-      return pnlB - pnlA;
+      return (b.all_time_return ?? 0) - (a.all_time_return ?? 0);
     });
 
   const scrollTo = useCallback((idx: number) => {
@@ -254,7 +184,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
     const onScroll = () => {
       const w = el.scrollWidth / Math.max(displayVaults.length, 1);
       const idx = Math.round(el.scrollLeft / w);
-      setActiveIndex(Math.min(idx, displayVaults.length - 1));
+      setActiveIndex(Math.max(0, Math.min(idx, displayVaults.length - 1)));
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -276,6 +206,10 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
             <div className="flex items-center justify-center py-12 text-[#555]">
               <span className="animate-pulse">Loading vault data from Decibel...</span>
             </div>
+          ) : displayVaults.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-[#555]">
+              Vault data is temporarily unavailable.
+            </div>
           ) : (
           <>
           <div
@@ -284,9 +218,8 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
             style={{ WebkitOverflowScrolling: "touch" }}
           >
               {displayVaults.map((vault, index) => {
-                const guild = GUILD_OVERRIDES[vault.name];
-                const pnlReturn = guild?.pnl ?? vault.all_time_return ?? 0;
-                const displayVolume = guild?.volume ?? vault.volume_30d ?? 0;
+                const pnlReturn = vault.all_time_return ?? 0;
+                const displayVolume = vault.volume_30d ?? vault.volume ?? 0;
                 const pnlNeg = pnlReturn < 0;
                 const pnlStr = `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
                 const chartColor = pnlNeg ? "#ef4444" : VAULT_COLORS[index % VAULT_COLORS.length];
@@ -301,7 +234,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                   style={{ scrollSnapStop: "always" }}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-sans text-[15px] font-bold text-white">{guild?.displayName ?? vault.name}</span>
+                    <span className="truncate font-sans text-[15px] font-bold text-white">{vault.name}</span>
                     <span className={cn(
                       "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
                       vault.vault_type === "protocol" ? "bg-accent/15 text-accent" : "bg-zinc-700/50 text-zinc-400"
@@ -317,25 +250,11 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                         : <CashMark className="h-[14px] w-auto text-accent" />
                       }
                     </span>
-                    {guild?.leader && (
-                      <span
-                        className="-ml-[18px] flex size-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#111] bg-[#1a1a1a]"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={guild.leader.avatar} alt={guild.leader.name} className="h-full w-full rounded-full object-cover" />
-                      </span>
-                    )}
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[9px] font-bold uppercase text-[#4a4a4a]">Vault Manager</span>
-                      {guild?.leader ? (
-                        <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
-                          {guild.leader.name}
-                        </span>
-                      ) : (
-                        <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
-                          {shortenAddr(vault.manager)}
-                        </span>
-                      )}
+                      <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
+                        {shortenAddr(vault.manager)}
+                      </span>
                     </span>
                   </div>
 
@@ -346,7 +265,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     </div>
                     <div className="border-l border-[#1a2e1a] bg-[#0e1a0e] px-3 py-2.5">
                       <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Members</div>
-                      <div className="mt-0.5 text-[14px] font-bold text-white">{(guild?.traders ?? vault.depositors ?? 0).toLocaleString()}</div>
+                      <div className="mt-0.5 text-[14px] font-bold text-white">{(vault.depositors ?? 0).toLocaleString()}</div>
                     </div>
                   </div>
 
@@ -354,7 +273,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     <div className="flex items-baseline justify-between">
                       <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
                       <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">
-                        {chartIsReal ? "30d on-chain history" : chartUnavailable ? "" : "Curve illustrative · endpoint real"}
+                        {chartIsReal ? "30d on-chain history" : chartUnavailable ? "" : "Loading 30d history"}
                       </div>
                     </div>
                     <div
@@ -394,9 +313,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                             {
                               color: chartColor,
                               label: "PnL",
-                              value: chartIsReal
-                                ? formatUsd(point.pnl as number)
-                                : `${(point.pnl as number) >= 0 ? "+" : ""}${(point.pnl as number).toFixed(2)}%`,
+                              value: formatUsd(point.pnl as number),
                             },
                           ]}
                         />
@@ -413,49 +330,39 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                       <span>Trading Volume</span>
                       <span className="text-[#777]">{formatUsd(displayVolume)}</span>
                     </div>
-                    {guild ? (
-                      <div className="flex items-center justify-between text-[11px] text-[#444]">
-                        <span>Open Interest</span>
-                        <span className="text-[#777]">{formatUsd(guild.openInterest)}</span>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Real Decibel vault metrics (protocol/DLP) — no fabricated rows */}
-                        <div className="flex items-center justify-between text-[11px] text-[#444]">
-                          <span>TVL</span>
-                          <span className="text-[#777]">{formatUsd(vault.tvl)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-[#444]">
-                          <span>All-time PnL</span>
-                          <span className={cn((vault.all_time_pnl ?? 0) < 0 ? "text-red-400" : "text-green-400")}>
-                            {formatUsd(vault.all_time_pnl)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-[#444]">
-                          <span>APR</span>
-                          <span className="text-[#777]">{(vault.apr ?? 0).toFixed(2)}%</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-[#444]">
-                          <span>Win Rate (12w)</span>
-                          <span className="text-[#777]">{((vault.weekly_win_rate_12w ?? 0) * 100).toFixed(0)}%</span>
-                        </div>
-                      </>
-                    )}
+                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                      <span>TVL</span>
+                      <span className="text-[#777]">{formatUsd(vault.tvl)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                      <span>All-time PnL</span>
+                      <span className={cn((vault.all_time_pnl ?? 0) < 0 ? "text-red-400" : "text-green-400")}>
+                        {formatUsd(vault.all_time_pnl)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                      <span>APR</span>
+                      <span className="text-[#777]">{(vault.apr ?? 0).toFixed(2)}%</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                      <span>Win Rate (12w)</span>
+                      <span className="text-[#777]">{((vault.weekly_win_rate_12w ?? 0) * 100).toFixed(0)}%</span>
+                    </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Members</span>
-                      <span className="text-[#777]">{(guild?.traders ?? vault.depositors ?? 0).toLocaleString()}</span>
+                      <span className="text-[#777]">{(vault.depositors ?? 0).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Profit Share</span>
-                      <span className="text-[#777]">{guild?.profitShare ?? vault.profit_share ?? 0}%</span>
+                      <span className="text-[#777]">{vault.profit_share ?? 0}%</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Sharpe Ratio</span>
-                      <span className="text-[#777]">{(guild?.sharpe ?? vault.sharpe_ratio ?? 0).toFixed(2)}</span>
+                      <span className="text-[#777]">{(vault.sharpe_ratio ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Max Drawdown</span>
-                      <span className="text-red-400">{(guild?.maxDrawdown ?? vault.max_drawdown ?? 0).toFixed(1)}%</span>
+                      <span className="text-red-400">{(vault.max_drawdown ?? 0).toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -469,19 +376,21 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
             {/* Invisible tap zones */}
             <button
               aria-label="Previous vault"
+              type="button"
               className="absolute inset-y-0 left-0 w-1/2"
               onClick={() => scrollTo(activeIndex - 1)}
             />
             <button
               aria-label="Next vault"
+              type="button"
               className="absolute inset-y-0 right-0 w-1/2"
               onClick={() => scrollTo(activeIndex + 1)}
             />
             {/* Indicator lines */}
             <div className="flex items-center gap-1.5">
-              {displayVaults.map((_, i) => (
+              {displayVaults.map((vault, i) => (
                 <div
-                  key={i}
+                  key={vault.address}
                   className={cn(
                     "h-[2px] rounded-full transition-all duration-200",
                     i === activeIndex ? "w-6 bg-[#888]" : "w-3 bg-[#333]",
@@ -509,8 +418,13 @@ function CashMark({ className = "" }: { className?: string }) {
 /* ─── Decibel logo mark (actual image) ─── */
 function DecibelMark({ className = "" }: { className?: string }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src="/decibel-logo.jpg" alt="Decibel" className={cn("rounded-full object-cover", className)} />
+    <Image
+      src="/decibel-logo.jpg"
+      alt="Decibel"
+      width={32}
+      height={32}
+      className={cn("rounded-full object-cover", className)}
+    />
   );
 }
 
@@ -547,10 +461,14 @@ function PnlCardModal({
   return createPortal(
     <div
       className="cash-trade-theme fixed inset-0 z-[200] flex items-center justify-center modal-backdrop"
-      onClick={(e) => { if (e.target === e.currentTarget) onDismiss(); }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <button
+        type="button"
+        aria-label="Close realized PnL card"
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={onDismiss}
+      />
 
       {/* Card */}
       <div className="relative w-[380px] max-w-[calc(100vw-32px)] modal-panel">
@@ -686,10 +604,11 @@ function PnlCardModal({
             {/* Dismiss */}
             <div className="px-6 py-5">
               <button
+                type="button"
                 onClick={onDismiss}
                 className="w-full py-3 rounded-[12px] text-[13px] font-display font-bold uppercase tracking-wider text-white bg-white/[0.06] border border-white/[0.06] hover:bg-white/[0.1] transition-colors active:scale-[0.97]"
               >
-                Done
+                Close
               </button>
             </div>
 
@@ -782,6 +701,7 @@ function PositionsTable({ positions, currentPrice, onClose }: { positions: Posit
                   </span>
                   {/* Close button */}
                   <button
+                    type="button"
                     onClick={() => onClose(pos.id)}
                     className="flex items-center justify-center w-[72px] h-7 rounded-md bg-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider border border-red-500/30 hover:bg-red-500/40 hover:text-red-300 transition-colors"
                   >
@@ -982,7 +902,7 @@ function SignalProductsPanel({
     if (!el) return;
     const onScroll = () => {
       const w = el.scrollWidth / Math.max(sorted.length, 1);
-      setActiveIndex(Math.min(Math.round(el.scrollLeft / w), sorted.length - 1));
+      setActiveIndex(Math.max(0, Math.min(Math.round(el.scrollLeft / w), sorted.length - 1)));
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -1208,6 +1128,7 @@ function SignalProductsPanel({
                 <div className="mt-3 flex items-center gap-2">
                   {showUnlock ? (
                     <button
+                      type="button"
                       onClick={() => onUnlock(ind)}
                       className="flex-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-bold text-amber-400 transition-colors hover:bg-amber-500/20"
                     >
@@ -1216,6 +1137,7 @@ function SignalProductsPanel({
                   ) : (
                     <>
                       <button
+                        type="button"
                         onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
                         className={cn(
                           "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors",
@@ -1227,6 +1149,7 @@ function SignalProductsPanel({
                         {vaultAddress ? "Invest" : "Create Vault"}
                       </button>
                       <button
+                        type="button"
                         onClick={() => onDeploy(ind)}
                         className="flex-1 rounded-lg bg-purple-500 px-3 py-2 text-[12px] font-bold text-white transition-colors hover:bg-purple-400"
                       >
@@ -1245,18 +1168,20 @@ function SignalProductsPanel({
           <div className="relative flex items-center justify-center border-t border-[#2a2a2a] bg-[#181818] px-5 py-3">
             <button
               aria-label="Previous strategy"
+              type="button"
               className="absolute inset-y-0 left-0 w-1/2"
               onClick={() => scrollTo(activeIndex - 1)}
             />
             <button
               aria-label="Next strategy"
+              type="button"
               className="absolute inset-y-0 right-0 w-1/2"
               onClick={() => scrollTo(activeIndex + 1)}
             />
             <div className="flex items-center gap-1.5">
-              {sorted.map((_, i) => (
+              {sorted.map((indicator, i) => (
                 <div
-                  key={i}
+                  key={indicator.address}
                   className={cn(
                     "h-[2px] rounded-full transition-all duration-200",
                     i === activeIndex ? "w-6 bg-[#888]" : "w-3 bg-[#333]",

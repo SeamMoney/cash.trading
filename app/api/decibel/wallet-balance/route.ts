@@ -48,6 +48,7 @@ async function readWalletBalance(address: string, network: DecibelNetwork) {
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body,
+      cache: "no-store",
     });
 
   const apiKey = getAptosFullnodeApiKey(network);

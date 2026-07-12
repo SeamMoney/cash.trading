@@ -16,7 +16,16 @@ import {
   type DecibelRestCandle,
   type DecibelRestTrade,
 } from "@/lib/decibel-public";
-import { dedupeAndSort, withLiveTail } from "@/lib/trade/lineData";
+import {
+  candlesToCloseLinePoints,
+  clipLineWindow,
+  dedupeAndSort,
+  withLiveTail,
+} from "@/lib/trade/lineData";
+import {
+  appendLivePriceCandle,
+  interpolateOneSecondCandles,
+} from "@/lib/trade/candleSeries";
 
 type TradeSample = {
   price: number;
@@ -416,63 +425,6 @@ function mergeMinuteCandlesWithLive(minuteCandles: CandlePoint[], secondCandles:
   ];
 }
 
-function densifyCandles(
-  candles: CandlePoint[],
-  stepSecs: number,
-  fallbackSpanSecs: number,
-) {
-  if (candles.length === 0 || stepSecs <= 0) return candles;
-
-  const expanded: CandlePoint[] = [];
-
-  for (let index = 0; index < candles.length; index += 1) {
-    const candle = candles[index];
-    const nextTime = candles[index + 1]?.time ?? (candle.time + fallbackSpanSecs);
-    const spanSecs = Math.max(stepSecs, nextTime - candle.time);
-    const steps = Math.max(1, Math.round(spanSecs / stepSecs));
-    const firstPivot = candle.close >= candle.open ? candle.low : candle.high;
-    const secondPivot = candle.close >= candle.open ? candle.high : candle.low;
-
-    const sample = (progress: number) => {
-      if (progress <= 0.28) {
-        return candle.open + (firstPivot - candle.open) * (progress / 0.28);
-      }
-      if (progress <= 0.72) {
-        return firstPivot + (secondPivot - firstPivot) * ((progress - 0.28) / 0.44);
-      }
-      return secondPivot + (candle.close - secondPivot) * ((progress - 0.72) / 0.28);
-    };
-
-    for (let step = 0; step < steps; step += 1) {
-      const startProgress = step / steps;
-      const endProgress = (step + 1) / steps;
-      const open = sample(startProgress);
-      const close = sample(endProgress);
-      let high = Math.max(open, close);
-      let low = Math.min(open, close);
-
-      if (startProgress <= 0.28 && endProgress >= 0.28) {
-        high = Math.max(high, firstPivot);
-        low = Math.min(low, firstPivot);
-      }
-      if (startProgress <= 0.72 && endProgress >= 0.72) {
-        high = Math.max(high, secondPivot);
-        low = Math.min(low, secondPivot);
-      }
-
-      expanded.push({
-        time: candle.time + step * stepSecs,
-        open,
-        high,
-        low,
-        close,
-      });
-    }
-  }
-
-  return expanded;
-}
-
 function buildLineHistory(
   minuteCandles: CandlePoint[],
   secondCandles: CandlePoint[],
@@ -480,19 +432,6 @@ function buildLineHistory(
 ) {
   if (interval === "1m") {
     return mergeMinuteCandlesWithLive(minuteCandles, secondCandles);
-  }
-
-  if (interval === "1s") {
-    if (secondCandles.length === 0) return densifyCandles(minuteCandles, 5, 60);
-
-    return [
-      ...densifyCandles(
-        minuteCandles.filter((candle) => candle.time < secondCandles[0].time),
-        5,
-        60,
-      ),
-      ...secondCandles,
-    ];
   }
 
   const recentCandles = interval === "15s"
@@ -514,110 +453,6 @@ function getLineIntervalForWindow(windowSecs: number): ChartInterval {
   if (windowSecs <= 75 * 60) return "5s";
   if (windowSecs <= 4 * 60 * 60) return "15s";
   return "1m";
-}
-
-function getMaxLineGapSecs(interval: ChartInterval) {
-  return Math.max(4, INTERVAL_SECONDS[interval] * 4);
-}
-
-function fillShortLineGaps(points: LivelinePoint[], interval: ChartInterval) {
-  if (points.length < 2) return points;
-
-  const stepSecs = INTERVAL_SECONDS[interval];
-  const maxGapSecs = getMaxLineGapSecs(interval);
-  const filled: LivelinePoint[] = [points[0]];
-
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = filled[filled.length - 1];
-    const point = points[index];
-    const gapSecs = point.time - previous.time;
-
-    if (gapSecs > stepSecs * 1.5 && gapSecs <= maxGapSecs) {
-      for (let time = previous.time + stepSecs; time < point.time - stepSecs * 0.25; time += stepSecs) {
-        filled.push({ time, value: previous.value });
-      }
-    }
-
-    filled.push(point);
-  }
-
-  return filled;
-}
-
-function trimAfterLargeLineGap(points: LivelinePoint[], interval: ChartInterval) {
-  if (points.length < 2) return points;
-
-  const maxGapSecs = getMaxLineGapSecs(interval);
-  let segmentStart = 0;
-
-  for (let index = 1; index < points.length; index += 1) {
-    if (points[index].time - points[index - 1].time > maxGapSecs) {
-      segmentStart = index;
-    }
-  }
-
-  return segmentStart === 0 ? points : points.slice(segmentStart);
-}
-
-function buildLinePoints(candles: CandlePoint[], interval: ChartInterval) {
-  if (candles.length === 0) return [];
-
-  const points: LivelinePoint[] = [
-    {
-      time: candles[0].time,
-      value: candles[0].open,
-    },
-  ];
-
-  for (let index = 0; index < candles.length; index += 1) {
-    const candle = candles[index];
-    const nextTime = candles[index + 1]?.time ?? (candle.time + INTERVAL_SECONDS[interval]);
-    const span = Math.max(1, nextTime - candle.time);
-    const firstTurnTime = candle.time + span * 0.24;
-    const secondTurnTime = candle.time + span * 0.58;
-    const closeTime = candle.time + span * 0.98;
-    const isBull = candle.close >= candle.open;
-    const firstTurnValue = isBull ? candle.low : candle.high;
-    const secondTurnValue = isBull ? candle.high : candle.low;
-
-    points.push(
-      {
-        time: firstTurnTime,
-        value: firstTurnValue,
-      },
-      {
-        time: secondTurnTime,
-        value: secondTurnValue,
-      },
-      {
-        time: closeTime,
-        value: candle.close,
-      },
-    );
-  }
-
-  return points;
-}
-
-function buildCloseLinePoints(candles: CandlePoint[], interval: ChartInterval) {
-  if (candles.length === 0) return [];
-
-  const spanSecs = INTERVAL_SECONDS[interval];
-  const points: LivelinePoint[] = [
-    {
-      time: candles[0].time,
-      value: candles[0].open,
-    },
-  ];
-
-  for (const candle of candles) {
-    points.push({
-      time: candle.time + spanSecs * 0.96,
-      value: candle.close,
-    });
-  }
-
-  return points;
 }
 
 function mergeLivelinePoints(...groups: LivelinePoint[][]) {
@@ -643,122 +478,18 @@ function buildHybridVisibleLinePoints(
     (candle) => candle.time >= startTime && candle.time <= endTime,
   );
   const recentStart = visibleSecondCandles[0]?.time ?? endTime;
-  const historicalPoints = buildCloseLinePoints(
-    densifyCandles(
-      minuteCandles.filter((candle) => candle.time >= startTime - 60 && candle.time < recentStart),
-      5,
-      60,
-    ).filter((candle) => candle.time >= startTime && candle.time < recentStart),
-    "5s",
+  const historicalPoints = candlesToCloseLinePoints(
+    minuteCandles.filter(
+      (candle) => candle.time >= startTime - 60 && candle.time < recentStart,
+    ),
+    INTERVAL_SECONDS["1m"],
   );
-  const recentPoints = buildCloseLinePoints(
+  const recentPoints = candlesToCloseLinePoints(
     visibleSecondCandles,
-    "1s",
+    INTERVAL_SECONDS["1s"],
   );
 
   return mergeLivelinePoints(historicalPoints, recentPoints);
-}
-
-function buildHybridSecondLinePoints(
-  minuteCandles: CandlePoint[],
-  secondCandles: CandlePoint[],
-  startTime: number,
-  endTime: number,
-) {
-  const recentStart = secondCandles[0]?.time ?? endTime;
-  const backfillCandles = densifyCandles(
-    minuteCandles.filter((candle) => candle.time >= startTime - 60 && candle.time < recentStart),
-    5,
-    60,
-  );
-  const backfillPoints = buildLinePoints(backfillCandles, "5s")
-    .filter((point) => point.time >= startTime && point.time <= endTime);
-  const recentPoints = buildLinePoints(
-    secondCandles.filter((candle) => candle.time >= startTime && candle.time <= endTime),
-    "1s",
-  );
-  const byTime = new Map<number, LivelinePoint>();
-
-  for (const point of backfillPoints) {
-    byTime.set(Math.round(point.time * 1000), point);
-  }
-  for (const point of recentPoints) {
-    byTime.set(Math.round(point.time * 1000), point);
-  }
-
-  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
-}
-
-function fitLineWindowBounds(
-  points: LivelinePoint[],
-  startTime: number,
-  endTime: number,
-  fallbackValue: number,
-  interval: ChartInterval,
-) {
-  if (points.length === 0) {
-    return Number.isFinite(fallbackValue)
-      ? [
-          { time: startTime, value: fallbackValue },
-          { time: endTime, value: fallbackValue },
-        ]
-      : points;
-  }
-
-  const canonical = dedupeAndSort(points);
-  const first = canonical[0];
-  const last = canonical[canonical.length - 1];
-  const bounded = canonical.filter((point) => point.time >= startTime && point.time <= endTime);
-  const visibleFirst = bounded[0] ?? first;
-  const visibleLast = bounded[bounded.length - 1] ?? last;
-  const startValue = Number.isFinite(visibleFirst.value) ? visibleFirst.value : fallbackValue;
-  const endValue = Number.isFinite(visibleLast.value) ? visibleLast.value : startValue;
-  const result = [...bounded];
-
-  if (result.length === 0 || result[0].time > startTime + 0.25) {
-    result.unshift({ time: startTime, value: startValue });
-  }
-
-  if (result[result.length - 1].time < endTime - 0.25) {
-    result.push({ time: endTime, value: endValue });
-  }
-
-  return fillLineWindowGaps(dedupeAndSort(result), startTime, endTime, interval);
-}
-
-function fillLineWindowGaps(
-  points: LivelinePoint[],
-  startTime: number,
-  endTime: number,
-  interval: ChartInterval,
-) {
-  if (points.length < 2) return points;
-
-  const rawStep = Math.max(INTERVAL_SECONDS[interval], Math.ceil((endTime - startTime) / 720));
-  const stepSecs = Math.max(1, rawStep);
-  const filled: LivelinePoint[] = [points[0]];
-
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = filled[filled.length - 1];
-    const point = points[index];
-    const gapSecs = point.time - previous.time;
-
-    if (gapSecs > stepSecs * 1.5) {
-      for (let time = previous.time + stepSecs; time < point.time - stepSecs * 0.25; time += stepSecs) {
-        filled.push({ time, value: previous.value });
-      }
-
-      const transitionLead = Math.min(stepSecs * 0.2, 0.2);
-      const preJumpTime = point.time - transitionLead;
-      if (preJumpTime > previous.time && preJumpTime < point.time) {
-        filled.push({ time: preJumpTime, value: previous.value });
-      }
-    }
-
-    filled.push(point);
-  }
-
-  return dedupeAndSort(filled);
 }
 
 function shiftLinePoints(points: LivelinePoint[], offsetSecs: number) {
@@ -930,6 +661,12 @@ function BtcPerpsChartComponent({
     () => (useCoinbaseLineFeed ? coinbaseSecondCandles : secondCandles),
     [coinbaseSecondCandles, secondCandles, useCoinbaseLineFeed],
   );
+  const visualSecondCandles = useMemo(
+    () => interpolateOneSecondCandles(
+      appendLivePriceCandle(activeSecondCandles, snapshot.price, chartNowSec, 1),
+    ),
+    [activeSecondCandles, chartNowSec, snapshot.price],
+  );
   const activeMinuteCandles = useMemo(
     () => (useCoinbaseLineFeed ? coinbaseMinuteCandles : minuteCandles),
     [coinbaseMinuteCandles, minuteCandles, useCoinbaseLineFeed],
@@ -941,6 +678,7 @@ function BtcPerpsChartComponent({
     startEndTime: number;
     spanSecs: number;
   } | null>(null);
+  const lineInteractionRef = useRef<HTMLDivElement | null>(null);
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
   const lineViewResetKeyRef = useRef<string | null>(null);
@@ -952,14 +690,22 @@ function BtcPerpsChartComponent({
       : MOBILE_SPARSE_MARKET_LINE_WINDOW_SECS;
   }, [isMobile, market.marketName]);
 
+  useEffect(() => {
+    const interactionNode = lineInteractionRef.current;
+    if (!interactionNode) return;
+    const preventPageScroll = (event: WheelEvent) => event.preventDefault();
+    interactionNode.addEventListener("wheel", preventPageScroll, { passive: false });
+    return () => interactionNode.removeEventListener("wheel", preventPageScroll);
+  }, []);
+
   const lineBounds = useMemo(() => {
-    const earliest = activeMinuteCandles[0]?.time ?? activeSecondCandles[0]?.time ?? null;
-    const latest = activeSecondCandles[activeSecondCandles.length - 1]?.time
+    const earliest = activeMinuteCandles[0]?.time ?? visualSecondCandles[0]?.time ?? null;
+    const latest = visualSecondCandles[visualSecondCandles.length - 1]?.time
       ?? activeMinuteCandles[activeMinuteCandles.length - 1]?.time
       ?? null;
 
     return { earliest, latest };
-  }, [activeMinuteCandles, activeSecondCandles]);
+  }, [activeMinuteCandles, visualSecondCandles]);
 
   const lineResolvedEndTime = useMemo(() => {
     if (lineBounds.latest == null) return null;
@@ -969,13 +715,13 @@ function BtcPerpsChartComponent({
   }, [lineBounds.latest, lineEndTime]);
 
   const lineInterval = useMemo(
-    () => (activeSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
-    [activeSecondCandles.length, lineWindowSecs],
+    () => (visualSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
+    [lineWindowSecs, visualSecondCandles.length],
   );
 
   const lineHistoryCandles = useMemo(
-    () => buildLineHistory(activeMinuteCandles, activeSecondCandles, lineInterval),
-    [activeMinuteCandles, activeSecondCandles, lineInterval],
+    () => buildLineHistory(activeMinuteCandles, visualSecondCandles, lineInterval),
+    [activeMinuteCandles, lineInterval, visualSecondCandles],
   );
 
   const lineVisibleCandles = useMemo(() => {
@@ -1008,7 +754,7 @@ function BtcPerpsChartComponent({
         const canonicalPoints = dedupeAndSort([
           ...buildHybridVisibleLinePoints(
             activeMinuteCandles,
-            activeSecondCandles,
+            visualSecondCandles,
             startTime,
             lineResolvedEndTime,
           ),
@@ -1018,30 +764,27 @@ function BtcPerpsChartComponent({
         const pointsWithTail = isLiveWindow
           ? withLiveTail(canonicalPoints, liveValue, liveTime)
           : canonicalPoints;
-        return fitLineWindowBounds(
-          fillShortLineGaps(pointsWithTail, lineInterval),
+        return clipLineWindow(
+          pointsWithTail,
           startTime,
           lineResolvedEndTime,
-          liveValue,
-          lineInterval,
         );
       }
 
-      const canonicalPoints = dedupeAndSort(buildCloseLinePoints(lineVisibleCandles, lineInterval));
+      const canonicalPoints = dedupeAndSort(
+        candlesToCloseLinePoints(lineVisibleCandles, INTERVAL_SECONDS[lineInterval]),
+      );
       const pointsWithTail = isLiveWindow
         ? withLiveTail(canonicalPoints, liveValue, liveTime)
         : canonicalPoints;
-      return fitLineWindowBounds(
-        fillShortLineGaps(pointsWithTail, lineInterval),
+      return clipLineWindow(
+        pointsWithTail,
         startTime,
         lineResolvedEndTime,
-        liveValue,
-        lineInterval,
       );
     },
     [
       activeMinuteCandles,
-      activeSecondCandles,
       coinbaseHistoryTicks,
       coinbaseTicks,
       lineInterval,
@@ -1052,6 +795,7 @@ function BtcPerpsChartComponent({
       lineWindowSecs,
       snapshot.price,
       useCoinbaseLineFeed,
+      visualSecondCandles,
     ],
   );
   const renderTimeOffset = lineResolvedEndTime == null ? 0 : chartNowSec - lineResolvedEndTime;
@@ -1060,11 +804,11 @@ function BtcPerpsChartComponent({
     [lineData, renderTimeOffset],
   );
   const renderSecondCandles = useMemo(
-    () => shiftCandles(activeSecondCandles, renderTimeOffset),
-    [activeSecondCandles, renderTimeOffset],
+    () => shiftCandles(visualSecondCandles, renderTimeOffset),
+    [renderTimeOffset, visualSecondCandles],
   );
   const displayedLineValue = lineData[lineData.length - 1]?.value ?? snapshot.price;
-  const displayedCandleValue = activeSecondCandles[activeSecondCandles.length - 1]?.close ?? snapshot.price;
+  const displayedCandleValue = visualSecondCandles[visualSecondCandles.length - 1]?.close ?? snapshot.price;
 
   const lineBootstrapReady = useMemo(() => {
     if (!useCoinbaseLineFeed) return false;
@@ -1970,16 +1714,19 @@ function BtcPerpsChartComponent({
     return crossings.slice(-3);
   }, [overlayMode, indicatorSeries]);
 
-  // Candle mode gets the TradingView-engine chart: real timeframes, native
-  // pan/zoom, volume, and tick-merged live candles. The Liveline path below
-  // stays as the streaming "LIVE" line view.
+  // Candle mode keeps the existing canvas shell while bklit renders the
+  // plotted OHLC marks. The line path below remains the low-latency live view.
   if (mode === "candle") {
     return (
       <ProCandleChart
         market={market}
         active={active}
+        latestPrice={snapshot.price}
         liquidationLines={liquidationLines}
+        minuteCandles={activeMinuteCandles}
+        nowSeconds={chartNowSec}
         overlayMode={overlayMode}
+        secondCandles={visualSecondCandles}
       />
     );
   }
@@ -1994,6 +1741,7 @@ function BtcPerpsChartComponent({
       )}
       {/* Single Liveline instance — handles both line and candle modes */}
       <div
+        ref={lineInteractionRef}
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
         onPointerDown={handleLinePointerDown}
         onPointerMove={handleLinePointerMove}
@@ -2020,10 +1768,12 @@ function BtcPerpsChartComponent({
           scrub
           badge
           momentum={false}
-          badgeTail
-          badgeVariant="default"
+          badgeTail={false}
+          badgeVariant="minimal"
+          fill={false}
+          lerpSpeed={0.35}
           formatValue={(value: number) => formatPerpPrice(value, market.priceDecimals)}
-          loading={loading && lineData.length === 0 && activeSecondCandles.length === 0}
+          loading={loading && lineData.length === 0 && visualSecondCandles.length === 0}
           emptyText=""
           padding={linePadding}
           paused={!active}

@@ -333,6 +333,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.1.9
         version: 4.1.18
+      '@types/d3-array':
+        specifier: ^3.2.2
+        version: 3.2.2
       '@types/node':
         specifier: ^22
         version: 22.19.8

@@ -12,6 +12,7 @@
     "doctor": "react-doctor --full --no-score",
     "dev": "next dev",
     "lint": "next lint",
+    "test:charts": "tsx scripts/chart-rendering-selftest.ts",
     "start": "next start",
     "postinstall": "prisma generate"
   },
@@ -126,6 +127,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/d3-array": "^3.2.2",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",

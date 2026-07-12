@@ -23,7 +23,49 @@
  * represented as a separate preview point/state, not by rewriting `last`.
  */
 
-import type { LivelinePoint } from "liveline";
+import type { CandlePoint, LivelinePoint } from "liveline";
+
+/** Convert real OHLC buckets to opening/closing line points without invented intrabar pivots. */
+export function candlesToCloseLinePoints(
+  candles: CandlePoint[],
+  nominalIntervalSeconds: number,
+) {
+  if (candles.length === 0) return [];
+
+  const points: LivelinePoint[] = [{
+    time: candles[0].time,
+    value: candles[0].open,
+  }];
+
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    const nextTime = candles[index + 1]?.time;
+    const observedSpan = nextTime == null
+      ? nominalIntervalSeconds
+      : nextTime - candle.time;
+    const closeSpan = Math.min(
+      Math.max(1, observedSpan),
+      Math.max(60, nominalIntervalSeconds),
+    );
+    points.push({
+      time: candle.time + closeSpan * 0.96,
+      value: candle.close,
+    });
+  }
+
+  return points;
+}
+
+/** Clip to observed points only; never synthesize flat boundary or gap-fill points. */
+export function clipLineWindow(
+  points: LivelinePoint[],
+  startTime: number,
+  endTime: number,
+) {
+  return dedupeAndSort(points).filter(
+    (point) => point.time >= startTime && point.time <= endTime,
+  );
+}
 
 /**
  * Deduplicate and sort line points by time.

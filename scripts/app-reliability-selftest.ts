@@ -457,6 +457,9 @@ assert.ok(!decibelWalletBalanceRoute.includes("response.text()"), "wallet balanc
 assert.match(decibelStreamRoute, /checkApiRateLimit\(req, "decibel-stream"/);
 assert.match(decibelStreamRoute, /resolveDecibelNetwork/);
 assert.match(decibelStreamRoute, /\[a-fA-F0-9\]\{1,64\}/);
+assert.match(decibelStreamRoute, /STREAM_LIFETIME_MS = 4 \* 60 \* 1_000/);
+assert.match(decibelStreamRoute, /reason: "scheduled_reconnect"/);
+assert.match(decibelStreamRoute, /if \(lifetimeTimer\) clearTimeout\(lifetimeTimer\)/);
 assert.match(decibelMarketsRoute, /checkApiRateLimit\(req, "decibel-markets"/);
 assert.match(decibelVaultStatusRoute, /isValidAptosAddress/);
 assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);

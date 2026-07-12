@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 300;
+const STREAM_LIFETIME_MS = 4 * 60 * 1_000;
 
 const DECIBEL_WS_URLS: Record<DecibelNetwork, string> = {
   testnet: "wss://api.testnet.aptoslabs.com/decibel/ws",
@@ -80,7 +81,10 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
   let ws: WebSocket | null = null;
   let keepAlive: ReturnType<typeof setInterval> | null = null;
+  let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
+  let cleanedUp = false;
+  let cleanupStream: (() => void) | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -89,22 +93,25 @@ export async function GET(req: NextRequest) {
         try {
           controller.enqueue(encoder.encode(chunk));
         } catch {
-          closed = true;
+          cleanup();
         }
       };
 
       const send = (payload: unknown) => enqueue(encodeSse(payload));
-      const cleanup = () => {
-        if (closed) return;
+      function cleanup() {
+        if (cleanedUp) return;
+        cleanedUp = true;
         closed = true;
         if (keepAlive) clearInterval(keepAlive);
-        ws?.close();
+        if (lifetimeTimer) clearTimeout(lifetimeTimer);
+        if (ws && ws.readyState < WebSocket.CLOSING) ws.close();
         try {
           controller.close();
         } catch {
           // Stream may already be closed by the client.
         }
-      };
+      }
+      cleanupStream = cleanup;
 
       try {
         ws = new WebSocket(DECIBEL_WS_URLS[network], ["decibel", apiKey]);
@@ -113,7 +120,14 @@ export async function GET(req: NextRequest) {
         cleanup();
         return;
       }
+      enqueue("retry: 1000\n\n");
       keepAlive = setInterval(() => enqueue(": keepalive\n\n"), 25_000);
+      // Vercel kills Node functions at maxDuration (300s). End the SSE stream
+      // cleanly first so EventSource reconnects without a platform timeout gap.
+      lifetimeTimer = setTimeout(() => {
+        send({ type: "closed", reason: "scheduled_reconnect" });
+        cleanup();
+      }, STREAM_LIFETIME_MS);
 
       ws.addEventListener("open", () => {
         send({ type: "connected", network, topics });
@@ -143,9 +157,7 @@ export async function GET(req: NextRequest) {
       req.signal.addEventListener("abort", cleanup, { once: true });
     },
     cancel() {
-      closed = true;
-      if (keepAlive) clearInterval(keepAlive);
-      ws?.close();
+      cleanupStream?.();
     },
   });
 

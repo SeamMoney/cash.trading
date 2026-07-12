@@ -199,6 +199,9 @@ assert.match(positionsComponent, /cancelingActionTokensRef/);
 assert.match(tradePanel, /submissionTokenRef/);
 assert.match(tradePanel, /tradeContextRef/);
 assert.match(tradePage, /const displayVaults = \[\.\.\.vaults\]/);
+assert.ok(!tradePage.includes('if (n == null) return "$0"'), "missing vault metrics must not render as real zero dollars");
+assert.ok(!tradePage.includes("vault.depositors ?? 0"), "missing vault depositor counts must remain unavailable");
+assert.ok(!tradePage.includes("vault.sharpe_ratio ?? 0"), "missing vault risk metrics must remain unavailable");
 assert.ok(
   !tradePage.includes(".filter((v) => v.vault_type === \"protocol\""),
   "the vault carousel must show every active vault returned by Decibel",

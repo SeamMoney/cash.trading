@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
 import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
@@ -30,6 +31,9 @@ const MAINNET_SIZE_CONFIG: Record<string, { szDecimals: number }> = {
 const MARKET_CONFIG = net === 'mainnet' ? MAINNET_SIZE_CONFIG : TESTNET_SIZE_CONFIG
 
 export async function POST(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const body = await request.json()
     const { userWalletAddress, userSubaccount } = body

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { getMarkPrice } from '@/lib/price-feed'
 import { getAllMarketAddresses, createAuthenticatedAptos, getActiveNetwork } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 // Market configs for size/price decimals (differ between testnet and mainnet)
 const TESTNET_MKT_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -32,6 +33,9 @@ export const maxDuration = 300 // 5 minutes - need time to wait for TWAP fills
  * Body: { userWalletAddress: string }
  */
 export async function POST(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const body = await request.json()
     const { userWalletAddress, userSubaccount } = body

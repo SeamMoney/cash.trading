@@ -30,7 +30,16 @@ export function checkApiRateLimit(
   limit: number,
   windowMs: number,
 ): RateLimitResult {
-  const key = `${route}:${clientKeyFor(req)}`;
+  return checkRateLimitForKey(route, clientKeyFor(req), limit, windowMs);
+}
+
+export function checkRateLimitForKey(
+  route: string,
+  subject: string,
+  limit: number,
+  windowMs: number,
+): RateLimitResult {
+  const key = `${route}:${subject}`;
   const now = Date.now();
   const hits = (buckets.get(key) ?? []).filter((t) => t > now - windowMs);
   if (hits.length >= limit) {

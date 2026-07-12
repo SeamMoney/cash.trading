@@ -11,6 +11,18 @@ function databaseUnavailable() {
   );
 }
 
+function automationUnavailable() {
+  if (process.env.NODE_ENV !== "production") return null;
+  return NextResponse.json(
+    {
+      unavailable: true,
+      reason: "launchpad_automation_not_enabled",
+      error: "Strategy automation requires wallet-signed authorization.",
+    },
+    { status: 501, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 function clampAllocationPct(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 5;
@@ -55,6 +67,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const disabled = automationUnavailable();
+  if (disabled) return disabled;
+
   const unavailable = databaseUnavailable();
   if (unavailable) return unavailable;
 
@@ -112,6 +127,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const disabled = automationUnavailable();
+  if (disabled) return disabled;
+
   const unavailable = databaseUnavailable();
   if (unavailable) return unavailable;
 

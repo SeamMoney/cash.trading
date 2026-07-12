@@ -12,6 +12,7 @@ import {
 import { aptos } from "@/lib/aptos";
 import { MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
 import { APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE } from "@/lib/decibel-cctp";
+import { checkApiRateLimit, checkRateLimitForKey } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,14 +25,14 @@ const NO_STORE_HEADERS = {
 // Hard ceiling on what a single sponsored transaction may cost us:
 // max_gas_amount * gas_unit_price <= 0.05 APT.
 const MAX_SPONSORED_GAS_OCTAS = 5_000_000n;
+const MAX_BODY_BYTES = 256_000;
 
 const ALLOWED_CLAIM_BYTECODES = new Set(
   Object.values(APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE).map((b) => b.toLowerCase()),
 );
 
 function getSponsorAccount(): Account | null {
-  const raw =
-    process.env.SPONSOR_PRIVATE_KEY || process.env.BOT_OPERATOR_PRIVATE_KEY || "";
+  const raw = process.env.SPONSOR_PRIVATE_KEY || "";
   if (!raw.trim()) return null;
   try {
     return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(raw.trim()) });
@@ -84,6 +85,25 @@ function isSponsorablePayload(transaction: SimpleTransaction): {
 }
 
 export async function POST(req: NextRequest) {
+  const ipRate = checkApiRateLimit(req, "sponsor-submit", 12, 60_000);
+  if (!ipRate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: ipRate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(ipRate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      { error: "request body is too large" },
+      { status: 413, headers: NO_STORE_HEADERS },
+    );
+  }
+
   const sponsor = getSponsorAccount();
   if (!sponsor) {
     return NextResponse.json(
@@ -124,6 +144,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "could not deserialize transaction or authenticator" },
       { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const sender = transaction.rawTransaction.sender.toStringLong().toLowerCase();
+  const senderRate = checkRateLimitForKey("sponsor-submit-sender", sender, 12, 10 * 60_000);
+  if (!senderRate.allowed) {
+    return NextResponse.json(
+      { error: "sender sponsorship limit reached", retryAfterS: senderRate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(senderRate.retryAfterS ?? 600) },
+      },
     );
   }
 

@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react"
 
 interface CloudStatus {
+  automationEnabled: boolean
   cloudModeEnabled: boolean
-  cronInterval: string
-  checks: {
+  cronInterval: string | null
+  checks?: {
     cronSecret: boolean
     database: boolean
     botOperator: boolean

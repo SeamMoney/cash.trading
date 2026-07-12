@@ -7,6 +7,7 @@ const DECIBEL_PACKAGE = getActiveNetwork() === 'mainnet'
   ? MAINNET_CONFIG.deployment.package
   : TESTNET_CONFIG.deployment.package
 import { prisma } from '@/lib/prisma'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 // Market configs for size/price decimals and ticker sizes (updated Feb 5, 2026)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number; tickerSize: bigint }> = {
@@ -37,6 +38,9 @@ function roundPriceToTickerSize(priceUSD: number, tickerSize: bigint): bigint {
  * Body: { userSubaccount, marketAddress, marketName, sizeRaw, isLong }
  */
 export async function POST(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const body = await request.json()
     const { userWalletAddress, userSubaccount, marketAddress, marketName, sizeRaw, isLong } = body

@@ -3,6 +3,7 @@ import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
 import { getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 
@@ -32,6 +33,9 @@ async function resolveMarketAddress(marketName: string, fallbackAddress: string)
 }
 
 export async function POST(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const body = await request.json()
     const {

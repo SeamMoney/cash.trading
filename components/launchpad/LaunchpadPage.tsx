@@ -687,20 +687,24 @@ export function LaunchpadPage() {
   const { connected, account, disconnect } = useWallet();
   const { isSubscribed, subscribe } = useSubscription();
 
-  const fetchIndicators = useCallback(async () => {
+  const fetchIndicators = useCallback(async (force = false): Promise<Indicator[]> => {
     try {
       const params = new URLSearchParams({ sort });
       if (filter === "live")    params.set("graduated", "true");
       if (filter === "testing") params.set("graduated", "false");
       if (showGraduated)        params.set("graduated", "true");
+      if (force)                params.set("refresh", "true");
       const res  = await fetch(`/api/launchpad/indicators?${params}`);
-      if (!res.ok) return;
+      if (!res.ok) return [];
       const data = await res.json();
       const all: Indicator[] = data.indicators || [];
       const visible = showSignals ? all.filter((i) => i.lastSignal !== 0) : all;
       setIndicators(visible);
       setMeta({ total: data.total, graduated: data.graduated, totalRaisedApt: data.totalRaisedApt });
-    } catch { /* silently fail */ }
+      return visible;
+    } catch {
+      return [];
+    }
     finally {
       setLoading((wasLoading) => {
         if (wasLoading) setLoadKey((k) => k + 1);
@@ -731,14 +735,16 @@ export function LaunchpadPage() {
 
   function handleDeployed(addr: string) {
     setTab("explore");
-    fetchIndicators();
-    setTimeout(() => {
-      setIndicators((prev) => {
-        const found = prev.find((i) => i.address === addr);
-        if (found) setSelected(found);
-        return prev;
-      });
-    }, 500);
+    void (async () => {
+      let latest = await fetchIndicators(true);
+      let found = latest.find((indicator) => indicator.address === addr);
+      if (!found) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        latest = await fetchIndicators(true);
+        found = latest.find((indicator) => indicator.address === addr);
+      }
+      if (found) setSelected(found);
+    })();
   }
 
   // Convert Indicator to IndicatorEntry shape for ScheduleTradeModal

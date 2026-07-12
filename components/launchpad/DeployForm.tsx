@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { AccountAddress, createResourceAddress } from "@aptos-labs/ts-sdk";
+import { sha3_256 } from "@noble/hashes/sha3";
 import { buildDelegateDecibelVaultPayload } from "@/lib/decibel-vaults";
 import { cn } from "@/lib/utils";
 import { transpile, type TranspileResult } from "@/lib/launchpad/transpiler";
@@ -22,6 +23,39 @@ const MonacoEditor = dynamic(
 );
 
 const LAUNCHPAD_CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
+
+function sha3Hex(input: string) {
+  return `0x${Array.from(sha3_256(new TextEncoder().encode(input)))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+type ConfirmedUserTransaction = {
+  type?: string;
+  success?: boolean;
+  vm_status?: string;
+  events?: Array<{ type?: string; data?: { indicator_addr?: string } }>;
+};
+
+async function waitForUserTransaction(hash: string): Promise<ConfirmedUserTransaction> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await fetch(
+      `https://fullnode.testnet.aptoslabs.com/v1/transactions/by_hash/${hash}`,
+      { cache: "no-store" },
+    );
+    if (response.ok) {
+      const transaction = await response.json() as ConfirmedUserTransaction;
+      if (transaction.type === "user_transaction") {
+        if (!transaction.success) {
+          throw new Error(`Aptos transaction aborted: ${transaction.vm_status ?? "unknown VM error"}`);
+        }
+        return transaction;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error("Timed out waiting for Aptos transaction confirmation");
+}
 
 // Testnet Decibel perp markets the vault target can bind to (object addresses
 // derived from GlobalPerpEngine + market-name seed; specs from the live API).
@@ -564,7 +598,7 @@ interface TranspileInfo {
 }
 
 interface DeployResult {
-  indicatorAddr: string;
+  indicatorAddr: string | null;
   moveSource: string;
   transpile: TranspileInfo;
   indicator: { name: string; symbol: string };
@@ -1070,6 +1104,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [showMove, setShowMove] = useState(false);
   const [onChainTxHash, setOnChainTxHash] = useState<string | null>(null);
+  const [proprietaryTxHash, setProprietaryTxHash] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ status: "idle" });
 
   // Mobile preview toggle
@@ -1162,14 +1197,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     }
     setIsHashing(true);
     try {
-      const enc = new TextEncoder().encode(script);
-      const buf = await crypto.subtle.digest("SHA-256", enc);
-      const hash =
-        "0x" +
-        Array.from(new Uint8Array(buf))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-      setAlgoHash(hash);
+      setAlgoHash(sha3Hex(script));
     } finally {
       setIsHashing(false);
     }
@@ -1266,12 +1294,22 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       setError("Name, symbol, and PineScript are required");
       return;
     }
+    if (!connected || !account) {
+      setError("Connect an Aptos wallet before deploying an on-chain strategy");
+      return;
+    }
+    if (isProprietary && (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 1_000)) {
+      setError("Creator fees must be between 0 and 1,000 basis points (10%)");
+      return;
+    }
     setError(null);
     setStep("transpiling");
     await new Promise((r) => setTimeout(r, 600));
     setStep("deploying");
 
-    const creatorAddr = (connected && account) ? account.address.toString() : "0x" + "a".repeat(40);
+    const creatorAddr = account.address.toString();
+    const deploymentHash = sha3Hex(pineScript);
+    if (isProprietary) setAlgoHash(deploymentHash);
 
     try {
       const res = await fetch("/api/launchpad/create", {
@@ -1297,35 +1335,64 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       }
 
       const data = (await res.json()) as DeployResult;
-      setResult(data);
+      const { indicatorType, shortPeriod, longPeriod } = data.transpile;
+      const response = await signAndSubmitTransaction({
+        data: {
+          function: `${LAUNCHPAD_CONTRACT}::indicator::create_indicator`,
+          typeArguments: [],
+          functionArguments: [
+            name,
+            symbol,
+            asset,
+            indicatorType,
+            shortPeriod,
+            longPeriod,
+            LAUNCHPAD_CONTRACT,
+          ],
+        },
+      });
+      setOnChainTxHash(response.hash);
 
-      // Submit on-chain create_indicator if wallet connected
-      if (connected && account && data.transpile) {
+      const createTransaction = await waitForUserTransaction(response.hash);
+      const indicatorAddr = createTransaction.events?.find((event) =>
+        event.type?.endsWith("::indicator::IndicatorCreated")
+      )?.data?.indicator_addr ?? null;
+      if (!indicatorAddr || !/^0x[0-9a-fA-F]{1,64}$/.test(indicatorAddr)) {
+        throw new Error("The transaction confirmed but no IndicatorCreated event was found");
+      }
+
+      const deployedResult = { ...data, indicatorAddr };
+      setResult(deployedResult);
+
+      let proprietaryError: string | null = null;
+      if (isProprietary) {
         try {
-          const { indicatorType, shortPeriod, longPeriod } = data.transpile;
-          const response = await signAndSubmitTransaction({
+          const model = feeModel === "flat" ? 1 : feeModel === "profit_share" ? 2 : 0;
+          const hashBytes = Array.from(sha3_256(new TextEncoder().encode(pineScript)));
+          const proprietaryResponse = await signAndSubmitTransaction({
             data: {
-              function: `${LAUNCHPAD_CONTRACT}::indicator::create_indicator`,
+              function: `${LAUNCHPAD_CONTRACT}::indicator::set_proprietary`,
               typeArguments: [],
               functionArguments: [
-                name,
-                symbol,
-                asset,
-                indicatorType,
-                shortPeriod,
-                longPeriod,
-                account.address.toString(),
+                indicatorAddr,
+                hashBytes,
+                model === 0 ? 0 : feeBps,
+                model,
               ],
             },
           });
-          setOnChainTxHash(response.hash);
-        } catch {
-          /* on-chain tx optional */
+          setProprietaryTxHash(proprietaryResponse.hash);
+          await waitForUserTransaction(proprietaryResponse.hash);
+        } catch (reason) {
+          proprietaryError = reason instanceof Error ? reason.message : "Proprietary settings were not confirmed";
         }
       }
 
       setStep("done");
-      onDeployed?.(data.indicatorAddr);
+      if (proprietaryError) {
+        setError(`Strategy deployed, but its proprietary settings were not saved: ${proprietaryError}`);
+      }
+      onDeployed?.(indicatorAddr);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setStep("error");
@@ -1336,6 +1403,8 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
     setStep("form");
     setResult(null);
     setError(null);
+    setOnChainTxHash(null);
+    setProprietaryTxHash(null);
     setNameOverride(null);
     setSymbolOverride(null);
     setIsProprietary(false);
@@ -1450,6 +1519,26 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
           </div>
         )}
 
+        {proprietaryTxHash && !error && (
+          <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center justify-between">
+            <span className="text-[10px] text-amber-300 font-medium">Algorithm commitment confirmed ✓</span>
+            <a
+              href={`https://explorer.aptoslabs.com/txn/${proprietaryTxHash}?network=testnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-amber-400/70 hover:text-amber-300 font-mono underline"
+            >
+              {proprietaryTxHash.slice(0, 12)}...
+            </a>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2 text-[10px] text-amber-300">
+            {error}
+          </div>
+        )}
+
         <button
           onClick={() => setShowMove(!showMove)}
           className="w-full text-left text-xs text-zinc-400 hover:text-zinc-300"
@@ -1470,7 +1559,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
             Deploy Another
           </button>
           <button
-            onClick={() => onDeployed?.(result.indicatorAddr)}
+            onClick={() => result.indicatorAddr && onDeployed?.(result.indicatorAddr)}
             className="flex-1 py-2 rounded-[10px] text-xs font-medium bg-purple-500 text-white hover:bg-purple-400 transition-colors"
           >
             View in Marketplace
@@ -1499,7 +1588,11 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
             />
           </svg>
           <span className="text-sm text-white font-medium">
-            {step === "transpiling" ? "Parsing PineScript..." : "Deploying to Aptos testnet..."}
+            {step === "transpiling"
+              ? "Parsing PineScript..."
+              : isProprietary
+                ? "Deploying to Aptos testnet (2 wallet approvals)..."
+                : "Deploying to Aptos testnet..."}
           </span>
         </div>
         <div className="flex justify-center gap-3 text-xs text-zinc-500">
@@ -1978,7 +2071,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                           setFeeBps(feeModel === "profit_share" ? Math.round(v * 100) : Math.round(v));
                         }}
                         min={0}
-                        max={feeModel === "profit_share" ? 50 : 1000}
+                        max={feeModel === "profit_share" ? 10 : 1000}
                         step={feeModel === "profit_share" ? 0.5 : 1}
                         className="w-16 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 py-1.5 text-[11px] text-white font-mono focus:outline-none focus:border-white/15 text-right"
                       />
@@ -2008,7 +2101,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     disabled={isHashing || !pineScript.trim()}
                     className="w-full text-[10px] text-amber-400/70 hover:text-amber-300 disabled:text-zinc-700 transition-colors font-mono py-1 text-left"
                   >
-                    {isHashing ? "Computing hash…" : "+ Compute SHA-256 hash"}
+                    {isHashing ? "Computing hash…" : "+ Compute SHA3-256 hash"}
                   </button>
                 )}
               </div>

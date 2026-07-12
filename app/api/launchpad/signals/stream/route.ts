@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       }
       sseSubscribers.add(onSignal);
 
-      // Also push auto-generated signals (poll signalBuffer for new entries)
+      // Poll the authenticated delivery buffer for entries written in this instance.
       const lastSeen = new Map<string, number>();
       for (const addr of watched) {
         lastSeen.set(addr, (signalBuffer.get(addr) || []).length);

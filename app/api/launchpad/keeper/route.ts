@@ -397,7 +397,10 @@ export async function GET(req: Request) {
         // Post a signal to the signal feed
         await fetch(`${origin}/api/launchpad/signals`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cronSecret}`,
+          },
           body: JSON.stringify({
             indicatorAddr: decision.indicatorAddr,
             signal: decision.signal,

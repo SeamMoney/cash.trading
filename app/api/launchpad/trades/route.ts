@@ -5,13 +5,24 @@
  * GET /api/launchpad/trades?addr=<indicator_addr>
  * Returns: { stats, trades[] } where trades include entry/exit prices, P&L, signal type
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
+import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
-const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));
+const apiKey = process.env.GEOMI_API_KEY_TESTNET ?? process.env.APTOS_API_KEY_TESTNET;
+const aptos = new Aptos(new AptosConfig({
+  network: Network.TESTNET,
+  ...(apiKey ? { clientConfig: { API_KEY: apiKey } } : {}),
+}));
 
 type ViewFn = `${string}::${string}::${string}`;
 
@@ -19,16 +30,33 @@ async function safeView(fn: ViewFn, args: string[]) {
   return aptos.view({ payload: { function: fn, functionArguments: args } });
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "launchpad-trades", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const url = new URL(req.url);
   const addr = url.searchParams.get("addr");
 
-  if (!addr) return NextResponse.json({ error: "addr required" }, { status: 400 });
+  if (!isValidAptosAddress(addr)) {
+    return NextResponse.json(
+      { error: "a valid addr is required" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+  const indicatorAddress = normalizeAptosAddress(addr, "addr");
 
   try {
     const [statsResult, tradesResult] = await Promise.all([
-      safeView(`${CONTRACT}::indicator::get_trade_stats` as ViewFn, [addr]),
-      safeView(`${CONTRACT}::indicator::get_trades` as ViewFn, [addr]),
+      safeView(`${CONTRACT}::indicator::get_trade_stats` as ViewFn, [indicatorAddress]),
+      safeView(`${CONTRACT}::indicator::get_trades` as ViewFn, [indicatorAddress]),
     ]);
 
     // get_trade_stats returns (total_trades, win_trades, loss_trades, total_gain_bps, total_loss_bps)
@@ -98,7 +126,7 @@ export async function GET(req: Request) {
       : 0;
 
     return NextResponse.json({
-      indicatorAddr: addr,
+      indicatorAddr: indicatorAddress,
       stats: {
         totalTrades: Number(totalTrades),
         winTrades: Number(winTrades),
@@ -112,8 +140,13 @@ export async function GET(req: Request) {
       },
       trades,
       pairs,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
-    return NextResponse.json({ error: String(err), onChain: false }, { status: 200 });
+    const message = err instanceof Error ? err.message : "Trade history lookup failed";
+    console.warn("[launchpad-trades] lookup failed:", message);
+    return NextResponse.json(
+      { onChain: false, trades: [], pairs: [] },
+      { status: 200, headers: NO_STORE_HEADERS },
+    );
   }
 }

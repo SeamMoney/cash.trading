@@ -1,9 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { AccountAddress, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { getWhop } from "@/lib/whop";
 import { loadState, saveState } from "@/lib/launchpad/persist";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
+const INDICATOR_CACHE_HEADERS = {
+  "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+};
 
 const FACTORY_PACKAGE = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 const APTOS_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
@@ -706,16 +715,44 @@ async function discoverOnChainIndicators(): Promise<IndicatorDiscovery> {
   }
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "launchpad-indicators", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const url = new URL(req.url);
   const sort = url.searchParams.get("sort") || "robustness";
   const graduated = url.searchParams.get("graduated");
+  if (
+    !["robustness", "sharpe", "raised", "sims"].includes(sort) ||
+    (graduated !== null && graduated !== "true" && graduated !== "false")
+  ) {
+    return NextResponse.json(
+      { error: "sort or graduated is invalid" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
   const creatorParam = url.searchParams.get("creator");
   const creator = creatorParam ? normalizeAptosAddress(creatorParam) : null;
   if (creatorParam && !creator) {
-    return NextResponse.json({ error: "Invalid creator address" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid creator address" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
   }
-  if (url.searchParams.get("refresh") === "true") discoveryCache = null;
+  if (
+    process.env.NODE_ENV !== "production" &&
+    url.searchParams.get("refresh") === "true"
+  ) {
+    discoveryCache = null;
+  }
 
   let discovery: IndicatorDiscovery;
   try {
@@ -723,7 +760,7 @@ export async function GET(req: Request) {
   } catch {
     return NextResponse.json(
       { unavailable: true, reason: "aptos_testnet_unavailable" },
-      { status: 503 },
+      { status: 503, headers: NO_STORE_HEADERS },
     );
   }
   let list = [...discovery.indicators];
@@ -744,7 +781,7 @@ export async function GET(req: Request) {
     graduated: list.filter((i) => i.isGraduated).length,
     totalRaisedApt: Math.round(list.reduce((s, i) => s + i.totalRaised, 0) / 1e8),
     source: discovery.source,
-  });
+  }, { headers: INDICATOR_CACHE_HEADERS });
 }
 
 // ─── Whop product creation helper ────────────────────────────────────────────

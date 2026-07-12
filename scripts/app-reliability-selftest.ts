@@ -15,6 +15,7 @@ import {
   pairOnChainTrades,
   parseOnChainTradeVectors,
 } from "../lib/launchpad/move-view";
+import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -41,6 +42,7 @@ const vaultTotalRoute = readFileSync("app/api/vault/total/route.ts", "utf8");
 const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
 const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
 const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
+const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
 const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
@@ -147,6 +149,20 @@ assert.ok(
 
 assert.ok(!tradePage.includes("GUILD_OVERRIDES"), "real vault identities must not be replaced with demo guilds");
 assert.ok(!tradePage.includes("buildPnlCurve"), "vault charts must not fabricate PnL history");
+assert.notEqual(
+  decibelSubaccountStorageKey("0xABC", "mainnet"),
+  decibelSubaccountStorageKey("0xABC", "testnet"),
+  "selected subaccounts must be scoped by Decibel network",
+);
+assert.notEqual(
+  decibelSubaccountStorageKey("0xABC", "mainnet"),
+  decibelSubaccountStorageKey("0xDEF", "mainnet"),
+  "selected subaccounts must be scoped by wallet owner",
+);
+assert.ok(
+  !decibelSubaccountHook.includes('name: "Primary"'),
+  "an unverified stored address must not be presented as an active Primary account",
+);
 assert.ok(!tradePage.includes("local-liq-"), "browser-only liquidations must not impersonate on-chain state");
 assert.ok(!tradePage.includes("onPositionOpen={"), "confirmed Decibel positions must not be duplicated in local state");
 assert.ok(!tradePage.includes("<PositionsTable"), "the page must show only the wallet-signed Decibel positions table");

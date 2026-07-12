@@ -1,25 +1,23 @@
-import { AccountAddress } from "@aptos-labs/ts-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getDecibelCollateralMetadata,
+  isValidAptosAddress,
+  normalizeAptosAddress,
+  normalizePositiveU64,
   resolveDecibelNetwork,
   type DecibelNetwork,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 function getRequestNetwork(value: unknown): DecibelNetwork {
   return resolveDecibelNetwork(value);
-}
-
-function normalizeAddress(address: string) {
-  return AccountAddress.from(address).toStringLong();
-}
-
-function normalizeAmount(amount: unknown) {
-  const value = Number(amount);
-  if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
-    throw new Error("amount must be a positive raw USDC integer");
-  }
-  return String(value);
 }
 
 /**
@@ -28,12 +26,54 @@ function normalizeAmount(amount: unknown) {
  * collateral to the owner wallet when the final destination is another address.
  */
 export async function POST(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-transfer-usdc-build", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: {
+          ...NO_STORE_HEADERS,
+          "Retry-After": String(rate.retryAfterS ?? 60),
+        },
+      },
+    );
+  }
+
   try {
-    const { recipient, amount, network: rawNetwork } = await req.json();
-    if (!recipient || !amount) {
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        { error: "A valid JSON object is required" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    const { recipient, amount, network: rawNetwork } = body;
+    if (!recipient || amount === undefined || amount === null) {
       return NextResponse.json(
         { error: "Missing required fields: recipient, amount" },
-        { status: 400 },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+
+    if (
+      !isValidAptosAddress(recipient) ||
+      (rawNetwork !== undefined && rawNetwork !== "testnet" && rawNetwork !== "mainnet")
+    ) {
+      return NextResponse.json(
+        { error: "recipient or network is invalid" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+
+    let amountRaw: string;
+    try {
+      amountRaw = normalizePositiveU64(amount, "amount");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "amount is invalid";
+      return NextResponse.json(
+        { error: message },
+        { status: 400, headers: NO_STORE_HEADERS },
       );
     }
 
@@ -43,15 +83,22 @@ export async function POST(req: NextRequest) {
       typeArguments: ["0x1::fungible_asset::Metadata"],
       functionArguments: [
         getDecibelCollateralMetadata(network),
-        normalizeAddress(String(recipient)),
-        normalizeAmount(amount),
+        normalizeAptosAddress(recipient, "recipient"),
+        amountRaw,
       ],
     };
 
-    return NextResponse.json({ payload });
+    return NextResponse.json(
+      { payload, network },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to build USDC transfer tx";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[decibel-transfer-usdc] build failed:", message);
+    return NextResponse.json(
+      { error: "Could not prepare the USDC transfer transaction" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import {
+  normalizeAptosAddress,
+  normalizePositiveU64,
+  normalizeU128,
+} from "../lib/decibel";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -57,6 +62,12 @@ const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8
 const decibelVaultStatusRoute = readFileSync("app/api/decibel/vaults/status/route.ts", "utf8");
 const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "utf8");
 const decibelVaultExtractRoute = readFileSync("app/api/decibel/vaults/extract/route.ts", "utf8");
+const decibelOrderRoute = readFileSync("app/api/decibel/order/route.ts", "utf8");
+const decibelCancelOrderRoute = readFileSync("app/api/decibel/cancel-order/route.ts", "utf8");
+const decibelCreateSubaccountRoute = readFileSync("app/api/decibel/create-subaccount/route.ts", "utf8");
+const decibelDepositRoute = readFileSync("app/api/decibel/deposit/route.ts", "utf8");
+const decibelWithdrawRoute = readFileSync("app/api/decibel/withdraw/route.ts", "utf8");
+const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/route.ts", "utf8");
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
 const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
@@ -213,6 +224,39 @@ assert.match(vaultActionModal, /allocationPct,\s*network: indicator\.network/);
 assert.match(constantsSource, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
 assert.match(constantsSource, /network: AptosNetworkName = APTOS_NETWORK/);
 assert.match(launchpadOnChainChart, /explorerAccountUrl\(indicatorAddr, "testnet"\)/);
+assert.equal(normalizePositiveU64("18446744073709551615"), "18446744073709551615");
+assert.equal(normalizePositiveU64("000001"), "1");
+assert.throws(() => normalizePositiveU64("18446744073709551616"), /within range/);
+assert.throws(() => normalizeU128("9".repeat(10_000)), /within range/);
+assert.throws(() => normalizePositiveU64(Number.MAX_SAFE_INTEGER + 1), /safe unsigned integer/);
+assert.equal(
+  normalizeU128("340282366920938463463374607431768211455"),
+  "340282366920938463463374607431768211455",
+);
+assert.throws(
+  () => normalizeU128("340282366920938463463374607431768211456"),
+  /within range/,
+);
+assert.equal(
+  normalizeAptosAddress("0x1"),
+  `0x${"0".repeat(63)}1`,
+);
+assert.match(decibelCore, /normalizePositiveU64\(args\.amount, "amount"\)/);
+assert.match(decibelOrderRoute, /checkApiRateLimit\(req, "decibel-order-build"/);
+assert.match(decibelOrderRoute, /typeof isBuy !== "boolean"/);
+assert.match(decibelOrderRoute, /typeof reduceOnly !== "boolean"/);
+assert.match(decibelCancelOrderRoute, /normalizeU128\(orderId, "orderId"\)/);
+assert.match(decibelCreateSubaccountRoute, /isValidAptosAddress\(owner\)/);
+assert.match(decibelFaucetRoute, /normalizePositiveU64\(body\.amount/);
+assert.match(decibelFaucetRoute, /checkApiRateLimit\(req, "decibel-faucet-build"/);
+for (const route of [decibelDepositRoute, decibelWithdrawRoute, decibelTransferUsdcRoute]) {
+  assert.match(route, /normalizePositiveU64\(amount, "amount"\)/);
+  assert.match(route, /checkApiRateLimit\(req,/);
+}
+assert.ok(
+  !decibelTransferUsdcRoute.includes("Number(amount)"),
+  "raw USDC transfers must not lose precision through JavaScript Number",
+);
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",

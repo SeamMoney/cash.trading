@@ -183,6 +183,9 @@ assert.match(portfolioPage, /actionContextRef\.current !== requestContext/);
 assert.match(portfolioPage, /isValidAptosAddress\(recipient\)/);
 assert.ok(!portfolioPage.includes("overview?.equity ?? 0"), "an unavailable portfolio must not render as zero equity");
 assert.ok(!portfolioPage.includes("position.estimatedPnl ?? 0"), "an unavailable position mark must not render as zero PnL");
+assert.match(sharedHeader, /balanceRequestIdRef/);
+assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
+assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
 assert.ok(
   portfolioPage.indexOf("await waitForTransactionConfirmation(cancel.hash)")
     < portfolioPage.indexOf("openOrders: prev.openOrders.filter"),
@@ -285,6 +288,8 @@ assert.match(predepositUserRoute, /getDecibelOwnerPoints/);
 assert.match(pointsDataContext, /cash_trading_points_cache_v2/);
 assert.match(pointsDataContext, /vaultTotal\.protocolTvl/);
 assert.match(pointsStats, /Season 1/);
+assert.ok(!pointsStats.includes("userData?.points || 0"), "unavailable wallet AMPs must not render as a real zero");
+assert.ok(!pointsStats.includes("vaultUserData?.currentValue ||"), "a real zero vault value must not fall through to stale alternate data");
 assert.match(pointsLeaderboard, /Vault AMPs/);
 assert.ok(!pointsCalculator.includes("POINTS_RATE"), "the AMPs scenario must not use the obsolete S0 formula");
 assert.ok(!pointsCalculator.includes("HYPE was"), "the AMPs scenario must not imply an unrelated token valuation");

@@ -11,7 +11,7 @@ export function PointsStats() {
 
   const formatNumber = (num: number | string) => {
     const n = typeof num === 'string' ? parseFloat(num) : num
-    if (isNaN(n)) return '$0'
+    if (isNaN(n)) return '—'
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
     if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`
     return `$${n.toFixed(2)}`
@@ -125,35 +125,47 @@ export function PointsStats() {
         <div className="bg-black/40 border border-white/10 px-3 py-2.5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Your Stats</span>
-            <ShareCard
-              points={userData?.points || 0}
-              rank={userData?.rank ?? undefined}
-              totalDeposited={vaultUserData?.totalDeposited?.toString() || userData?.total_deposited || '0'}
-              dlpBalance={vaultUserData?.currentValue?.toString() || userData?.dlp_balance || '0'}
-            />
+            {userData && (
+              <ShareCard
+                points={userData.points}
+                rank={userData.rank ?? undefined}
+                totalDeposited={vaultUserData?.totalDeposited?.toString() ?? userData.total_deposited}
+                dlpBalance={vaultUserData?.currentValue?.toString() ?? userData.dlp_balance}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
-                {vaultUserData?.currentValue ? 'DLP Value' : 'DLP Contributed'}
+                {vaultUserData ? 'DLP Value' : 'DLP Contributed'}
               </div>
               <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
-                {formatNumber(vaultUserData?.currentValue || userData?.dlp_balance || '0')}
+                {vaultUserData
+                  ? formatNumber(vaultUserData.currentValue)
+                  : userData
+                    ? formatNumber(userData.dlp_balance)
+                    : '—'}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Deposited</div>
               <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {formatNumber(vaultUserData?.totalDeposited || userData?.total_deposited || '0')}
+                {vaultUserData
+                  ? formatNumber(vaultUserData.totalDeposited)
+                  : userData
+                    ? formatNumber(userData.total_deposited)
+                    : '—'}
               </div>
             </div>
 
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Vault AMPs</div>
               <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {(userData?.vault_points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {userData
+                  ? (userData.vault_points ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                  : '—'}
               </div>
             </div>
 
@@ -162,9 +174,11 @@ export function PointsStats() {
                 Total AMPs
               </div>
               <div className="text-base sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
-                {(userData?.points || 0) < 1
-                  ? (userData?.points || 0).toFixed(4)
-                  : (userData?.points || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {userData
+                  ? userData.points < 1
+                    ? userData.points.toFixed(4)
+                    : userData.points.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                  : '—'}
               </div>
             </div>
           </div>

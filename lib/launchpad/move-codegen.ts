@@ -925,11 +925,13 @@ function getTAFieldNames(ir: IndicatorIR): {
   slow: string;
 } {
   const taStateFields = ir.stateFields.filter(
-    (f) => f.moveType === "u64" && !f.name.startsWith("_"),
+    (f) => f.source === "ta_computed" && f.moveType === "u64" &&
+      !f.name.startsWith("_") && !f.name.startsWith("prev_"),
   );
+  const fast = taStateFields[0]?.name ?? "last_price";
   return {
-    fast: taStateFields[0]?.name || "fast_line",
-    slow: taStateFields[1]?.name || "slow_line",
+    fast,
+    slow: taStateFields[1]?.name ?? (fast === "last_price" ? "entry_price" : "last_price"),
   };
 }
 

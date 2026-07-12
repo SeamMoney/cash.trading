@@ -48,7 +48,7 @@ function fmtStatUsd(v: number): string {
 }
 
 function fmtFundingRate(rateBps: number | null) {
-  if (rateBps === null || !Number.isFinite(rateBps)) return "0.0010%";
+  if (rateBps === null || !Number.isFinite(rateBps)) return "—";
   const pct = rateBps / 100;
   return `${pct >= 0 ? "" : "-"}${Math.abs(pct).toFixed(4)}%`;
 }
@@ -432,7 +432,7 @@ function getDisplayDecimals(price: number | null | undefined) {
 }
 
 function toPerpMarketData(market: DecibelApiMarket): PerpMarketData {
-  const seedPrice = market.markPrice ?? market.midPrice ?? market.oraclePrice ?? 1;
+  const seedPrice = market.markPrice ?? market.midPrice ?? market.oraclePrice ?? 0;
   const leverage = Math.max(1, Number(market.maxLeverage ?? 1));
   const openInterestUsd =
     market.openInterest != null && seedPrice > 0
@@ -454,6 +454,7 @@ function toPerpMarketData(market: DecibelApiMarket): PerpMarketData {
       : "—",
     volume24h: market.volume24hUsd != null ? fmtStatUsd(market.volume24hUsd) : "—",
     openInterestLabel: openInterestUsd,
+    oraclePrice: market.oraclePrice,
     volatility: 0.0028,
   };
 }
@@ -488,6 +489,11 @@ const FALLBACK_MARKETS: Market[] = Object.values(PERP_MARKET_DATA).map((market) 
     id: market.marketName,
     label: getMarketLabel(market.marketName),
     pair: market.marketName,
+    seedPrice: 0,
+    oraclePrice: null,
+    change24h: "—",
+    volume24h: "—",
+    openInterestLabel: "—",
   },
   category: classifyMarketCategory(market.marketName),
   marketAddr: market.marketAddr,
@@ -512,14 +518,12 @@ function sortMarkets(markets: Market[]) {
 }
 
 function mergeMarketsWithFallback(apiMarkets: Market[], network: DecibelPublicNetwork) {
-  const merged = new Map<string, Market>();
-  for (const market of getFallbackMarketsForNetwork(network)) {
-    merged.set(market.id, market);
-  }
-  for (const market of apiMarkets) {
-    merged.set(market.id, market);
-  }
-  return sortMarkets(Array.from(merged.values()));
+  // Once Decibel responds, its market registry is authoritative. Keeping
+  // legacy fallback symbols in the merged result made the selector advertise
+  // markets that may no longer exist on the selected network.
+  return apiMarkets.length > 0
+    ? sortMarkets([...apiMarkets])
+    : sortMarkets([...getFallbackMarketsForNetwork(network)]);
 }
 
 function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
@@ -945,11 +949,9 @@ export function BTCChart({
     ? perpsSnapshot?.connected ?? false
     : connected;
   const displayOracle = isPerpsMarket
-    ? perpsSnapshot?.oraclePrice ?? (perpData ? perpData.seedPrice * 1.0004 : 0)
-    : price > 0
-      ? price + Math.round(price * 0.0004)
-      : 0;
-  const displayChange = isPerpsMarket ? perpData?.change24h ?? "-3.41%" : "-3.41%";
+    ? (perpsSnapshot?.oraclePrice || perpData?.oraclePrice || 0)
+    : 0;
+  const displayChange = isPerpsMarket ? perpData?.change24h ?? "—" : "—";
   // Prefer the indexer's exact 24h figure (perpData, from asset_contexts) —
   // the snapshot's estimate only sees candles loaded since mount, so it
   // undercounts and grows over the session.
@@ -963,11 +965,11 @@ export function BTCChart({
   const displayOpenInterest = isPerpsMarket
     ? perpsSnapshot?.openInterest != null
       ? fmtStatUsd(perpsSnapshot.openInterest * Math.max(displayPrice, perpData?.seedPrice ?? 0))
-      : perpData?.openInterestLabel ?? "$1.46M"
-    : "$1.46M";
+      : perpData?.openInterestLabel ?? "—"
+    : "—";
   const displayFunding = isPerpsMarket
-    ? fmtFundingRate(perpsSnapshot?.fundingRateBps ?? null)
-    : "0.0010%";
+    ? fmtFundingRate(perpsSnapshot?.fundingRateBps ?? marketConfig.fundingRateBps ?? null)
+    : "—";
   const displayPriceDecimals = isPerpsMarket && perpData ? perpData.priceDecimals : 2;
   const displayStatDecimals = isPerpsMarket && perpData ? perpData.priceDecimals : 0;
 
@@ -1065,7 +1067,7 @@ export function BTCChart({
           </div>
           <div className="flex flex-col shrink-0 min-w-[64px]">
             <span className="text-zinc-600 text-[9px]">24h Change</span>
-            <span className={`${displayChange.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
+            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
               {displayChange}
             </span>
           </div>
@@ -1079,7 +1081,7 @@ export function BTCChart({
           </div>
           <div className="flex flex-col shrink-0 min-w-[56px]">
             <span className="text-zinc-600 text-[9px]">Funding</span>
-            <span className={`${displayFunding.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
+            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
               {displayFunding}
             </span>
           </div>

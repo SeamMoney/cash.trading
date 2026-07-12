@@ -165,6 +165,16 @@ assert.ok(
 );
 assert.ok(!lineChartSource.includes("fillLineWindowGaps"), "the broken line gap filler must stay removed");
 assert.ok(
+  !chartShellSource.includes('return "0.0010%"')
+    && !chartShellSource.includes('?? "-3.41%"')
+    && !chartShellSource.includes('?? "$1.46M"'),
+  "missing market stats must render unavailable instead of fabricated defaults",
+);
+assert.ok(
+  !lineChartSource.includes("* 1.0004") && !chartShellSource.includes("* 1.0004"),
+  "the chart must not invent an oracle price by offsetting the mark price",
+);
+assert.ok(
   proChartSource.includes('addEventListener("wheel", preventPageScroll, { passive: false })'),
   "candle zoom must lock page scrolling with a non-passive wheel listener",
 );

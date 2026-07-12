@@ -392,7 +392,7 @@ function BtcPerpsChartComponent({
     connected: false,
     fundingRateBps: null,
     openInterest: null,
-    oraclePrice: market.seedPrice * 1.0004,
+    oraclePrice: market.oraclePrice ?? 0,
     price: market.seedPrice,
   });
   const snapshotRef = useRef(snapshot);
@@ -968,7 +968,7 @@ function BtcPerpsChartComponent({
             connected: prev.connected,
             fundingRateBps: prev.fundingRateBps,
             openInterest: prev.openInterest,
-            oraclePrice: bootstrapPrice * 1.0004,
+            oraclePrice: prev.oraclePrice,
             price: bootstrapPrice,
           }));
         } else {
@@ -979,7 +979,7 @@ function BtcPerpsChartComponent({
               connected: prev.connected,
               fundingRateBps: prev.fundingRateBps,
               openInterest: prev.openInterest,
-              oraclePrice: latestMinuteClose * 1.0004,
+              oraclePrice: prev.oraclePrice,
               price: latestMinuteClose,
             }));
           }
@@ -1049,7 +1049,7 @@ function BtcPerpsChartComponent({
         connected: coinbaseConnected || prev.connected,
         fundingRateBps: prev.fundingRateBps,
         openInterest: prev.openInterest,
-        oraclePrice: bootstrapPrice * 1.0004,
+        oraclePrice: prev.oraclePrice,
         price: bootstrapPrice,
       }));
     }
@@ -1111,7 +1111,7 @@ function BtcPerpsChartComponent({
           connected: true,
           fundingRateBps: prev.fundingRateBps,
           openInterest: prev.openInterest,
-          oraclePrice: nextPrice * 1.0004,
+          oraclePrice: prev.oraclePrice,
           price: nextPrice,
         }));
         setDecibelMarkTicks((prev) => mergeChartPriceTicks(prev, [{
@@ -1161,7 +1161,7 @@ function BtcPerpsChartComponent({
         connected: false,
         fundingRateBps: null,
         openInterest: null,
-        oraclePrice: currentMarket.seedPrice * 1.0004,
+        oraclePrice: currentMarket.oraclePrice ?? 0,
         price: currentMarket.seedPrice,
       });
       return () => {
@@ -1190,7 +1190,7 @@ function BtcPerpsChartComponent({
         connected: false,
         fundingRateBps: null,
         openInterest: null,
-        oraclePrice: currentMarket.seedPrice * 1.0004,
+        oraclePrice: currentMarket.oraclePrice ?? 0,
         price: currentMarket.seedPrice,
       });
 
@@ -1228,7 +1228,7 @@ function BtcPerpsChartComponent({
           connected: priceEntry !== null,
           fundingRateBps: priceEntry?.funding_rate_bps ?? null,
           openInterest: priceEntry?.open_interest ?? null,
-          oraclePrice: priceEntry?.oracle_px ?? nextPrice * 1.0004,
+          oraclePrice: priceEntry?.oracle_px ?? currentMarket.oraclePrice ?? 0,
           price: nextPrice,
         });
         if (priceEntry) {
@@ -1265,7 +1265,7 @@ function BtcPerpsChartComponent({
           connected: false,
           fundingRateBps: null,
           openInterest: null,
-          oraclePrice: currentMarket.seedPrice * 1.0004,
+          oraclePrice: currentMarket.oraclePrice ?? 0,
           price: currentMarket.seedPrice,
         });
       } finally {
@@ -1419,7 +1419,7 @@ function BtcPerpsChartComponent({
               connected: true,
               fundingRateBps: message.price.funding_rate_bps ?? null,
               openInterest: message.price.open_interest ?? null,
-              oraclePrice: message.price.oracle_px ?? livePrice * 1.0004,
+              oraclePrice: message.price.oracle_px ?? marketRef.current.oraclePrice ?? 0,
               price: livePrice,
             });
             decibelLiveAtRef.current = Date.now();

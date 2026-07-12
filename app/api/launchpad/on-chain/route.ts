@@ -8,10 +8,17 @@
  * deployed for trustless Decibel vaults lives at 0x44bccd… — pass it for
  * indicators created by that factory.
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
+import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 // Use the testnet API key (same as the crank route) — the default fullnode
@@ -30,33 +37,61 @@ async function safeView(fn: ViewFn, args: string[]) {
   return aptos.view({ payload: { function: fn, functionArguments: args } });
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "launchpad-on-chain", 180, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   const url = new URL(req.url);
   const addr = url.searchParams.get("addr");
   const type = url.searchParams.get("type") || "state";
   const pkgParam = url.searchParams.get("pkg");
-  const CONTRACT_AT = pkgParam && /^0x[0-9a-fA-F]{1,64}$/.test(pkgParam) ? pkgParam : CONTRACT;
 
-  if (!addr) return NextResponse.json({ error: "addr required" }, { status: 400 });
+  if (
+    !isValidAptosAddress(addr) ||
+    (pkgParam !== null && !isValidAptosAddress(pkgParam)) ||
+    !["state", "prices", "position"].includes(type)
+  ) {
+    return NextResponse.json(
+      { error: "addr, pkg, or type is invalid" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+  const indicatorAddress = normalizeAptosAddress(addr, "addr");
+  const contractAt = pkgParam
+    ? normalizeAptosAddress(pkgParam, "pkg")
+    : CONTRACT;
 
   try {
     if (type === "prices") {
-      const prices = await safeView(`${CONTRACT_AT}::indicator::get_prices`, [addr]);
-      const timestamps = await safeView(`${CONTRACT_AT}::indicator::get_timestamps`, [addr]);
+      const [prices, timestamps] = await Promise.all([
+        safeView(`${contractAt}::indicator::get_prices`, [indicatorAddress]),
+        safeView(`${contractAt}::indicator::get_timestamps`, [indicatorAddress]),
+      ]);
       return NextResponse.json({
         prices: (prices as string[]).map((p) => Number(p) / 1e8),
         timestamps: (timestamps as string[]).map((t) => Number(t)),
-      });
+      }, { headers: NO_STORE_HEADERS });
     }
 
     if (type === "position") {
-      const [inPos, entry, gain, loss] = await safeView(`${CONTRACT_AT}::indicator::get_position`, [addr]);
+      const [inPos, entry, gain, loss] = await safeView(
+        `${contractAt}::indicator::get_position`,
+        [indicatorAddress],
+      );
       return NextResponse.json({
         inPosition: inPos,
         entryPrice: Number(entry) / 1e8,
         realizedGainBps: Number(gain),
         realizedLossBps: Number(loss),
-      });
+      }, { headers: NO_STORE_HEADERS });
     }
 
     // Default: full state including price buffer
@@ -68,11 +103,11 @@ export async function GET(req: Request) {
       pricesResult,
       timestampsResult,
     ] = await Promise.all([
-      safeView(`${CONTRACT_AT}::indicator::get_signal_view`, [addr]),
-      safeView(`${CONTRACT_AT}::indicator::get_stats`, [addr]),
-      safeView(`${CONTRACT_AT}::indicator::get_position`, [addr]),
-      safeView(`${CONTRACT_AT}::indicator::get_prices`, [addr]),
-      safeView(`${CONTRACT_AT}::indicator::get_timestamps`, [addr]),
+      safeView(`${contractAt}::indicator::get_signal_view`, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_stats`, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_position`, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_prices`, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_timestamps`, [indicatorAddress]),
     ]);
 
     const [sig, fast, slow, price, sigTime] = signalResult;
@@ -80,7 +115,7 @@ export async function GET(req: Request) {
     const [inPos, entry, gain, loss] = positionResult;
 
     return NextResponse.json({
-      indicatorAddr: addr,
+      indicatorAddr: indicatorAddress,
       signal: Number(sig),
       fastLine: Number(fast) / 1e8,
       slowLine: Number(slow) / 1e8,
@@ -95,9 +130,13 @@ export async function GET(req: Request) {
       realizedLossBps: Number(loss),
       prices: (pricesResult[0] as string[]).map((p) => Number(p) / 1e8),
       timestamps: (timestampsResult[0] as string[]).map((t) => Number(t)),
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
-    // Indicator may not exist on-chain (mock demo address)
-    return NextResponse.json({ error: String(err), onChain: false }, { status: 200 });
+    const message = err instanceof Error ? err.message : "Indicator lookup failed";
+    console.warn("[launchpad-on-chain] lookup failed:", message);
+    return NextResponse.json(
+      { onChain: false, unavailable: true },
+      { status: 200, headers: NO_STORE_HEADERS },
+    );
   }
 }

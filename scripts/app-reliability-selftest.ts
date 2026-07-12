@@ -144,6 +144,10 @@ assert.ok(
 
 assert.ok(!tradePage.includes("GUILD_OVERRIDES"), "real vault identities must not be replaced with demo guilds");
 assert.ok(!tradePage.includes("buildPnlCurve"), "vault charts must not fabricate PnL history");
+assert.ok(!tradePage.includes("local-liq-"), "browser-only liquidations must not impersonate on-chain state");
+assert.ok(!tradePage.includes("onPositionOpen={"), "confirmed Decibel positions must not be duplicated in local state");
+assert.ok(!tradePage.includes("<PositionsTable"), "the page must show only the wallet-signed Decibel positions table");
+assert.ok(!tradePage.includes("<PnlCardModal"), "the page must not show locally calculated realized PnL as a confirmed close");
 assert.match(tradePage, /const displayVaults = \[\.\.\.vaults\]/);
 assert.ok(
   !tradePage.includes(".filter((v) => v.vault_type === \"protocol\""),

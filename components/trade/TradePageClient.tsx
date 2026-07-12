@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import Image from "next/image";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
@@ -14,31 +13,14 @@ import { MobilePortfolioSheet } from "@/components/trade/MobilePortfolioSheet";
 import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
-import { dispatchPortfolioActivity, dispatchBalanceUpdate } from "@/lib/portfolio-events";
 import { cn } from "@/lib/utils";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
-import {
-  getEstimatedLiquidationPrice,
-  getPositionPnl,
-  isPositionLiquidated,
-} from "@/lib/trade-utils";
 import { AreaChart, Area } from "@/components/charts/area-chart";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { curveLinear } from "@visx/curve";
 import { Grid } from "@/components/charts/grid";
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { useInViewport } from "@/hooks/useInViewport";
-
-interface Position {
-  id: string;
-  market: string;
-  side: "long" | "short";
-  collateral: number;
-  leverage: number;
-  entryPrice: number;
-  liquidationPrice: number;
-  timestamp: number;
-}
 
 interface DecibelVault {
   address: string;
@@ -422,295 +404,6 @@ function DecibelMark({ className = "" }: { className?: string }) {
       height={32}
       className={cn("rounded-full object-cover", className)}
     />
-  );
-}
-
-/* ─── Realized PNL data snapshot ─── */
-interface ClosedPnl {
-  market: string;
-  side: "long" | "short";
-  leverage: number;
-  collateral: number;
-  entryPrice: number;
-  exitPrice: number;
-  pnl: number;
-  pnlPct: number;
-  fees: number;
-  duration: number;
-}
-
-/* ─── Realized PNL Card Modal ─── */
-function PnlCardModal({
-  data,
-  onDismiss,
-}: {
-  data: ClosedPnl;
-  onDismiss: () => void;
-}) {
-  const isProfit = data.pnl >= 0;
-  const netPnl = data.pnl - data.fees;
-  const isNetProfit = netPnl >= 0;
-  const mins = Math.floor(data.duration / 60000);
-  const secs = Math.floor((data.duration % 60000) / 1000);
-  const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-  const asset = data.market.replace("/USDT", "").replace("/USDC", "");
-
-  return createPortal(
-    <div
-      className="cash-trade-theme fixed inset-0 z-[200] flex items-center justify-center modal-backdrop"
-    >
-      {/* Backdrop */}
-      <button
-        type="button"
-        aria-label="Close realized PnL card"
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={onDismiss}
-      />
-
-      {/* Card */}
-      <div className="relative w-[380px] max-w-[calc(100vw-32px)] modal-panel">
-        {/* Gradient border wrapper */}
-        <div
-          className="rounded-[20px] p-[1px]"
-          style={{
-            background: isNetProfit
-              ? "linear-gradient(135deg, #0DA726, #4ade80 40%, rgba(255,255,255,0.08) 60%, #0DA726)"
-              : "linear-gradient(135deg, #F21A1A, #ef4444 40%, rgba(255,255,255,0.08) 60%, #F21A1A)",
-          }}
-        >
-          <div className="rounded-[20px] bg-[#111111] overflow-hidden relative">
-            {/* Background pattern — subtle angular lines */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <div
-                className="absolute -top-20 -right-20 w-64 h-64 opacity-[0.03]"
-                style={{
-                  background: `repeating-linear-gradient(
-                    -45deg,
-                    ${isNetProfit ? "#0DA726" : "#F21A1A"} 0px,
-                    ${isNetProfit ? "#0DA726" : "#F21A1A"} 1px,
-                    transparent 1px,
-                    transparent 12px
-                  )`,
-                }}
-              />
-              <div
-                className="absolute -bottom-16 -left-16 w-48 h-48 opacity-[0.03]"
-                style={{
-                  background: `repeating-linear-gradient(
-                    45deg,
-                    ${isNetProfit ? "#0DA726" : "#F21A1A"} 0px,
-                    ${isNetProfit ? "#0DA726" : "#F21A1A"} 1px,
-                    transparent 1px,
-                    transparent 12px
-                  )`,
-                }}
-              />
-            </div>
-
-            {/* Header */}
-            <div className="relative px-6 pt-5 pb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <CashMark className="h-4 w-auto text-accent" />
-                <span className="text-[11px] font-display font-bold uppercase tracking-[0.15em] text-zinc-400">
-                  cash.trading
-                </span>
-              </div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.06]">
-                Closed
-              </span>
-            </div>
-
-            {/* Position badge */}
-            <div className="px-6 pb-2 flex items-center gap-2">
-              <span className="text-white text-[18px] font-display font-bold">{asset}</span>
-              <span
-                className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded-md ${
-                  data.side === "long"
-                    ? "bg-green-500/15 text-green-400"
-                    : "bg-red-500/15 text-red-400"
-                }`}
-              >
-                {data.side}
-              </span>
-              <span className="text-[11px] font-mono text-zinc-500">
-                {data.leverage.toFixed(1)}x
-              </span>
-            </div>
-
-            {/* Realized PNL label */}
-            <div className="px-6 pt-2">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.15em] text-zinc-500">
-                Realized PNL
-              </span>
-            </div>
-
-            {/* Big PNL */}
-            <div className="px-6 pt-1 pb-5">
-              <div className={`text-[42px] font-mono font-black tracking-tight leading-none ${isNetProfit ? "text-green-400" : "text-red-400"}`}>
-                {isNetProfit ? "+" : ""}{netPnl < 0 ? "-" : ""}${Math.abs(netPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div className={`text-[16px] font-mono font-bold mt-1 ${isNetProfit ? "text-green-400/70" : "text-red-400/70"}`}>
-                {isNetProfit ? "+" : ""}{data.pnlPct.toFixed(2)}%
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="mx-6 h-px bg-white/[0.06]" />
-
-            {/* Details grid */}
-            <div className="px-6 py-4 space-y-2.5">
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Entry Price</span>
-                <span className="text-white tabular-nums">
-                  ${data.entryPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Exit Price</span>
-                <span className="text-white tabular-nums">
-                  ${data.exitPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Collateral</span>
-                <span className="text-white tabular-nums">
-                  ${data.collateral.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Gross PNL</span>
-                <span className={`tabular-nums ${isProfit ? "text-green-400" : "text-red-400"}`}>
-                  {isProfit ? "+" : ""}${Math.abs(data.pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Fees (0.045%)</span>
-                <span className="text-zinc-400 tabular-nums">
-                  -${data.fees.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px] font-mono">
-                <span className="text-zinc-500">Duration</span>
-                <span className="text-white">{durationStr}</span>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="mx-6 h-px bg-white/[0.06]" />
-
-            {/* Dismiss */}
-            <div className="px-6 py-5">
-              <button
-                type="button"
-                onClick={onDismiss}
-                className="w-full py-3 rounded-[12px] text-[13px] font-display font-bold uppercase tracking-wider text-white bg-white/[0.06] border border-white/[0.06] hover:bg-white/[0.1] transition-colors active:scale-[0.97]"
-              >
-                Close
-              </button>
-            </div>
-
-            {/* Footer watermark */}
-            <div className="px-6 pb-4 flex items-center justify-center gap-1.5">
-              <CashMark className="h-2.5 w-auto text-zinc-700" />
-              <span className="text-[9px] font-mono text-zinc-700 uppercase tracking-[0.2em]">
-                cash.trading
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-/* ─── Positions table (payments-log style) ─── */
-
-function PositionsTable({ positions, currentPrice, onClose }: { positions: Position[]; currentPrice: number; onClose: (id: string) => void }) {
-  return (
-    <div className="bg-[#1c1c1c] w-full rounded-2xl p-2 shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-      <div className="border border-[#2a2a2a] overflow-hidden rounded-lg">
-        {/* Header */}
-        <header className="border-b border-[#2a2a2a] text-[#888] bg-[#202020] flex items-center p-5 sm:px-8 sm:py-6 font-mono text-sm font-semibold tabular-nums">
-          <span className="flex items-center gap-2">
-            <span className="relative h-2 w-2 shrink-0 rounded-full bg-green-500">
-              <span className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
-            </span>
-            <span>OPEN_POSITIONS [{positions.length}]</span>
-          </span>
-        </header>
-
-        {/* Rows */}
-        <div className="text-[#888] bg-[#181818] p-5 sm:px-8 sm:py-6 font-mono text-sm font-medium" style={{ overflowAnchor: "none" }}>
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center text-[#999] mb-5 gap-x-4">
-            <span className="font-bold">MARKET</span>
-            <span className="font-bold">COLLATERAL</span>
-            <span className="font-bold text-right">PNL</span>
-            <span className="w-16" />
-          </div>
-          {/* Data rows */}
-          <div className="flex flex-col gap-3">
-            {positions.map((pos) => {
-              const pnl = getPositionPnl({
-                collateral: pos.collateral,
-                leverage: pos.leverage,
-                entryPrice: pos.entryPrice,
-                currentPrice,
-                side: pos.side,
-              });
-              const pnlPos = pnl >= 0;
-              return (
-                <div
-                  key={pos.id}
-                  className="grid grid-cols-[1fr_auto_auto_auto] items-center font-mono tabular-nums gap-x-4"
-                >
-                  {/* Market + side + leverage */}
-                  <span className="flex items-center gap-2">
-                    <span className="text-white text-xs">{pos.market.replace("/USDT", "").replace("/USDC", "")}</span>
-                    <span
-                      className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        pos.side === "long"
-                          ? "bg-green-400/10 text-green-400"
-                          : "bg-red-400/10 text-red-400"
-                      }`}
-                    >
-                      {pos.side}
-                    </span>
-                    <span className="text-[10px] text-[#666]">
-                      {pos.leverage.toFixed(1)}x
-                    </span>
-                  </span>
-                  {/* Collateral */}
-                  <span className="flex items-center">
-                    <span className="text-green-400 bg-green-400/10 flex h-5 items-center rounded-[4px] px-1 text-xs font-medium">
-                      ${pos.collateral.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </span>
-                  {/* PnL */}
-                  <span
-                    className={`flex items-center text-right font-bold text-xs ${
-                      pnlPos ? "text-green-400" : "text-red-400"
-                    }`}
-                  >
-                    {pnlPos ? "+" : ""}
-                    ${Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  {/* Close button */}
-                  <button
-                    type="button"
-                    onClick={() => onClose(pos.id)}
-                    className="flex items-center justify-center w-[72px] h-7 rounded-md bg-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider border border-red-500/30 hover:bg-red-500/40 hover:text-red-300 transition-colors"
-                  >
-                    Close
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1155,9 +848,7 @@ export function TradePageClient({
     marketAddr?: string;
     marketName?: string;
   }>({ id: "BTC/USD", pair: "BTC/USD", leverage: 40 });
-  const [positions, setPositions] = useState<Position[]>([]);
   const [currentPrice, setCurrentPrice] = useState(0);
-  const [closedPnl, setClosedPnl] = useState<ClosedPnl | null>(null);
   const [vaultAction, setVaultAction] = useState<{
     mode: VaultActionMode;
     indicator: GraduatedIndicator;
@@ -1168,12 +859,9 @@ export function TradePageClient({
   const { account, signAndSubmitTransaction } = useWallet();
   const { selectedSubaccount } = useDecibelSubaccounts();
   const isMobile = useIsMobile();
-  const currentPriceRef = useRef(0);
   const queuedPriceRef = useRef(0);
   const priceCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPriceCommitAtRef = useRef(0);
-  const positionsRef = useRef<Position[]>([]);
-  const liquidatedIdsRef = useRef(new Set<string>());
   const vaultsSectionRef = useRef<HTMLDivElement>(null);
   const signalsSectionRef = useRef<HTMLDivElement>(null);
   const vaultsActive = useInViewport(vaultsSectionRef, { rootMargin: "480px" });
@@ -1214,7 +902,6 @@ export function TradePageClient({
 
   const handlePriceUpdate = useCallback((price: number) => {
     if (!Number.isFinite(price) || price <= 0) return;
-    currentPriceRef.current = price;
     queuedPriceRef.current = price;
 
     const commit = () => {
@@ -1240,106 +927,6 @@ export function TradePageClient({
     }
   }, []);
 
-  useEffect(() => {
-    positionsRef.current = positions;
-  }, [positions]);
-
-  /* Close position immediately & show realized PNL card */
-  const handlePositionClose = useCallback((id: string) => {
-    liquidatedIdsRef.current.delete(id);
-    const pos = positionsRef.current.find((entry) => entry.id === id);
-    if (!pos) return;
-
-    const exitPrice = currentPriceRef.current;
-    const pnl = getPositionPnl({
-      collateral: pos.collateral,
-      leverage: pos.leverage,
-      entryPrice: pos.entryPrice,
-      currentPrice: exitPrice,
-      side: pos.side,
-    });
-    const orderValue = pos.collateral * pos.leverage;
-    const fees = orderValue * 0.00045;
-    const pnlPct = pos.entryPrice > 0
-      ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * 100 * (pos.side === "long" ? 1 : -1)
-      : 0;
-
-    setPositions((prev) => prev.filter((entry) => entry.id !== id));
-
-    dispatchPortfolioActivity({
-      type: "Closed",
-      amount: parseFloat(pnl.toFixed(2)),
-      market: pos.market,
-    });
-
-    setClosedPnl({
-      market: pos.market,
-      side: pos.side,
-      leverage: pos.leverage,
-      collateral: pos.collateral,
-      entryPrice: pos.entryPrice,
-      exitPrice,
-      pnl,
-      pnlPct,
-      fees,
-      duration: Date.now() - pos.timestamp,
-    });
-  }, []);
-
-  const handlePositionOpen = useCallback(
-    (pos: { market: string; side: "long" | "short"; collateral: number; leverage: number }) => {
-      const entryPrice = currentPriceRef.current;
-
-      setPositions((prev) => [
-        {
-          ...pos,
-          id: crypto.randomUUID(),
-          entryPrice,
-          liquidationPrice: getEstimatedLiquidationPrice(entryPrice, pos.side, pos.leverage),
-          timestamp: Date.now(),
-        },
-        ...prev,
-      ]);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (positions.length === 0 || currentPrice <= 0) return;
-
-    const liquidated = positions.filter(
-      (pos) =>
-        !liquidatedIdsRef.current.has(pos.id) &&
-        isPositionLiquidated({
-          currentPrice,
-          liquidationPrice: pos.liquidationPrice,
-          side: pos.side,
-        }),
-    );
-
-    if (liquidated.length === 0) return;
-
-    const liquidatedIds = new Set(liquidated.map((pos) => pos.id));
-    liquidated.forEach((pos) => liquidatedIdsRef.current.add(pos.id));
-    setPositions((prev) => prev.filter((pos) => !liquidatedIds.has(pos.id)));
-
-    liquidated.forEach((pos) => {
-      dispatchPortfolioActivity({
-        type: "Liquidated",
-        amount: parseFloat((-pos.collateral).toFixed(2)),
-        hash: `local-liq-${pos.id}`,
-        market: pos.market,
-      });
-    });
-  }, [currentPrice, positions]);
-
-  const chartLiquidationLines = positions
-    .filter((pos) => pos.market === market.pair && pos.liquidationPrice > 0)
-    .map((pos) => ({
-      id: pos.id,
-      price: pos.liquidationPrice,
-      side: pos.side,
-    }));
   const selectedPerpMarket = PERP_MARKET_DATA[market.id];
   const decibelMarketAddress = market.marketAddr ?? selectedPerpMarket?.marketAddr;
   const decibelMarketName =
@@ -1379,7 +966,6 @@ export function TradePageClient({
           <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">
             <BTCChart
               initialHistory={initialBtcCandles}
-              liquidationLines={chartLiquidationLines}
               onMarketChange={handleMarketChange}
               onPriceUpdate={handlePriceUpdate}
               className="xl:h-full"
@@ -1406,7 +992,6 @@ export function TradePageClient({
               marketAddress={decibelMarketAddress}
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
-              onPositionOpen={handlePositionOpen}
               className="xl:h-full"
             />
             <div className="mt-3 xl:hidden">
@@ -1424,12 +1009,6 @@ export function TradePageClient({
 
         {/* ── Open Positions ─────────────────────────── */}
         <div id="positions" className="scroll-mt-20">
-          {positions.length > 0 && (
-            <div className="mt-6 animate-enter">
-              <PositionsTable positions={positions} currentPrice={currentPrice} onClose={handlePositionClose} />
-            </div>
-          )}
-
           <div className="mt-6 hidden animate-enter lg:block">
             <DecibelPositions showOverview={false} />
           </div>
@@ -1490,18 +1069,6 @@ export function TradePageClient({
         />
       )}
 
-      {/* Realized PNL Card */}
-      {closedPnl && (
-        <PnlCardModal
-          data={closedPnl}
-          onDismiss={() => {
-            if (closedPnl) {
-              dispatchBalanceUpdate({ delta: closedPnl.pnl });
-            }
-            setClosedPnl(null);
-          }}
-        />
-      )}
     </div>
   );
 }

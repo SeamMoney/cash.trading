@@ -163,6 +163,9 @@ assert.ok(
   !decibelSubaccountHook.includes('name: "Primary"'),
   "an unverified stored address must not be presented as an active Primary account",
 );
+assert.match(pointsDataContext, /requestIdRef\.current === requestId/);
+assert.match(pointsDataContext, /activeAddrRef\.current === addr/);
+assert.match(pointsDataContext, /requestIdRef\.current \+= 1/);
 assert.ok(!tradePage.includes("local-liq-"), "browser-only liquidations must not impersonate on-chain state");
 assert.ok(!tradePage.includes("onPositionOpen={"), "confirmed Decibel positions must not be duplicated in local state");
 assert.ok(!tradePage.includes("<PositionsTable"), "the page must show only the wallet-signed Decibel positions table");

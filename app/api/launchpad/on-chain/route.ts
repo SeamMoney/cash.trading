@@ -68,6 +68,13 @@ function parseScaledVectorView(value: unknown, field: string, scale: number): nu
   );
 }
 
+function parsePriceLikeLine(value: unknown, lastPrice: number, field: string): number | null {
+  const line = parseSafeUnsigned(value, field);
+  if (line === 0 || lastPrice === 0) return null;
+  const ratio = line / lastPrice;
+  return ratio >= 0.01 && ratio <= 100 ? line / 1e8 : null;
+}
+
 export async function GET(req: NextRequest) {
   const rate = checkApiRateLimit(req, "launchpad-on-chain", 180, 60_000);
   if (!rate.allowed) {
@@ -163,6 +170,7 @@ export async function GET(req: NextRequest) {
     const [pushed, signals, graduated] = statsResult;
     const [inPos, entry, gain, loss] = positionResult;
     const parsedSignal = parseSafeUnsigned(sig, "signal");
+    const parsedLastPrice = parseSafeUnsigned(price, "last price");
     if (parsedSignal > 2) throw new Error("signal is outside the expected range");
     const prices = parseScaledVectorView(pricesResult, "prices", 1e8);
     const timestamps = parseScaledVectorView(timestampsResult, "timestamps", 1);
@@ -174,9 +182,9 @@ export async function GET(req: NextRequest) {
       onChain: true,
       indicatorAddr: indicatorAddress,
       signal: parsedSignal,
-      fastLine: parseSafeUnsigned(fast, "fast line") / 1e8,
-      slowLine: parseSafeUnsigned(slow, "slow line") / 1e8,
-      lastPrice: parseSafeUnsigned(price, "last price") / 1e8,
+      fastLine: parsePriceLikeLine(fast, parsedLastPrice, "fast line"),
+      slowLine: parsePriceLikeLine(slow, parsedLastPrice, "slow line"),
+      lastPrice: parsedLastPrice / 1e8,
       lastSignalTime: parseSafeUnsigned(sigTime, "last signal time"),
       totalPushed: parseSafeUnsigned(pushed, "total pushed"),
       totalSignals: parseSafeUnsigned(signals, "total signals"),

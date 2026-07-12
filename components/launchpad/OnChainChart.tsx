@@ -174,7 +174,7 @@ function computeMarkers(
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume?: number; }
 
 interface OnChainState {
-  signal: number; fastLine: number; slowLine: number; lastPrice: number;
+  signal: number; fastLine: number | null; slowLine: number | null; lastPrice: number;
   lastSignalTime: number; totalPushed: number; totalSignals: number;
   inPosition: boolean; entryPrice: number; realizedGainBps: number;
   /** Unix-seconds timestamps of the on-chain price buffer (last = freshest). */
@@ -350,8 +350,8 @@ export function OnChainChart({
       if (!controller.signal.aborted) {
         setOnChain({
           signal: 0,
-          fastLine: 0,
-          slowLine: 0,
+          fastLine: null,
+          slowLine: null,
           lastPrice: 0,
           lastSignalTime: 0,
           totalPushed: 0,
@@ -659,7 +659,7 @@ export function OnChainChart({
                     </span>
                   )}
                   <Stat label="price"  value={`$${onChain!.lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={valueColor} />
-                  {indicatorType !== 2 && indicatorType !== 3 && (
+                  {indicatorType !== 2 && indicatorType !== 3 && onChain!.fastLine !== null && onChain!.slowLine !== null && (
                     <>
                       <Stat label="fast"   value={`$${onChain!.fastLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color={fastColor} />
                       <Stat label="slow"   value={`$${onChain!.slowLine.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color={slowColor}  />

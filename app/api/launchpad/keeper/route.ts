@@ -372,7 +372,10 @@ export async function GET(req: Request) {
       try {
         const execRes = await fetch(`${origin}/api/launchpad/execute`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cronSecret}`,
+          },
           body: JSON.stringify({
             strategyVaultId: decision.strategyVaultId,
             decisionId: decision.decisionId,
@@ -529,7 +532,10 @@ export async function POST(req: Request) {
 
           const execRes = await fetch(`${getOrigin()}/api/launchpad/execute`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(keeperSecret ? { Authorization: `Bearer ${keeperSecret}` } : {}),
+            },
             body: JSON.stringify({
               strategyVaultId: strategyVault.id,
               decisionId: decision.id,

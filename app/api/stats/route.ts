@@ -16,6 +16,13 @@ export const runtime = 'nodejs'
  *   - decibel: (optional) 'true' to include volume from Decibel API (more accurate)
  */
 export async function GET(request: NextRequest) {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      { unavailable: true, reason: 'database_not_configured' },
+      { status: 503 }
+    )
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const userWallet = searchParams.get('user')
@@ -248,7 +255,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching stats:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch stats' },
+      { error: 'Failed to fetch stats' },
       { status: 500 }
     )
   }

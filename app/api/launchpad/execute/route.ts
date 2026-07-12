@@ -39,6 +39,18 @@ export let platformRevenueUsdt = 0;
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 
+function authorizeKeeperExecution(req: Request) {
+  if (process.env.NODE_ENV !== "production") return null;
+  const secret = process.env.LAUNCHPAD_KEEPER_API_SECRET ?? process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: "Launchpad execution is not configured" }, { status: 503 });
+  }
+  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 function getAptos() {
   const net = getActiveNetwork();
   return new Aptos(new AptosConfig({
@@ -185,6 +197,9 @@ function compactJson<T extends Record<string, unknown>>(value: T): Prisma.InputJ
 }
 
 export async function POST(req: Request) {
+  const unauthorized = authorizeKeeperExecution(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await req.json() as {
       strategyVaultId?: string;

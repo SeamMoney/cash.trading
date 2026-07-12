@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
-  aggregateChartCandles,
   appendLivePriceCandle,
-  interpolateOneSecondCandles,
+  chartPriceTicksToCandles,
+  mergeChartPriceTicks,
   mergeCanonicalCandles,
 } from "../lib/trade/candleSeries";
 import {
@@ -28,73 +28,73 @@ assert.deepEqual(
   "an empty line window must remain empty instead of inventing boundary prices",
 );
 
-const interpolated = interpolateOneSecondCandles([
-  { time: 100, open: 100, high: 100, low: 100, close: 100, volume: 1 },
-  { time: 101, open: 100, high: 100, low: 100, close: 100, volume: 0 },
-  { time: 102, open: 100, high: 100, low: 100, close: 100, volume: 0 },
-  { time: 104, open: 104, high: 105, low: 103, close: 105, volume: 2 },
-]);
+const mergedTicks = mergeChartPriceTicks(
+  [
+    { time: 101.2, value: 100 },
+    { time: 100.1, value: 99 },
+  ],
+  [
+    { time: 101.2, value: 101 },
+    { time: 102.4, value: 98 },
+  ],
+);
 assert.deepEqual(
-  interpolated.map((candle) => candle.time),
-  [100, 101, 102, 103, 104],
-  "the 1s chart must contain one candle for every second",
-);
-for (let index = 1; index < interpolated.length; index += 1) {
-  assert.equal(
-    interpolated[index].open,
-    interpolated[index - 1].close,
-    "interpolated 1s candles must join without visual price gaps",
-  );
-}
-assert.ok(
-  interpolated[1].close !== interpolated[0].close,
-  "placeholder seconds must bridge toward the next trade instead of staying flat",
+  mergedTicks,
+  [
+    { time: 100.1, value: 99, volume: 0 },
+    { time: 101.2, value: 101, volume: 0 },
+    { time: 102.4, value: 98, volume: 0 },
+  ],
+  "exchange ticks must be chronological and same-millisecond updates must replace, not duplicate",
 );
 
-const filledFlatRun = interpolateOneSecondCandles([
-  { time: 200, open: 100, high: 100, low: 100, close: 100, volume: 1 },
-  { time: 204, open: 100, high: 100, low: 100, close: 100, volume: 1 },
-]);
+const observedCandles = chartPriceTicksToCandles([
+  { time: 100.1, value: 100, volume: 1 },
+  { time: 100.4, value: 102, volume: 2 },
+  { time: 100.9, value: 101 },
+  { time: 102.2, value: 99, volume: 3 },
+], 1);
 assert.deepEqual(
-  filledFlatRun.map((candle) => candle.time),
-  [200, 201, 202, 203, 204],
-  "flat sparse runs must still contain one candle per second",
+  observedCandles.map((candle) => candle.time),
+  [100, 102],
+  "a missing exchange second must remain missing instead of becoming a fabricated candle",
 );
-assert.ok(
-  filledFlatRun.slice(1, -1).every((candle) => candle.open !== candle.close),
-  "flat placeholder seconds must render candle bodies instead of a horizontal doji rail",
-);
-assert.equal(filledFlatRun[0].close, 100);
-assert.equal(filledFlatRun.at(-1)?.open, 100, "the visual bridge must return to the real anchor price");
-assert.ok(
-  filledFlatRun.every((candle) => Math.abs(candle.close - 100) < 0.001),
-  "flat interpolation must remain visually subtle and materially price-neutral",
-);
+assert.deepEqual(observedCandles[0], {
+  time: 100,
+  open: 100,
+  high: 102,
+  low: 100,
+  close: 101,
+  volume: 3,
+});
 
-const variedBridge = interpolateOneSecondCandles([
-  { time: 300, open: 110, high: 110, low: 110, close: 110, volume: 1 },
-  { time: 320, open: 100, high: 101, low: 99, close: 100, volume: 1 },
-]);
-const generatedBridge = variedBridge.slice(1, -1);
-const directions = generatedBridge.map((candle) => Math.sign(candle.close - candle.open));
-assert.ok(
-  directions.some((direction) => direction > 0)
-    && directions.some((direction) => direction < 0),
-  "a long interpolated move must contain varied candles instead of a one-way box staircase",
-);
-assert.ok(
-  generatedBridge.every((candle) => (
-    candle.high > Math.max(candle.open, candle.close)
-    && candle.low < Math.min(candle.open, candle.close)
-  )),
-  "interpolated candles must include upper and lower wicks",
-);
-assert.equal(variedBridge.at(-1)?.open, 100, "the varied bridge must preserve its real endpoint");
+const sameMillisecondSweep = chartPriceTicksToCandles(mergeChartPriceTicks([], [
+  { time: 200.25, value: 100, volume: 1, sequence: 0 },
+  { time: 200.25, value: 104, volume: 2, sequence: 1 },
+  { time: 200.25, value: 98, volume: 3, sequence: 2 },
+]), 1);
+assert.deepEqual(sameMillisecondSweep[0], {
+  time: 200,
+  open: 100,
+  high: 104,
+  low: 98,
+  close: 98,
+  volume: 6,
+}, "a same-transaction fill sweep must retain every price for honest candle OHLC");
 
-const fiveSecond = aggregateChartCandles(interpolated, 5);
-assert.equal(fiveSecond.length, 1);
-assert.equal(fiveSecond[0].open, 100);
-assert.equal(fiveSecond[0].close, 105);
+const fiveSecond = chartPriceTicksToCandles([
+  { time: 100.1, value: 100 },
+  { time: 100.4, value: 102 },
+  { time: 102.2, value: 99 },
+], 5);
+assert.deepEqual(fiveSecond, [{
+  time: 100,
+  open: 100,
+  high: 102,
+  low: 99,
+  close: 99,
+  volume: 0,
+}]);
 
 const merged = mergeCanonicalCandles(
   [{ time: 120, open: 100, high: 102, low: 99, close: 101, volume: 8 }],
@@ -117,14 +117,26 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
+const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
 assert.ok(
   plotSource.includes("@/components/charts/bklit/candlestick"),
   "the active candle renderer must use the local bklit primitives",
 );
 assert.ok(
-  plotSource.includes("minBodyHeight={intervalSeconds < 60 ? 1.5 : 1}"),
-  "low-timeframe dojis must retain a visible candle body",
+  !plotSource.includes("minBodyHeight="),
+  "real dojis must not be inflated into artificial box bodies",
+);
+assert.ok(!candleSeriesSource.includes("INTERPOLATION_PHASE_STEP"), "synthetic candle noise must stay removed");
+assert.ok(!proChartSource.includes("interpolateOneSecondCandles"), "candle history must use observed ticks only");
+assert.ok(!lineChartSource.includes("lineMode="), "the line renderer must not receive candle-morph props");
+assert.ok(
+  lineChartSource.includes("decibelMarkTicks") && lineChartSource.includes("decibelTradeTicks"),
+  "the chart must isolate live mark updates from trade history instead of interleaving price bases",
+);
+assert.ok(
+  lineChartSource.includes("transaction_unix_ms / 1_000"),
+  "the realtime chart must retain Decibel's exchange timestamps",
 );
 assert.ok(!lineChartSource.includes("fillLineWindowGaps"), "the broken line gap filler must stay removed");
 assert.ok(

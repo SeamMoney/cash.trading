@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * ProCandleChart — TradingView-engine (lightweight-charts) candlestick chart
- * for Decibel perp markets.
- *
- * Owns the "serious chart" experience: interval switching (1m–1D), native
- * pan/zoom (drag, wheel, pinch), a volume histogram, moving-average overlays,
- * liquidation price lines, and a live SSE tail where price ticks are merged
- * into the open candle so low timeframes move with every trade instead of
- * stepping once per bar.
- *
- * All streaming updates go through series.update() on refs — the React tree
- * re-renders only for interval changes and the snap-to-live button.
+ * ProCandleChart keeps the existing CASH canvas shell and controls, but the
+ * plotted marks are rendered by bklit's composable candlestick primitives.
  */
 
 import {
@@ -21,21 +12,24 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
-import type {
-  CandlestickData,
-  HistogramData,
-  IChartApi,
-  IPriceLine,
-  ISeriesApi,
-  LineData,
-  LogicalRange,
-  MouseEventParams,
-  UTCTimestamp,
-} from "lightweight-charts";
+
+import {
+  BklitCandlePlot,
+  type BklitPlotCandle,
+  type BklitPlotLine,
+} from "@/components/trade/BklitCandlePlot";
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { getDecibelPublicNetwork } from "@/lib/decibel-public";
+import {
+  aggregateChartCandles,
+  appendLivePriceCandle,
+  interpolateOneSecondCandles,
+  mergeCanonicalCandles,
+} from "@/lib/trade/candleSeries";
 
 type OverlayMode = "off" | "sma" | "ema" | "strategy";
 
@@ -50,14 +44,38 @@ interface ProCandleChartProps {
   active: boolean;
   liquidationLines: LiquidationLine[];
   overlayMode: OverlayMode;
+  latestPrice: number;
+  minuteCandles: BklitPlotCandle[];
+  nowSeconds: number;
+  secondCandles: BklitPlotCandle[];
 }
 
-type RestCandle = { t: number; o: number; h: number; l: number; c: number; v: number };
+type RestCandle = {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v?: number;
+};
 
-export const CHART_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
+export const CHART_INTERVALS = [
+  "1s",
+  "5s",
+  "15s",
+  "1m",
+  "5m",
+  "15m",
+  "1h",
+  "4h",
+  "1d",
+] as const;
 export type ProChartInterval = (typeof CHART_INTERVALS)[number];
 
 const INTERVAL_SECS: Record<ProChartInterval, number> = {
+  "1s": 1,
+  "5s": 5,
+  "15s": 15,
   "1m": 60,
   "5m": 300,
   "15m": 900,
@@ -66,51 +84,65 @@ const INTERVAL_SECS: Record<ProChartInterval, number> = {
   "1d": 86_400,
 };
 
+const DEFAULT_VISIBLE_BARS: Record<ProChartInterval, number> = {
+  "1s": 90,
+  "5s": 100,
+  "15s": 100,
+  "1m": 120,
+  "5m": 120,
+  "15m": 120,
+  "1h": 120,
+  "4h": 120,
+  "1d": 120,
+};
+
 const INTERVAL_STORAGE_KEY = "cash:pro-chart-interval:v1";
 const BOOTSTRAP_BARS = 500;
-const UP_COLOR = "#22c55e";
-const DOWN_COLOR = "#ef4444";
-const UP_VOLUME = "rgba(34, 197, 94, 0.32)";
-const DOWN_VOLUME = "rgba(239, 68, 68, 0.32)";
+const MIN_VISIBLE_BARS = 30;
+const MAX_VISIBLE_BARS = 220;
 
 function loadStoredInterval(): ProChartInterval {
   if (typeof window === "undefined") return "1m";
   const stored = window.localStorage.getItem(INTERVAL_STORAGE_KEY);
   return (CHART_INTERVALS as readonly string[]).includes(stored ?? "")
-    ? (stored as ProChartInterval)
+    ? stored as ProChartInterval
     : "1m";
 }
 
-/** Price precision from magnitude — px_decimals is 6 across every Decibel
- * market, which reads as noise on BTC; match what the tape actually moves. */
-function precisionForPrice(price: number): number {
-  if (!Number.isFinite(price) || price <= 0) return 2;
-  if (price >= 100) return 2;
-  if (price >= 1) return 3;
-  if (price >= 0.01) return 5;
-  return 6;
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
-function sma(closes: LineData[], period: number): LineData[] {
-  const out: LineData[] = [];
+function sma(candles: BklitPlotCandle[], period: number) {
+  const result: Array<{ time: number; value: number }> = [];
   let sum = 0;
-  for (let i = 0; i < closes.length; i++) {
-    sum += closes[i].value;
-    if (i >= period) sum -= closes[i - period].value;
-    if (i >= period - 1) out.push({ time: closes[i].time, value: sum / period });
+  for (let index = 0; index < candles.length; index += 1) {
+    sum += candles[index].close;
+    if (index >= period) sum -= candles[index - period].close;
+    if (index >= period - 1) result.push({ time: candles[index].time, value: sum / period });
   }
-  return out;
+  return result;
 }
 
-function ema(closes: LineData[], period: number): LineData[] {
-  const out: LineData[] = [];
-  const k = 2 / (period + 1);
-  let prev = closes[0]?.value ?? 0;
-  for (let i = 0; i < closes.length; i++) {
-    prev = i === 0 ? closes[0].value : closes[i].value * k + prev * (1 - k);
-    if (i >= period - 1) out.push({ time: closes[i].time, value: prev });
+function ema(candles: BklitPlotCandle[], period: number) {
+  const result: Array<{ time: number; value: number }> = [];
+  const multiplier = 2 / (period + 1);
+  let value = candles[0]?.close ?? 0;
+  for (let index = 0; index < candles.length; index += 1) {
+    value = index === 0 ? candles[0].close : candles[index].close * multiplier + value * (1 - multiplier);
+    if (index >= period - 1) result.push({ time: candles[index].time, value });
   }
-  return out;
+  return result;
+}
+
+function formatLegend(candle: BklitPlotCandle | undefined, decimals: number) {
+  if (!candle) return "";
+  const format = (value: number) => value.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  const change = candle.open > 0 ? (candle.close - candle.open) / candle.open * 100 : 0;
+  return `O ${format(candle.open)}  H ${format(candle.high)}  L ${format(candle.low)}  C ${format(candle.close)}  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
 }
 
 function ProCandleChartComponent({
@@ -118,487 +150,251 @@ function ProCandleChartComponent({
   active,
   liquidationLines,
   overlayMode,
+  latestPrice,
+  minuteCandles,
+  nowSeconds,
+  secondCandles,
 }: ProCandleChartProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const legendRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const fastOverlayRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const slowOverlayRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const liqLinesRef = useRef<IPriceLine[]>([]);
-  const barsRef = useRef<CandlestickData[]>([]);
-  const volumesRef = useRef<HistogramData[]>([]);
-  const precisionRef = useRef(2);
-  const overlayModeRef = useRef<OverlayMode>(overlayMode);
-  const atLiveEdgeRef = useRef(true);
-
   const [interval, setChartInterval] = useState<ProChartInterval>(loadStoredInterval);
-  const [loading, setLoading] = useState(true);
+  const [remoteResult, setRemoteResult] = useState<{ key: string; candles: BklitPlotCandle[] }>({ key: "", candles: [] });
+  const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [showLiveButton, setShowLiveButton] = useState(false);
-  const [chartReady, setChartReady] = useState(false);
+  const [offsetFromEnd, setOffsetFromEnd] = useState(0);
+  const [visibleBars, setVisibleBars] = useState(() => DEFAULT_VISIBLE_BARS[loadStoredInterval()]);
+  const [inspected, setInspected] = useState<BklitPlotCandle | null>(null);
+  const interactionRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startOffset: number; width: number } | null>(null);
 
-  const { marketAddr, marketName } = market;
-  const intervalSecs = INTERVAL_SECS[interval];
+  const intervalSeconds = INTERVAL_SECS[interval];
+  const remoteInterval = intervalSeconds >= 60;
+  const remoteKey = `${getDecibelPublicNetwork()}:${market.marketAddr || market.marketName}:${interval}`;
 
-  const applyOverlays = useCallback(() => {
-    const fast = fastOverlayRef.current;
-    const slow = slowOverlayRef.current;
-    if (!fast || !slow) return;
-    const mode = overlayModeRef.current;
-    if (mode === "off" || barsRef.current.length < 6) {
-      fast.setData([]);
-      slow.setData([]);
-      return;
-    }
-    const closes: LineData[] = barsRef.current.map((bar) => ({
-      time: bar.time,
-      value: bar.close,
-    }));
-    const isStrategy = mode === "strategy";
-    const calc = mode === "ema" ? ema : sma;
-    const fastPeriod = isStrategy ? 3 : 20;
-    const slowPeriod = isStrategy ? 5 : 50;
-    fast.applyOptions({ color: isStrategy ? "#34d399" : "#a855f7" });
-    fast.setData(closes.length >= fastPeriod ? calc(closes, fastPeriod) : []);
-    slow.setData(closes.length >= slowPeriod ? calc(closes, slowPeriod) : []);
+  useEffect(() => {
+    setVisibleBars(DEFAULT_VISIBLE_BARS[interval]);
+    setOffsetFromEnd(0);
+    setInspected(null);
+  }, [interval, market.marketAddr, market.marketName]);
+
+  useEffect(() => {
+    const interactionNode = interactionRef.current;
+    if (!interactionNode) return;
+    const preventPageScroll = (event: WheelEvent) => event.preventDefault();
+    interactionNode.addEventListener("wheel", preventPageScroll, { passive: false });
+    return () => interactionNode.removeEventListener("wheel", preventPageScroll);
   }, []);
 
-  // ── Chart lifecycle ────────────────────────────────────────────────────
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    let disposed = false;
-    let chart: IChartApi | null = null;
-
-    import("lightweight-charts").then(
-      ({ createChart, ColorType, CrosshairMode, LineStyle }) => {
-        if (disposed || !containerRef.current) return;
-
-        chart = createChart(containerRef.current, {
-          autoSize: true,
-          layout: {
-            background: { type: ColorType.Solid, color: "transparent" },
-            textColor: "#71717a",
-            fontSize: 10,
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
-            attributionLogo: false,
-          },
-          grid: {
-            vertLines: { color: "rgba(255,255,255,0.04)" },
-            horzLines: { color: "rgba(255,255,255,0.04)" },
-          },
-          crosshair: {
-            mode: CrosshairMode.Normal,
-            vertLine: {
-              color: "rgba(255,255,255,0.2)",
-              width: 1,
-              style: LineStyle.Dashed,
-              labelBackgroundColor: "#27272a",
-            },
-            horzLine: {
-              color: "rgba(255,255,255,0.2)",
-              width: 1,
-              style: LineStyle.Dashed,
-              labelBackgroundColor: "#27272a",
-            },
-          },
-          rightPriceScale: {
-            borderVisible: false,
-            scaleMargins: { top: 0.08, bottom: 0.22 },
-          },
-          timeScale: {
-            borderVisible: false,
-            timeVisible: true,
-            secondsVisible: false,
-            rightOffset: 4,
-            barSpacing: 7,
-          },
-          handleScroll: true,
-          handleScale: true,
-        });
-
-        const candleSeries = chart.addCandlestickSeries({
-          upColor: UP_COLOR,
-          downColor: DOWN_COLOR,
-          borderVisible: false,
-          wickUpColor: UP_COLOR,
-          wickDownColor: DOWN_COLOR,
-          priceLineVisible: true,
-          priceLineColor: "rgba(255,255,255,0.25)",
-          priceLineStyle: LineStyle.Dashed,
-          lastValueVisible: true,
-        });
-
-        const volumeSeries = chart.addHistogramSeries({
-          priceScaleId: "volume",
-          priceFormat: { type: "volume" },
-          lastValueVisible: false,
-          priceLineVisible: false,
-        });
-        chart.priceScale("volume").applyOptions({
-          scaleMargins: { top: 0.84, bottom: 0 },
-          borderVisible: false,
-        });
-
-        const overlayOptions = {
-          lineWidth: 1 as const,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        };
-        const fastOverlay = chart.addLineSeries({
-          ...overlayOptions,
-          color: "#a855f7",
-        });
-        const slowOverlay = chart.addLineSeries({
-          ...overlayOptions,
-          color: "#f59e0b",
-        });
-
-        chart
-          .timeScale()
-          .subscribeVisibleLogicalRangeChange((range: LogicalRange | null) => {
-            if (!range) return;
-            const atEdge = range.to >= barsRef.current.length - 1.5;
-            if (atEdge !== atLiveEdgeRef.current) {
-              atLiveEdgeRef.current = atEdge;
-              setShowLiveButton(!atEdge);
-            }
-          });
-
-        chart.subscribeCrosshairMove((param: MouseEventParams) => {
-          const legend = legendRef.current;
-          if (!legend) return;
-          const bar = param.seriesData.get(candleSeries) as
-            | CandlestickData
-            | undefined;
-          if (!bar) {
-            legend.textContent = "";
-            return;
-          }
-          const fmt = (v: number) =>
-            v.toLocaleString("en-US", {
-              minimumFractionDigits: precisionRef.current,
-              maximumFractionDigits: precisionRef.current,
-            });
-          const changePct = bar.open > 0 ? ((bar.close - bar.open) / bar.open) * 100 : 0;
-          legend.textContent = `O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}  ${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`;
-          legend.style.color = bar.close >= bar.open ? UP_COLOR : DOWN_COLOR;
-        });
-
-        chartRef.current = chart;
-        candleSeriesRef.current = candleSeries;
-        volumeSeriesRef.current = volumeSeries;
-        fastOverlayRef.current = fastOverlay;
-        slowOverlayRef.current = slowOverlay;
-        setChartReady(true);
-      }
-    );
-
-    return () => {
-      disposed = true;
-      chartRef.current = null;
-      candleSeriesRef.current = null;
-      volumeSeriesRef.current = null;
-      fastOverlayRef.current = null;
-      slowOverlayRef.current = null;
-      liqLinesRef.current = [];
-      chart?.remove();
-      setChartReady(false);
-    };
-  }, []);
-
-  // ── Bootstrap history whenever market/interval changes ────────────────
-  useEffect(() => {
-    if (!chartReady) return;
-    const candleSeries = candleSeriesRef.current;
-    const volumeSeries = volumeSeriesRef.current;
-    const chart = chartRef.current;
-    if (!candleSeries || !volumeSeries || !chart) return;
-
+    if (!active || !remoteInterval) return;
     let cancelled = false;
-    setLoading(true);
-    setErrorText(null);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
 
     const load = async () => {
+      controller = new AbortController();
+      if (remoteResult.key !== remoteKey) setLoading(true);
       try {
         const params = new URLSearchParams({
-          market: marketAddr || marketName,
+          market: market.marketAddr || market.marketName,
           interval,
           bars: String(BOOTSTRAP_BARS),
+          network: getDecibelPublicNetwork(),
         });
-        const res = await fetch(`/api/decibel/candlesticks?${params.toString()}`, {
+        const response = await fetch(`/api/decibel/candlesticks?${params}`, {
           cache: "no-store",
+          signal: controller.signal,
         });
-        const json = (await res.json()) as { candles?: RestCandle[]; error?: string };
-        if (!res.ok || json.error) {
-          throw new Error(json.error || `candles ${res.status}`);
-        }
+        const payload = await response.json() as { candles?: RestCandle[]; error?: string };
+        if (!response.ok || payload.error) throw new Error(payload.error || `candles ${response.status}`);
         if (cancelled) return;
-
-        const bars: CandlestickData[] = (json.candles ?? [])
-          .map((candle) => ({
-            time: Math.floor(candle.t / 1000) as UTCTimestamp,
-            open: candle.o,
-            high: candle.h,
-            low: candle.l,
-            close: candle.c,
-          }))
-          .sort((a, b) => (a.time as number) - (b.time as number));
-        const volumes: HistogramData[] = (json.candles ?? [])
-          .map((candle) => ({
-            time: Math.floor(candle.t / 1000) as UTCTimestamp,
-            value: candle.v ?? 0,
-            color: candle.c >= candle.o ? UP_VOLUME : DOWN_VOLUME,
-          }))
-          .sort((a, b) => (a.time as number) - (b.time as number));
-
-        barsRef.current = bars;
-        volumesRef.current = volumes;
-
-        const lastClose = bars[bars.length - 1]?.close ?? market.seedPrice;
-        precisionRef.current = precisionForPrice(lastClose);
-        candleSeries.applyOptions({
-          priceFormat: {
-            type: "price",
-            precision: precisionRef.current,
-            minMove: 10 ** -precisionRef.current,
-          },
-        });
-
-        candleSeries.setData(bars);
-        volumeSeries.setData(volumes);
-        applyOverlays();
-        chart.timeScale().scrollToRealTime();
-        setLoading(false);
+        const candles = (payload.candles ?? []).map((candle) => ({
+          time: Math.floor(candle.t / 1000),
+          open: candle.o,
+          high: candle.h,
+          low: candle.l,
+          close: candle.c,
+          volume: candle.v ?? 0,
+        })).sort((a, b) => a.time - b.time);
+        setRemoteResult({ key: remoteKey, candles });
+        setErrorText(null);
       } catch (error) {
-        if (cancelled) return;
-        setLoading(false);
-        setErrorText(
-          error instanceof Error ? error.message : "Failed to load candles"
-        );
+        if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) {
+          setErrorText(error instanceof Error ? error.message : "Failed to load candles");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          timer = setTimeout(load, Math.min(60_000, Math.max(10_000, intervalSeconds * 250)));
+        }
       }
     };
 
     void load();
     return () => {
       cancelled = true;
+      controller?.abort();
+      if (timer) clearTimeout(timer);
     };
-  }, [chartReady, marketAddr, marketName, interval, market.seedPrice, applyOverlays]);
+  }, [active, interval, intervalSeconds, market.marketAddr, market.marketName, remoteInterval, remoteKey]);
 
-  // ── Live tail: candle closes + tick-merged open candle ─────────────────
-  useEffect(() => {
-    if (!chartReady || !active) return;
-    const candleSeries = candleSeriesRef.current;
-    const volumeSeries = volumeSeriesRef.current;
-    if (!candleSeries || !volumeSeries) return;
-
-    let cancelled = false;
-    let stream: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let reconnectAttempt = 0;
-    const candleTopic = `market_candlestick:${marketAddr}:${interval}`;
-    const priceTopic = `market_price:${marketAddr}`;
-
-    const upsertBar = (bar: CandlestickData, volume?: number) => {
-      const bars = barsRef.current;
-      const last = bars[bars.length - 1];
-      if (last && (bar.time as number) < (last.time as number)) return;
-      if (last && last.time === bar.time) {
-        bars[bars.length - 1] = bar;
-      } else {
-        bars.push(bar);
-      }
-      candleSeries.update(bar);
-      if (volume !== undefined) {
-        const volumeBar: HistogramData = {
-          time: bar.time,
-          value: volume,
-          color: bar.close >= bar.open ? UP_VOLUME : DOWN_VOLUME,
-        };
-        const volumes = volumesRef.current;
-        if (
-          volumes.length > 0 &&
-          volumes[volumes.length - 1].time === bar.time
-        ) {
-          volumes[volumes.length - 1] = volumeBar;
-        } else {
-          volumes.push(volumeBar);
-        }
-        volumeSeries.update(volumeBar);
-      }
-    };
-
-    const connect = () => {
-      if (cancelled) return;
-      const params = new URLSearchParams({
-        network: getDecibelPublicNetwork(),
-        topics: `${candleTopic},${priceTopic}`,
-      });
-      stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
-
-      stream.addEventListener("open", () => {
-        reconnectAttempt = 0;
-      });
-
-      stream.addEventListener("message", (event) => {
-        if (cancelled) return;
-        try {
-          const message = JSON.parse(event.data) as {
-            success?: boolean;
-            topic?: string;
-            candle?: RestCandle;
-            price?: { mark_px?: number; mid_px?: number; oracle_px?: number };
-          };
-          if (!message.topic || message.success) return;
-
-          if (message.topic === candleTopic && message.candle) {
-            const candle = message.candle;
-            upsertBar(
-              {
-                time: Math.floor(candle.t / 1000) as UTCTimestamp,
-                open: candle.o,
-                high: candle.h,
-                low: candle.l,
-                close: candle.c,
-              },
-              candle.v ?? 0
-            );
-            applyOverlays();
-            return;
-          }
-
-          if (message.topic === priceTopic && message.price) {
-            const price =
-              message.price.mark_px ??
-              message.price.mid_px ??
-              message.price.oracle_px;
-            if (!Number.isFinite(price) || !price) return;
-            const bucket = (Math.floor(Date.now() / 1000 / intervalSecs) *
-              intervalSecs) as UTCTimestamp;
-            const last = barsRef.current[barsRef.current.length - 1];
-            if (last && last.time === bucket) {
-              upsertBar({
-                time: bucket,
-                open: last.open,
-                high: Math.max(last.high, price),
-                low: Math.min(last.low, price),
-                close: price,
-              });
-            } else if (last && (bucket as number) > (last.time as number)) {
-              upsertBar({
-                time: bucket,
-                open: last.close,
-                high: Math.max(last.close, price),
-                low: Math.min(last.close, price),
-                close: price,
-              });
-            }
-          }
-        } catch {
-          // Ignore malformed frames; the stream self-heals on reconnect.
-        }
-      });
-
-      stream.addEventListener("error", () => {
-        if (cancelled) return;
-        stream?.close();
-        reconnectAttempt += 1;
-        reconnectTimer = setTimeout(
-          connect,
-          Math.min(1000 * 1.5 ** reconnectAttempt, 8000)
-        );
-      });
-    };
-
-    connect();
-    return () => {
-      cancelled = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      stream?.close();
-    };
-  }, [chartReady, active, marketAddr, interval, intervalSecs, applyOverlays]);
-
-  // ── Overlays react to mode changes ─────────────────────────────────────
-  useEffect(() => {
-    overlayModeRef.current = overlayMode;
-    if (chartReady) applyOverlays();
-  }, [overlayMode, chartReady, applyOverlays]);
-
-  // ── Liquidation price lines ────────────────────────────────────────────
-  useEffect(() => {
-    if (!chartReady) return;
-    const candleSeries = candleSeriesRef.current;
-    if (!candleSeries) return;
-
-    for (const line of liqLinesRef.current) {
-      candleSeries.removePriceLine(line);
-    }
-    liqLinesRef.current = liquidationLines.map((line) =>
-      candleSeries.createPriceLine({
-        price: line.price,
-        color: line.side === "long" ? "#f97316" : "#f43f5e",
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: line.side === "long" ? "LIQ LONG" : "LIQ SHORT",
-      })
+  const sourceCandles = useMemo(() => {
+    const liveTime = Math.max(secondCandles.at(-1)?.time ?? 0, nowSeconds);
+    const continuousSeconds = interpolateOneSecondCandles(
+      appendLivePriceCandle(secondCandles, latestPrice, liveTime, 1),
     );
-  }, [chartReady, liquidationLines]);
+    if (!remoteInterval) return aggregateChartCandles(continuousSeconds, intervalSeconds);
+    const canonical = remoteResult.key === remoteKey ? remoteResult.candles : [];
+    const withMinutes = interval === "1m"
+      ? mergeCanonicalCandles(canonical, minuteCandles, intervalSeconds)
+      : canonical;
+    const merged = mergeCanonicalCandles(withMinutes, continuousSeconds, intervalSeconds);
+    return appendLivePriceCandle(merged, latestPrice, liveTime, intervalSeconds);
+  }, [interval, intervalSeconds, latestPrice, minuteCandles, nowSeconds, remoteInterval, remoteKey, remoteResult, secondCandles]);
+
+  const maxOffset = Math.max(0, sourceCandles.length - MIN_VISIBLE_BARS);
+  const safeOffset = clamp(offsetFromEnd, 0, maxOffset);
+  const endIndex = Math.max(0, sourceCandles.length - safeOffset);
+  const startIndex = Math.max(0, endIndex - visibleBars);
+  const visibleCandles = sourceCandles.slice(startIndex, endIndex);
+  const latestVisible = visibleCandles.at(-1);
+
+  useEffect(() => {
+    if (offsetFromEnd > maxOffset) setOffsetFromEnd(maxOffset);
+  }, [maxOffset, offsetFromEnd]);
+
+  const overlayLines = useMemo<BklitPlotLine[]>(() => {
+    if (overlayMode === "off" || sourceCandles.length < 6) return [];
+    const strategy = overlayMode === "strategy";
+    const calculate = overlayMode === "ema" ? ema : sma;
+    const fastPeriod = strategy ? 3 : 20;
+    const slowPeriod = strategy ? 5 : 50;
+    const startTime = visibleCandles[0]?.time ?? 0;
+    const endTime = latestVisible?.time ?? Number.POSITIVE_INFINITY;
+    return [
+      {
+        id: "fast",
+        color: strategy ? "var(--success)" : "var(--chart-line-primary)",
+        data: calculate(sourceCandles, fastPeriod).filter((point) => point.time >= startTime && point.time <= endTime),
+      },
+      {
+        id: "slow",
+        color: "var(--warning)",
+        data: calculate(sourceCandles, slowPeriod).filter((point) => point.time >= startTime && point.time <= endTime),
+      },
+    ].filter((line) => line.data.length >= 2);
+  }, [latestVisible?.time, overlayMode, sourceCandles, visibleCandles]);
 
   const handleIntervalChange = useCallback((next: ProChartInterval) => {
     setChartInterval(next);
     try {
       window.localStorage.setItem(INTERVAL_STORAGE_KEY, next);
     } catch {
-      // Private-mode storage failures shouldn't break the chart.
+      // Storage is optional; interval switching remains functional in memory.
     }
   }, []);
 
-  const snapToLive = useCallback(() => {
-    chartRef.current?.timeScale().scrollToRealTime();
-  }, []);
+  const snapToLive = useCallback(() => setOffsetFromEnd(0), []);
 
-  const intervalButtons = useMemo(
-    () =>
-      CHART_INTERVALS.map((option) => (
-        <button
-          key={option}
-          type="button"
-          onClick={() => handleIntervalChange(option)}
-          className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
-            option === interval
-              ? "bg-white/[0.12] text-white"
-              : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          {option}
-        </button>
-      )),
-    [interval, handleIntervalChange]
-  );
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey) {
+      const delta = event.deltaX || event.deltaY;
+      setOffsetFromEnd((current) => clamp(
+        current + Math.sign(delta) * Math.max(1, Math.round(visibleBars * 0.08)),
+        0,
+        maxOffset,
+      ));
+      return;
+    }
+    setVisibleBars((current) => clamp(
+      Math.round(current * (event.deltaY > 0 ? 1.12 : 0.88)),
+      MIN_VISIBLE_BARS,
+      Math.min(MAX_VISIBLE_BARS, Math.max(MIN_VISIBLE_BARS, sourceCandles.length)),
+    ));
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startOffset: safeOffset,
+      width: rect.width,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || drag.width <= 0) return;
+    const movedBars = Math.round((event.clientX - drag.startX) / drag.width * visibleBars);
+    setOffsetFromEnd(clamp(drag.startOffset + movedBars, 0, maxOffset));
+  };
+
+  const finishPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const intervalButtons = useMemo(() => CHART_INTERVALS.map((option) => (
+    <button
+      key={option}
+      type="button"
+      onClick={() => handleIntervalChange(option)}
+      className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
+        option === interval
+          ? "bg-white/[0.12] text-white"
+          : "text-zinc-500 hover:text-zinc-300"
+      }`}
+    >
+      {option}
+    </button>
+  )), [handleIntervalChange, interval]);
+
+  const legendCandle = inspected ?? latestVisible;
 
   return (
-    <div className="absolute inset-0">
-      <div ref={containerRef} className="absolute inset-0" />
+    <div
+      ref={interactionRef}
+      className="absolute inset-0"
+      onDoubleClick={(event) => {
+        if (!(event.target as HTMLElement).closest("button")) snapToLive();
+      }}
+      onPointerCancel={finishPointer}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointer}
+      onWheel={handleWheel}
+    >
+      <BklitCandlePlot
+        candles={visibleCandles}
+        currentPrice={safeOffset === 0 ? latestPrice : latestVisible?.close}
+        intervalSeconds={intervalSeconds}
+        levels={liquidationLines.map((line) => ({
+          id: line.id,
+          price: line.price,
+          color: line.side === "long" ? "var(--warning)" : "var(--danger)",
+        }))}
+        lines={overlayLines}
+        onInspect={setInspected}
+        priceDecimals={market.priceDecimals}
+      />
 
-      {/* Timeframe pills + OHLC legend */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
         <div className="pointer-events-auto flex items-center gap-0.5 self-start rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm">
           {intervalButtons}
         </div>
-        <div
-          ref={legendRef}
-          className="self-start font-mono text-[10px] leading-4 text-zinc-400"
-        />
+        <div className="self-start font-mono text-[10px] leading-4 text-zinc-400">
+          {formatLegend(legendCandle, market.priceDecimals)}
+        </div>
       </div>
 
-      {/* Snap back to the live edge after panning into history */}
-      {showLiveButton && (
+      {safeOffset > 0 && (
         <button
           type="button"
           onClick={snapToLive}
@@ -609,13 +405,13 @@ function ProCandleChartComponent({
         </button>
       )}
 
-      {loading && (
+      {loading && visibleCandles.length === 0 && (
         <div className="absolute inset-0 z-20 flex items-center justify-center">
           <TetherLoader size={52} label="Loading" />
         </div>
       )}
 
-      {errorText && !loading && barsRef.current.length === 0 && (
+      {errorText && !loading && visibleCandles.length === 0 && (
         <div className="absolute inset-0 z-20 flex items-center justify-center">
           <span className="font-mono text-[11px] text-zinc-500">
             {errorText}
@@ -628,11 +424,16 @@ function ProCandleChartComponent({
 
 export const ProCandleChart = memo(
   ProCandleChartComponent,
-  (prev, next) =>
-    prev.active === next.active &&
-    prev.liquidationLines === next.liquidationLines &&
-    prev.overlayMode === next.overlayMode &&
-    prev.market.marketAddr === next.market.marketAddr &&
-    prev.market.marketName === next.market.marketName &&
-    prev.market.priceDecimals === next.market.priceDecimals
+  (previous, next) => (
+    previous.active === next.active
+    && previous.latestPrice === next.latestPrice
+    && previous.liquidationLines === next.liquidationLines
+    && previous.minuteCandles === next.minuteCandles
+    && previous.nowSeconds === next.nowSeconds
+    && previous.overlayMode === next.overlayMode
+    && previous.secondCandles === next.secondCandles
+    && previous.market.marketAddr === next.market.marketAddr
+    && previous.market.marketName === next.market.marketName
+    && previous.market.priceDecimals === next.market.priceDecimals
+  ),
 );

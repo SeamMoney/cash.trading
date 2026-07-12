@@ -47,9 +47,8 @@ for (let index = 1; index < interpolated.length; index += 1) {
   );
 }
 assert.ok(
-  interpolated[1].close > interpolated[0].close
-    && interpolated[2].close > interpolated[1].close,
-  "placeholder seconds must bridge toward the next trade instead of forming a staircase",
+  interpolated[1].close !== interpolated[0].close,
+  "placeholder seconds must bridge toward the next trade instead of staying flat",
 );
 
 const filledFlatRun = interpolateOneSecondCandles([
@@ -71,6 +70,26 @@ assert.ok(
   filledFlatRun.every((candle) => Math.abs(candle.close - 100) < 0.001),
   "flat interpolation must remain visually subtle and materially price-neutral",
 );
+
+const variedBridge = interpolateOneSecondCandles([
+  { time: 300, open: 110, high: 110, low: 110, close: 110, volume: 1 },
+  { time: 320, open: 100, high: 101, low: 99, close: 100, volume: 1 },
+]);
+const generatedBridge = variedBridge.slice(1, -1);
+const directions = generatedBridge.map((candle) => Math.sign(candle.close - candle.open));
+assert.ok(
+  directions.some((direction) => direction > 0)
+    && directions.some((direction) => direction < 0),
+  "a long interpolated move must contain varied candles instead of a one-way box staircase",
+);
+assert.ok(
+  generatedBridge.every((candle) => (
+    candle.high > Math.max(candle.open, candle.close)
+    && candle.low < Math.min(candle.open, candle.close)
+  )),
+  "interpolated candles must include upper and lower wicks",
+);
+assert.equal(variedBridge.at(-1)?.open, 100, "the varied bridge must preserve its real endpoint");
 
 const fiveSecond = aggregateChartCandles(interpolated, 5);
 assert.equal(fiveSecond.length, 1);
@@ -104,7 +123,7 @@ assert.ok(
   "the active candle renderer must use the local bklit primitives",
 );
 assert.ok(
-  plotSource.includes("minBodyHeight={intervalSeconds < 60 ? 3.5 : 1}"),
+  plotSource.includes("minBodyHeight={intervalSeconds < 60 ? 1.5 : 1}"),
   "low-timeframe dojis must retain a visible candle body",
 );
 assert.ok(!lineChartSource.includes("fillLineWindowGaps"), "the broken line gap filler must stay removed");

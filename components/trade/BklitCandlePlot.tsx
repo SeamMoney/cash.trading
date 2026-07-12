@@ -314,7 +314,7 @@ function BklitCandlePlotComponent({
       <CandlestickChart
         animationDuration={0}
         aspectRatio="auto"
-        candleGap={intervalSeconds < 60 ? 0.12 : 0.24}
+        candleGap={0.24}
         className="h-full w-full"
         data={points}
         margin={{ top: 40, right: 80, bottom: 36, left: 8 }}
@@ -332,7 +332,7 @@ function BklitCandlePlotComponent({
         <Candlestick
           bodyStrokeWidth={1.25}
           fadedOpacity={0.2}
-          minBodyHeight={intervalSeconds < 60 ? 3.5 : 1}
+          minBodyHeight={intervalSeconds < 60 ? 1.5 : 1}
           negativeBodyFill="var(--chart-background)"
           negativeFill="var(--foreground)"
           negativeStroke="var(--foreground)"

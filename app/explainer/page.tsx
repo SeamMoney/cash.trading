@@ -294,7 +294,7 @@ export default function ExplainerPage() {
             <span className="text-white/20 text-xs font-mono">/ explainer</span>
           </div>
           <a
-            href="#"
+            href="/"
             className="px-4 py-1.5 text-xs font-mono rounded-lg border transition-all hover:opacity-80"
             style={{ borderColor: YELLOW + "80", color: YELLOW }}
           >
@@ -640,8 +640,8 @@ export default function ExplainerPage() {
                       feature: "Markets",
                       amm: "unlimited",
                       cex: "unlimited",
-                      decibel: "15",
-                      decibelGood: false,
+                      decibel: "60",
+                      decibelGood: true,
                     },
                   ].map((row, i) => (
                     <tr
@@ -677,18 +677,20 @@ export default function ExplainerPage() {
             <h2 className="text-2xl sm:text-3xl font-mono font-bold">Trade on Decibel</h2>
             <p className="text-white/40 text-sm max-w-sm mx-auto leading-relaxed">
               Perpetual futures with CEX-level order types, fully on-chain on Aptos.
-              15 markets. Up to 40× leverage. Non-custodial.
+              60 live markets. Up to 40× leverage. Non-custodial.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <a
-                href="#"
+                href="/"
                 className="px-7 py-3 rounded-xl font-mono text-sm font-bold transition-all hover:opacity-85"
                 style={{ backgroundColor: YELLOW, color: "#000" }}
               >
                 Launch App
               </a>
               <a
-                href="#"
+                href="https://docs.decibel.trade"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="px-7 py-3 rounded-xl font-mono text-sm border border-white/20 text-white/55
                            hover:border-white/40 hover:text-white transition-all"
               >

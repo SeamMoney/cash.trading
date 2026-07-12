@@ -69,12 +69,14 @@ function useLiveSignal(addr: string, pkg?: string, opts?: { once?: boolean }): L
     let cancelled = false;
     async function poll() {
       try {
-        const q = pkg ? `&pkg=${pkg}` : "";
+        const q = pkg ? `&pkg=${encodeURIComponent(pkg)}` : "";
         const res = await fetch(`/api/launchpad/on-chain?addr=${addr}&type=state${q}`);
         if (!res.ok || cancelled) return;
         const d = await res.json();
         if (cancelled) return;
-        const price = typeof d.lastPrice === "number" ? (d.lastPrice > 1000 ? d.lastPrice : d.lastPrice / 1e8) : 0;
+        const price = typeof d.lastPrice === "number" && Number.isFinite(d.lastPrice) && d.lastPrice > 0
+          ? d.lastPrice
+          : 0;
         const timestamps: number[] = Array.isArray(d.timestamps) ? d.timestamps : [];
         setState({
           signal: d.signal ?? 0,
@@ -410,6 +412,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
       <div className="w-full">
         <OnChainChart
           indicatorAddr={ind.address}
+          packageAddress={ind.pkg}
           asset={ind.assets[0] ?? "BTC/USD"}
           indicatorType={ind.indicatorType ?? 0}
           shortPeriod={ind.params?.[0] ?? 10}

@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
 
     if (
       !Array.isArray(signalResult) || signalResult.length !== 5 ||
-      !Array.isArray(statsResult) || statsResult.length !== 3 ||
+      !Array.isArray(statsResult) || (statsResult.length !== 2 && statsResult.length !== 3) ||
       !Array.isArray(positionResult) || positionResult.length !== 4
     ) {
       throw new Error("indicator state views returned an unexpected tuple");
@@ -180,7 +180,9 @@ export async function GET(req: NextRequest) {
       lastSignalTime: parseSafeUnsigned(sigTime, "last signal time"),
       totalPushed: parseSafeUnsigned(pushed, "total pushed"),
       totalSignals: parseSafeUnsigned(signals, "total signals"),
-      isGraduated: parseBoolean(graduated, "graduated"),
+      isGraduated: graduated === undefined
+        ? null
+        : parseBoolean(graduated, "graduated"),
       inPosition: parseBoolean(inPos, "in position"),
       entryPrice: parseSafeUnsigned(entry, "entry price") / 1e8,
       realizedGainBps: parseSafeUnsigned(gain, "realized gain bps"),

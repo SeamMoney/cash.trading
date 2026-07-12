@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { indicatorRegistry, whopProductRegistry } from "@/app/api/launchpad/indicators/route";
-import { hasAccess } from "@/lib/launchpad/signal-access";
+import { indicatorRegistry } from "@/app/api/launchpad/indicators/route";
 
 export const runtime = "nodejs";
 
@@ -23,41 +22,23 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const indicator = url.searchParams.get("indicator");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 500);
-  // Optional access proof from query string
-  const membershipId = url.searchParams.get("whop_member_id") ?? url.searchParams.get("addr") ?? "";
-
   if (!indicator) {
     return NextResponse.json({ error: "Missing indicator param" }, { status: 400 });
   }
 
-  // ── Access gating for graduated indicators ──────────────────────────
-  // Bot dashboard passes ?bot=1 to bypass gating for internal monitoring
-  const isBotView = url.searchParams.get("bot") === "1";
+  // Paid signal delivery is not configured. Never accept a query-string
+  // membership claim or a public bypass for proprietary feeds.
   const ind = indicatorRegistry.find((i) => i.address === indicator);
-  if (ind?.isGraduated && !isBotView) {
-    const whopProductId = whopProductRegistry.get(indicator);
-
-    // Check membership proof: valid if membershipId is non-empty and granted
-    const granted = membershipId.length > 0 && hasAccess(indicator, membershipId);
-
-    if (!granted) {
-      console.log(
-        `[signals] Access denied — graduated indicator ${indicator.slice(0, 10)}… ` +
-        `whop_member_id=${membershipId || "(none)"}`,
-      );
-      return NextResponse.json(
-        {
-          error: "Subscribe on Whop to access live signals",
-          whopProductId: whopProductId ?? null,
-          whopUrl: whopProductId
-            ? `https://whop.com/checkout/${whopProductId}/`
-            : "https://whop.com",
-          indicator,
-          isGraduated: true,
-        },
-        { status: 402 },
-      );
-    }
+  if (ind?.isProprietary) {
+    return NextResponse.json(
+      {
+        unavailable: true,
+        reason: "paid_signal_delivery_not_configured",
+        error: "Authenticated paid signal delivery is not configured.",
+        indicator,
+      },
+      { status: 501 },
+    );
   }
 
   const signals = signalBuffer.get(indicator) || [];

@@ -6,12 +6,7 @@ import { cn } from "@/lib/utils";
 import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
-import { BotDashboard } from "./BotDashboard";
-import { ScheduleTradeModal } from "./ScheduleTradeModal";
 import { CreatorDashboard } from "./CreatorDashboard";
-import { ScheduledJobsPanel } from "./ScheduledJobsPanel";
-import type { ScheduledJob } from "@/lib/launchpad/types";
-import { useSubscription } from "@/lib/launchpad/use-subscription";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
 
@@ -219,13 +214,13 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
       </div>
       <h3 className="text-base font-display font-semibold text-white mb-2">Select a strategy</h3>
       <p className="text-sm text-zinc-500 max-w-sm leading-relaxed mb-8">
-        Each strategy runs automatically on-chain. Fund ones you believe in — at 600 APT they graduate to a live trading vault.
+        Inspect strategies discovered from Aptos testnet, review their on-chain state, or deploy your own.
       </p>
       <div className="w-full max-w-xs space-y-3 text-left">
         {[
-          { n: "01", title: "Browse strategies", desc: "See historical performance and live signals" },
-          { n: "02", title: "Fund with APT",    desc: "Each APT funds more backtests to verify the edge" },
-          { n: "03", title: "Graduate to live", desc: "At 600 APT, it executes real trades on Decibel" },
+          { n: "01", title: "Browse strategies", desc: "Read verified contract state and signal history" },
+          { n: "02", title: "Run a backtest", desc: "Stress-test supported parameters with market candles" },
+          { n: "03", title: "Deploy on-chain", desc: "Confirm creation from your connected Aptos wallet" },
         ].map((s) => (
           <div key={s.n} className="flex items-start gap-3">
             <span className="text-accent font-display text-[14px] font-bold shrink-0 mt-0.5 tabular-nums">
@@ -263,50 +258,9 @@ function StatCard({ label, value, sub, good, warn }: { label: string; value: str
   );
 }
 
-// ─── Fund input (amount + button) ────────────────────────────────────────────
-
-function FundInput({ fund, funding, connected }: { fund: (amt: number) => void; funding: boolean; connected: boolean }) {
-  const [val, setVal] = useState("10");
-  const n = parseFloat(val);
-  const valid = !isNaN(n) && n > 0;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="relative flex-1 max-w-[140px]">
-        <input
-          type="number"
-          min="0.1"
-          step="1"
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          className="w-full bg-[#202020] border border-[#2a2a2a] rounded-[10px] px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-white/20 placeholder:text-zinc-700 pr-12"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-600 font-mono">APT</span>
-      </div>
-      <button
-        onClick={() => valid && fund(n)}
-        disabled={funding || !valid}
-        className={cn(
-          "px-4 py-2 rounded-[10px] text-[13px] font-display font-bold transition-all",
-          funding ? "bg-[#202020] text-zinc-600 cursor-wait" :
-          connected ? "bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/30" :
-                      "bg-amber-500/15 border border-amber-500/20 text-amber-400 hover:bg-amber-500/25",
-        )}
-      >
-        {funding ? "…" : "Fund Strategy"}
-      </button>
-      {!connected && <span className="text-[11px] text-zinc-700">no wallet needed</span>}
-    </div>
-  );
-}
-
 // ─── Compact action bar: backtest toggle + deploy button ─────────────────────
 
-function BacktestBar({ ind, showUnlock, onUnlock, onDeployBot }: {
-  ind: Indicator;
-  showUnlock: boolean;
-  onUnlock: () => void;
-  onDeployBot: () => void;
-}) {
+function BacktestBar({ ind }: { ind: Indicator }) {
   const [showBacktest, setShowBacktest] = useState(false);
   return (
     <>
@@ -323,15 +277,12 @@ function BacktestBar({ ind, showUnlock, onUnlock, onDeployBot }: {
           Backtest
         </button>
         <button
-          onClick={showUnlock ? onUnlock : onDeployBot}
-          className={cn(
-            "px-4 py-2 rounded-[10px] text-[12px] font-display font-bold transition-colors flex items-center gap-1.5",
-            showUnlock
-              ? "bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30"
-              : "bg-purple-500 text-white hover:bg-purple-400",
-          )}
+          type="button"
+          disabled
+          title="Persistent, wallet-authorized launchpad automation is not deployed"
+          className="px-4 py-2 rounded-[10px] text-[12px] font-display font-bold flex items-center gap-1.5 border border-[#2a2a2a] bg-[#181818] text-zinc-600 cursor-not-allowed"
         >
-          {showUnlock ? "Unlock · $29/mo" : "Deploy Bot"}
+          Automation unavailable
         </button>
       </div>
       {showBacktest && (
@@ -350,119 +301,12 @@ function BacktestBar({ ind, showUnlock, onUnlock, onDeployBot }: {
 
 // ─── Right panel: detail view ─────────────────────────────────────────────────
 
-function IndicatorDetail({
-  ind, onFunded, isSubscribed, onDeployBot, onUnlock, onDeployOwn,
-}: {
-  ind: Indicator;
-  onFunded: (u: Record<string, unknown>) => void;
-  isSubscribed: boolean;
-  onDeployBot: () => void;
-  onUnlock: () => void;
-  onDeployOwn: () => void;
-}) {
+function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: () => void }) {
   const live     = useLiveSignal(ind.address, ind.pkg);
   const flashing = useFlash(live.signal);
   const sig      = live.isLive ? live.signal : (ind.lastSignal ?? 0);
   const sharpe   = (ind.meanSharpe / 1000).toFixed(2);
   const sharpeN  = ind.meanSharpe / 1000;
-
-  const { signAndSubmitTransaction, connected } = useWallet();
-  const [funding, setFunding] = useState(false);
-  const [txError, setTxError] = useState<string | null>(null);
-
-  const raisedApt  = ind.totalRaised / 1e8;
-  const progressPct = Math.min(100, (raisedApt / 600) * 100);
-  const remaining   = Math.max(0, 600 - raisedApt);
-
-  // ── Particle effect refs ──────────────────────────────────────────────────
-  const particleCanvasRef = useRef<HTMLCanvasElement>(null);
-  const particlesRef = useRef<{ x: number; y: number; vx: number; vy: number; life: number; maxLife: number; size: number }[]>([]);
-  const animRef = useRef<number>(0);
-
-  function drawParticles() {
-    const canvas = particleCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    canvas.width = canvas.offsetWidth;
-    canvas.height = 40;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    particlesRef.current = particlesRef.current.filter((p) => p.life < p.maxLife);
-    particlesRef.current.forEach((p) => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life++;
-      const alpha = 1 - p.life / p.maxLife;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(245, 158, 11, ${alpha * 0.8})`;
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = `rgba(245, 158, 11, ${alpha * 0.5})`;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    });
-
-    if (particlesRef.current.length > 0) {
-      animRef.current = requestAnimationFrame(drawParticles);
-    }
-  }
-
-  useEffect(() => {
-    return () => { cancelAnimationFrame(animRef.current); };
-  }, []);
-  // ─────────────────────────────────────────────────────────────────────────
-
-  async function updateRegistry(amt: number) {
-    const res  = await fetch("/api/launchpad/indicators", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: ind.address, aptAmount: amt }),
-    });
-    const data = await res.json();
-    if (data.indicator) onFunded(data.indicator);
-  }
-
-  async function fund(amt: number) {
-    setFunding(true); setTxError(null);
-    try {
-      if (connected) {
-        const aptOctas = (BigInt(amt) * BigInt(100_000_000)).toString();
-        await signAndSubmitTransaction({
-          data: {
-            function: `${CONTRACT}::bonding_curve::buy`,
-            typeArguments: [],
-            functionArguments: [ind.address, aptOctas, "0"],
-          },
-        });
-      }
-      // Spawn particles at the current progress position before updating
-      const canvasEl = particleCanvasRef.current;
-      if (canvasEl) {
-        const oldPct = Math.min(100, (ind.totalRaised / 1e8 / 600) * 100);
-        const spawnX = (oldPct / 100) * canvasEl.offsetWidth;
-        const newParticles = Array.from({ length: 12 }, () => ({
-          x: spawnX,
-          y: 20,
-          vx: Math.random() * 2 + 1,
-          vy: (Math.random() - 0.5) * 1.5,
-          life: 0,
-          maxLife: 40 + Math.random() * 20,
-          size: Math.random() * 2.5 + 1,
-        }));
-        particlesRef.current = [...particlesRef.current, ...newParticles];
-        cancelAnimationFrame(animRef.current);
-        drawParticles();
-      }
-      await updateRegistry(amt);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.toLowerCase().includes("cancel") && !msg.toLowerCase().includes("reject")) {
-        setTxError("Transaction failed");
-      }
-    } finally { setFunding(false); }
-  }
-
-  const showUnlock = !!(ind.isProprietary && !isSubscribed);
 
   return (
     <div className="w-full">
@@ -611,51 +455,21 @@ function IndicatorDetail({
         </div>
       )}
 
-      {/* ── Fund section — bonding curve journey ── */}
+      {/* The production bonding curve is intentionally unavailable until its
+          package and vault handoff are deployed and verifiable. */}
       {!ind.isGraduated && (
         <div className="px-6 py-5 border-b border-[#1e1e1e]">
-          {/* Journey explanation */}
-          <div className="flex items-center gap-0 mb-4 text-[11px] font-mono">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span className="text-amber-400">SIMULATION</span>
-            </div>
-            <div className="flex-1 mx-3 h-10 flex items-center relative">
-              <canvas
-                ref={particleCanvasRef}
-                className="absolute pointer-events-none"
-                style={{ top: "-18px", left: 0, right: 0, width: "100%", height: "40px", zIndex: 10 }}
-              />
-              <div className="w-full h-px bg-[#2a2a2a] relative">
-                <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-700"
-                  style={{ width: `${progressPct}%` }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/40" />
-              <span className="text-zinc-600">600 APT → LIVE VAULT</span>
-            </div>
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="text-amber-400">TESTNET INDICATOR</span>
           </div>
-
-          <p className="text-[12px] text-zinc-500 leading-relaxed mb-4">
-            Funding runs Monte Carlo stress tests — thousands of parameter variations to prove the edge is real, not overfit.
-            At <span className="text-white font-mono">600 APT</span> this strategy graduates to a live vault on Decibel and begins executing real trades.
-            {remaining > 0 && <span className="text-zinc-400"> {remaining.toFixed(0)} APT remaining.</span>}
+          <p className="text-[12px] text-zinc-500 leading-relaxed">
+            Bonding-curve funding and automatic vault graduation are not deployed. This page will not request APT for either action.
           </p>
-
-          {/* Amount input + fund button */}
-          <FundInput fund={fund} funding={funding} connected={connected} />
-          {txError && <p className="mt-2 text-[11px] text-red-400">{txError}</p>}
         </div>
       )}
 
-      {/* ── Action bar: Deploy Bot + Backtest toggle in one compact row ── */}
-      <BacktestBar
-        ind={ind}
-        showUnlock={showUnlock}
-        onUnlock={onUnlock}
-        onDeployBot={onDeployBot}
-      />
+      <BacktestBar ind={ind} />
     </div>
   );
 }
@@ -683,9 +497,7 @@ export function LaunchpadPage() {
   const [showSignals, setShowSignals] = useState(false);
   const [showGraduated, setShowGraduated] = useState(false);
   const [meta,       setMeta]       = useState({ total: 0, graduated: 0, totalRaisedApt: 0 });
-  const [scheduleTarget, setScheduleTarget] = useState<Indicator | null>(null);
-  const { connected, account, disconnect } = useWallet();
-  const { isSubscribed, subscribe } = useSubscription();
+  const { account } = useWallet();
 
   const fetchIndicators = useCallback(async (force = false): Promise<Indicator[]> => {
     try {
@@ -726,13 +538,6 @@ export function LaunchpadPage() {
     if (fresh) setSelected(fresh);
   }, [indicators]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleFunded(updated: Record<string, unknown>) {
-    setIndicators((prev) => prev.map((i) =>
-      i.address === selected?.address ? { ...i, ...updated } : i,
-    ));
-    if (selected) setSelected((prev) => prev ? { ...prev, ...updated as Partial<Indicator> } : prev);
-  }
-
   function handleDeployed(addr: string) {
     setTab("explore");
     void (async () => {
@@ -745,40 +550,6 @@ export function LaunchpadPage() {
       }
       if (found) setSelected(found);
     })();
-  }
-
-  // Convert Indicator to IndicatorEntry shape for ScheduleTradeModal
-  function toIndicatorEntry(ind: Indicator) {
-    return {
-      address: ind.address,
-      creator: ind.creator,
-      name: ind.name,
-      symbol: ind.symbol,
-      description: ind.description,
-      assets: ind.assets,
-      createdAt: ind.createdAt,
-      curveAddr: ind.curveAddr,
-      aptReserves: ind.aptReserves,
-      totalRaised: ind.totalRaised,
-      simsFunded: ind.simsFunded,
-      isGraduated: ind.isGraduated,
-      totalSims: ind.totalSims,
-      meanSharpe: ind.meanSharpe,
-      profitablePct: ind.profitablePct,
-      robustnessScore: ind.robustnessScore,
-      maxDrawdownBps: ind.maxDrawdownBps,
-      vaultAddr: ind.vaultAddr,
-      lastSignal: ind.lastSignal,
-      lastSignalTime: ind.lastSignalTime,
-      params: ind.params,
-      indicatorType: ind.indicatorType,
-      isProprietary: ind.isProprietary,
-      algoHash: ind.algoHash,
-      commitTs: ind.commitTs,
-      creatorFeeBps: ind.creatorFeeBps,
-      creatorFeeModel: ind.creatorFeeModel,
-      creatorEarningsUsdt: ind.creatorEarningsUsdt,
-    };
   }
 
   return (
@@ -919,10 +690,6 @@ export function LaunchpadPage() {
                       <IndicatorDetail
                         key={selected.address}
                         ind={selected}
-                        onFunded={handleFunded}
-                        isSubscribed={isSubscribed(selected.address)}
-                        onDeployBot={() => setScheduleTarget(selected)}
-                        onUnlock={() => { subscribe(selected.address, 29); }}
                         onDeployOwn={() => setTab("deploy")}
                       />
                     ) : (
@@ -951,9 +718,11 @@ export function LaunchpadPage() {
 
           {/* ── Bots tab ── */}
           {tab === "bots" && (
-            <div className="animate-enter-delay-1 space-y-4">
-              <ScheduledJobsPanel />
-              <BotDashboard />
+            <div className="animate-enter-delay-1 rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-16 text-center">
+              <h3 className="text-sm font-display font-semibold text-white mb-1.5">Launchpad automation unavailable</h3>
+              <p className="text-[12px] text-zinc-500 max-w-md mx-auto leading-relaxed">
+                Persistent, wallet-authorized bot scheduling is not deployed. No background trades are running from this page.
+              </p>
             </div>
           )}
 
@@ -966,16 +735,6 @@ export function LaunchpadPage() {
 
         </main>
       </div>
-
-      {/* ── Schedule modal ── */}
-      {scheduleTarget && (
-        <ScheduleTradeModal
-          indicator={toIndicatorEntry(scheduleTarget)}
-          isOpen={true}
-          onClose={() => setScheduleTarget(null)}
-          onScheduled={(_job: ScheduledJob) => { setScheduleTarget(null); setTab("bots"); }}
-        />
-      )}
 
     </div>
   );

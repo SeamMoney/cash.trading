@@ -118,6 +118,9 @@ const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
 const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
+const pinePreviewSource = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
+const equityCurveSource = readFileSync("components/launchpad/EquityCurveChart.tsx", "utf8");
+const packageSource = readFileSync("package.json", "utf8");
 const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
 assert.ok(
@@ -129,6 +132,13 @@ assert.ok(
   launchpadChartSource.includes("@/components/trade/BklitCandlePlot"),
   "the launchpad candle chart must share the local bklit renderer",
 );
+assert.ok(!pinePreviewSource.includes("lightweight-charts"), "the Pine preview must not use TradingView");
+assert.ok(
+  pinePreviewSource.includes("@/components/trade/BklitCandlePlot"),
+  "the Pine preview candles must share the local bklit renderer",
+);
+assert.ok(!equityCurveSource.includes("lightweight-charts"), "the equity curve must not use TradingView");
+assert.ok(!packageSource.includes('"lightweight-charts"'), "TradingView must not remain an installed dependency");
 assert.ok(
   !plotSource.includes("minBodyHeight="),
   "real dojis must not be inflated into artificial box bodies",

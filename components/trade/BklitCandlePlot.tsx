@@ -34,13 +34,23 @@ export type BklitPlotMarker = {
   time: number;
   price: number;
   side: "buy" | "sell";
+  color?: string;
   label?: string;
+};
+
+export type BklitPlotFill = {
+  id: string;
+  color: string;
+  opacity?: number;
+  upperData: Array<{ time: number; value: number }>;
+  lowerData: Array<{ time: number; value: number }>;
 };
 
 type BklitCandlePlotProps = {
   candles: BklitPlotCandle[];
   currentPrice?: number;
   intervalSeconds: number;
+  fills?: BklitPlotFill[];
   levels?: Array<{ id: string; price: number; color: string }>;
   lines?: BklitPlotLine[];
   markers?: BklitPlotMarker[];
@@ -149,6 +159,40 @@ function PlotLines({ lines }: { lines: BklitPlotLine[] }) {
   );
 }
 
+function PlotFills({ fills }: { fills: BklitPlotFill[] }) {
+  const { xScale, yScale } = useChartStable();
+  return (
+    <g aria-hidden="true" className="pointer-events-none">
+      {fills.map((fill) => {
+        const lowerByTime = new Map(fill.lowerData.map((point) => [point.time, point.value]));
+        const pairs = fill.upperData.flatMap((upper) => {
+          const lower = lowerByTime.get(upper.time);
+          return lower == null ? [] : [{ time: upper.time, upper: upper.value, lower }];
+        });
+        if (pairs.length < 2) return null;
+        const upperPath = pairs.map((point, index) => {
+          const x = xScale(new Date(point.time * 1000)) ?? 0;
+          const y = yScale(point.upper) ?? 0;
+          return `${index === 0 ? "M" : "L"}${x},${y}`;
+        });
+        const lowerPath = pairs.slice().reverse().map((point) => {
+          const x = xScale(new Date(point.time * 1000)) ?? 0;
+          const y = yScale(point.lower) ?? 0;
+          return `L${x},${y}`;
+        });
+        return (
+          <path
+            d={`${upperPath.join(" ")} ${lowerPath.join(" ")} Z`}
+            fill={fill.color}
+            fillOpacity={fill.opacity ?? 0.2}
+            key={fill.id}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
 function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
   const { innerHeight, xScale, yScale } = useChartStable();
   return (
@@ -159,7 +203,7 @@ function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
         if (x == null || rawY == null) return null;
         const buy = marker.side === "buy";
         const y = Math.max(12, Math.min(innerHeight - 12, rawY + (buy ? 8 : -8)));
-        const color = buy ? "#22c55e" : "#ef4444";
+        const color = marker.color ?? (buy ? "#22c55e" : "#ef4444");
         const points = buy
           ? `${x},${y - 5} ${x - 4},${y + 2} ${x + 4},${y + 2}`
           : `${x},${y + 5} ${x - 4},${y - 2} ${x + 4},${y - 2}`;
@@ -334,6 +378,7 @@ function CurrentPrice({ candle, price, priceDecimals }: { candle: PlotPoint; pri
 function BklitCandlePlotComponent({
   candles,
   currentPrice,
+  fills = [],
   intervalSeconds,
   levels = [],
   lines = [],
@@ -353,7 +398,13 @@ function BklitCandlePlotComponent({
   const xDomainSlotCount = latest && first
     ? Math.max(points.length + 3, Math.round((latest.time - first.time) / intervalSeconds) + 4)
     : points.length + 3;
-  const lineValues = lines.flatMap((line) => line.data.map((point) => point.value));
+  const lineValues = [
+    ...lines.flatMap((line) => line.data.map((point) => point.value)),
+    ...fills.flatMap((fill) => [
+      ...fill.upperData.map((point) => point.value),
+      ...fill.lowerData.map((point) => point.value),
+    ]),
+  ];
   const yDomain = lineValues.length > 0
     ? [
         Math.min(...points.map((point) => point.low), ...lineValues),
@@ -388,6 +439,7 @@ function BklitCandlePlotComponent({
       >
         <PlotGrid />
         <PlotVolume />
+        <PlotFills fills={fills} />
         <Candlestick
           bodyStrokeWidth={1.25}
           fadedOpacity={0.2}

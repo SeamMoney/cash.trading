@@ -117,11 +117,17 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
+const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
 assert.ok(
   plotSource.includes("@/components/charts/bklit/candlestick"),
   "the active candle renderer must use the local bklit primitives",
+);
+assert.ok(!launchpadChartSource.includes("lightweight-charts"), "the launchpad candle chart must not use TradingView");
+assert.ok(
+  launchpadChartSource.includes("@/components/trade/BklitCandlePlot"),
+  "the launchpad candle chart must share the local bklit renderer",
 );
 assert.ok(
   !plotSource.includes("minBodyHeight="),

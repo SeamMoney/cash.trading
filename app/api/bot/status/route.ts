@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')

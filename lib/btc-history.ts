@@ -9,11 +9,12 @@ export interface MarketHistoryCandle {
 
 const COINBASE_CANDLE_GRANULARITY_SECONDS = 60;
 const COINBASE_MAX_CANDLES = 299;
+const MARKET_DATA_TIMEOUT_MS = 7_000;
 
 async function fetchBinanceSecondCandles(limit: number): Promise<MarketHistoryCandle[]> {
   const res = await fetch(
     `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1s&limit=${limit}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal: AbortSignal.timeout(MARKET_DATA_TIMEOUT_MS) },
   );
 
   if (!res.ok) {
@@ -41,7 +42,10 @@ async function fetchCoinbaseMinuteCandles(limit: number): Promise<MarketHistoryC
   url.searchParams.set("start", new Date(start * 1000).toISOString());
   url.searchParams.set("end", new Date(end * 1000).toISOString());
 
-  const res = await fetch(url.toString(), { cache: "no-store" });
+  const res = await fetch(url.toString(), {
+    cache: "no-store",
+    signal: AbortSignal.timeout(MARKET_DATA_TIMEOUT_MS),
+  });
 
   if (!res.ok) {
     throw new Error(`Coinbase candles API error (${res.status})`);
@@ -90,6 +94,7 @@ export async function fetchRecentBtcCandles(limit = 8): Promise<MarketHistoryCan
 export async function fetchCurrentBtcPrice(): Promise<number> {
   const res = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/ticker", {
     cache: "no-store",
+    signal: AbortSignal.timeout(MARKET_DATA_TIMEOUT_MS),
   });
 
   if (!res.ok) {

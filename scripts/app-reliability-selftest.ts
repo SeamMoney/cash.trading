@@ -48,6 +48,8 @@ const legacyBotRoutes = [
   "app/api/bot/tick/route.ts",
   "app/api/bot/delegate/route.ts",
   "app/api/bot/close-position/route.ts",
+  "app/api/bot/check-delegation/route.ts",
+  "app/api/bot/status/route.ts",
   "app/api/cron/bot-tick/route.ts",
   "app/api/portfolio/route.ts",
   "app/api/positions/route.ts",
@@ -69,6 +71,13 @@ const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "
 const decibelVaultExtractRoute = readFileSync("app/api/decibel/vaults/extract/route.ts", "utf8");
 const decibelVaultApi = readFileSync("lib/decibel-vault-api.ts", "utf8");
 const decibelVaultDelegateRoute = readFileSync("app/api/decibel/vaults/delegate/route.ts", "utf8");
+const btcCandlesRoute = readFileSync("app/api/btc/candles/route.ts", "utf8");
+const btcTickerRoute = readFileSync("app/api/btc/ticker/route.ts", "utf8");
+const btcHistory = readFileSync("lib/btc-history.ts", "utf8");
+const coinbaseCandlesRoute = readFileSync("app/api/coinbase/candles/route.ts", "utf8");
+const coinbaseTickerRoute = readFileSync("app/api/coinbase/ticker/route.ts", "utf8");
+const coinbaseTradesRoute = readFileSync("app/api/coinbase/trades/route.ts", "utf8");
+const cctpStatusRoute = readFileSync("app/api/decibel/cctp/status/route.ts", "utf8");
 const decibelOrderRoute = readFileSync("app/api/decibel/order/route.ts", "utf8");
 const decibelCancelOrderRoute = readFileSync("app/api/decibel/cancel-order/route.ts", "utf8");
 const decibelCreateSubaccountRoute = readFileSync("app/api/decibel/create-subaccount/route.ts", "utf8");
@@ -297,6 +306,22 @@ assert.throws(
 assert.match(decibelVaultApi, /MAX_VAULT_PAYLOAD_BODY_BYTES = 32_000/);
 assert.match(decibelVaultApi, /checkApiRateLimit\(req, routeKey/);
 assert.match(decibelVaultDelegateRoute, /launchpad_automation_not_enabled/);
+assert.match(btcCandlesRoute, /checkApiRateLimit\(req, "btc-candles"/);
+assert.match(btcCandlesRoute, /limit must be an integer from 1 to 1000/);
+assert.match(btcTickerRoute, /checkApiRateLimit\(req, "btc-ticker"/);
+assert.match(btcHistory, /AbortSignal\.timeout\(MARKET_DATA_TIMEOUT_MS\)/);
+assert.match(coinbaseCandlesRoute, /SUPPORTED_GRANULARITIES/);
+assert.match(coinbaseCandlesRoute, /checkApiRateLimit\(req, "coinbase-candles"/);
+assert.match(coinbaseTickerRoute, /checkApiRateLimit\(req, "coinbase-ticker"/);
+assert.match(coinbaseTradesRoute, /checkApiRateLimit\(req, "coinbase-trades"/);
+assert.match(coinbaseTradesRoute, /COINBASE_TRADES_TIMEOUT_MS/);
+assert.match(cctpStatusRoute, /checkApiRateLimit\(req, "cctp-status"/);
+assert.match(cctpStatusRoute, /rawNetwork !== "testnet" && rawNetwork !== "mainnet"/);
+assert.match(cctpStatusRoute, /MAX_IRIS_RESPONSE_BYTES/);
+assert.ok(
+  !cctpStatusRoute.includes("{ error: rawText"),
+  "CCTP status must not echo arbitrary Circle response bodies",
+);
 assert.equal(normalizePositiveU64("18446744073709551615"), "18446744073709551615");
 assert.equal(normalizePositiveU64("000001"), "1");
 assert.throws(() => normalizePositiveU64("18446744073709551616"), /within range/);

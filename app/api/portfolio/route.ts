@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DECIBEL_PACKAGE, MARKETS, MAINNET_MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
 import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-sdk'
+import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 
@@ -321,6 +322,9 @@ function getSizeDecimals(marketName: string): number {
  * GET /api/portfolio?userWalletAddress=0x...
  */
 export async function GET(request: NextRequest) {
+  const unavailable = legacyBotAutomationUnavailable()
+  if (unavailable) return unavailable
+
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')

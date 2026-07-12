@@ -684,7 +684,7 @@ export function OnChainChart({
               );
             })()}
             <a
-              href={explorerAccountUrl(indicatorAddr)}
+              href={explorerAccountUrl(indicatorAddr, "testnet")}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-purple-400 transition-colors underline decoration-zinc-700 underline-offset-2"

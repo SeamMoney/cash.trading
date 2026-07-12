@@ -231,7 +231,7 @@ export function BotDashboard() {
                 <span className="text-[14px] font-display font-semibold text-white">{botName}</span>
                 {bot?.indicatorAddr && (
                   <a
-                    href={explorerAccountUrl(bot.indicatorAddr)}
+                    href={explorerAccountUrl(bot.indicatorAddr, "testnet")}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[9px] font-mono text-purple-400/70 hover:text-purple-300 underline underline-offset-2 decoration-purple-400/30 transition-colors"

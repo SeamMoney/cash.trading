@@ -8,8 +8,15 @@ import {
 } from "@aptos-labs/ts-sdk";
 
 import { prisma } from "@/lib/prisma";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 type DecibelNetwork = "testnet" | "mainnet";
 
@@ -116,17 +123,23 @@ function getVaultField(value: unknown): string | null {
   return typeof inner === "string" ? inner : null;
 }
 
-function extractVaultAddressFromCreateTx(tx: CommittedTransactionResponse) {
+function extractVaultAddressFromCreateTx(
+  tx: CommittedTransactionResponse,
+  network: DecibelNetwork,
+) {
   const txEvents = asRecord(tx)?.events;
   if (!Array.isArray(txEvents)) {
     throw new Error("Transaction does not include events");
   }
 
+  const expectedEventType =
+    `${getDecibelPackage(network)}::vault::VaultCreatedEvent`.toLowerCase();
+
   for (const event of txEvents) {
     const eventRecord = asRecord(event);
     if (!eventRecord) continue;
     const type = eventRecord.type;
-    if (typeof type !== "string" || !type.includes("::vault::VaultCreatedEvent")) {
+    if (typeof type !== "string" || type.toLowerCase() !== expectedEventType) {
       continue;
     }
 
@@ -161,11 +174,25 @@ async function getVaultPortfolioSubaccounts(
 }
 
 export async function POST(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-vault-extract", 10, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
   try {
     const body = (await req.json().catch(() => ({}))) as ExtractVaultBody;
     const txHash = body.txHash ?? body.transactionHash ?? body.hash;
-    if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]+$/.test(txHash.trim())) {
-      return NextResponse.json({ error: "txHash is required" }, { status: 400 });
+    if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash.trim())) {
+      return NextResponse.json(
+        { error: "a valid 32-byte txHash is required" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     const network = getNetwork(body.network);
@@ -174,7 +201,8 @@ export async function POST(req: NextRequest) {
       transactionHash: txHash.trim(),
       options: { timeoutSecs: 45, checkSuccess: true },
     });
-    const vaultAddress = extractVaultAddressFromCreateTx(tx);
+    const vaultAddress = extractVaultAddressFromCreateTx(tx, network);
+    const txSender = optionalAddress(asRecord(tx)?.sender, "transactionSender");
     const portfolioSubaccounts = await getVaultPortfolioSubaccounts(
       aptos,
       network,
@@ -188,59 +216,74 @@ export async function POST(req: NextRequest) {
     let strategyVault = null;
     let linkReason: string | null = null;
 
-    if (body.strategyVaultId) {
+    if (process.env.NODE_ENV === "production") {
+      linkReason = "launchpad_automation_not_enabled";
+    } else if (!process.env.DATABASE_URL) {
+      linkReason = "database_not_configured";
+    } else if (!txSender) {
+      linkReason = "transaction_sender_unavailable";
+    } else if (body.strategyVaultId) {
       const existing = await prisma.strategyVault.findUnique({
         where: { id: body.strategyVaultId },
       });
       if (!existing) {
         return NextResponse.json(
           { error: "Strategy vault not found", vaultAddress, network },
-          { status: 404 },
+          { status: 404, headers: NO_STORE_HEADERS },
         );
       }
 
-      strategyVault = await prisma.strategyVault.update({
-        where: { id: body.strategyVaultId },
-        data: {
-          vaultAddr: vaultAddress,
-          decibelSubaccount,
-          ...(body.marketName ? { marketName: body.marketName.trim() } : {}),
-          ...(body.allocationPct !== undefined
-            ? { allocationPct: clampAllocationPct(body.allocationPct) }
-            : {}),
-          ...(body.status ? { status: body.status } : {}),
-        },
-      });
-    } else if (body.indicatorAddr && body.ownerWallet && body.marketName) {
+      const existingOwner = normalizeAddress(existing.ownerWallet, "strategyVault.ownerWallet");
+      if (existingOwner !== txSender) {
+        linkReason = "transaction_sender_does_not_own_strategy";
+      } else {
+        strategyVault = await prisma.strategyVault.update({
+          where: { id: body.strategyVaultId },
+          data: {
+            vaultAddr: vaultAddress,
+            decibelSubaccount,
+            ...(body.marketName ? { marketName: body.marketName.trim() } : {}),
+            ...(body.allocationPct !== undefined
+              ? { allocationPct: clampAllocationPct(body.allocationPct) }
+              : {}),
+            ...(body.status ? { status: body.status } : {}),
+          },
+        });
+      }
+    } else if (body.indicatorAddr && body.marketName) {
       const indicatorAddr = normalizeAddress(body.indicatorAddr, "indicatorAddr");
-      const ownerWallet = normalizeAddress(body.ownerWallet, "ownerWallet");
+      const requestedOwner = optionalAddress(body.ownerWallet, "ownerWallet");
       const marketName = body.marketName.trim();
       if (!marketName) throw new Error("marketName is required");
 
-      strategyVault = await prisma.strategyVault.upsert({
-        where: {
-          indicatorAddr_ownerWallet: {
-            indicatorAddr,
-            ownerWallet,
+      if (requestedOwner && requestedOwner !== txSender) {
+        linkReason = "transaction_sender_does_not_match_owner";
+      } else {
+        strategyVault = await prisma.strategyVault.upsert({
+          where: {
+            indicatorAddr_ownerWallet: {
+              indicatorAddr,
+              ownerWallet: txSender,
+            },
           },
-        },
-        create: {
-          indicatorAddr,
-          ownerWallet,
-          marketName,
-          allocationPct: clampAllocationPct(body.allocationPct),
-          vaultAddr: vaultAddress,
-          decibelSubaccount,
-          status: body.status ?? "ACTIVE",
-        },
-        update: {
-          marketName,
-          allocationPct: clampAllocationPct(body.allocationPct),
-          vaultAddr: vaultAddress,
-          decibelSubaccount,
-          status: body.status ?? "ACTIVE",
-        },
-      });
+          create: {
+            indicatorAddr,
+            ownerWallet: txSender,
+            marketName,
+            allocationPct: clampAllocationPct(body.allocationPct),
+            vaultAddr: vaultAddress,
+            decibelSubaccount,
+            status: body.status ?? "ACTIVE",
+          },
+          update: {
+            marketName,
+            allocationPct: clampAllocationPct(body.allocationPct),
+            vaultAddr: vaultAddress,
+            decibelSubaccount,
+            status: body.status ?? "ACTIVE",
+          },
+        });
+      }
     } else {
       linkReason =
         "Pass strategyVaultId or indicatorAddr + ownerWallet + marketName to link this vault to an indicator strategy.";
@@ -251,15 +294,20 @@ export async function POST(req: NextRequest) {
       network,
       txHash: tx.hash,
       txVersion: tx.version,
+      txSender,
       vaultAddress,
       portfolioSubaccounts,
       decibelSubaccount,
       strategyVault,
       linkReason,
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to extract Decibel vault address";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[decibel-vault-extract] verification failed:", message);
+    return NextResponse.json(
+      { error: "Could not verify the Decibel vault creation transaction" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

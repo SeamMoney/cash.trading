@@ -39,6 +39,8 @@ const legacyBotRoutes = [
   "app/api/bot/delegate/route.ts",
   "app/api/bot/close-position/route.ts",
   "app/api/cron/bot-tick/route.ts",
+  "app/api/portfolio/route.ts",
+  "app/api/positions/route.ts",
 ].map((path) => [path, readFileSync(path, "utf8")] as const);
 const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
 const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
@@ -54,6 +56,9 @@ const decibelWalletBalanceRoute = readFileSync("app/api/decibel/wallet-balance/r
 const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8");
 const decibelVaultStatusRoute = readFileSync("app/api/decibel/vaults/status/route.ts", "utf8");
 const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "utf8");
+const decibelVaultExtractRoute = readFileSync("app/api/decibel/vaults/extract/route.ts", "utf8");
+const constantsSource = readFileSync("lib/constants.ts", "utf8");
+const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
 };
@@ -198,6 +203,16 @@ assert.match(decibelMarketsRoute, /checkApiRateLimit\(req, "decibel-markets"/);
 assert.match(decibelVaultStatusRoute, /isValidAptosAddress/);
 assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);
 assert.match(vaultActionModal, /network: indicator\.network/);
+assert.match(decibelVaultExtractRoute, /checkApiRateLimit\(req, "decibel-vault-extract"/);
+assert.match(decibelVaultExtractRoute, /\^0x\[0-9a-fA-F\]\{64\}\$/);
+assert.match(decibelVaultExtractRoute, /expectedEventType/);
+assert.match(decibelVaultExtractRoute, /type\.toLowerCase\(\) !== expectedEventType/);
+assert.match(decibelVaultExtractRoute, /linkReason = "launchpad_automation_not_enabled"/);
+assert.match(decibelVaultExtractRoute, /transaction_sender_does_not_own_strategy/);
+assert.match(vaultActionModal, /allocationPct,\s*network: indicator\.network/);
+assert.match(constantsSource, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
+assert.match(constantsSource, /network: AptosNetworkName = APTOS_NETWORK/);
+assert.match(launchpadOnChainChart, /explorerAccountUrl\(indicatorAddr, "testnet"\)/);
 
 for (const removedDependency of [
   "@blocto/aptos-wallet-adapter-plugin",

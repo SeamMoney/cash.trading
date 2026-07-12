@@ -87,6 +87,8 @@ export function TradePanel({
   const dragRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const collateralDropdownRef = useRef<HTMLDivElement>(null);
+  const submissionTokenRef = useRef<symbol | null>(null);
+  const statusResetTokenRef = useRef<symbol | null>(null);
   const {
     hasDecibelAccount,
     isLoadingSubaccounts,
@@ -98,6 +100,9 @@ export function TradePanel({
     marketName ||
     (marketId && PERP_MARKET_DATA[marketId]?.marketName) ||
     market.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
+  const tradeContext = `${account?.address?.toString() ?? ""}:${decibelNetwork}:${selectedSubaccount ?? ""}:${decibelMarketName}`;
+  const tradeContextRef = useRef(tradeContext);
+  tradeContextRef.current = tradeContext;
   const inputAmount = Number(amount);
   const hasTradeAmount = Number.isFinite(inputAmount) && inputAmount > 0;
   const supportedDecibelMarket = Boolean(decibelMarketName || marketAddress);
@@ -132,6 +137,16 @@ export function TradePanel({
   }, []);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
+
+  useEffect(() => {
+    submissionTokenRef.current = null;
+    statusResetTokenRef.current = null;
+    setTradeStatus("idle");
+    setTradeAction("idle");
+    setOrderLifecycle("idle");
+    setStatusMessage("");
+    setStatusHash("");
+  }, [tradeContext]);
 
   useEffect(() => {
     if (!collateralOpen) return;
@@ -210,7 +225,7 @@ export function TradePanel({
 
   const handleSubmit = useCallback(async () => {
     const collateral = Number(amount);
-    if (tradeStatus === "submitting") return;
+    if (submissionTokenRef.current) return;
     if (!connected || !account) {
       setStatusMessage("Connect wallet before placing a Decibel order.");
       setTradeStatus("error");
@@ -262,6 +277,13 @@ export function TradePanel({
       setTradeStatus("error");
       return;
     }
+    const submissionToken = Symbol("decibel-order");
+    const startedInContext = tradeContextRef.current;
+    const isCurrentSubmission = () =>
+      submissionTokenRef.current === submissionToken
+      && tradeContextRef.current === startedInContext;
+    submissionTokenRef.current = submissionToken;
+    statusResetTokenRef.current = null;
     inputRef.current?.blur();
     setTradeAction("order");
     setTradeStatus("submitting");
@@ -287,6 +309,7 @@ export function TradePanel({
         }),
       });
       const json = await res.json();
+      if (!isCurrentSubmission()) return;
       if (!res.ok || json.error) {
         const code = typeof json.code === "string" ? json.code : "";
         if (code === "STALE_ORACLE_DENIED") setOrderLifecycle("stale-oracle-denied");
@@ -298,18 +321,22 @@ export function TradePanel({
       setOrderLifecycle("wallet");
       setStatusMessage("Sign Decibel order in your wallet...");
       const result = await signAndSubmitTransaction({ data: json.payload });
-      setStatusHash(result.hash);
-      setOrderLifecycle("submitted");
-      setStatusMessage("Order submitted. Waiting for on-chain confirmation...");
+      if (isCurrentSubmission()) {
+        setStatusHash(result.hash);
+        setOrderLifecycle("submitted");
+        setStatusMessage("Order submitted. Waiting for on-chain confirmation...");
+      }
       emitDecibelPositionsRefresh();
       await waitForTransactionConfirmation(result.hash);
       emitDecibelPositionsRefresh();
+      if (!isCurrentSubmission()) return;
       setStatusMessage("Order confirmed. Checking Decibel position state...");
 
       const positionsRes = await fetch(
         `/api/decibel/positions?address=${selectedSubaccount}&openOrders=true&network=${decibelNetwork}`
       );
       const positionsJson = await positionsRes.json().catch(() => ({}));
+      if (!isCurrentSubmission()) return;
       const hasMatchingPosition = Array.isArray(positionsJson.positions)
         ? positionsJson.positions.some(
             (position: { market?: string }) =>
@@ -340,19 +367,32 @@ export function TradePanel({
       });
       emitDecibelPositionsRefresh();
       setAmount("");
+      const resetToken = Symbol("decibel-order-reset");
+      statusResetTokenRef.current = resetToken;
       setTimeout(() => {
+        if (
+          statusResetTokenRef.current !== resetToken
+          || tradeContextRef.current !== startedInContext
+        ) return;
+        statusResetTokenRef.current = null;
         setTradeStatus("idle");
         setTradeAction("idle");
         setOrderLifecycle("idle");
       }, 2500);
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Order failed");
-      setTradeStatus("error");
-      setOrderLifecycle((current) =>
-        current === "stale-oracle-denied" || current === "denied"
-          ? current
-          : "error"
-      );
+      if (isCurrentSubmission()) {
+        setStatusMessage(err instanceof Error ? err.message : "Order failed");
+        setTradeStatus("error");
+        setOrderLifecycle((current) =>
+          current === "stale-oracle-denied" || current === "denied"
+            ? current
+            : "error"
+        );
+      }
+    } finally {
+      if (submissionTokenRef.current === submissionToken) {
+        submissionTokenRef.current = null;
+      }
     }
   }, [
     account,
@@ -373,7 +413,6 @@ export function TradePanel({
     signAndSubmitTransaction,
     subaccounts,
     supportedDecibelMarket,
-    tradeStatus,
   ]);
 
   const isLong = side === "long";

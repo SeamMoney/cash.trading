@@ -15,7 +15,8 @@ type SignFn = (transaction: any) => Promise<any>;
 export async function buildAndSign(
   apiUrl: string,
   body: Record<string, unknown>,
-  signAndSubmitTransaction: SignFn
+  signAndSubmitTransaction: SignFn,
+  shouldSign: () => boolean = () => true,
 ): Promise<{ hash: string; explorerUrl: string }> {
   const res = await fetch(apiUrl, {
     method: "POST",
@@ -32,6 +33,9 @@ export async function buildAndSign(
   const { payload } = json;
   if (!payload) {
     throw new Error("API did not return a payload");
+  }
+  if (!shouldSign()) {
+    throw new Error("Transaction context changed before signing");
   }
 
   const result = await signAndSubmitTransaction({ data: payload });

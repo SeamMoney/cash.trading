@@ -15,7 +15,21 @@ import { prisma } from "@/lib/prisma";
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+function authorizeRefresh(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: 'Market refresh is not configured' }, { status: 503 });
+  }
+  if (request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return null;
+}
+
+export async function GET(request: Request) {
+  const unauthorized = authorizeRefresh(request);
+  if (unauthorized) return unauthorized;
+
   const results: {
     success: boolean;
     timestamp: string;
@@ -99,6 +113,9 @@ export async function GET() {
  * POST /api/markets/refresh - Force refresh a specific market for a bot
  */
 export async function POST(request: Request) {
+  const unauthorized = authorizeRefresh(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const { userWalletAddress, userSubaccount, marketName } = body;

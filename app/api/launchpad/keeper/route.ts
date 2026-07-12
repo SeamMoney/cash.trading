@@ -138,7 +138,10 @@ export async function GET(req: Request) {
   // Verify Vercel cron secret so random internet traffic can't trigger this
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    return NextResponse.json({ error: "Keeper cron is not configured" }, { status: 503 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -429,6 +432,16 @@ export async function GET(req: Request) {
 // ── POST — manual single-indicator push (frontend / demo) ───────────────────
 
 export async function POST(req: Request) {
+  const keeperSecret = process.env.LAUNCHPAD_KEEPER_API_SECRET ?? process.env.CRON_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    if (!keeperSecret) {
+      return NextResponse.json({ error: "Keeper API is not configured" }, { status: 503 });
+    }
+    if (req.headers.get("authorization") !== `Bearer ${keeperSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   try {
     const body = await req.json() as {
       indicatorAddr: string;

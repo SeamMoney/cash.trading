@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet } from "@/lib/wallet-utils";
@@ -38,6 +38,7 @@ export function Header() {
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const balanceRequestIdRef = useRef(0);
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => {
@@ -45,6 +46,9 @@ export function Header() {
   }, [pathname]);
 
   const addressStr = account?.address?.toString() ?? "";
+  const balanceContext = `${addressStr}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+  const balanceContextRef = useRef(balanceContext);
+  balanceContextRef.current = balanceContext;
   const shortAddress = addressStr
     ? `${addressStr.slice(0, 6)}...${addressStr.slice(-4)}`
     : "";
@@ -53,9 +57,18 @@ export function Header() {
   const isXChain = chain === "ethereum" || chain === "solana";
 
   const refreshBalance = useCallback(async (signal?: AbortSignal) => {
+    const requestContext = `${addressStr}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+    if (balanceContextRef.current !== requestContext) return;
+    const requestId = ++balanceRequestIdRef.current;
+    const isCurrentRequest = () =>
+      balanceRequestIdRef.current === requestId
+      && balanceContextRef.current === requestContext
+      && !signal?.aborted;
     if (!connected || !addressStr) {
-      setBalance(null);
-      setBalanceLoading(false);
+      if (isCurrentRequest()) {
+        setBalance(null);
+        setBalanceLoading(false);
+      }
       return;
     }
 
@@ -72,8 +85,8 @@ export function Header() {
           signal,
         });
         const data = await res.json().catch(() => ({}));
-        const equity = Number(data?.overview?.equity);
-        if (res.ok && Number.isFinite(equity)) {
+        const equity = data?.overview?.equity;
+        if (isCurrentRequest() && res.ok && typeof equity === "number" && Number.isFinite(equity)) {
           setBalance(equity);
           return;
         }
@@ -88,13 +101,19 @@ export function Header() {
         signal,
       });
       const data = await res.json().catch(() => ({}));
-      const walletBalance = Number(data?.balance);
-      setBalance(res.ok && Number.isFinite(walletBalance) ? walletBalance : null);
+      const walletBalance = data?.balance;
+      if (isCurrentRequest()) {
+        setBalance(
+          res.ok && typeof walletBalance === "number" && Number.isFinite(walletBalance)
+            ? walletBalance
+            : null,
+        );
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setBalance(null);
+      if (isCurrentRequest()) setBalance(null);
     } finally {
-      setBalanceLoading(false);
+      if (isCurrentRequest()) setBalanceLoading(false);
     }
   }, [addressStr, connected, decibelNetwork, selectedSubaccount]);
 
@@ -220,20 +239,12 @@ export function Header() {
                 )}
               </button>
             ) : (
-              <>
-                <button
-                  onClick={handleWalletClick}
-                  className="hidden sm:block text-[14px] font-medium text-zinc-400 hover:text-white transition-colors"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={handleWalletClick}
-                  className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black hover:bg-[#5dff3f] transition-colors"
-                >
-                  Sign In
-                </button>
-              </>
+              <button
+                onClick={handleWalletClick}
+                className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black hover:bg-[#5dff3f] transition-colors"
+              >
+                Sign In
+              </button>
             )}
           </div>
         </div>

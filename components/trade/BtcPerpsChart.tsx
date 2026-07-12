@@ -432,7 +432,6 @@ function BtcPerpsChartComponent({
     price: coinbasePrice,
     connected: coinbaseConnected,
   } = usePriceCandles(market.marketName, active && useCoinbaseLineFeed, [], 0, 1, {
-    seedBackfillTicks: false,
     preserveStateOnResume: true,
   });
 

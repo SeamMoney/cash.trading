@@ -875,11 +875,10 @@ export function BTCChart({
       ? current
       : activeMarkets[0].id);
   }, [activeMarkets]);
-  // Always stream BTC data — other markets use BTC feed as demo
   const { ticks, candles, liveCandle, price, connected } = usePriceCandles(
-    "BTC/USD",
+    marketConfig.id,
     chartActive && !isPerpsMarket,
-    initialHistory,
+    marketConfig.id === "BTC/USD" ? initialHistory : EMPTY_HISTORY,
     undefined,
     undefined,
     { preserveStateOnResume: true },

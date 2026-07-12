@@ -17,7 +17,6 @@ export interface Tick {
 }
 
 type UsePriceCandlesOptions = {
-  seedBackfillTicks?: boolean;
   preserveStateOnResume?: boolean;
 };
 
@@ -49,22 +48,6 @@ export function supportsPriceCandleMarket(market: string) {
 
 export function getPriceCandleProductId(market: string) {
   return PRODUCT_MAP[market] ?? null;
-}
-
-/** Nudge truly flat candles so they aren't invisible zero-height lines */
-function ensureBody(c: Candle, candleSecs = DEFAULT_CANDLE_SECS): Candle {
-  if (c.open === c.close) {
-    const nudge = c.close * 0.00004; // tiny — just enough to not be a line
-    const dir = Math.floor(c.time / candleSecs) % 2 === 0 ? 1 : -1;
-    const close = c.open + nudge * dir;
-    return {
-      ...c,
-      close,
-      high: Math.max(c.high, c.open, close) + nudge * 0.5,
-      low: Math.min(c.low, c.open, close) - nudge * 0.5,
-    };
-  }
-  return c;
 }
 
 function readCachedPrice(market: string): { price: number; ts: number } | null {
@@ -121,30 +104,9 @@ function makeSeed(p: number, candleSecs = DEFAULT_CANDLE_SECS): { candle: Candle
   const now = Date.now() / 1000;
   const ct = Math.floor(now / candleSecs) * candleSecs;
   return {
-    candle: ensureBody({ time: ct, open: p, high: p, low: p, close: p }, candleSecs),
+    candle: { time: ct, open: p, high: p, low: p, close: p },
     tick: { time: now, value: p },
   };
-}
-
-/** Generate synthetic backfill ticks so the line chart appears pre-filled */
-function generateBackfillTicks(price: number, durationSecs = 60, count = 30): Tick[] {
-  const now = Date.now() / 1000;
-  const ticks: Tick[] = [];
-  const step = durationSecs / count;
-  // Tiny random walk backwards from the current price
-  let p = price;
-  const points: { time: number; value: number }[] = [];
-  for (let i = count; i >= 0; i--) {
-    points.unshift({ time: now - i * step, value: p });
-    // Walk backwards with tiny drift (~0.002% per step)
-    const drift = p * 0.00002 * (Math.sin(i * 1.7) + Math.cos(i * 0.3) * 0.5);
-    p += drift;
-  }
-  // Reverse the walk so it converges to current price at the right edge
-  for (const pt of points) {
-    ticks.push({ time: pt.time, value: pt.value });
-  }
-  return ticks;
 }
 
 function mergeCandles(existing: Candle[], incoming: Candle[]) {
@@ -209,8 +171,7 @@ function buildHistoryBootstrap(rawCandles: MarketHistoryCandle[], candleSecs = D
   }
 
   const aggregated = Array.from(grouped.values())
-    .sort((a, b) => a.time - b.time)
-    .map((candle) => ensureBody(candle, candleSecs));
+    .sort((a, b) => a.time - b.time);
 
   if (aggregated.length === 0) return null;
 
@@ -238,7 +199,7 @@ export function usePriceCandles(
   candleSecs = DEFAULT_CANDLE_SECS,
   options: UsePriceCandlesOptions = {},
 ) {
-  const { seedBackfillTicks = true, preserveStateOnResume = false } = options;
+  const { preserveStateOnResume = false } = options;
   const initialBootstrapKey = `${market}:${candleSecs}:${initialHistory.length}:${initialHistory[0]?.time ?? "none"}:${initialHistory[initialHistory.length - 1]?.time ?? "none"}`;
   const initialBootstrapKeyRef = useRef("");
   const initialBootstrapRef = useRef<ReturnType<typeof buildHistoryBootstrap>>(null);
@@ -296,38 +257,16 @@ export function usePriceCandles(
       const live = liveCandleRef.current;
 
       if (live && live.time === candleTime) {
-        const updated = ensureBody({
+        const updated = {
           ...live,
           high: Math.max(live.high, nextPrice),
           low: Math.min(live.low, nextPrice),
           close: nextPrice,
-        }, candleSecs);
+        };
         liveCandleRef.current = updated;
         setLiveCandle(updated);
       } else if (live) {
-        const range = live.high - live.low;
-        const isOutlier = live.close > 0 && range / live.close > 0.005;
-        const committed = isOutlier ? null : ensureBody({ ...live });
-        const baseClose = committed ? committed.close : nextPrice;
-        const baseTime = committed ? committed.time : live.time;
-        const fills: Candle[] = [];
-
-        for (let t = baseTime + candleSecs; t < candleTime && fills.length < 20; t += candleSecs) {
-          fills.push(
-            ensureBody({
-              time: t,
-              open: baseClose,
-              high: baseClose,
-              low: baseClose,
-              close: baseClose,
-            }, candleSecs)
-          );
-        }
-
-        const toAdd = committed ? [committed, ...fills] : fills;
-        if (toAdd.length > 0) {
-          setCandles((prev) => mergeCandles(prev, toAdd));
-        }
+        setCandles((prev) => mergeCandles(prev, [{ ...live }]));
 
         const newCandle: Candle = {
           time: candleTime,
@@ -337,7 +276,7 @@ export function usePriceCandles(
           close: nextPrice,
         };
         liveCandleRef.current = newCandle;
-        setLiveCandle(ensureBody(newCandle, candleSecs));
+        setLiveCandle(newCandle);
       } else {
         const seed = makeSeed(nextPrice, candleSecs);
         liveCandleRef.current = seed.candle;
@@ -378,7 +317,7 @@ export function usePriceCandles(
       liveCandleRef.current = s.candle;
       setLiveCandle(s.candle);
       setPrice(cachedP);
-      setTicks(seedBackfillTicks ? generateBackfillTicks(cachedP) : []);
+      setTicks([]);
     } else {
       liveCandleRef.current = null;
       setLiveCandle(null);
@@ -429,13 +368,13 @@ export function usePriceCandles(
             const currentLive = liveCandleRef.current;
 
             if (currentLive && currentLive.time === bootstrap.liveCandle.time) {
-              const mergedLive = ensureBody({
+              const mergedLive = {
                 time: currentLive.time,
                 open: bootstrap.liveCandle.open,
                 high: Math.max(currentLive.high, bootstrap.liveCandle.high),
                 low: Math.min(currentLive.low, bootstrap.liveCandle.low),
                 close: currentLive.close,
-              }, candleSecs);
+              };
               liveCandleRef.current = mergedLive;
               setLiveCandle(mergedLive);
             } else if (!currentLive || currentLive.time <= bootstrap.liveCandle.time) {
@@ -466,11 +405,7 @@ export function usePriceCandles(
             const seed = makeSeed(nextPrice, candleSecs);
             liveCandleRef.current = seed.candle;
             setLiveCandle(seed.candle);
-            setTicks((prev) =>
-              prev.length < 5 && seedBackfillTicks
-                ? mergeTicks(generateBackfillTicks(nextPrice), [seed.tick])
-                : mergeTicks(prev, [seed.tick])
-            );
+            setTicks((prev) => mergeTicks(prev, [seed.tick]));
           }
           ingestPrice(nextPrice);
         }
@@ -535,7 +470,7 @@ export function usePriceCandles(
       historyController.abort();
       ws?.close();
     };
-  }, [candleSecs, enabled, historyLimit, initialBootstrap, market, preserveStateOnResume, seedBackfillTicks]);
+  }, [candleSecs, enabled, historyLimit, initialBootstrap, market, preserveStateOnResume]);
 
   return { ticks, candles, liveCandle, price, connected };
 }

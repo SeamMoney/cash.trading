@@ -6,8 +6,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const DECIBEL_BASE = "https://api.mainnet.aptoslabs.com/decibel/api/v1";
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+const VAULT_CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=300",
+};
+const VAULT_ERROR_CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=0, s-maxage=5, stale-while-revalidate=30",
 };
 
 export interface DecibelVault {
@@ -60,12 +63,12 @@ function unavailableVaults(reason: string) {
   if (lastGood) {
     return NextResponse.json(
       { ...lastGood, stale: true, reason },
-      { headers: NO_STORE_HEADERS },
+      { headers: VAULT_ERROR_CACHE_HEADERS },
     );
   }
   return NextResponse.json(
     { vaults: [], fetchedAt: Date.now(), unavailable: true, reason },
-    { headers: NO_STORE_HEADERS },
+    { headers: VAULT_ERROR_CACHE_HEADERS },
   );
 }
 
@@ -91,7 +94,7 @@ export async function GET() {
       const res = await fetch(`${DECIBEL_BASE}/vaults?${params.toString()}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: controller.signal,
-        cache: "no-store",
+        next: { revalidate: 30 },
       });
       if (!res.ok) {
         throw new Error(`Decibel vaults API returned ${res.status}`);
@@ -131,7 +134,7 @@ export async function GET() {
       totalCount: firstPage.total_count,
       totalValueLocked: firstPage.total_value_locked,
       totalVolume: firstPage.total_volume,
-    }, { headers: NO_STORE_HEADERS });
+    }, { headers: VAULT_CACHE_HEADERS });
   } catch (error) {
     const reason = error instanceof Error && error.name === "AbortError"
       ? "timeout"

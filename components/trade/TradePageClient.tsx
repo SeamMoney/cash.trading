@@ -97,7 +97,7 @@ function useDecibelVaults(enabled = true) {
 
   const fetchVaults = useCallback(async () => {
     try {
-      const res = await fetch("/api/decibel/vaults", { cache: "no-store" });
+      const res = await fetch("/api/decibel/vaults");
       if (!res.ok) return;
       const data = await res.json();
       const fetched: DecibelVault[] = data.vaults ?? [];

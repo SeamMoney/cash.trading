@@ -74,6 +74,18 @@ async function submitUsdtPayout(
 }
 
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        success: false,
+        unavailable: true,
+        reason: "creator_payout_not_enabled",
+        error: "Creator payouts require an on-chain claim before treasury settlement is enabled.",
+      },
+      { status: 501 },
+    );
+  }
+
   try {
     const body = await req.json() as WithdrawRequest;
     const { indicatorAddr, creatorAddr } = body;

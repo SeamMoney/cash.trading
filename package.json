@@ -26,6 +26,7 @@
     "@decibeltrade/sdk": "^0.7.0",
     "@monaco-editor/react": "^4.7.0",
     "@neondatabase/serverless": "^1.0.2",
+    "@noble/hashes": "1.8.0",
     "@number-flow/react": "^0.5.14",
     "@paper-design/shaders-react": "^0.0.66",
     "@prisma/adapter-neon": "^7.0.1",

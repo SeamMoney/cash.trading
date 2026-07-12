@@ -1,8 +1,31 @@
 import { NextResponse } from "next/server";
+import { AccountAddress, Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 import { getWhop } from "@/lib/whop";
 import { loadState, saveState } from "@/lib/launchpad/persist";
 
 export const runtime = "nodejs";
+
+const FACTORY_PACKAGE = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
+const APTOS_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
+const apiKey = process.env.GEOMI_API_KEY_TESTNET ?? process.env.APTOS_API_KEY_TESTNET;
+const aptos = new Aptos(new AptosConfig({
+  network: Network.TESTNET,
+  ...(apiKey ? { clientConfig: { API_KEY: apiKey } } : {}),
+}));
+
+function normalizeAptosAddress(value: unknown): string | null {
+  if (typeof value !== "string" || !APTOS_ADDRESS_RE.test(value)) return null;
+  try {
+    return AccountAddress.from(value).toStringLong().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function nonZeroAptosAddress(value: unknown): string | null {
+  const normalized = normalizeAptosAddress(value);
+  return normalized && !/^0x0+$/.test(normalized) ? normalized : null;
+}
 
 export interface IndicatorEntry {
   address: string;
@@ -477,21 +500,236 @@ const SEED: IndicatorEntry[] = [
 // Persisted state wins for entries it knows, but seeds added after the state
 // file was first written (e.g. newly deployed live indicators) must still
 // surface — merge any unseen seeds in front of the persisted list.
-const persistedIndicators = loadState<IndicatorEntry[]>("indicators", [...SEED]);
+function normalizeSeed(entry: IndicatorEntry): IndicatorEntry {
+  return {
+    ...entry,
+    aptReserves: 0,
+    totalRaised: 0,
+    simsFunded: 0,
+    isGraduated: false,
+    vaultAddr: nonZeroAptosAddress(entry.vaultAddr),
+    lastSignal: 0,
+    lastSignalTime: 0,
+    creatorEarningsUsdt: 0,
+  };
+}
+
+const NORMALIZED_SEED = SEED.map(normalizeSeed);
+const persistedIndicators = process.env.NODE_ENV === "production"
+  ? []
+  : loadState<IndicatorEntry[]>("indicators", [...NORMALIZED_SEED]);
 const persistedAddrs = new Set(persistedIndicators.map((i) => i.address.toLowerCase()));
 export const indicatorRegistry: IndicatorEntry[] = [
-  ...SEED.filter((s) => !persistedAddrs.has(s.address.toLowerCase())),
+  ...NORMALIZED_SEED.filter((s) => !persistedAddrs.has(s.address.toLowerCase())),
   ...persistedIndicators,
 ];
+
+type OnChainIndicatorState = {
+  asset: string;
+  created_at: string;
+  indicator_type: number | string;
+  is_graduated: boolean;
+  last_signal: number | string;
+  last_signal_time: string;
+  long_period: string;
+  name: string;
+  owner: string;
+  short_period: string;
+  symbol: string;
+  third_period: string;
+  total_prices_pushed: string;
+  total_signals: string;
+  vault_addr: string;
+};
+
+type IndicatorDiscovery = {
+  indicators: IndicatorEntry[];
+  source: "aptos_testnet" | "seed_fallback";
+};
+
+let discoveryCache: { result: IndicatorDiscovery; expiresAt: number } | null = null;
+let discoveryInFlight: Promise<IndicatorDiscovery> | null = null;
+
+async function hydrateStandaloneIndicator(seed: IndicatorEntry): Promise<IndicatorEntry | null> {
+  if (!seed.pkg || !normalizeAptosAddress(seed.pkg)) return null;
+  try {
+    const state = await aptos.getAccountResource<Record<string, unknown>>({
+      accountAddress: seed.address,
+      resourceType: `${seed.pkg}::indicator::IndicatorState`,
+    });
+    const numeric = (key: string, fallback = 0) => {
+      const value = Number(state[key]);
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const text = (key: string) => typeof state[key] === "string" ? state[key] : undefined;
+    const owner = normalizeAptosAddress(state.owner) ?? normalizeAptosAddress(seed.creator);
+    if (!owner) return null;
+
+    const shortPeriod = numeric("short_period", numeric("fast_len", seed.params[0] ?? 0));
+    const longPeriod = numeric("long_period", numeric("slow_len", seed.params[1] ?? 0));
+    const thirdPeriod = numeric("third_period", seed.params[2] ?? 0);
+    const createdAtSeconds = numeric("created_at");
+
+    return {
+      ...seed,
+      address: normalizeAptosAddress(seed.address) ?? seed.address,
+      creator: owner,
+      name: text("name") || seed.name,
+      symbol: text("symbol") || seed.symbol,
+      assets: text("asset") ? [text("asset")!] : seed.assets,
+      createdAt: createdAtSeconds > 0 ? createdAtSeconds * 1000 : 0,
+      isGraduated: state.is_graduated === true,
+      vaultAddr: nonZeroAptosAddress(state.vault_addr),
+      lastSignal: numeric("last_signal"),
+      lastSignalTime: numeric("last_signal_time") * 1000,
+      params: [shortPeriod, longPeriod, thirdPeriod],
+      indicatorType: numeric("indicator_type", seed.indicatorType),
+      creatorEarningsUsdt: 0,
+    };
+  } catch (error) {
+    console.warn(`[launchpad] Could not verify standalone indicator ${seed.address}:`, error);
+    return null;
+  }
+}
+
+async function discoverOnChainIndicators(): Promise<IndicatorDiscovery> {
+  if (discoveryCache && discoveryCache.expiresAt > Date.now()) {
+    return discoveryCache.result;
+  }
+  if (discoveryInFlight) return discoveryInFlight;
+
+  discoveryInFlight = (async () => {
+    try {
+      const [rawAddresses] = await aptos.view({
+        payload: {
+          function: `${FACTORY_PACKAGE}::indicator::get_all_indicators`,
+          functionArguments: [],
+        },
+      }) as [string[]];
+      const seedByAddress = new Map(
+        indicatorRegistry.map((entry) => [entry.address.toLowerCase(), entry]),
+      );
+      const discovered: IndicatorEntry[] = [];
+      let cursor = 0;
+
+      async function worker() {
+        while (cursor < rawAddresses.length) {
+          const address = rawAddresses[cursor++];
+          try {
+            const [state, creatorInfo] = await Promise.all([
+              aptos.getAccountResource<OnChainIndicatorState>({
+                accountAddress: address,
+                resourceType: `${FACTORY_PACKAGE}::indicator::IndicatorState`,
+              }),
+              aptos.view({
+                payload: {
+                  function: `${FACTORY_PACKAGE}::indicator::get_creator_info`,
+                  functionArguments: [address],
+                },
+              }).catch(() => [false, "0x", "0", 0, "0"]),
+            ]);
+            const seed = seedByAddress.get(address.toLowerCase());
+            const [isProprietary, algoHash, feeBps, feeModel, earningsE6] = creatorInfo;
+            const vaultAddress = nonZeroAptosAddress(state.vault_addr);
+            const modelNumber = Number(feeModel);
+            discovered.push({
+              ...(seed ?? {
+                description: "On-chain indicator discovered from the launchpad factory.",
+                assets: [state.asset],
+                totalSims: 0,
+                meanSharpe: 0,
+                profitablePct: 0,
+                robustnessScore: 0,
+                maxDrawdownBps: 0,
+              }),
+              address: normalizeAptosAddress(address) ?? address,
+              creator: normalizeAptosAddress(state.owner) ?? state.owner,
+              name: state.name,
+              symbol: state.symbol,
+              assets: seed?.assets?.includes(state.asset) ? seed.assets : [state.asset],
+              createdAt: Number(state.created_at) * 1000,
+              curveAddr: address,
+              aptReserves: 0,
+              totalRaised: 0,
+              simsFunded: 0,
+              isGraduated: Boolean(state.is_graduated),
+              vaultAddr: vaultAddress,
+              lastSignal: Number(state.last_signal),
+              lastSignalTime: Number(state.last_signal_time) * 1000,
+              params: [
+                Number(state.short_period),
+                Number(state.long_period),
+                Number(state.third_period),
+              ],
+              indicatorType: Number(state.indicator_type),
+              isProprietary: Boolean(isProprietary),
+              algoHash: typeof algoHash === "string" && algoHash !== "0x" ? algoHash : undefined,
+              creatorFeeBps: Number(feeBps),
+              creatorFeeModel: modelNumber === 1
+                ? "flat"
+                : modelNumber === 2
+                  ? "profit_share"
+                  : "none",
+              creatorEarningsUsdt: Number(earningsE6) / 1_000_000,
+            });
+          } catch (error) {
+            console.warn(`[launchpad] Could not hydrate on-chain indicator ${address}:`, error);
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: 4 }, () => worker()));
+      const discoveredAddresses = new Set(discovered.map((entry) => entry.address.toLowerCase()));
+      const standaloneSeeds = indicatorRegistry.filter(
+        (entry) => entry.pkg && !discoveredAddresses.has(entry.address.toLowerCase()),
+      );
+      const verifiedStandalone = (await Promise.all(
+        standaloneSeeds.map(hydrateStandaloneIndicator),
+      )).filter((entry): entry is IndicatorEntry => entry !== null);
+      const result: IndicatorDiscovery = {
+        indicators: [...discovered, ...verifiedStandalone],
+        source: "aptos_testnet",
+      };
+      discoveryCache = { result, expiresAt: Date.now() + 30_000 };
+      return result;
+    } catch (error) {
+      console.error("[launchpad] On-chain indicator discovery failed:", error);
+      if (process.env.NODE_ENV === "production") throw error;
+      return { indicators: indicatorRegistry, source: "seed_fallback" };
+    }
+  })();
+
+  try {
+    return await discoveryInFlight;
+  } finally {
+    discoveryInFlight = null;
+  }
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const sort = url.searchParams.get("sort") || "robustness";
   const graduated = url.searchParams.get("graduated");
+  const creatorParam = url.searchParams.get("creator");
+  const creator = creatorParam ? normalizeAptosAddress(creatorParam) : null;
+  if (creatorParam && !creator) {
+    return NextResponse.json({ error: "Invalid creator address" }, { status: 400 });
+  }
+  if (url.searchParams.get("refresh") === "true") discoveryCache = null;
 
-  let list = [...indicatorRegistry];
+  let discovery: IndicatorDiscovery;
+  try {
+    discovery = await discoverOnChainIndicators();
+  } catch {
+    return NextResponse.json(
+      { unavailable: true, reason: "aptos_testnet_unavailable" },
+      { status: 503 },
+    );
+  }
+  let list = [...discovery.indicators];
   if (graduated === "true") list = list.filter((i) => i.isGraduated);
   if (graduated === "false") list = list.filter((i) => !i.isGraduated);
+  if (creator) list = list.filter((i) => normalizeAptosAddress(i.creator) === creator);
 
   switch (sort) {
     case "sharpe": list.sort((a, b) => b.meanSharpe - a.meanSharpe); break;
@@ -503,8 +741,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     indicators: list,
     total: list.length,
-    graduated: indicatorRegistry.filter((i) => i.isGraduated).length,
-    totalRaisedApt: Math.round(indicatorRegistry.reduce((s, i) => s + i.totalRaised, 0) / 1e8),
+    graduated: list.filter((i) => i.isGraduated).length,
+    totalRaisedApt: Math.round(list.reduce((s, i) => s + i.totalRaised, 0) / 1e8),
+    source: discovery.source,
   });
 }
 
@@ -513,10 +752,11 @@ export async function GET(req: Request) {
 async function createWhopProduct(ind: IndicatorEntry): Promise<string> {
   const companyId = process.env.WHOP_COMPANY_ID;
   if (!companyId) {
-    // No company configured — return a deterministic mock ID so the rest of
-    // the graduation flow still works in local / staging environments.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("WHOP_COMPANY_ID is not configured");
+    }
     const mockId = `prod_launchpad_${ind.address.slice(2, 12)}`;
-    console.log(`[launchpad] No WHOP_COMPANY_ID set — using mock product ID: ${mockId}`);
+    console.log(`[launchpad/dev] Using local mock product ID: ${mockId}`);
     return mockId;
   }
 
@@ -546,8 +786,7 @@ async function createWhopProduct(ind: IndicatorEntry): Promise<string> {
     console.log(`[launchpad] Created Whop product ${product.id} for indicator ${ind.name}`);
     return product.id;
   } catch (err) {
-    // Product creation is best-effort — don't block graduation if Whop API is
-    // unavailable (e.g. missing scopes in dev).
+    if (process.env.NODE_ENV === "production") throw err;
     const fallback = `prod_launchpad_${ind.address.slice(2, 12)}`;
     console.error(`[launchpad] Whop product creation failed (using fallback ${fallback}):`, err);
     return fallback;
@@ -556,14 +795,17 @@ async function createWhopProduct(ind: IndicatorEntry): Promise<string> {
 
 // ─── whopProductId registry (indicatorAddr → prodId) ─────────────────────────
 // Stored separately so vaultAddr stays a pure on-chain address.
-export const whopProductRegistry: Map<string, string> = new Map([
-  // Seed graduated demo indicators with mock product IDs
-  ["0x5007e41e807933d46326264bb8a01b88cb18fafbc1256dd0d229003a521252d2", "prod_launchpad_5007e41e80"],
-  ["0x6d1810f536ebfe54f4e009312d5a6efa4fcf11d152d8f96435cddae90e903aa7", "prod_launchpad_6d1810f536"],
-]);
+export const whopProductRegistry: Map<string, string> = new Map();
 
 // PATCH — fund simulations via bonding curve (simulates APT purchase)
 export async function PATCH(req: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { unavailable: true, reason: "bonding_curve_not_deployed" },
+      { status: 501 },
+    );
+  }
+
   try {
     const { address, aptAmount = 1 } = await req.json() as { address: string; aptAmount?: number };
     const idx = indicatorRegistry.findIndex((i) => i.address === address);
@@ -630,6 +872,13 @@ export async function PATCH(req: Request) {
 
 // POST — register a new indicator (called by deploy flow)
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { unavailable: true, reason: "on_chain_discovery_required" },
+      { status: 501 },
+    );
+  }
+
   try {
     const body = await req.json() as Partial<IndicatorEntry>;
     if (!body.address || !body.name || !body.symbol) {

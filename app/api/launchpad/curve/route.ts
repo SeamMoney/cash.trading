@@ -18,24 +18,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Missing address param" }, { status: 400 });
   }
 
-  // In production: read from Aptos view function
-  // bonding_curve::get_curve_state(address) → (apt_reserves, fa_reserves, virtual_apt, is_graduated, total_raised, sims_funded)
-  // bonding_curve::get_price(address) → price_scaled
-
-  // For now, return mock structure showing the expected shape
-  return NextResponse.json({
-    address,
-    aptReserves: 0,
-    faReserves: 1_000_000_000_000,
-    virtualApt: 5_000_000_000,
-    isGraduated: false,
-    totalRaised: 0,
-    simsFunded: 0,
-    currentPrice: 0.00005, // APT per token
-    marketCap: 50, // APT
-    // Price history would come from indexer events
-    priceHistory: [],
-  });
+  return NextResponse.json(
+    { unavailable: true, reason: "bonding_curve_not_deployed", address },
+    { status: 501 },
+  );
 }
 
 export async function POST(req: Request) {
@@ -50,13 +36,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const launchpadPackage = process.env.LAUNCHPAD_PACKAGE;
+    if (!launchpadPackage) {
+      return NextResponse.json(
+        { unavailable: true, reason: "bonding_curve_not_deployed" },
+        { status: 501 },
+      );
+    }
+
     // Build Move entry function payload
     if (action === "buy") {
       return NextResponse.json({
         payload: {
-          function: `${process.env.LAUNCHPAD_PACKAGE || "0x1"}::bonding_curve::buy`,
-          type_arguments: [],
-          arguments: [curveAddr, amount.toString(), (minOut || "0").toString()],
+          function: `${launchpadPackage}::bonding_curve::buy`,
+          typeArguments: [],
+          functionArguments: [curveAddr, amount.toString(), (minOut || "0").toString()],
         },
         description: `Buy indicator tokens with ${amount} octas APT`,
       });
@@ -65,9 +59,9 @@ export async function POST(req: Request) {
     if (action === "sell") {
       return NextResponse.json({
         payload: {
-          function: `${process.env.LAUNCHPAD_PACKAGE || "0x1"}::bonding_curve::sell`,
-          type_arguments: [],
-          arguments: [curveAddr, amount.toString(), (minOut || "0").toString()],
+          function: `${launchpadPackage}::bonding_curve::sell`,
+          typeArguments: [],
+          functionArguments: [curveAddr, amount.toString(), (minOut || "0").toString()],
         },
         description: `Sell ${amount} indicator tokens for APT`,
       });

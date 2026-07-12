@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { transpile } from "@/lib/launchpad/transpiler";
-import { indicatorRegistry } from "../indicators/route";
 
 export const runtime = "nodejs";
+export const maxDuration = 15;
+
+const APTOS_ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
+const SUPPORTED_ASSETS = new Set(["BTC/USD", "ETH/USD", "SOL/USD", "APT/USD"]);
+
+type CreateRequest = {
+  pineScript?: unknown;
+  creatorAddr?: unknown;
+  name?: unknown;
+  symbol?: unknown;
+  description?: unknown;
+  assets?: unknown;
+};
 
 /**
  * POST /api/launchpad/create
@@ -11,50 +23,37 @@ export const runtime = "nodejs";
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json() as CreateRequest;
     const { pineScript, creatorAddr, name, symbol, description, assets } = body;
 
-    if (!pineScript || !creatorAddr || !name || !symbol) {
-      return NextResponse.json({ error: "Missing required fields: pineScript, creatorAddr, name, symbol" }, { status: 400 });
+    if (
+      typeof pineScript !== "string" || pineScript.length < 20 || pineScript.length > 100_000 ||
+      typeof creatorAddr !== "string" || !APTOS_ADDRESS_RE.test(creatorAddr) ||
+      typeof name !== "string" || name.trim().length < 1 || name.trim().length > 64 ||
+      typeof symbol !== "string" || !/^[A-Za-z0-9_-]{1,12}$/.test(symbol) ||
+      (description !== undefined && (typeof description !== "string" || description.length > 500)) ||
+      !Array.isArray(assets) || assets.length < 1 || assets.length > 4 ||
+      !assets.every((asset) => typeof asset === "string" && SUPPORTED_ASSETS.has(asset))
+    ) {
+      return NextResponse.json({ error: "Invalid strategy deployment request" }, { status: 400 });
     }
 
     // 1. Transpile PineScript → Move config + rich AST
     const result = transpile(pineScript, creatorAddr);
 
-    // 2. Register in the marketplace (simulates on-chain deployment)
-    const indicatorAddr = `0x${Array.from({ length: 40 }, () =>
-      Math.floor(Math.random() * 16).toString(16)).join("")}`;
-
-    const newEntry = {
-      address: indicatorAddr,
+    const indicator = {
       creator: creatorAddr,
-      name,
+      name: name.trim(),
       symbol,
       description: description || "",
-      assets: Array.isArray(assets) ? assets : ["BTC/USD"],
-      createdAt: Date.now(),
-      curveAddr: indicatorAddr,
-      aptReserves: 0,
-      totalRaised: 0,
-      simsFunded: 0,
-      isGraduated: false,
-      totalSims: 0,
-      meanSharpe: 0,
-      profitablePct: 0,
-      robustnessScore: 0,
-      maxDrawdownBps: 0,
-      vaultAddr: null,
-      lastSignal: 0,
-      lastSignalTime: 0,
-      // Use transpiler-derived params in the correct order for the indicator type
+      assets,
       params: [result.shortPeriod, result.longPeriod, result.thirdPeriod],
       indicatorType: result.indicatorType,
     };
-    indicatorRegistry.unshift(newEntry);
 
     return NextResponse.json({
       success: true,
-      indicatorAddr,
+      indicatorAddr: null,
       moveSource: result.moveSource,
       transpile: {
         indicatorType: result.indicatorType,
@@ -69,7 +68,7 @@ export async function POST(req: Request) {
         buyCondition: result.buyCondition,
         sellCondition: result.sellCondition,
       },
-      indicator: newEntry,
+      indicator,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Transpilation failed";

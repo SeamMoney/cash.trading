@@ -3,4 +3,5 @@
 !.env.example
 .next
 node_modules
+.data
 *.log

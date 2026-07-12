@@ -5,6 +5,11 @@ import {
   normalizePositiveU64,
   normalizeU128,
 } from "../lib/decibel";
+import {
+  buildCreateDecibelVaultPayload,
+  buildDelegateDecibelVaultPayload,
+  buildDepositDecibelVaultPayload,
+} from "../lib/decibel-vaults";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -62,6 +67,8 @@ const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8
 const decibelVaultStatusRoute = readFileSync("app/api/decibel/vaults/status/route.ts", "utf8");
 const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "utf8");
 const decibelVaultExtractRoute = readFileSync("app/api/decibel/vaults/extract/route.ts", "utf8");
+const decibelVaultApi = readFileSync("lib/decibel-vault-api.ts", "utf8");
+const decibelVaultDelegateRoute = readFileSync("app/api/decibel/vaults/delegate/route.ts", "utf8");
 const decibelOrderRoute = readFileSync("app/api/decibel/order/route.ts", "utf8");
 const decibelCancelOrderRoute = readFileSync("app/api/decibel/cancel-order/route.ts", "utf8");
 const decibelCreateSubaccountRoute = readFileSync("app/api/decibel/create-subaccount/route.ts", "utf8");
@@ -224,6 +231,72 @@ assert.match(vaultActionModal, /allocationPct,\s*network: indicator\.network/);
 assert.match(constantsSource, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
 assert.match(constantsSource, /network: AptosNetworkName = APTOS_NETWORK/);
 assert.match(launchpadOnChainChart, /explorerAccountUrl\(indicatorAddr, "testnet"\)/);
+const validVaultCreate = buildCreateDecibelVaultPayload({
+  subaccount: "0x1",
+  vaultName: "Reliability Vault",
+  vaultShareSymbol: "RVT",
+  initialFundingRaw: "0",
+  feeBps: 100,
+  network: "mainnet",
+});
+assert.equal(validVaultCreate.network, "mainnet");
+assert.equal(validVaultCreate.kind, "create");
+assert.throws(
+  () => buildCreateDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultName: "v".repeat(65),
+    vaultShareSymbol: "RVT",
+    network: "mainnet",
+  }),
+  /vaultName must be at most 64 characters/,
+);
+assert.throws(
+  () => buildCreateDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultName: "Vault",
+    vaultShareSymbol: "RVT",
+    feeBps: 10_001,
+    network: "mainnet",
+  }),
+  /feeBps must be between 0 and 10000/,
+);
+assert.throws(
+  () => buildCreateDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultName: "Vault",
+    vaultShareSymbol: "RVT",
+    network: "invalid" as "mainnet",
+  }),
+  /network must be testnet or mainnet/,
+);
+assert.equal(
+  buildDepositDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultAddress: "0x2",
+    amountRaw: "18446744073709551615",
+    network: "mainnet",
+  }).amountRaw,
+  "18446744073709551615",
+);
+assert.throws(
+  () => buildDepositDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultAddress: "0x2",
+    amountRaw: "9".repeat(10_000),
+    network: "mainnet",
+  }),
+  /amountRaw must fit in u64/,
+);
+assert.throws(
+  () => buildDelegateDecibelVaultPayload({
+    vaultAddress: "0x2",
+    network: "mainnet",
+  }),
+  /delegate must be a valid Aptos address/,
+);
+assert.match(decibelVaultApi, /MAX_VAULT_PAYLOAD_BODY_BYTES = 32_000/);
+assert.match(decibelVaultApi, /checkApiRateLimit\(req, routeKey/);
+assert.match(decibelVaultDelegateRoute, /launchpad_automation_not_enabled/);
 assert.equal(normalizePositiveU64("18446744073709551615"), "18446744073709551615");
 assert.equal(normalizePositiveU64("000001"), "1");
 assert.throws(() => normalizePositiveU64("18446744073709551616"), /within range/);

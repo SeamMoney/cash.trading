@@ -10,14 +10,8 @@ export function Leaderboard() {
   const { leaderboardEntries, userRank, leaderboardLoading, refresh } = usePointsData()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const formatNumber = (num: number | string | undefined) => {
-    if (num === undefined || num === null) return '$0'
-    const n = typeof num === 'string' ? parseFloat(num) : num
-    if (isNaN(n)) return '$0'
-    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`
-    return `$${n.toFixed(0)}`
-  }
+  const formatPoints = (num: number | undefined) =>
+    (num || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
 
   const shortenAddress = (addr: string) => {
     if (!addr) return '...'
@@ -84,9 +78,9 @@ export function Leaderboard() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[9px] font-mono text-zinc-500 uppercase">Deposited</div>
+            <div className="text-[9px] font-mono text-zinc-500 uppercase">Vault AMPs</div>
             <div className="text-xs font-mono font-bold text-white tabular-nums">
-              {formatNumber(userRank.total_deposited)}
+              {formatPoints(userRank.vault_points)}
             </div>
           </div>
         </div>
@@ -101,7 +95,7 @@ export function Leaderboard() {
                 <th className="text-left px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500 w-10">#</th>
                 <th className="text-left px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Address</th>
                 <th className="text-right px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Pts</th>
-                <th className="text-right px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Total</th>
+                <th className="text-right px-2 py-2 text-[9px] sm:text-[10px] font-mono uppercase text-zinc-500">Vault</th>
               </tr>
             </thead>
             <tbody>
@@ -158,7 +152,7 @@ export function Leaderboard() {
                       </td>
                       <td className="px-2 py-1.5 text-right">
                         <span className="font-mono font-bold text-white tabular-nums text-[11px] sm:text-xs">
-                          {formatNumber(entry.total_deposited)}
+                          {formatPoints(entry.vault_points)}
                         </span>
                       </td>
                     </tr>

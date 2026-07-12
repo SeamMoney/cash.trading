@@ -44,25 +44,27 @@ export function WalletWatcher() {
   }, [watchedWallets])
 
   const fetchWalletData = async (address: string): Promise<Partial<WatchedWallet>> => {
-    try {
-      const [pointsRes, balancesRes] = await Promise.all([
-        fetch(`/api/predeposit/points?account=${address}`),
-        fetch(`/api/predeposit/balances?account=${address}`),
-      ])
+    const [pointsRes, balancesRes] = await Promise.all([
+      fetch(`/api/predeposit/points?account=${address}`),
+      fetch(`/api/predeposit/balances?account=${address}`),
+    ])
 
-      const points = await pointsRes.json()
-      const balances = await balancesRes.json()
+    if (!pointsRes.ok || !balancesRes.ok) {
+      throw new Error('Wallet data is temporarily unavailable')
+    }
 
-      return {
-        points: points.points || 0,
-        dlp_balance: balances.dlp_balance || '0',
-        ua_balance: balances.ua_balance || '0',
-        total_deposited: balances.total_deposited || '0',
-        lastUpdated: Date.now(),
-      }
-    } catch (error) {
-      console.error('Error fetching wallet data:', error)
-      return {}
+    const points = await pointsRes.json()
+    const balances = await balancesRes.json()
+    if (points.unavailable || balances.unavailable) {
+      throw new Error('Wallet data is temporarily unavailable')
+    }
+
+    return {
+      points: points.points || 0,
+      dlp_balance: balances.dlp_balance || '0',
+      ua_balance: balances.ua_balance || '0',
+      total_deposited: balances.total_deposited || '0',
+      lastUpdated: Date.now(),
     }
   }
 
@@ -73,8 +75,13 @@ export function WalletWatcher() {
     try {
       const updatedWallets = await Promise.all(
         watchedWallets.map(async (wallet) => {
-          const data = await fetchWalletData(wallet.address)
-          return { ...wallet, ...data }
+          try {
+            const data = await fetchWalletData(wallet.address)
+            return { ...wallet, ...data }
+          } catch (error) {
+            console.error(`Error refreshing ${wallet.address}:`, error)
+            return wallet
+          }
         })
       )
       setWatchedWallets(updatedWallets)
@@ -229,7 +236,7 @@ export function WalletWatcher() {
                   )}
                   <div className="flex items-center gap-2">
                     <a
-                      href={`https://explorer.aptoslabs.com/account/${wallet.address}?network=testnet`}
+                      href={`https://explorer.aptoslabs.com/account/${wallet.address}?network=mainnet`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-mono text-zinc-400 hover:text-primary transition-colors flex items-center gap-1"

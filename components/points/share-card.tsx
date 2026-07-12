@@ -61,12 +61,12 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
 
     const link = document.createElement('a')
     link.href = imageUrl
-    link.download = `cash-trading-season0-${account?.address?.toString().slice(0, 8) || 'stats'}.png`
+    link.download = `cash-trading-season1-${account?.address?.toString().slice(0, 8) || 'stats'}.png`
     link.click()
   }
 
   const handleCopyLink = () => {
-    const shareText = `I'm ranked #${rank || '?'} in Decibel Season 0 with ${points.toLocaleString()} points! 🏆\n\nTrack your predeposit points: https://cash.trading/points`
+    const shareText = `I'm ranked #${rank || '?'} in Decibel Season 1 with ${points.toLocaleString()} AMPs! 🏆\n\nTrack Decibel AMPs: https://cash.trading/points`
     navigator.clipboard.writeText(shareText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -120,7 +120,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
                   <div className="flex items-center gap-2 mb-4">
                     <span className="text-2xl">🔊💵</span>
                     <span className="text-xl font-bold text-primary">CASH.TRADING</span>
-                    <span className="text-xs text-zinc-500 ml-auto">Season 0</span>
+                    <span className="text-xs text-zinc-500 ml-auto">Season 1</span>
                   </div>
 
                   {/* Address */}
@@ -137,7 +137,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase text-zinc-600">Points</div>
+                      <div className="text-[10px] uppercase text-zinc-600">AMPs</div>
                       <div className="text-2xl font-bold text-purple-500">
                         {points.toLocaleString()}
                       </div>
@@ -201,7 +201,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
 
             {/* Share hint */}
             <p className="text-[10px] font-mono text-zinc-600 text-center mt-4">
-              Share your Season 0 stats on Twitter/X
+              Share your Season 1 stats on Twitter/X
             </p>
           </div>
         </div>

@@ -16,6 +16,7 @@ export interface GlobalStats {
   // Vault stats (mainnet DLP)
   vault_tvl?: number
   vault_depositors?: number
+  vault_count?: number
 }
 
 export interface UserData {
@@ -23,6 +24,12 @@ export interface UserData {
   dlp_balance: string
   ua_balance: string
   total_deposited: string
+  rank?: number | null
+  trading_points?: number
+  vault_points?: number
+  referral_points?: number
+  streak_points?: number
+  bonus_points?: number
 }
 
 export interface VaultUserData {
@@ -46,6 +53,11 @@ export interface LeaderboardEntry {
   dlp_balance: string
   ua_balance: string
   total_deposited: string
+  vault_points?: number
+  trading_points?: number
+  referral_points?: number
+  streak_points?: number
+  bonus_points?: number
 }
 
 interface PointsDataContextType {
@@ -71,7 +83,7 @@ const PointsDataContext = createContext<PointsDataContextType>({
 })
 
 // localStorage cache helpers
-const CACHE_KEY = 'cash_trading_points_cache'
+const CACHE_KEY = 'cash_trading_points_cache_v2'
 
 interface CachedData {
   globalStats: GlobalStats | null
@@ -160,12 +172,21 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
     if (!cached?.globalStats) setLoading(true)
     if (!cached?.leaderboardEntries?.length) setLeaderboardLoading(true)
 
+    const fetchJson = async (url: string) => {
+      const response = await fetch(url)
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json || json.unavailable) {
+        throw new Error(`Points API unavailable (${response.status})`)
+      }
+      return json
+    }
+
     // Parse each response into a JSON promise — each resolves independently
     const userJsonP = addr
-      ? fetch(`/api/predeposit/user?account=${addr}`).then(r => r.json())
+      ? fetchJson(`/api/predeposit/user?account=${addr}`)
       : Promise.resolve(null)
-    const totalJsonP = fetch('/api/predeposit/total').then(r => r.json())
-    const lbJsonP = fetch('/api/predeposit/leaderboard?limit=100').then(r => r.json())
+    const totalJsonP = fetchJson('/api/predeposit/total')
+    const lbJsonP = fetchJson('/api/predeposit/leaderboard?limit=100')
 
     // Vault data fetches (mainnet DLP)
     const vaultUserP = addr
@@ -188,6 +209,12 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
             dlp_balance: json.dlp_balance || '0',
             ua_balance: json.ua_balance || '0',
             total_deposited: json.total_deposited || '0',
+            rank: json.rank ?? null,
+            trading_points: json.trading_points || 0,
+            vault_points: json.vault_points || 0,
+            referral_points: json.referral_points || 0,
+            streak_points: json.streak_points || 0,
+            bonus_points: json.bonus_points || 0,
           }
           resolvedUser = ud
           setUserData(ud)
@@ -217,8 +244,10 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         if (vaultTotal) {
           merged.vault_tvl = vaultTotal.totalTvl || 0
           merged.vault_depositors = vaultTotal.totalDepositors || 0
-          // Add vault TVL to total DLP for the global display
-          merged.total_dlp = (merged.total_dlp || 0) + (vaultTotal.totalTvl || 0)
+          merged.vault_count = vaultTotal.vaultCount || 0
+          // All active vaults contribute to TVL; only the protocol vault is DLP.
+          merged.total_dlp = (merged.total_dlp || 0) +
+            (vaultTotal.protocolTvl ?? vaultTotal.totalTvl ?? 0)
           merged.total_deposited = (merged.total_deposited || 0) + (vaultTotal.totalTvl || 0)
         }
         // If both upstreams failed we'd publish an all-zero stats object,
@@ -232,8 +261,9 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
           resolvedTotal = merged
           setGlobalStats(merged)
         }
-        setLoading(false)
-      }).catch(() => {})
+      }).catch(() => {}).finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
 
       // 3) Leaderboard — slowest, wait for all to finish for user injection
       const [userJson, , lbData, vaultUserJson] = await Promise.all([
@@ -251,6 +281,12 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         dlp_balance: userJson.dlp_balance || '0',
         ua_balance: userJson.ua_balance || '0',
         total_deposited: userJson.total_deposited || '0',
+        rank: userJson.rank ?? null,
+        trading_points: userJson.trading_points || 0,
+        vault_points: userJson.vault_points || 0,
+        referral_points: userJson.referral_points || 0,
+        streak_points: userJson.streak_points || 0,
+        bonus_points: userJson.bonus_points || 0,
       } : null)
 
       // Merge vault DLP into user data so existing UI picks it up
@@ -271,6 +307,12 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
           dlp_balance: (predepDlp + localVaultData.currentValue).toString(),
           ua_balance: predepositData?.ua_balance || '0',
           total_deposited: (predepTotal + localVaultData.totalDeposited).toString(),
+          rank: predepositData?.rank ?? null,
+          trading_points: predepositData?.trading_points || 0,
+          vault_points: predepositData?.vault_points || 0,
+          referral_points: predepositData?.referral_points || 0,
+          streak_points: predepositData?.streak_points || 0,
+          bonus_points: predepositData?.bonus_points || 0,
         }
         setUserData(localUserData)
       }
@@ -288,7 +330,21 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
 
         if (!userEntry) {
           const totalDep = parseFloat(localUserData.total_deposited || '0')
-          if (totalDep > 0) {
+          if (localUserData.rank) {
+            userEntry = {
+              rank: localUserData.rank,
+              account: addr,
+              points: localUserData.points || 0,
+              total_deposited: totalDep.toFixed(2),
+              dlp_balance: localUserData.dlp_balance || '0',
+              ua_balance: localUserData.ua_balance || '0',
+              vault_points: localUserData.vault_points || 0,
+              trading_points: localUserData.trading_points || 0,
+              referral_points: localUserData.referral_points || 0,
+              streak_points: localUserData.streak_points || 0,
+              bonus_points: localUserData.bonus_points || 0,
+            }
+          } else if (totalDep > 0) {
             const userPts = localUserData.points || 0
             let insertIdx = entries.findIndex(e => (e.points ?? 0) < userPts)
             if (insertIdx === -1) insertIdx = entries.length

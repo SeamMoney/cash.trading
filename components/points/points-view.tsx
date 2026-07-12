@@ -51,7 +51,7 @@ export function PointsView() {
           >
             <div className="flex items-center gap-2">
               <Calculator className="size-3.5 text-zinc-500" />
-              <span className="text-xs font-mono uppercase tracking-wider text-zinc-400">Airdrop Estimator</span>
+              <span className="text-xs font-mono uppercase tracking-wider text-zinc-400">AMP Scenario</span>
             </div>
             {showCalculator ? (
               <ChevronUp className="size-4 text-zinc-500" />

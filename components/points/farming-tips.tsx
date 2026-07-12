@@ -1,43 +1,41 @@
 "use client"
 
-import { Lightbulb, ArrowRight, ExternalLink, Zap, Clock, TrendingUp, Gift } from "lucide-react"
-import Link from "next/link"
+import { Lightbulb, ExternalLink, Zap, Clock, TrendingUp, Gift } from "lucide-react"
 
 const FARMING_STRATEGIES = [
   {
-    id: 'early-deposit',
-    title: 'Deposit Early',
-    description: 'First week deposits get 2x points multiplier. First month gets 1.5x.',
+    id: 'consistent-trading',
+    title: 'Trade Consistently',
+    description: 'Season 1 rewards sustained, organic trading activity rather than raw churn.',
     icon: Clock,
     priority: 'high',
   },
   {
-    id: 'max-dlp',
-    title: 'Maximize DLP Allocation',
-    description: 'DLP earns 1.5x more points than Unallocated (UA) funds.',
+    id: 'provide-liquidity',
+    title: 'Provide Liquidity',
+    description: 'DLP and user-managed vault contributions can earn dedicated vault AMPs.',
     icon: TrendingUp,
     priority: 'high',
   },
   {
-    id: 'use-bot',
-    title: 'Use cash.trading Bot',
-    description: 'Automated volume generation earns trading points on top of predeposit points.',
+    id: 'streaks',
+    title: 'Maintain Streaks',
+    description: 'Qualifying trading days build streak AMPs and consistency bonuses.',
     icon: Zap,
     priority: 'medium',
-    link: '/',
   },
   {
     id: 'referrals',
     title: 'Refer Friends',
-    description: 'Earn bonus points for each friend that deposits using your referral code.',
+    description: 'Earn referral AMPs when the traders you invite become active participants.',
     icon: Gift,
     priority: 'medium',
   },
 ]
 
 const QUICK_LINKS = [
-  { label: 'Predeposit', url: 'https://app.decibel.trade/predeposit' },
-  { label: 'Season 0 FAQ', url: 'https://docs.decibel.trade/points/season-0' },
+  { label: 'Decibel Points', url: 'https://app.decibel.trade/points' },
+  { label: 'AMPs Guide', url: 'https://docs.decibel.trade/rewards/amps' },
   { label: 'Discord', url: 'https://discord.gg/decibel' },
 ]
 
@@ -48,7 +46,7 @@ export function FarmingTips() {
       <div className="flex items-center gap-2 mb-2">
         <Lightbulb className="w-3.5 h-3.5 text-primary shrink-0" />
         <span className="text-[11px] sm:text-xs font-mono font-bold text-white uppercase tracking-wider">
-          Farming Tips
+          Earning AMPs
         </span>
       </div>
 
@@ -75,11 +73,6 @@ export function FarmingTips() {
                   {strategy.description}
                 </p>
               </div>
-              {strategy.link && (
-                <Link href={strategy.link} className="text-zinc-600 hover:text-primary shrink-0">
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              )}
             </div>
           )
         })}

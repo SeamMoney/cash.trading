@@ -122,7 +122,11 @@ export async function signAndSubmitSponsored(args: {
 export async function buildAndSignSponsored(
   apiUrl: string,
   body: Record<string, unknown>,
-  opts: { senderAddress: string; signTransaction: SignTransactionFn }
+  opts: {
+    senderAddress: string;
+    signTransaction: SignTransactionFn;
+    shouldSign?: () => boolean;
+  },
 ): Promise<{ hash: string; explorerUrl: string }> {
   const res = await fetch(apiUrl, {
     method: "POST",
@@ -135,6 +139,9 @@ export async function buildAndSignSponsored(
   }
   if (!json.payload) {
     throw new Error("API did not return a payload");
+  }
+  if (opts.shouldSign && !opts.shouldSign()) {
+    throw new Error("Transaction context changed before signing");
   }
   return signAndSubmitSponsored({
     senderAddress: opts.senderAddress,

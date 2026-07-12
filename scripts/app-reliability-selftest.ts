@@ -118,6 +118,7 @@ const decibelWithdrawRoute = readFileSync("app/api/decibel/withdraw/route.ts", "
 const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/route.ts", "utf8");
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
 const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
+const explainerPage = readFileSync("app/explainer/page.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
 };
@@ -269,6 +270,9 @@ assert.match(launchpadTradesRoute, /completedTrades/);
 assert.match(launchpadTradesRoute, /status: 502/);
 assert.match(launchpadOnChainChart, /candleAbortRef/);
 assert.match(launchpadOnChainChart, /high < Math\.max\(open, close\)/);
+assert.match(launchpadOnChainChart, /manualKeeperEnabled = process\.env\.NODE_ENV !== "production"/);
+assert.ok(!explainerPage.includes('href="#"'), "explainer calls to action must navigate somewhere real");
+assert.match(explainerPage, /60 live markets/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 assert.match(vercelIgnore, /^\.data$/m);

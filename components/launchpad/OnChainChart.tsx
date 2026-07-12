@@ -246,6 +246,7 @@ export function OnChainChart({
   const [lastPush,    setLastPush]    = useState<string | null>(null);
   const [decibelTx,   setDecibelTx]   = useState<DecibelExecution | null>(null);
   const [connectDec,  setConnectDec]  = useState(!!decibelMarket);
+  const manualKeeperEnabled = process.env.NODE_ENV !== "production";
 
   // ── Signal flash on change ───────────────────────────────────────────────────
   const prevSigRef = useRef<number>(0);
@@ -685,7 +686,7 @@ export function OnChainChart({
           </div>
 
           {/* Decibel toggle */}
-          {decibelMarket && (
+          {manualKeeperEnabled && decibelMarket && (
             <button
               onClick={() => setConnectDec((v) => !v)}
               className={cn(
@@ -701,18 +702,20 @@ export function OnChainChart({
           )}
 
           {/* Push price */}
-          <button
-            onClick={pushPrice}
-            disabled={pushing}
-            className={cn(
-              "text-[10px] px-2 py-0.5 rounded border transition-colors",
-              pushing
-                ? "border-zinc-800 text-zinc-600 cursor-wait"
-                : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white",
-            )}
-          >
-            {pushing ? "Pushing…" : connectDec ? "Push + Execute" : "Push Price"}
-          </button>
+          {manualKeeperEnabled && (
+            <button
+              onClick={pushPrice}
+              disabled={pushing}
+              className={cn(
+                "text-[10px] px-2 py-0.5 rounded border transition-colors",
+                pushing
+                  ? "border-zinc-800 text-zinc-600 cursor-wait"
+                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white",
+              )}
+            >
+              {pushing ? "Pushing…" : connectDec ? "Push + Execute" : "Push Price"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -786,14 +789,14 @@ export function OnChainChart({
       </div>
 
       {/* ── Last push line ───────────────────────────────────────────────────── */}
-      {lastPush && (
+      {manualKeeperEnabled && lastPush && (
         <div className="px-3 pb-1.5">
           <p className="text-[10px] text-zinc-700 font-mono truncate">{lastPush}</p>
         </div>
       )}
 
       {/* ── Decibel execution badge ──────────────────────────────────────────── */}
-      {decibelTx && (
+      {manualKeeperEnabled && decibelTx && (
         <div className={cn(
           "mx-3 mb-3 rounded-lg border px-3 py-2 text-[11px]",
           decibelTx.error

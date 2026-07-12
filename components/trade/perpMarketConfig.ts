@@ -9,6 +9,7 @@ export interface PerpMarketData {
   marketAddr: string;
   marketName: string;
   openInterestLabel: string;
+  oraclePrice?: number | null;
   pair: string;
   priceDecimals: number;
   seedPrice: number;

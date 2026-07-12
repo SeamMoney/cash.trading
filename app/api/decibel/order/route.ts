@@ -4,6 +4,8 @@ import {
   buildDecibelOrderPayload,
   getDecibelPackage,
   getDecibelMarketConfigFromRegistry,
+  isValidAptosAddress,
+  normalizeAptosAddress,
   PRICE_DECIMALS,
   resolveDecibelNetwork,
   TAKER_FEE,
@@ -11,12 +13,49 @@ import {
   type DecibelNetwork,
   type MarketConfig,
 } from "@/lib/decibel";
+import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
+
+function rateLimited(rate: { retryAfterS?: number }) {
+  return NextResponse.json(
+    { error: "rate limited", retryAfterS: rate.retryAfterS },
+    {
+      status: 429,
+      headers: {
+        ...NO_STORE_HEADERS,
+        "Retry-After": String(rate.retryAfterS ?? 60),
+      },
+    },
+  );
+}
+
+function isValidMarketName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 64 &&
+    /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value)
+  );
+}
+
+function isPositiveNumericInput(value: unknown): value is string | number {
+  if (typeof value !== "string" && typeof value !== "number") return false;
+  if (typeof value === "string" && (value.trim().length === 0 || value.length > 64)) {
+    return false;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
+}
+
+function hasValidNetwork(value: unknown) {
+  return value === undefined || value === "testnet" || value === "mainnet";
+}
 
 function getRequestNetwork(value: unknown): DecibelNetwork {
   return resolveDecibelNetwork(value);
@@ -163,8 +202,18 @@ function classifyMarketDenial(mode: string): "MARKET_CLOSED" | "STALE_ORACLE_DEN
  * Lightweight preflight used by the trade panel before the user submits.
  */
 export async function GET(req: NextRequest) {
-  const marketName = req.nextUrl.searchParams.get("marketName");
-  const marketAddress = req.nextUrl.searchParams.get("marketAddress");
+  const rate = checkApiRateLimit(req, "decibel-order-preflight", 120, 60_000);
+  if (!rate.allowed) return rateLimited(rate);
+
+  const marketName = req.nextUrl.searchParams.get("marketName")?.trim() || null;
+  const marketAddress = req.nextUrl.searchParams.get("marketAddress")?.trim() || null;
+  const rawNetwork = req.nextUrl.searchParams.get("network") ?? undefined;
+  if (!hasValidNetwork(rawNetwork)) {
+    return NextResponse.json(
+      { error: "network must be testnet or mainnet" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
   const network = getRequestNetwork(req.nextUrl.searchParams.get("network"));
   const lookupKey = marketAddress ?? marketName;
 
@@ -172,6 +221,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { error: "Missing marketName or marketAddress" },
       { status: 400, headers: NO_STORE_HEADERS }
+    );
+  }
+
+  if (
+    (marketAddress !== null && !isValidAptosAddress(marketAddress)) ||
+    (marketName !== null && !isValidMarketName(marketName))
+  ) {
+    return NextResponse.json(
+      { error: "marketName or marketAddress is invalid" },
+      { status: 400, headers: NO_STORE_HEADERS },
     );
   }
 
@@ -193,9 +252,16 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to read Decibel market status";
+    if (/^Unknown Decibel market:/.test(message)) {
+      return NextResponse.json(
+        { error: "Unknown Decibel market" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    console.error("[decibel-order-preflight] lookup failed:", message);
     return NextResponse.json(
-      { error: message },
-      { status: 500, headers: NO_STORE_HEADERS }
+      { error: "Decibel market status is temporarily unavailable" },
+      { status: 502, headers: NO_STORE_HEADERS }
     );
   }
 }
@@ -220,8 +286,17 @@ export async function GET(req: NextRequest) {
  * Returns a Move entry function payload the client signs with signAndSubmitTransaction.
  */
 export async function POST(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "decibel-order-build", 60, 60_000);
+  if (!rate.allowed) return rateLimited(rate);
+
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        { error: "A valid JSON object is required" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
     const {
       marketName,
       marketAddress,
@@ -233,6 +308,12 @@ export async function POST(req: NextRequest) {
       subaccount,
       network: rawNetwork,
     } = body;
+    if (!hasValidNetwork(rawNetwork)) {
+      return NextResponse.json(
+        { error: "network must be testnet or mainnet" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
     const network = getRequestNetwork(rawNetwork);
 
     if ((!marketName && !marketAddress) || size === undefined || isBuy === undefined || !subaccount) {
@@ -241,20 +322,47 @@ export async function POST(req: NextRequest) {
           error:
             "Missing required fields: marketName or marketAddress, size, isBuy, subaccount",
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    if (orderType === "limit" && !price) {
+    if (
+      (marketName !== undefined && !isValidMarketName(marketName)) ||
+      (marketAddress !== undefined && !isValidAptosAddress(marketAddress)) ||
+      !isValidAptosAddress(subaccount) ||
+      !isPositiveNumericInput(size) ||
+      typeof isBuy !== "boolean" ||
+      (orderType !== "limit" && orderType !== "market") ||
+      typeof reduceOnly !== "boolean"
+    ) {
       return NextResponse.json(
-        { error: "Limit orders require a price" },
-        { status: 400 }
+        { error: "Order fields are invalid" },
+        { status: 400, headers: NO_STORE_HEADERS },
       );
     }
+
+    if (orderType === "limit" && !isPositiveNumericInput(price)) {
+      return NextResponse.json(
+        { error: "Limit orders require a price" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (orderType === "market" && price !== undefined && price !== null && !isPositiveNumericInput(price)) {
+      return NextResponse.json(
+        { error: "Reference price must be a positive number" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+
+    const normalizedSubaccount = normalizeAptosAddress(subaccount, "subaccount");
+    const normalizedMarketAddress = marketAddress
+      ? normalizeAptosAddress(marketAddress, "marketAddress")
+      : undefined;
 
     const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
       await resolveMarketConfig(
-        marketAddress || marketName,
+        normalizedMarketAddress || marketName,
         network,
         req.signal,
         marketName,
@@ -269,7 +377,7 @@ export async function POST(req: NextRequest) {
           marketMode: marketState.mode,
           marketStatus: marketState,
         },
-        { status: 409 }
+        { status: 409, headers: NO_STORE_HEADERS }
       );
     }
     const orderPrice =
@@ -277,12 +385,13 @@ export async function POST(req: NextRequest) {
     if (!orderPrice) {
       return NextResponse.json(
         { error: "Market orders require a Decibel mark price or reference price" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const { payload, marketConfig, sizeRaw, priceRaw } =
-      buildDecibelOrderPayload({
+    let builtOrder: ReturnType<typeof buildDecibelOrderPayload>;
+    try {
+      builtOrder = buildDecibelOrderPayload({
         marketName: resolvedMarketName,
         marketConfig: resolvedMarketConfig,
         price: orderPrice,
@@ -290,9 +399,17 @@ export async function POST(req: NextRequest) {
         isBuy,
         orderType: orderType === "limit" ? "limit" : "market",
         reduceOnly,
-        subaccount,
+        subaccount: normalizedSubaccount,
         network,
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Order fields are invalid";
+      return NextResponse.json(
+        { error: message },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    const { payload, marketConfig, sizeRaw, priceRaw } = builtOrder;
 
     const adjustedSize = sizeRaw / Math.pow(10, marketConfig.sizeDecimals);
     const adjustedPrice =
@@ -333,13 +450,20 @@ export async function POST(req: NextRequest) {
         feeType: orderType === "market" ? "taker" : "maker (rebate)",
         maxLeverage: marketConfig.maxLeverage,
       },
-    });
+    }, { headers: NO_STORE_HEADERS });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to build order";
-    const code = /stale|oracle/i.test(message)
-      ? "STALE_ORACLE_DENIED"
-      : undefined;
-    return NextResponse.json({ error: message, code }, { status: 500 });
+    if (/^Unknown Decibel market:/.test(message)) {
+      return NextResponse.json(
+        { error: "Unknown Decibel market" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    console.error("[decibel-order-build] lookup failed:", message);
+    return NextResponse.json(
+      { error: "Decibel order preflight is temporarily unavailable" },
+      { status: 502, headers: NO_STORE_HEADERS },
+    );
   }
 }

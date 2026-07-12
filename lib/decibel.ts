@@ -42,6 +42,70 @@ export function isValidAptosAddress(value: unknown): value is string {
   return typeof value === "string" && /^0x[0-9a-fA-F]{1,64}$/.test(value);
 }
 
+export function normalizeAptosAddress(
+  value: unknown,
+  fieldName = "address",
+): string {
+  if (!isValidAptosAddress(value)) {
+    throw new Error(`${fieldName} must be a valid Aptos address`);
+  }
+  return AccountAddress.fromString(value).toStringLong();
+}
+
+const U64_MAX = (1n << 64n) - 1n;
+const U128_MAX = (1n << 128n) - 1n;
+
+function normalizeUnsignedMoveInteger(
+  value: unknown,
+  max: bigint,
+  fieldName: string,
+  allowZero: boolean,
+): string {
+  let decimal: string;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`${fieldName} must be a safe unsigned integer`);
+    }
+    decimal = String(value);
+  } else if (typeof value === "bigint") {
+    decimal = value.toString();
+  } else if (typeof value === "string") {
+    decimal = value.trim();
+  } else {
+    throw new Error(`${fieldName} must be an unsigned integer`);
+  }
+
+  if (!/^\d+$/.test(decimal)) {
+    throw new Error(`${fieldName} must be an unsigned integer`);
+  }
+
+  const canonicalDecimal = decimal.replace(/^0+(?=\d)/, "");
+  if (canonicalDecimal.length > max.toString().length) {
+    throw new Error(`${fieldName} must be an unsigned integer within range`);
+  }
+  const normalized = BigInt(canonicalDecimal);
+  if ((!allowZero && normalized === 0n) || normalized > max) {
+    throw new Error(
+      `${fieldName} must be ${allowZero ? "an" : "a positive"} unsigned integer within range`,
+    );
+  }
+  return normalized.toString();
+}
+
+export function normalizePositiveU64(
+  value: unknown,
+  fieldName = "amount",
+): string {
+  return normalizeUnsignedMoveInteger(value, U64_MAX, fieldName, false);
+}
+
+export function normalizeU128(
+  value: unknown,
+  fieldName = "value",
+): string {
+  return normalizeUnsignedMoveInteger(value, U128_MAX, fieldName, true);
+}
+
 function getConfig(network?: DecibelNetwork): DecibelConfig {
   const net = network ?? getActiveNetwork();
   return net === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
@@ -309,7 +373,11 @@ function toRawAmount(value: unknown, decimals: number): number {
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("amount must be a positive number");
   }
-  return Math.round(n * Math.pow(10, decimals));
+  const raw = Math.round(n * Math.pow(10, decimals));
+  if (!Number.isSafeInteger(raw) || raw <= 0) {
+    throw new Error("amount is outside the supported on-chain range");
+  }
+  return raw;
 }
 
 function alignSizeToLot(rawSize: number, lotSize: number, decimals: number): number {
@@ -364,7 +432,11 @@ function applySlippage(rawPrice: number, isBuy: boolean, maxSlippageBps: number)
     ? 10_000 + maxSlippageBps
     : 10_000 - maxSlippageBps;
   if (factor <= 0) throw new Error("maxSlippageBps is too high");
-  return Math.round((rawPrice * factor) / 10_000);
+  const adjusted = Math.round((rawPrice * factor) / 10_000);
+  if (!Number.isSafeInteger(adjusted) || adjusted <= 0) {
+    throw new Error("price is outside the supported on-chain range");
+  }
+  return adjusted;
 }
 
 export function getDecibelMarketConfig(marketName: string): MarketConfig {
@@ -583,13 +655,17 @@ export function buildDecibelOrderPayload(args: {
   sizeRaw: number;
   priceRaw: number;
 } {
-  if (!args.subaccount) throw new Error("subaccount is required");
+  const subaccount = normalizeAptosAddress(args.subaccount, "subaccount");
 
   const pkg = getDecibelPackage(args.network);
   const marketConfig =
     args.marketConfig ??
     getStaticDecibelMarketConfig(args.marketName, args.network)?.config ??
     getDecibelMarketConfig(args.marketName);
+  const marketAddress = normalizeAptosAddress(
+    marketConfig.address,
+    "marketAddress",
+  );
   const sizeRaw = alignSizeToLot(
     toRawAmount(args.size, marketConfig.sizeDecimals),
     marketConfig.lotSize,
@@ -616,8 +692,8 @@ export function buildDecibelOrderPayload(args: {
         function: `${pkg}::dex_accounts_entry::place_order_to_subaccount`,
         typeArguments: [],
         functionArguments: [
-          args.subaccount,
-          marketConfig.address,
+          subaccount,
+          marketAddress,
           String(priceRaw),
           String(sizeRaw),
           Boolean(args.isBuy),
@@ -651,8 +727,8 @@ export function buildDecibelOrderPayload(args: {
       function: `${pkg}::dex_accounts_entry::place_order_to_subaccount`,
       typeArguments: [],
       functionArguments: [
-        args.subaccount,
-        marketConfig.address,
+        subaccount,
+        marketAddress,
         String(priceRaw),
         String(sizeRaw),
         Boolean(args.isBuy),
@@ -684,22 +760,27 @@ export function buildDecibelCancelOrderPayload(args: {
   payload: DecibelEntryPayload;
   marketAddress: string;
 } {
-  if (!args.subaccount) throw new Error("subaccount is required");
+  const subaccount = normalizeAptosAddress(args.subaccount, "subaccount");
   if (args.orderId === undefined || args.orderId === null || `${args.orderId}`.length === 0) {
     throw new Error("orderId is required");
   }
-  const marketAddress = args.marketAddress
+  const resolvedMarketAddress = args.marketAddress
     ? getDecibelMarketAddress(args.marketAddress, args.network)
     : args.marketName
       ? getDecibelMarketAddress(args.marketName, args.network)
       : "";
-  if (!marketAddress) throw new Error("marketName or marketAddress is required");
+  if (!resolvedMarketAddress) throw new Error("marketName or marketAddress is required");
+  const marketAddress = normalizeAptosAddress(
+    resolvedMarketAddress,
+    "marketAddress",
+  );
+  const orderId = normalizeU128(args.orderId, "orderId");
 
   return {
     payload: {
       function: `${getDecibelPackage(args.network)}::dex_accounts_entry::cancel_order_to_subaccount`,
       typeArguments: [],
-      functionArguments: [args.subaccount, String(args.orderId), marketAddress],
+      functionArguments: [subaccount, orderId, marketAddress],
     },
     marketAddress,
   };
@@ -711,8 +792,8 @@ export function buildDecibelCollateralPayload(args: {
   amount: string | number;
   network?: DecibelNetwork;
 }): DecibelEntryPayload {
-  if (!args.subaccount) throw new Error("subaccount is required");
-  const amountRaw = toRawAmount(args.amount, 0);
+  const subaccount = normalizeAptosAddress(args.subaccount, "subaccount");
+  const amountRaw = normalizePositiveU64(args.amount, "amount");
   const pkg = getDecibelPackage(args.network);
   const collateralMetadata = getDecibelCollateralMetadata(args.network);
   return {
@@ -721,7 +802,7 @@ export function buildDecibelCollateralPayload(args: {
         ? `${pkg}::dex_accounts_entry::deposit_to_subaccount_at`
         : `${pkg}::dex_accounts_entry::withdraw_from_subaccount`,
     typeArguments: [],
-    functionArguments: [args.subaccount, collateralMetadata, String(amountRaw)],
+    functionArguments: [subaccount, collateralMetadata, amountRaw],
   };
 }
 

@@ -41,7 +41,7 @@ export function useDecibelSubaccounts() {
   const { account, connected } = useWallet();
   const owner = account?.address?.toString() ?? "";
   const [subaccounts, setSubaccounts] = useState<DecibelSubaccount[]>([]);
-  const [selectedSubaccount, setSelectedSubaccount] = useState(() => getStoredDecibelSubaccount() ?? "");
+  const [selectedSubaccount, setSelectedSubaccount] = useState("");
   const [isLoadingSubaccounts, setIsLoadingSubaccounts] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupIncomplete, setLookupIncomplete] = useState(false);
@@ -51,9 +51,9 @@ export function useDecibelSubaccounts() {
   const selectSubaccount = useCallback(
     (next: string | null) => {
       setSelectedSubaccount(next ?? "");
-      storeDecibelSubaccount(next, owner);
+      storeDecibelSubaccount(next, owner, decibelNetwork);
     },
-    [owner]
+    [decibelNetwork, owner]
   );
 
   const refreshSubaccounts = useCallback(async () => {
@@ -81,25 +81,28 @@ export function useDecibelSubaccounts() {
       }
 
       const next = (data.subaccounts ?? []) as DecibelSubaccount[];
-      const stored = getStoredDecibelSubaccount(owner);
+      const stored = getStoredDecibelSubaccount(owner, decibelNetwork);
       setSubaccounts(next);
       setLookupError(data.lookupError ?? null);
       setLookupIncomplete(Boolean(data.lookupIncomplete));
       setLookupSource(data.source ?? "");
       setSelectedSubaccount((current) => {
         if (next.length === 0) {
-          const optimistic = current || stored;
-          return optimistic ?? "";
+          if (!data.lookupIncomplete) {
+            storeDecibelSubaccount(null, owner, decibelNetwork);
+            return "";
+          }
+          return stored ?? "";
         }
-        const picked = pickDecibelSubaccount(next, owner, current);
-        storeDecibelSubaccount(picked, owner);
+        const picked = pickDecibelSubaccount(next, owner, current, decibelNetwork);
+        storeDecibelSubaccount(picked, owner, decibelNetwork);
         return picked ?? "";
       });
       return next;
     } catch (error) {
-      const stored = getStoredDecibelSubaccount(owner);
+      const stored = getStoredDecibelSubaccount(owner, decibelNetwork);
       setSubaccounts([]);
-      setSelectedSubaccount((current) => current || stored || "");
+      setSelectedSubaccount(stored ?? "");
       setLookupError(error instanceof Error ? error.message : "Decibel account lookup failed.");
       setLookupIncomplete(true);
       setLookupSource("");
@@ -120,43 +123,36 @@ export function useDecibelSubaccounts() {
 
   useEffect(() => {
     refreshSubaccounts().catch(() => {
-      const stored = getStoredDecibelSubaccount(owner);
+      const stored = getStoredDecibelSubaccount(owner, decibelNetwork);
       setSubaccounts([]);
-      setSelectedSubaccount((current) => current || stored || "");
+      setSelectedSubaccount(stored ?? "");
     });
-  }, [refreshSubaccounts]);
+  }, [decibelNetwork, owner, refreshSubaccounts]);
 
   useEffect(() => {
     if (!connected || !owner) return;
-    const stored = getStoredDecibelSubaccount(owner);
-    if (stored) {
-      setSelectedSubaccount((current) => stored || current);
-    }
-  }, [connected, owner]);
+    const stored = getStoredDecibelSubaccount(owner, decibelNetwork);
+    setSelectedSubaccount(stored ?? "");
+  }, [connected, decibelNetwork, owner]);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
   useEffect(() => {
     return onDecibelSubaccountChange(() => {
-      const stored = getStoredDecibelSubaccount(owner);
+      const stored = getStoredDecibelSubaccount(owner, decibelNetwork);
       setSelectedSubaccount(stored ?? "");
     });
-  }, [owner]);
+  }, [decibelNetwork, owner]);
 
   const selectedSubaccountRecord = useMemo(
     () =>
       selectedSubaccount
-        ? subaccounts.find((s) => s.address === selectedSubaccount) ?? {
-            address: selectedSubaccount,
-            name: "Primary",
-            isPrimary: true,
-            isActive: true,
-          }
+        ? subaccounts.find((s) => s.address === selectedSubaccount)
         : undefined,
     [selectedSubaccount, subaccounts]
   );
   const hasDecibelAccount = Boolean(
-    selectedSubaccount && selectedSubaccountRecord?.isActive !== false
+    selectedSubaccountRecord && selectedSubaccountRecord.isActive !== false
   );
 
   return {

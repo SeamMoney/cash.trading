@@ -7,34 +7,44 @@ const BASE_KEY = "decibel:selected-subaccount";
 const CHANGE_EVENT = "decibel-subaccount-change";
 const POSITIONS_REFRESH_EVENT = "decibel-positions-refresh";
 
-function storageKey(owner?: string | null) {
-  return owner ? `${BASE_KEY}:${owner}` : BASE_KEY;
+export function decibelSubaccountStorageKey(
+  owner?: string | null,
+  network?: string | null,
+) {
+  const normalizedOwner = owner?.trim().toLowerCase();
+  if (!normalizedOwner) return BASE_KEY;
+  return network
+    ? `${BASE_KEY}:${normalizedOwner}:${network}`
+    : `${BASE_KEY}:${normalizedOwner}`;
 }
 
-export function getStoredDecibelSubaccount(owner?: string | null): string | null {
+export function getStoredDecibelSubaccount(
+  owner?: string | null,
+  network?: string | null,
+): string | null {
   if (typeof window === "undefined") return null;
-  return (
-    window.localStorage.getItem(storageKey(owner)) ||
-    window.localStorage.getItem(BASE_KEY)
-  );
+  return window.localStorage.getItem(decibelSubaccountStorageKey(owner, network));
 }
 
 export function storeDecibelSubaccount(
   subaccount: string | null,
-  owner?: string | null
+  owner?: string | null,
+  network?: string | null,
 ) {
   if (typeof window === "undefined") return;
-  const keys = [BASE_KEY, storageKey(owner)];
-  for (const key of keys) {
-    if (subaccount) {
-      window.localStorage.setItem(key, subaccount);
-    } else {
-      window.localStorage.removeItem(key);
-    }
+  const key = decibelSubaccountStorageKey(owner, network);
+  if (subaccount) {
+    window.localStorage.setItem(key, subaccount);
+  } else {
+    window.localStorage.removeItem(key);
+  }
+  if (owner && network) {
+    window.localStorage.removeItem(BASE_KEY);
+    window.localStorage.removeItem(decibelSubaccountStorageKey(owner));
   }
   window.dispatchEvent(
     new CustomEvent(CHANGE_EVENT, {
-      detail: { owner, subaccount },
+      detail: { network, owner, subaccount },
     })
   );
 }
@@ -42,9 +52,10 @@ export function storeDecibelSubaccount(
 export function pickDecibelSubaccount<T extends SelectableDecibelSubaccount>(
   subaccounts: T[],
   owner?: string | null,
-  preferred?: string | null
+  preferred?: string | null,
+  network?: string | null,
 ): string | null {
-  const stored = getStoredDecibelSubaccount(owner);
+  const stored = getStoredDecibelSubaccount(owner, network);
   const candidates = [preferred, stored];
   for (const candidate of candidates) {
     if (candidate && subaccounts.some((s) => s.address === candidate)) {

@@ -498,11 +498,13 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       const subaccounts = Array.isArray(subaccountData.subaccounts)
         ? subaccountData.subaccounts as Subaccount[]
         : [];
-      const fallback = getStoredDecibelSubaccount(ownerAddress);
+      const fallback = getStoredDecibelSubaccount(ownerAddress, decibelNetwork);
       const subaccount =
         subaccounts.length > 0
-          ? pickDecibelSubaccount(subaccounts, ownerAddress)
-          : fallback;
+          ? pickDecibelSubaccount(subaccounts, ownerAddress, undefined, decibelNetwork)
+          : subaccountData.lookupIncomplete
+            ? fallback
+            : null;
 
       setSelectedSubaccount(subaccount);
       if (!subaccount) {
@@ -513,7 +515,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       return subaccount;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return null;
-      const fallback = getStoredDecibelSubaccount(ownerAddress);
+      const fallback = getStoredDecibelSubaccount(ownerAddress, decibelNetwork);
       setSelectedSubaccount(fallback);
       return fallback;
     }

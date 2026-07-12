@@ -25,6 +25,8 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 assert.match(vaultRoute, /const VAULT_PAGE_SIZE = 1_000;/);
 assert.match(vaultRoute, /status: "active"/);
 assert.match(vaultRoute, /remainingOffsets\.map\(fetchPage\)/);
+assert.match(vaultRoute, /s-maxage=30, stale-while-revalidate=300/);
+assert.match(vaultRoute, /next: \{ revalidate: 30 \}/);
 assert.ok(!vaultRoute.includes("/vaults?limit=50"), "vault discovery must not stop at 50");
 assert.ok(
   !vaultRoute.includes("v.status === \"active\" && (v.tvl ?? 0) > 0"),

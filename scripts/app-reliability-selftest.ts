@@ -43,6 +43,7 @@ const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
 const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
 const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
+const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
 const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
@@ -166,6 +167,18 @@ assert.ok(
 assert.match(pointsDataContext, /requestIdRef\.current === requestId/);
 assert.match(pointsDataContext, /activeAddrRef\.current === addr/);
 assert.match(pointsDataContext, /requestIdRef\.current \+= 1/);
+assert.ok(!portfolioPage.includes("buildPortfolioSeries"), "portfolio history must not be synthesized from one snapshot");
+for (const fabricatedMetric of ["2.0139", "67.28%", "41.67%"] as const) {
+  assert.ok(!portfolioPage.includes(fabricatedMetric), "portfolio risk metrics must not be hard-coded");
+}
+assert.match(portfolioPage, /cash\.trading does not fabricate missing history/);
+assert.match(portfolioPage, /withdrawingRef\.current/);
+assert.match(portfolioPage, /isValidAptosAddress\(recipient\)/);
+assert.ok(
+  portfolioPage.indexOf("await waitForTransactionConfirmation(cancel.hash)")
+    < portfolioPage.indexOf("openOrders: prev.openOrders.filter"),
+  "an order must remain visible until its cancellation confirms",
+);
 assert.ok(!tradePage.includes("local-liq-"), "browser-only liquidations must not impersonate on-chain state");
 assert.ok(!tradePage.includes("onPositionOpen={"), "confirmed Decibel positions must not be duplicated in local state");
 assert.ok(!tradePage.includes("<PositionsTable"), "the page must show only the wallet-signed Decibel positions table");

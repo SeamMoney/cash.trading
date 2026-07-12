@@ -52,6 +52,26 @@ assert.ok(
   "placeholder seconds must bridge toward the next trade instead of forming a staircase",
 );
 
+const filledFlatRun = interpolateOneSecondCandles([
+  { time: 200, open: 100, high: 100, low: 100, close: 100, volume: 1 },
+  { time: 204, open: 100, high: 100, low: 100, close: 100, volume: 1 },
+]);
+assert.deepEqual(
+  filledFlatRun.map((candle) => candle.time),
+  [200, 201, 202, 203, 204],
+  "flat sparse runs must still contain one candle per second",
+);
+assert.ok(
+  filledFlatRun.slice(1, -1).every((candle) => candle.open !== candle.close),
+  "flat placeholder seconds must render candle bodies instead of a horizontal doji rail",
+);
+assert.equal(filledFlatRun[0].close, 100);
+assert.equal(filledFlatRun.at(-1)?.open, 100, "the visual bridge must return to the real anchor price");
+assert.ok(
+  filledFlatRun.every((candle) => Math.abs(candle.close - 100) < 0.001),
+  "flat interpolation must remain visually subtle and materially price-neutral",
+);
+
 const fiveSecond = aggregateChartCandles(interpolated, 5);
 assert.equal(fiveSecond.length, 1);
 assert.equal(fiveSecond[0].open, 100);
@@ -82,6 +102,10 @@ assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle cha
 assert.ok(
   plotSource.includes("@/components/charts/bklit/candlestick"),
   "the active candle renderer must use the local bklit primitives",
+);
+assert.ok(
+  plotSource.includes("minBodyHeight={intervalSeconds < 60 ? 3.5 : 1}"),
+  "low-timeframe dojis must retain a visible candle body",
 );
 assert.ok(!lineChartSource.includes("fillLineWindowGaps"), "the broken line gap filler must stay removed");
 assert.ok(

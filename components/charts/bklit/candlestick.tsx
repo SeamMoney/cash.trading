@@ -27,6 +27,8 @@ export interface CandlestickProps {
   negativeWickFill?: string;
   /** Body outline width. Default: 1px. */
   bodyStrokeWidth?: number;
+  /** Minimum visible body height in pixels. Default: 1px. */
+  minBodyHeight?: number;
   /** Optional pattern URL for body only (e.g. url(#pattern)). When set, body is drawn solid first, then pattern overlaid and masked to the body rect. */
   bodyPatternPositive?: string;
   /** Optional pattern URL for negative candle body. */
@@ -85,7 +87,8 @@ function computeGeometries(
   candleStyle: ResolvedCandleStyle,
   bodyPatternPositive: string | undefined,
   bodyPatternNegative: string | undefined,
-  insideStrokeWidth: number
+  insideStrokeWidth: number,
+  minBodyHeight: number,
 ): CandleGeometry[] {
   return renderData.map((d) => {
     const date = xAccessor(d);
@@ -99,8 +102,9 @@ function computeGeometries(
     const yOpen = yScale(open) ?? 0;
     const yClose = yScale(close) ?? 0;
     const rawBodyHeight = Math.abs(yClose - yOpen);
-    const bodyHeight = Math.max(1, rawBodyHeight);
-    const bodyTop = Math.min(yOpen, yClose) - (rawBodyHeight < 1 ? (1 - rawBodyHeight) / 2 : 0);
+    const bodyHeight = Math.max(minBodyHeight, rawBodyHeight);
+    const bodyTop = Math.min(yOpen, yClose)
+      - Math.max(0, minBodyHeight - rawBodyHeight) / 2;
     const bodyLeft = centerX - candleWidth / 2;
     const wickTop = Math.min(yHigh, yLow);
     const wickHeight = Math.abs(yLow - yHigh) || 1;
@@ -281,6 +285,7 @@ export function Candlestick({
   positiveWickFill,
   negativeWickFill,
   bodyStrokeWidth = 1,
+  minBodyHeight = 1,
   bodyPatternPositive,
   bodyPatternNegative,
   insideStrokeWidth = 0,
@@ -345,7 +350,8 @@ export function Candlestick({
         resolvedCandleStyle,
         bodyPatternPositive,
         bodyPatternNegative,
-        insideStrokeWidth
+        insideStrokeWidth,
+        Math.max(1, minBodyHeight),
       ),
     [
       renderData,
@@ -357,6 +363,7 @@ export function Candlestick({
       bodyPatternPositive,
       bodyPatternNegative,
       insideStrokeWidth,
+      minBodyHeight,
     ]
   );
 
@@ -386,7 +393,8 @@ export function Candlestick({
         resolvedCandleStyle,
         bodyPatternPositive,
         bodyPatternNegative,
-        insideStrokeWidth
+        insideStrokeWidth,
+        Math.max(1, minBodyHeight),
       )[0] ?? null
     );
   }, [
@@ -400,6 +408,7 @@ export function Candlestick({
     bodyPatternPositive,
     bodyPatternNegative,
     insideStrokeWidth,
+    minBodyHeight,
   ]);
 
   return (
@@ -422,4 +431,3 @@ export function Candlestick({
 Candlestick.displayName = "Candlestick";
 
 export default Candlestick;
-

@@ -220,6 +220,15 @@ assert.ok(
 );
 assert.ok(!lineChartSource.includes("fillLineWindowGaps"), "the broken line gap filler must stay removed");
 assert.ok(
+  chartShellSource.includes('useState<"line" | "candle">("candle")'),
+  "trade charts must open in candle mode",
+);
+assert.ok(
+  proChartSource.includes('const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m"')
+    && !proChartSource.includes("INTERVAL_STORAGE_KEY"),
+  "candle charts must open at 1m on every fresh page load",
+);
+assert.ok(
   !chartShellSource.includes('return "0.0010%"')
     && !chartShellSource.includes('?? "-3.41%"')
     && !chartShellSource.includes('?? "$1.46M"'),

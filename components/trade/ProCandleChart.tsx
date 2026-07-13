@@ -95,18 +95,10 @@ const DEFAULT_VISIBLE_BARS: Record<ProChartInterval, number> = {
   "1d": 120,
 };
 
-const INTERVAL_STORAGE_KEY = "cash:pro-chart-interval:v1";
+const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m";
 const BOOTSTRAP_BARS = 500;
 const MIN_VISIBLE_BARS = 30;
 const MAX_VISIBLE_BARS = 220;
-
-function loadStoredInterval(): ProChartInterval {
-  if (typeof window === "undefined") return "1m";
-  const stored = window.localStorage.getItem(INTERVAL_STORAGE_KEY);
-  return (CHART_INTERVALS as readonly string[]).includes(stored ?? "")
-    ? stored as ProChartInterval
-    : "1m";
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -154,12 +146,12 @@ function ProCandleChartComponent({
   minuteCandles,
   secondCandles,
 }: ProCandleChartProps) {
-  const [interval, setChartInterval] = useState<ProChartInterval>(loadStoredInterval);
+  const [interval, setChartInterval] = useState<ProChartInterval>(DEFAULT_CHART_INTERVAL);
   const [remoteResult, setRemoteResult] = useState<{ key: string; candles: BklitPlotCandle[] }>({ key: "", candles: [] });
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [offsetFromEnd, setOffsetFromEnd] = useState(0);
-  const [visibleBars, setVisibleBars] = useState(() => DEFAULT_VISIBLE_BARS[loadStoredInterval()]);
+  const [visibleBars, setVisibleBars] = useState(() => DEFAULT_VISIBLE_BARS[DEFAULT_CHART_INTERVAL]);
   const [inspected, setInspected] = useState<BklitPlotCandle | null>(null);
   const interactionRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startOffset: number; width: number } | null>(null);
@@ -281,11 +273,6 @@ function ProCandleChartComponent({
 
   const handleIntervalChange = useCallback((next: ProChartInterval) => {
     setChartInterval(next);
-    try {
-      window.localStorage.setItem(INTERVAL_STORAGE_KEY, next);
-    } catch {
-      // Storage is optional; interval switching remains functional in memory.
-    }
   }, []);
 
   const snapToLive = useCallback(() => setOffsetFromEnd(0), []);

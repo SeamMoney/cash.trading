@@ -41,6 +41,7 @@ interface TradeData {
 
 interface Props {
   indicatorAddr: string;
+  packageAddress?: string;
 }
 
 function fmt(price: number) {
@@ -58,7 +59,7 @@ function fmtTime(ts: number) {
   });
 }
 
-export default function TradeHistory({ indicatorAddr }: Props) {
+export default function TradeHistory({ indicatorAddr, packageAddress }: Props) {
   const [data, setData] = useState<TradeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,12 @@ export default function TradeHistory({ indicatorAddr }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/launchpad/trades?addr=${indicatorAddr}`);
+        const packageQuery = packageAddress
+          ? `&pkg=${encodeURIComponent(packageAddress)}`
+          : "";
+        const res = await fetch(
+          `/api/launchpad/trades?addr=${encodeURIComponent(indicatorAddr)}${packageQuery}`,
+        );
         const json = await res.json().catch(() => null) as (TradeData & {
           error?: string;
           reason?: string;
@@ -78,6 +84,8 @@ export default function TradeHistory({ indicatorAddr }: Props) {
           throw new Error(
             json?.reason === "indicator_not_found"
               ? "No on-chain trade history exists for this indicator."
+              : json?.reason === "trade_history_not_supported"
+                ? "This strategy package does not record on-chain trade history."
               : "Trade history is temporarily unavailable.",
           );
         }
@@ -94,11 +102,11 @@ export default function TradeHistory({ indicatorAddr }: Props) {
 
     void load();
     return () => { cancelled = true; };
-  }, [indicatorAddr]);
+  }, [indicatorAddr, packageAddress]);
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-zinc-500 py-4">
+      <div role="status" className="flex items-center gap-2 text-sm text-zinc-500 py-4">
         <span className="w-3 h-3 rounded-full bg-zinc-700 animate-pulse" />
         Loading trade history…
       </div>
@@ -107,7 +115,7 @@ export default function TradeHistory({ indicatorAddr }: Props) {
 
   if (error || !data) {
     return (
-      <div className="text-sm text-zinc-500 py-2">
+      <div role="alert" className="text-sm text-zinc-500 py-2">
         {error ?? "Trade history is temporarily unavailable."}
       </div>
     );

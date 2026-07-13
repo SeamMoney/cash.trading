@@ -348,7 +348,7 @@ export function BotDashboard() {
 
       {/* ── Trade history with P&L ── */}
       {bot?.indicatorAddr && (
-        <TradeHistory indicatorAddr={bot.indicatorAddr} />
+        <TradeHistory indicatorAddr={bot.indicatorAddr} packageAddress={botPackage} />
       )}
     </div>
   );

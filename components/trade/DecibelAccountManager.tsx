@@ -31,6 +31,7 @@ import {
   shortAddress,
   useDecibelSubaccounts,
 } from "@/hooks/useDecibelSubaccounts";
+import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 
 interface AccountOverview {
@@ -167,6 +168,7 @@ function BridgeStepsRail({
 
 export function DecibelAccountManager({ className }: { className?: string }) {
   const { account, connected, network: walletNetwork, signAndSubmitTransaction, signTransaction, wallet } = useWallet();
+  const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const [depositAmount, setDepositAmount] = useState("100");
   const [status, setStatus] = useState<
     "idle" | "submitting" | "success" | "error"
@@ -198,6 +200,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     hasDecibelAccount,
     isLoadingSubaccounts,
     lookupIncomplete,
+    originAddress,
+    owner,
     refreshSubaccounts,
     selectSubaccount,
     selectedSubaccount,
@@ -223,11 +227,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     !!decibelAppDerivedAddress &&
     bridgeMintRecipient === decibelAppDerivedAddress;
   const bridgeStorageKey =
-    connected && account
-      ? `cash:decibel:cctp-deposit:${decibelNetwork}:${account.address.toString()}`
+    connected && owner
+      ? `cash:decibel:cctp-deposit:${decibelNetwork}:${owner}`
       : "";
   const activeActionTokenRef = useRef<symbol | null>(null);
-  const accountActionContext = `${account?.address?.toString() ?? ""}:${decibelNetwork}:${wallet?.name ?? ""}`;
+  const accountActionContext = `${owner}:${decibelNetwork}:${wallet?.name ?? ""}`;
   const accountActionContextRef = useRef(accountActionContext);
   accountActionContextRef.current = accountActionContext;
 
@@ -416,7 +420,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setWalletUsdcError("");
     try {
       const params = new URLSearchParams({
-        address: account.address.toString(),
+        address: owner,
         network: decibelNetwork,
       });
       const res = await fetch(`/api/decibel/wallet-balance?${params.toString()}`, {
@@ -436,7 +440,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     } finally {
       if (!signal?.aborted) setWalletUsdcLoading(false);
     }
-  }, [account, connected, decibelNetwork]);
+  }, [connected, decibelNetwork, owner]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -452,7 +456,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   useEffect(() => {
     let active = true;
-    if (!connected || !account || !hasDecibelAccount || !isEvmWallet) {
+    if (!connected || !account || !isEvmWallet) {
       setEvmSourceBalance(null);
       setEvmSourceAddress("");
       setEvmSourceError("");
@@ -460,6 +464,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       return;
     }
 
+    setEvmSourceAddress(originAddress);
     setEvmSourceLoading(true);
     setEvmSourceError("");
     fetchEvmUsdcBalance({
@@ -470,12 +475,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       .then((result) => {
         if (!active) return;
         setEvmSourceBalance(result?.balance ?? null);
-        setEvmSourceAddress(result?.address ?? "");
+        setEvmSourceAddress(result?.address ?? originAddress);
       })
       .catch((err) => {
         if (!active) return;
         setEvmSourceBalance(null);
-        setEvmSourceAddress("");
+        setEvmSourceAddress(originAddress);
         setEvmSourceError(
           err instanceof Error ? err.message : "EVM USDC balance unavailable."
         );
@@ -492,8 +497,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     bridgeSourceChain,
     connected,
     decibelNetwork,
-    hasDecibelAccount,
     isEvmWallet,
+    originAddress,
     wallet?.name,
   ]);
 
@@ -949,7 +954,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     try {
       const result = await startEvmCctpDeposit({
         amount: depositValue,
-        aptosRecipientAddress: account.address.toString(),
+        aptosRecipientAddress: owner,
         network: decibelNetwork,
         preferredWalletName: wallet?.name,
         sourceChain: bridgeSourceChain,
@@ -999,6 +1004,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     hasDepositAmount,
     isEvmWallet,
     lookupBridgeTransfer,
+    owner,
     wallet?.name,
   ]);
 
@@ -1020,8 +1026,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       }
       const { hash } = await buildAndSign(
         "/api/decibel/create-subaccount",
-        { owner: account.address.toString(), network: decibelNetwork },
-        signAndSubmitTransaction,
+        { owner, network: decibelNetwork },
+        signAndSubmitDecibelTransaction,
         () => isCurrentAccountAction(action),
       );
       if (!isCurrentAccountAction(action)) return;
@@ -1056,8 +1062,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     account,
     connected,
     decibelNetwork,
+    owner,
     refreshSubaccounts,
-    signAndSubmitTransaction,
+    signAndSubmitDecibelTransaction,
     waitForSubaccounts,
   ]);
 
@@ -1081,7 +1088,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const { hash } = await buildAndSign(
         "/api/decibel/faucet",
         { network: decibelNetwork },
-        signAndSubmitTransaction,
+        signAndSubmitDecibelTransaction,
         () => isCurrentAccountAction(action),
       );
       if (!isCurrentAccountAction(action)) return;
@@ -1099,7 +1106,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     } finally {
       finishAccountAction(action);
     }
-  }, [account, connected, decibelNetwork, isMainnet, signAndSubmitTransaction, walletNetwork?.name]);
+  }, [account, connected, decibelNetwork, isMainnet, signAndSubmitDecibelTransaction, walletNetwork?.name]);
 
   const handleDeposit = useCallback(async () => {
     if (activeActionTokenRef.current) return;
@@ -1144,7 +1151,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       const { hash } = await buildAndSign(
         "/api/decibel/deposit",
         { subaccount: selectedSubaccount, amount: raw, network: decibelNetwork },
-        signAndSubmitTransaction,
+        signAndSubmitDecibelTransaction,
         () => isCurrentAccountAction(action),
       );
       if (!isCurrentAccountAction(action)) return;
@@ -1174,7 +1181,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     refreshAccountState,
     refreshWalletUsdcBalance,
     selectedSubaccount,
-    signAndSubmitTransaction,
+    signAndSubmitDecibelTransaction,
     subaccounts,
     walletNetwork?.name,
   ]);

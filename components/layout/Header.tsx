@@ -30,9 +30,15 @@ function CashWordmark() {
 }
 
 export function Header() {
-  const { connected, account, wallet } = useWallet();
+  const { connected, wallet } = useWallet();
   const pathname = usePathname();
-  const { decibelNetwork, selectedSubaccount } = useDecibelSubaccounts();
+  const {
+    adapterAddress,
+    decibelNetwork,
+    originAddress,
+    owner,
+    selectedSubaccount,
+  } = useDecibelSubaccounts();
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
@@ -45,8 +51,8 @@ export function Header() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  const addressStr = account?.address?.toString() ?? "";
-  const balanceContext = `${addressStr}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+  const addressStr = originAddress || adapterAddress;
+  const balanceContext = `${owner}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
   const balanceContextRef = useRef(balanceContext);
   balanceContextRef.current = balanceContext;
   const shortAddress = addressStr
@@ -57,14 +63,14 @@ export function Header() {
   const isXChain = chain === "ethereum" || chain === "solana";
 
   const refreshBalance = useCallback(async (signal?: AbortSignal) => {
-    const requestContext = `${addressStr}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
+    const requestContext = `${owner}:${decibelNetwork}:${selectedSubaccount ?? ""}`;
     if (balanceContextRef.current !== requestContext) return;
     const requestId = ++balanceRequestIdRef.current;
     const isCurrentRequest = () =>
       balanceRequestIdRef.current === requestId
       && balanceContextRef.current === requestContext
       && !signal?.aborted;
-    if (!connected || !addressStr) {
+    if (!connected || !owner) {
       if (isCurrentRequest()) {
         setBalance(null);
         setBalanceLoading(false);
@@ -93,7 +99,7 @@ export function Header() {
       }
 
       const params = new URLSearchParams({
-        address: addressStr,
+        address: owner,
         network: decibelNetwork,
       });
       const res = await fetch(`/api/decibel/wallet-balance?${params.toString()}`, {
@@ -115,7 +121,7 @@ export function Header() {
     } finally {
       if (isCurrentRequest()) setBalanceLoading(false);
     }
-  }, [addressStr, connected, decibelNetwork, selectedSubaccount]);
+  }, [connected, decibelNetwork, owner, selectedSubaccount]);
 
   useEffect(() => {
     const controller = new AbortController();

@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
+import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { isValidAptosAddress } from "@/lib/decibel";
@@ -324,14 +325,15 @@ function OverviewRow({ label, value, tone }: { label: string; value: string; ton
 }
 
 export function PortfolioPageClient() {
-  const { account, connected, signAndSubmitTransaction } = useWallet();
-  const owner = account?.address?.toString() ?? "";
+  const { connected } = useWallet();
+  const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const {
     decibelNetwork,
     hasDecibelAccount,
     isLoadingSubaccounts,
     lookupError,
     lookupIncomplete,
+    owner,
     selectedSubaccount,
     selectedSubaccountRecord,
     subaccounts,
@@ -592,7 +594,7 @@ export function PortfolioPageClient() {
     if (withdrawingRef.current || withdrawalTokenRef.current) return;
     const amount = Number(withdrawAmount);
     const recipient = withdrawRecipient.trim() || owner;
-    if (!signAndSubmitTransaction) {
+    if (!signAndSubmitDecibelTransaction) {
       setActionStatus({ tone: "error", message: "Wallet signing is not available." });
       return;
     }
@@ -630,7 +632,7 @@ export function PortfolioPageClient() {
       const withdraw = await buildAndSign(
         "/api/decibel/withdraw",
         { subaccount: selectedSubaccount, amount: rawAmount, network: decibelNetwork },
-        signAndSubmitTransaction,
+        signAndSubmitDecibelTransaction,
         isCurrentWithdrawal,
       );
       if (isCurrentWithdrawal()) {
@@ -652,7 +654,7 @@ export function PortfolioPageClient() {
         const transfer = await buildAndSign(
           "/api/decibel/transfer-usdc",
           { recipient, amount: rawAmount, network: decibelNetwork },
-          signAndSubmitTransaction,
+          signAndSubmitDecibelTransaction,
           isCurrentWithdrawal,
         );
         setActionStatus({
@@ -697,7 +699,7 @@ export function PortfolioPageClient() {
     hasDecibelAccount,
     owner,
     selectedSubaccount,
-    signAndSubmitTransaction,
+    signAndSubmitDecibelTransaction,
     withdrawAmount,
     withdrawRecipient,
   ]);
@@ -707,7 +709,7 @@ export function PortfolioPageClient() {
     if (closingActionTokensRef.current.has(key)) return;
     const price = position.markPrice ?? position.entryPrice;
     const size = Math.abs(position.size);
-    if (!signAndSubmitTransaction || !selectedSubaccount) {
+    if (!signAndSubmitDecibelTransaction || !selectedSubaccount) {
       setActionStatus({ tone: "error", message: "Connect a wallet and Decibel account first." });
       return;
     }
@@ -734,7 +736,7 @@ export function PortfolioPageClient() {
           subaccount: selectedSubaccount,
           network: decibelNetwork,
         },
-        signAndSubmitTransaction,
+        signAndSubmitDecibelTransaction,
         () =>
           closingActionTokensRef.current.get(key) === token
           && actionContextRef.current === startedInContext,
@@ -773,12 +775,12 @@ export function PortfolioPageClient() {
         });
       }
     }
-  }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
+  }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitDecibelTransaction]);
 
   const handleCancelOrder = useCallback(async (order: OpenOrder) => {
     const orderId = String(order.orderId);
     if (cancelingActionTokensRef.current.has(orderId)) return;
-    if (!signAndSubmitTransaction || !selectedSubaccount) {
+    if (!signAndSubmitDecibelTransaction || !selectedSubaccount) {
       setActionStatus({ tone: "error", message: "Connect a wallet and Decibel account first." });
       return;
     }
@@ -802,7 +804,7 @@ export function PortfolioPageClient() {
           orderId,
           network: decibelNetwork,
         },
-        signAndSubmitTransaction,
+        signAndSubmitDecibelTransaction,
         () =>
           cancelingActionTokensRef.current.get(orderId) === token
           && actionContextRef.current === startedInContext,
@@ -845,7 +847,7 @@ export function PortfolioPageClient() {
         });
       }
     }
-  }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitTransaction]);
+  }, [decibelNetwork, fetchAccountState, selectedSubaccount, signAndSubmitDecibelTransaction]);
 
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's

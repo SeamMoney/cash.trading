@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
 import Image from "next/image";
-import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
@@ -12,6 +11,7 @@ import { VaultActionModal } from "@/components/trade/VaultActionModal";
 import { MobilePortfolioSheet } from "@/components/trade/MobilePortfolioSheet";
 import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
+import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { cn } from "@/lib/utils";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
@@ -858,8 +858,8 @@ export function TradePageClient({
     vaultAddress?: string | null;
   } | null>(null);
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
-  const { account, signAndSubmitTransaction } = useWallet();
-  const { selectedSubaccount } = useDecibelSubaccounts();
+  const { owner, selectedSubaccount } = useDecibelSubaccounts();
+  const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const isMobile = useIsMobile();
   const queuedPriceRef = useRef(0);
   const priceCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -868,7 +868,7 @@ export function TradePageClient({
   const signalsSectionRef = useRef<HTMLDivElement>(null);
   const vaultsActive = useInViewport(vaultsSectionRef, { rootMargin: "480px" });
   const signalsActive = useInViewport(signalsSectionRef, { rootMargin: "480px" });
-  const ownerWallet = account?.address?.toString() ?? "";
+  const ownerWallet = owner;
 
   const fetchStrategyVaults = useCallback(async () => {
     if (!ownerWallet) {
@@ -946,12 +946,12 @@ export function TradePageClient({
   }, []);
   const signVaultTransaction = useCallback(
     async (payload: unknown) => {
-      if (!signAndSubmitTransaction) {
+      if (!signAndSubmitDecibelTransaction) {
         throw new Error("Connect a wallet before signing the vault transaction");
       }
-      return signAndSubmitTransaction({ data: payload as any });
+      return signAndSubmitDecibelTransaction({ data: payload as any });
     },
-    [signAndSubmitTransaction],
+    [signAndSubmitDecibelTransaction],
   );
 
   return (

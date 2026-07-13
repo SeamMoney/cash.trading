@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { explorerAccountUrl } from "@/lib/constants";
 import { DecibelAccountManager } from "@/components/trade/DecibelAccountManager";
+import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -20,6 +21,12 @@ interface WalletAccountModalProps {
 
 export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   const { account, wallet, disconnect, connected, network: walletNetwork } = useWallet();
+  const {
+    adapterAddress,
+    originAddress,
+    owner,
+    usesDecibelDomainIdentity,
+  } = useDecibelSubaccounts();
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
@@ -45,11 +52,11 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
 
   if (!open || !mounted || !connected || !account) return null;
 
-  const address = account.address?.toString() ?? "";
+  const address = originAddress || adapterAddress;
   const shortAddress = address
     ? `${address.slice(0, 10)}...${address.slice(-8)}`
     : "";
-  const explorerUrl = explorerAccountUrl(address);
+  const explorerUrl = explorerAccountUrl(owner || adapterAddress);
 
   const copyAddress = async () => {
     await navigator.clipboard.writeText(address);
@@ -104,7 +111,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                  Address
+                  Connected address
                 </p>
                 <p className="mt-1 truncate font-mono text-[13px] text-zinc-300">
                 {shortAddress}
@@ -118,6 +125,16 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
+            {usesDecibelDomainIdentity && owner && (
+              <div className="mt-3 rounded-md bg-white/[0.03] px-3 py-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-600">
+                  Decibel owner
+                </p>
+                <p className="mt-1 truncate font-mono text-[11px] text-zinc-500" title={owner}>
+                  {owner.slice(0, 10)}...{owner.slice(-8)}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-white/[0.06] pt-4">

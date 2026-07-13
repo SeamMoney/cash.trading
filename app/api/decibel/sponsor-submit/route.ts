@@ -49,6 +49,32 @@ function getSponsorAccount(): Account | null {
   }
 }
 
+export async function GET(req: NextRequest) {
+  const rate = checkApiRateLimit(req, "sponsor-info", 60, 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "rate limited", retryAfterS: rate.retryAfterS },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
+      },
+    );
+  }
+
+  const sponsor = getSponsorAccount();
+  if (!sponsor) {
+    return NextResponse.json(
+      { unavailable: true, reason: "sponsor_not_configured" },
+      { status: 501, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  return NextResponse.json(
+    { feePayerAddress: sponsor.accountAddress.toStringLong() },
+    { headers: NO_STORE_HEADERS },
+  );
+}
+
 /**
  * Sponsor the exact Circle claim bytecode and a small allowlist of Decibel
  * account entry functions. This lets an EVM-derived Decibel owner with no APT
@@ -174,6 +200,12 @@ export async function POST(req: NextRequest) {
       { status: 400, headers: NO_STORE_HEADERS },
     );
   }
+  if (!transaction.feePayerAddress.equals(sponsor.accountAddress)) {
+    return NextResponse.json(
+      { error: "transaction was not signed for the active gas sponsor" },
+      { status: 409, headers: NO_STORE_HEADERS },
+    );
+  }
 
   const allow = isSponsorablePayload(transaction);
   if (!allow.ok) {
@@ -196,7 +228,6 @@ export async function POST(req: NextRequest) {
   try {
     // Simulate before paying: a transaction that aborts on-chain still charges
     // the fee payer, so garbage claims must be rejected while it's still free.
-    transaction.feePayerAddress = sponsor.accountAddress;
     const [simulation] = await aptos.transaction.simulate.simple({ transaction });
     if (!simulation?.success) {
       return NextResponse.json(

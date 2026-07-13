@@ -87,6 +87,7 @@ export function TradePanel({
   const dragRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const collateralDropdownRef = useRef<HTMLDivElement>(null);
+  const collateralTriggerRef = useRef<HTMLButtonElement>(null);
   const submissionTokenRef = useRef<symbol | null>(null);
   const statusResetTokenRef = useRef<symbol | null>(null);
   const {
@@ -155,8 +156,17 @@ export function TradePanel({
         setCollateralOpen(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setCollateralOpen(false);
+      collateralTriggerRef.current?.focus();
+    };
     window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [collateralOpen]);
 
   useEffect(() => {
@@ -204,6 +214,19 @@ export function TradePanel({
     },
     [maxLeverage]
   );
+
+  const handleLeverageKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    let next = leverage;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") next -= 0.1;
+    else if (event.key === "ArrowRight" || event.key === "ArrowUp") next += 0.1;
+    else if (event.key === "PageDown") next -= 1;
+    else if (event.key === "PageUp") next += 1;
+    else if (event.key === "Home") next = LEVERAGE_MIN;
+    else if (event.key === "End") next = maxLeverage;
+    else return;
+    event.preventDefault();
+    setLeverage(Math.round(Math.max(LEVERAGE_MIN, Math.min(maxLeverage, next)) * 10) / 10);
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -444,6 +467,8 @@ export function TradePanel({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
+            type="button"
+            aria-pressed={isLong}
             onClick={() => {
               setSide("long");
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
@@ -456,6 +481,8 @@ export function TradePanel({
           </button>
           <span className="text-zinc-700">/</span>
           <button
+            type="button"
+            aria-pressed={!isLong}
             onClick={() => {
               setSide("short");
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
@@ -480,6 +507,8 @@ export function TradePanel({
             ref={inputRef}
             type="text"
             inputMode="decimal"
+            aria-label="Order collateral amount"
+            aria-describedby={statusMessage ? "trade-status-message" : undefined}
             placeholder="0.00"
             value={amount}
             onChange={(e) => {
@@ -501,7 +530,11 @@ export function TradePanel({
           />
           <div ref={collateralDropdownRef} className="relative shrink-0 ml-4">
             <button
+              ref={collateralTriggerRef}
               type="button"
+              aria-controls="trade-collateral-menu"
+              aria-expanded={collateralOpen}
+              aria-haspopup="menu"
               onClick={() => setCollateralOpen((open) => !open)}
               className="flex items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]"
             >
@@ -513,16 +546,19 @@ export function TradePanel({
             </button>
 
             {collateralOpen && (
-              <div className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[10px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
+              <div id="trade-collateral-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[10px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
                 {COLLATERAL_TOKENS.map((token) => {
                   const active = token.symbol === collateralToken;
                   return (
                     <button
                       key={token.symbol}
                       type="button"
+                      role="menuitemradio"
+                      aria-checked={active}
                       onClick={() => {
                         setCollateralToken(token.symbol);
                         setCollateralOpen(false);
+                        collateralTriggerRef.current?.focus();
                         if (tradeStatus !== "idle") {
                           setTradeStatus("idle");
                           setOrderLifecycle("idle");
@@ -568,10 +604,19 @@ export function TradePanel({
             >
               <div
                 ref={trackRef}
+                id="trade-leverage-slider"
+                aria-label="Leverage"
+                aria-valuemax={maxLeverage}
+                aria-valuemin={LEVERAGE_MIN}
+                aria-valuenow={leverage}
+                aria-valuetext={`${leverage.toFixed(1)} times`}
                 className="relative h-[24px] rounded-full bg-zinc-800 cursor-pointer touch-none overflow-hidden"
+                onKeyDown={handleLeverageKeyDown}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
+                role="slider"
+                tabIndex={leverageOpen ? 0 : -1}
               >
                 {leveragePct > 0 && (
                   <div
@@ -609,6 +654,7 @@ export function TradePanel({
 
           <button
             type="button"
+            aria-controls="trade-leverage-slider"
             aria-expanded={leverageOpen}
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
             className="flex w-full flex-col items-center gap-1 px-5 pb-3 pt-2"
@@ -706,6 +752,9 @@ export function TradePanel({
 
       {statusMessage && (
         <div
+          id="trade-status-message"
+          aria-live={tradeStatus === "error" ? "assertive" : "polite"}
+          role={tradeStatus === "error" ? "alert" : "status"}
           className={`mt-3 rounded-md px-3 py-2 text-[11px] ${
             tradeStatus === "error"
               ? "bg-red-500/10 text-red-300"

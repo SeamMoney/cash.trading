@@ -569,6 +569,7 @@ function MarketModal({
 }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -603,7 +604,28 @@ function MarketModal({
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
@@ -621,6 +643,10 @@ function MarketModal({
       <div className="absolute inset-0 bg-black/85" />
 
       <div
+        ref={dialogRef}
+        aria-labelledby="market-selector-title"
+        aria-modal="true"
+        role="dialog"
         onClick={(e) => e.stopPropagation()}
         className="relative max-h-[calc(100dvh-0.75rem)] w-full overflow-hidden rounded-t-[14px] border-t border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70 sm:max-w-[900px] sm:rounded-[12px] sm:border"
         style={{ animation: "market-modal-in 0.2s ease-out" }}
@@ -630,7 +656,7 @@ function MarketModal({
           <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-4 py-3 font-mono text-[13px] font-semibold text-[#888] sm:px-5">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
-              <span>SELECT MARKET</span>
+              <span id="market-selector-title">SELECT MARKET</span>
               <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
                 {network}
               </span>
@@ -654,6 +680,7 @@ function MarketModal({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 autoFocus
+                aria-label="Search markets"
                 placeholder="Search markets"
                 className="min-w-0 flex-1 bg-transparent text-[14px] text-zinc-200 outline-none placeholder:text-zinc-500"
               />
@@ -664,6 +691,7 @@ function MarketModal({
                 <button
                   key={tab.key}
                   type="button"
+                  aria-pressed={activeCategory === tab.key}
                   onClick={() => setActiveCategory(tab.key)}
                   className={`pb-2 text-[13px] transition-colors ${
                     activeCategory === tab.key
@@ -706,6 +734,8 @@ function MarketModal({
                       return (
                         <button
                           key={m.id}
+                          type="button"
+                          aria-pressed={isActive}
                           onClick={() => { onSelect(m.id); onClose(); }}
                           className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
                             isActive
@@ -792,6 +822,7 @@ export function BTCChart({
   const activeMarkets = marketsProp ?? liveMarkets;
   const activeCategories = categoriesProp ?? CATEGORIES;
   const chartRef = useRef<HTMLDivElement>(null);
+  const marketTriggerRef = useRef<HTMLButtonElement>(null);
   const pageVisible = usePageVisible();
   const inViewport = useInViewport(chartRef, { rootMargin: "160px" });
   const chartActive = pageVisible && inViewport;
@@ -996,6 +1027,10 @@ export function BTCChart({
       marketName: m.marketName ?? m.perpData?.marketName,
     });
   };
+  const closeMarketModal = useCallback(() => {
+    setModalOpen(false);
+    window.requestAnimationFrame(() => marketTriggerRef.current?.focus());
+  }, []);
 
   return (
     <div ref={chartRef} className={cn("surface-1 overflow-hidden rounded-[16px] lg:flex lg:flex-col", className)}>
@@ -1004,6 +1039,7 @@ export function BTCChart({
         <div className="flex items-center gap-3">
           {/* Market selector trigger */}
           <button
+            ref={marketTriggerRef}
             onClick={() => setModalOpen(true)}
             aria-label="Open market selector"
             className="flex items-center gap-2 hover:bg-white/5 rounded-lg px-2 py-1.5 -mx-2 -my-1.5 transition-colors"
@@ -1111,6 +1147,7 @@ export function BTCChart({
         <div className="absolute bottom-2 right-2 z-20 flex items-center rounded-[8px] border border-white/[0.08] bg-[#141414]/90 backdrop-blur-sm p-0.5">
           <button
             type="button"
+            aria-pressed={(isPerpsMarket ? perpsMode : mode) === "line"}
             onClick={() => isPerpsMarket ? setPerpsMode("line") : setMode("line")}
             className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "line"
@@ -1122,6 +1159,7 @@ export function BTCChart({
           </button>
           <button
             type="button"
+            aria-pressed={(isPerpsMarket ? perpsMode : mode) === "candle"}
             onClick={() => isPerpsMarket ? setPerpsMode("candle") : setMode("candle")}
             className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "candle"
@@ -1144,6 +1182,7 @@ export function BTCChart({
             return (
               <button
                 type="button"
+                aria-label={`Moving-average overlay: ${overlayMode}`}
                 onClick={() => setOverlayMode(next)}
                 className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
                   overlayMode === "strategy" ? "bg-emerald-500/20 text-emerald-300"
@@ -1278,7 +1317,7 @@ export function BTCChart({
         open={modalOpen}
         selected={market}
         onSelect={handleMarketSelect}
-        onClose={() => setModalOpen(false)}
+        onClose={closeMarketModal}
         markets={activeMarkets}
         categories={activeCategories}
         loading={marketsLoading}

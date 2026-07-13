@@ -46,6 +46,7 @@ const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "ut
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
 const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
+const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const accountManager = readFileSync("components/trade/DecibelAccountManager.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
@@ -354,6 +355,13 @@ assert.ok(!launchpadPage.includes("d.lastPrice > 1000"), "launchpad prices are a
 assert.ok(!botDashboard.includes("d.lastPrice > 1000"), "bot prices are already normalized by the API");
 assert.ok(!botDashboard.includes("d.entryPrice > 1000"), "bot entry prices are already normalized by the API");
 assert.match(sharedHeader, /\{ href: "\/", label: "Trade" \}/);
+assert.match(tradePanel, /aria-label="Order collateral amount"/);
+assert.match(tradePanel, /role="slider"/);
+assert.match(tradePanel, /handleLeverageKeyDown/);
+assert.match(tradePanel, /role=\{tradeStatus === "error" \? "alert" : "status"\}/);
+assert.match(btcChart, /aria-modal="true"/);
+assert.match(btcChart, /role="dialog"/);
+assert.match(btcChart, /aria-label="Search markets"/);
 assert.ok(!explainerPage.includes('href="#"'), "explainer calls to action must navigate somewhere real");
 assert.match(explainerPage, /60 live markets/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);

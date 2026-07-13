@@ -160,6 +160,10 @@ assert.ok(
   "the chart must isolate live mark updates from trade history instead of interleaving price bases",
 );
 assert.ok(
+  lineChartSource.includes("secondCandles={observedTradeSecondCandles}"),
+  "the candle renderer must build OHLC from observed Decibel fills, not mark-price line ticks",
+);
+assert.ok(
   lineChartSource.includes("transaction_unix_ms / 1_000"),
   "the realtime chart must retain Decibel's exchange timestamps",
 );

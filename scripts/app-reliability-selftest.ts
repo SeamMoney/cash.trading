@@ -125,6 +125,7 @@ const coinbaseCandlesRoute = readFileSync("app/api/coinbase/candles/route.ts", "
 const coinbaseTickerRoute = readFileSync("app/api/coinbase/ticker/route.ts", "utf8");
 const coinbaseTradesRoute = readFileSync("app/api/coinbase/trades/route.ts", "utf8");
 const cctpStatusRoute = readFileSync("app/api/decibel/cctp/status/route.ts", "utf8");
+const cctpDiscoverRoute = readFileSync("app/api/decibel/cctp/discover/route.ts", "utf8");
 const decibelOrderRoute = readFileSync("app/api/decibel/order/route.ts", "utf8");
 const decibelCancelOrderRoute = readFileSync("app/api/decibel/cancel-order/route.ts", "utf8");
 const decibelCreateSubaccountRoute = readFileSync("app/api/decibel/create-subaccount/route.ts", "utf8");
@@ -647,6 +648,10 @@ assert.match(coinbaseTradesRoute, /COINBASE_TRADES_TIMEOUT_MS/);
 assert.match(cctpStatusRoute, /checkApiRateLimit\(req, "cctp-status"/);
 assert.match(cctpStatusRoute, /rawNetwork !== "testnet" && rawNetwork !== "mainnet"/);
 assert.match(cctpStatusRoute, /MAX_IRIS_RESPONSE_BYTES/);
+assert.match(cctpDiscoverRoute, /Promise\.allSettled/);
+assert.match(cctpDiscoverRoute, /https:\/\/base\.drpc\.org/);
+assert.match(cctpDiscoverRoute, /chunkBlocks: 10_000/);
+assert.match(cctpDiscoverRoute, /batchMaxCount: 1/);
 assert.ok(
   !cctpStatusRoute.includes("{ error: rawText"),
   "CCTP status must not echo arbitrary Circle response bodies",

@@ -25,25 +25,28 @@ const APTOS_CCTP_DOMAIN = 9;
 
 const SOURCE_CHAINS: EvmCctpSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
 
-// Per-chain scan strategy, verified empirically against the public RPCs:
-// Arbitrum's RPC accepts a single 60M-block topic-filtered query (~170 days);
-// Base and Ethereum (publicnode) cap eth_getLogs at 50k blocks per call, so
-// those chains scan in chunks with bounded concurrency.
+// Pending CCTP claims are expected to be resumed within a few days. Keep each
+// eth_getLogs request inside its provider's reliable range and tolerate an
+// individual chunk timing out instead of discarding successful chunks.
 const SCAN_CONFIG: Record<
   EvmCctpSourceChain,
   { spanBlocks: number; chunkBlocks: number; scanRpcUrl?: string }
 > = {
-  Arbitrum: { spanBlocks: 60_000_000, chunkBlocks: 60_000_000 }, // ~170d, 1 call
+  Arbitrum: { spanBlocks: 10_000_000, chunkBlocks: 500_000 },
   Base: {
-    spanBlocks: 1_000_000, // ~23d at 2s blocks
-    chunkBlocks: 50_000, // 20 calls
-    scanRpcUrl: "https://base-rpc.publicnode.com",
+    spanBlocks: 200_000,
+    chunkBlocks: 10_000,
+    scanRpcUrl: "https://base.drpc.org",
   },
-  Ethereum: { spanBlocks: 450_000, chunkBlocks: 50_000 }, // ~60d, 9 calls
+  Ethereum: {
+    spanBlocks: 60_000,
+    chunkBlocks: 10_000,
+    scanRpcUrl: "https://eth.drpc.org",
+  },
 };
 
-const CHUNK_CONCURRENCY = 10;
-const PER_CHAIN_TIMEOUT_MS = 30_000;
+const CHUNK_CONCURRENCY = 2;
+const PER_CHAIN_TIMEOUT_MS = 40_000;
 
 export interface DiscoveredBurn {
   sourceChain: EvmCctpSourceChain;
@@ -71,6 +74,7 @@ async function scanChain(
   const config = getEvmCctpConfig(network, sourceChain);
   const scan = SCAN_CONFIG[sourceChain];
   const provider = new JsonRpcProvider(scan.scanRpcUrl ?? config.rpcUrl, undefined, {
+    batchMaxCount: 1,
     staticNetwork: true,
   });
   const latest = await provider.getBlockNumber();
@@ -83,8 +87,9 @@ async function scanChain(
     chunks.push({ from: Math.max(fromBlock, to - scan.chunkBlocks + 1), to });
   }
   const logs: Awaited<ReturnType<typeof provider.getLogs>> = [];
+  let failedChunks = 0;
   for (let i = 0; i < chunks.length; i += CHUNK_CONCURRENCY) {
-    const batch = await Promise.all(
+    const batch = await Promise.allSettled(
       chunks.slice(i, i + CHUNK_CONCURRENCY).map((c) =>
         provider.getLogs({
           address: config.tokenMessenger,
@@ -94,7 +99,13 @@ async function scanChain(
         }),
       ),
     );
-    logs.push(...batch.flat());
+    for (const result of batch) {
+      if (result.status === "fulfilled") logs.push(...result.value);
+      else failedChunks += 1;
+    }
+  }
+  if (failedChunks === chunks.length) {
+    throw new Error("all log scan chunks failed");
   }
 
   const coder = AbiCoder.defaultAbiCoder();

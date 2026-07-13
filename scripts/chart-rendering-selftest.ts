@@ -48,6 +48,14 @@ assert.deepEqual(
   "exchange ticks must be chronological and same-millisecond updates must replace, not duplicate",
 );
 
+const stableTradeIdentity = mergeChartPriceTicks(
+  [{ time: 101.2, value: 100, volume: 2, sequence: 0, identity: "fill-1" }],
+  [{ time: 101.2, value: 100, volume: 1, sequence: 4, identity: "fill-1" }],
+);
+assert.deepEqual(stableTradeIdentity, [
+  { time: 101.2, value: 100, volume: 2, sequence: 4, identity: "fill-1" },
+], "a repeated maker/taker fill must retain one stable trade and must not double-count volume");
+
 const observedCandles = chartPriceTicksToCandles([
   { time: 100.1, value: 100, volume: 1 },
   { time: 100.4, value: 102, volume: 2 },

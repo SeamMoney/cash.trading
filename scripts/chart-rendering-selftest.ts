@@ -190,6 +190,11 @@ assert.ok(
   "the initial trade history must render directly instead of morphing from a synthetic loading line",
 );
 assert.ok(
+  lineChartSource.includes("animated={false}")
+    && livelinePatchSource.includes("cfg.animated === false"),
+  "timeframe switches must adopt the real historical Y-range immediately instead of clamping it to the old scale",
+);
+assert.ok(
   lineChartSource.includes("decibelMarkTicks") && lineChartSource.includes("decibelTradeTicks"),
   "the chart must isolate live mark updates from trade history instead of interleaving price bases",
 );

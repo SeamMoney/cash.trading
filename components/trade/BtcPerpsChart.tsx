@@ -1607,6 +1607,7 @@ function BtcPerpsChartComponent({
           lerpSpeed={0.35}
           lineInterpolation="linear"
           animateInitial={false}
+          animated={false}
           formatValue={(value: number) => formatPerpPrice(value, market.priceDecimals)}
           loading={false}
           emptyText=""

@@ -251,6 +251,8 @@ assert.match(tradePanel, /signAndSubmitDecibelTransaction/);
 assert.match(portfolioPage, /signAndSubmitDecibelTransaction/);
 assert.match(accountManager, /activeActionTokenRef/);
 assert.match(accountManager, /accountActionContextRef/);
+assert.match(accountManager, /autoDiscoverKeyRef/);
+assert.ok(!accountManager.includes("setAutoDiscoverKey"), "bridge discovery must not cancel itself via state");
 assert.match(accountManager, /disabled=\{status === "submitting"\}/);
 assert.match(accountManager, /hydratedBridgeStorageKey !== bridgeStorageKey/);
 assert.match(accountManager, /accountActionContextRef\.current !== lookupContext/);
@@ -652,6 +654,7 @@ assert.match(cctpDiscoverRoute, /Promise\.allSettled/);
 assert.match(cctpDiscoverRoute, /https:\/\/base\.drpc\.org/);
 assert.match(cctpDiscoverRoute, /chunkBlocks: 10_000/);
 assert.match(cctpDiscoverRoute, /batchMaxCount: 1/);
+assert.match(cctpDiscoverRoute, /attempt < 3/);
 assert.ok(
   !cctpStatusRoute.includes("{ error: rawText"),
   "CCTP status must not echo arbitrary Circle response bodies",

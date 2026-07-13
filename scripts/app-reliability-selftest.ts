@@ -495,6 +495,13 @@ assert.ok(!decibelDepthRoute.includes("generateSyntheticDepth"), "order-book dep
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");
 assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-submit"/);
+assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-info"/);
+assert.match(sponsorSubmitRoute, /feePayerAddress: sponsor\.accountAddress\.toStringLong\(\)/);
+assert.match(sponsorSubmitRoute, /transaction\.feePayerAddress\.equals\(sponsor\.accountAddress\)/);
+assert.ok(
+  !sponsorSubmitRoute.includes("transaction.feePayerAddress = sponsor.accountAddress"),
+  "the sponsor must not mutate the fee payer after the sender signs",
+);
 assert.match(sponsorSubmitRoute, /checkRateLimitForKey\("sponsor-submit-sender"/);
 assert.match(sponsorSubmitRoute, /MAX_BODY_BYTES/);
 assert.match(sponsorSubmitRoute, /moduleName === "dex_accounts_entry"/);
@@ -522,6 +529,16 @@ assert.ok(
 assert.ok(
   evmDerivedAptos.includes("data?.vmStatus") && txUtils.includes("data?.vmStatus"),
   "sponsor failures must expose the Aptos VM reason",
+);
+assert.ok(
+  evmDerivedAptos.indexOf("transaction.feePayerAddress = feePayerAddress")
+    < evmDerivedAptos.indexOf("const { siweMessage, signingMessageDigest }"),
+  "EVM-derived transactions must bind the sponsor before creating the SIWE message",
+);
+assert.ok(
+  txUtils.indexOf("transaction.feePayerAddress = feePayerAddress")
+    < txUtils.indexOf("args.signTransaction"),
+  "wallet-adapter transactions must bind the sponsor before signing",
 );
 assert.match(legacyBotGuard, /reason: "legacy_bot_api_not_enabled"/);
 for (const [path, source] of legacyBotRoutes) {

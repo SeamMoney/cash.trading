@@ -145,6 +145,7 @@ const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx
 const pinePreviewSource = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
 const equityCurveSource = readFileSync("components/launchpad/EquityCurveChart.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
+const livelinePatchSource = readFileSync("patches/liveline@0.0.6.patch", "utf8");
 const fallbackCandleSource = readFileSync("hooks/useBtcCandles.ts", "utf8");
 const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
@@ -178,6 +179,16 @@ assert.ok(
 assert.ok(!candleSeriesSource.includes("INTERPOLATION_PHASE_STEP"), "synthetic candle noise must stay removed");
 assert.ok(!proChartSource.includes("interpolateOneSecondCandles"), "candle history must use observed ticks only");
 assert.ok(!lineChartSource.includes("lineMode="), "the line renderer must not receive candle-morph props");
+assert.ok(
+  lineChartSource.includes('lineInterpolation="linear"')
+    && livelinePatchSource.includes('lineInterpolation === "linear"'),
+  "the trade line must join real observations directly instead of visually splining them",
+);
+assert.ok(
+  lineChartSource.includes("animateInitial={false}")
+    && lineChartSource.includes("loading={false}"),
+  "the initial trade history must render directly instead of morphing from a synthetic loading line",
+);
 assert.ok(
   lineChartSource.includes("decibelMarkTicks") && lineChartSource.includes("decibelTradeTicks"),
   "the chart must isolate live mark updates from trade history instead of interleaving price bases",

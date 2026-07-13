@@ -14,6 +14,7 @@ import {
   decodeMoveU8Vector,
   pairOnChainTrades,
   parseOnChainTradeVectors,
+  sanitizeOnChainTrades,
 } from "../lib/launchpad/move-view";
 import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
 
@@ -345,6 +346,7 @@ assert.match(launchpadTradesRoute, /checkApiRateLimit\(req, "launchpad-trades"/)
 assert.match(launchpadTradesRoute, /isValidAptosAddress\(addr\)/);
 assert.match(launchpadTradesRoute, /normalizeAptosAddress\(pkgParam, "pkg"\)/);
 assert.match(launchpadTradesRoute, /parseOnChainTradeVectors/);
+assert.match(launchpadTradesRoute, /sanitizeOnChainTrades/);
 assert.match(launchpadTradesRoute, /completedTrades/);
 assert.match(launchpadTradesRoute, /status: 502/);
 assert.match(launchpadTradesRoute, /trade_history_not_supported/);
@@ -370,6 +372,14 @@ assert.match(positionsComponent, /role=\{actionStatus\.tone === "error" \? "aler
 assert.match(btcChart, /aria-modal="true"/);
 assert.match(btcChart, /role="dialog"/);
 assert.match(btcChart, /aria-label="Search markets"/);
+
+const sanitizedTradeHistory = sanitizeOnChainTrades([
+  { tradeId: 0, signal: 1, price: 0.00011, gainBps: 0, lossBps: 0, timestamp: 1, type: "BUY", pnlBps: 0 },
+  { tradeId: 1, signal: 2, price: 62_200, gainBps: 5_654_545_444_545, lossBps: 0, timestamp: 2, type: "SELL", pnlBps: 5_654_545_444_545 },
+  { tradeId: 2, signal: 1, price: 70_083.5, gainBps: 0, lossBps: 0, timestamp: 3, type: "BUY", pnlBps: 0 },
+  { tradeId: 3, signal: 2, price: 70_083.5, gainBps: 0, lossBps: 0, timestamp: 4, type: "SELL", pnlBps: 0 },
+]);
+assert.deepEqual(sanitizedTradeHistory.map((trade) => trade.tradeId), [2, 3]);
 assert.ok(!explainerPage.includes('href="#"'), "explainer calls to action must navigate somewhere real");
 assert.match(explainerPage, /60 live markets/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);

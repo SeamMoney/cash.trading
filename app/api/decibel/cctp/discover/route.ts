@@ -88,24 +88,36 @@ async function scanChain(
   }
   const logs: Awaited<ReturnType<typeof provider.getLogs>> = [];
   let failedChunks = 0;
-  for (let i = 0; i < chunks.length; i += CHUNK_CONCURRENCY) {
-    const batch = await Promise.allSettled(
-      chunks.slice(i, i + CHUNK_CONCURRENCY).map((c) =>
-        provider.getLogs({
+  const getChunkLogs = async (chunk: { from: number; to: number }) => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await provider.getLogs({
           address: config.tokenMessenger,
           topics: [DEPOSIT_FOR_BURN_TOPIC0, null, null, depositorTopic],
-          fromBlock: c.from,
-          toBlock: c.to,
-        }),
-      ),
+          fromBlock: chunk.from,
+          toBlock: chunk.to,
+        });
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  };
+  for (let i = 0; i < chunks.length; i += CHUNK_CONCURRENCY) {
+    const batch = await Promise.allSettled(
+      chunks.slice(i, i + CHUNK_CONCURRENCY).map(getChunkLogs),
     );
     for (const result of batch) {
       if (result.status === "fulfilled") logs.push(...result.value);
       else failedChunks += 1;
     }
   }
-  if (failedChunks === chunks.length) {
-    throw new Error("all log scan chunks failed");
+  if (failedChunks > 0 && logs.length === 0) {
+    throw new Error(`${failedChunks} log scan chunk${failedChunks === 1 ? "" : "s"} failed`);
   }
 
   const coder = AbiCoder.defaultAbiCoder();

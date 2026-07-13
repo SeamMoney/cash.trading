@@ -12,7 +12,7 @@ import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events"
 import { Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/trade", label: "Trade" },
+  { href: "/", label: "Trade" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
   ...(process.env.NODE_ENV !== "production"

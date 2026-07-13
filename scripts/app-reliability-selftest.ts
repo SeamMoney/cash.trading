@@ -353,6 +353,7 @@ assert.match(launchpadPage, /packageAddress=\{ind\.pkg\}/);
 assert.ok(!launchpadPage.includes("d.lastPrice > 1000"), "launchpad prices are already normalized by the API");
 assert.ok(!botDashboard.includes("d.lastPrice > 1000"), "bot prices are already normalized by the API");
 assert.ok(!botDashboard.includes("d.entryPrice > 1000"), "bot entry prices are already normalized by the API");
+assert.match(sharedHeader, /\{ href: "\/", label: "Trade" \}/);
 assert.ok(!explainerPage.includes('href="#"'), "explainer calls to action must navigate somewhere real");
 assert.match(explainerPage, /60 live markets/);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);

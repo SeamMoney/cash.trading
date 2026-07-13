@@ -10,7 +10,7 @@ import {
   TransactionPayloadScript,
 } from "@aptos-labs/ts-sdk";
 import { aptos } from "@/lib/aptos";
-import { MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
+import { DECIBEL_PACKAGE, MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
 import { APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE } from "@/lib/decibel-cctp";
 import { checkApiRateLimit, checkRateLimitForKey } from "@/lib/api-rate-limit";
 
@@ -31,6 +31,14 @@ const ALLOWED_CLAIM_BYTECODES = new Set(
   Object.values(APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE).map((b) => b.toLowerCase()),
 );
 
+const ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS = new Set([
+  "cancel_order_to_subaccount",
+  "create_new_subaccount",
+  "deposit_to_subaccount_at",
+  "place_order_to_subaccount",
+  "withdraw_from_subaccount",
+]);
+
 function getSponsorAccount(): Account | null {
   const raw = process.env.SPONSOR_PRIVATE_KEY || "";
   if (!raw.trim()) return null;
@@ -42,15 +50,14 @@ function getSponsorAccount(): Account | null {
 }
 
 /**
- * Only sponsor the two transactions in the CCTP deposit flow:
- *   1. the Circle CCTP claim (handle_receive_message script — exact bytecode match)
- *   2. the Decibel collateral deposit (deposit_to_subaccount_at on a known package)
- * Anything else gets refused so the sponsor key can't be drained as a public
- * gas faucet.
+ * Sponsor the exact Circle claim bytecode and a small allowlist of Decibel
+ * account entry functions. This lets an EVM-derived Decibel owner with no APT
+ * claim, deposit, trade, cancel, and withdraw without turning the endpoint
+ * into a general-purpose gas faucet.
  */
 function isSponsorablePayload(transaction: SimpleTransaction): {
   ok: boolean;
-  kind?: "cctp_claim" | "decibel_deposit";
+  kind?: "cctp_claim" | "decibel_account_action";
   reason?: string;
 } {
   const payload = transaction.rawTransaction.payload;
@@ -66,17 +73,19 @@ function isSponsorablePayload(transaction: SimpleTransaction): {
   if (payload instanceof TransactionPayloadEntryFunction) {
     const fn = payload.entryFunction;
     const moduleAddress = fn.module_name.address.toStringLong();
+    const moduleName = fn.module_name.name.identifier;
     const functionName = fn.function_name.identifier;
     const allowedPackages = new Set(
-      [MAINNET_DECIBEL_PACKAGE, process.env.DECIBEL_PACKAGE]
+      [DECIBEL_PACKAGE, MAINNET_DECIBEL_PACKAGE, process.env.DECIBEL_PACKAGE]
         .filter((p): p is string => !!p)
         .map((p) => p.toLowerCase()),
     );
     if (
-      functionName === "deposit_to_subaccount_at" &&
+      moduleName === "dex_accounts_entry" &&
+      ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS.has(functionName) &&
       allowedPackages.has(moduleAddress.toLowerCase())
     ) {
-      return { ok: true, kind: "decibel_deposit" };
+      return { ok: true, kind: "decibel_account_action" };
     }
     return { ok: false, reason: "entry_function_not_allowlisted" };
   }

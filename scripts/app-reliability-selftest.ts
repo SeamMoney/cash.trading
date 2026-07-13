@@ -17,6 +17,7 @@ import {
   sanitizeOnChainTrades,
 } from "../lib/launchpad/move-view";
 import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
+import { resolveDecibelWalletIdentity } from "../lib/decibel-wallet-identity";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -44,6 +45,7 @@ const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
 const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
 const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
+const decibelTransactionSubmitter = readFileSync("hooks/useDecibelTransactionSubmitter.ts", "utf8");
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
 const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
@@ -169,6 +171,34 @@ assert.notEqual(
   decibelSubaccountStorageKey("0xDEF", "mainnet"),
   "selected subaccounts must be scoped by wallet owner",
 );
+const rainbowDecibelIdentity = resolveDecibelWalletIdentity({
+  adapterAddress: "0x6e4e9c28fbd06e02a38e165f46579f83472facfb04b6ff0ff4e8092f87b69333",
+  chainOrigin: "ethereum",
+  publicKey: {
+    ethereumAddress: "0x572eea9a745707217F19D3Bb730Dd627851dE6b4",
+  },
+});
+assert.equal(
+  rainbowDecibelIdentity.ownerAddress,
+  "0x1563fc7477e3a8a3f6ea843c7fb31034720bcd6889550e321efdc7939c6c183e",
+  "Rainbow must resolve to the same app.decibel.trade owner that owns its Primary account",
+);
+assert.equal(
+  rainbowDecibelIdentity.originAddress,
+  "0x572eea9a745707217F19D3Bb730Dd627851dE6b4",
+);
+assert.equal(
+  resolveDecibelWalletIdentity({
+    adapterAddress: "0xabc",
+    chainOrigin: "aptos",
+    publicKey: {},
+  }).ownerAddress,
+  "0xabc",
+  "native Aptos wallet identity must remain unchanged",
+);
+assert.match(decibelSubaccountHook, /const owner = identity\.ownerAddress/);
+assert.match(decibelTransactionSubmitter, /DECIBEL_APP_DERIVED_DOMAIN/);
+assert.match(decibelTransactionSubmitter, /needsSponsoredGas\(identity\.ownerAddress\)/);
 assert.ok(
   !decibelSubaccountHook.includes('name: "Primary"'),
   "an unverified stored address must not be presented as an active Primary account",
@@ -212,8 +242,12 @@ assert.ok(
 );
 assert.match(positionsComponent, /closingActionTokensRef/);
 assert.match(positionsComponent, /cancelingActionTokensRef/);
+assert.match(positionsComponent, /useDecibelWalletIdentity/);
+assert.match(positionsComponent, /signAndSubmitDecibelTransaction/);
 assert.match(tradePanel, /submissionTokenRef/);
 assert.match(tradePanel, /tradeContextRef/);
+assert.match(tradePanel, /signAndSubmitDecibelTransaction/);
+assert.match(portfolioPage, /signAndSubmitDecibelTransaction/);
 assert.match(accountManager, /activeActionTokenRef/);
 assert.match(accountManager, /accountActionContextRef/);
 assert.match(accountManager, /disabled=\{status === "submitting"\}/);
@@ -458,6 +492,18 @@ assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid 
 assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-submit"/);
 assert.match(sponsorSubmitRoute, /checkRateLimitForKey\("sponsor-submit-sender"/);
 assert.match(sponsorSubmitRoute, /MAX_BODY_BYTES/);
+assert.match(sponsorSubmitRoute, /moduleName === "dex_accounts_entry"/);
+for (const functionName of [
+  "cancel_order_to_subaccount",
+  "deposit_to_subaccount_at",
+  "place_order_to_subaccount",
+  "withdraw_from_subaccount",
+] as const) {
+  assert.ok(
+    sponsorSubmitRoute.includes(`"${functionName}"`),
+    `${functionName} must be explicitly sponsorable for gasless Decibel-domain owners`,
+  );
+}
 assert.ok(
   !sponsorSubmitRoute.includes("BOT_OPERATOR_PRIVATE_KEY"),
   "gas sponsorship must use a dedicated sponsor key",

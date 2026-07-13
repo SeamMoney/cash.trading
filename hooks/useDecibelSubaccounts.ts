@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
 import {
   getStoredDecibelSubaccount,
   onDecibelSubaccountChange,
@@ -38,8 +39,9 @@ export function shortAddress(address: string) {
 }
 
 export function useDecibelSubaccounts() {
-  const { account, connected } = useWallet();
-  const owner = account?.address?.toString() ?? "";
+  const { connected } = useWallet();
+  const identity = useDecibelWalletIdentity();
+  const owner = identity.ownerAddress;
   const [subaccounts, setSubaccounts] = useState<DecibelSubaccount[]>([]);
   const [selectedSubaccount, setSelectedSubaccount] = useState("");
   const [isLoadingSubaccounts, setIsLoadingSubaccounts] = useState(false);
@@ -156,6 +158,7 @@ export function useDecibelSubaccounts() {
   );
 
   return {
+    ...identity,
     hasDecibelAccount,
     isLoadingSubaccounts,
     lookupError,

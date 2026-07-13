@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { getAptosNodeUrl, getActivePackage } from "@/lib/decibel-client"
+import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity"
 
 export interface WalletBalanceState {
   balance: number | null
@@ -18,7 +19,8 @@ const WalletBalanceContext = createContext<WalletBalanceState | null>(null)
 
 // Provider component that holds the shared state
 export function WalletBalanceProvider({ children }: { children: ReactNode }) {
-  const { account, connected } = useWallet()
+  const { connected } = useWallet()
+  const { ownerAddress } = useDecibelWalletIdentity()
   const [balance, setBalance] = useState<number | null>(null)
   const [aptBalance, setAptBalance] = useState<number | null>(null)
   const [subaccount, setSubaccount] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
   }
 
   const fetchBalance = useCallback(async () => {
-    if (!connected || !account) {
+    if (!connected || !ownerAddress) {
       setBalance(null)
       setAptBalance(null)
       setSubaccount(null)
@@ -80,7 +82,7 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     try {
       const APTOS_NODE = getAptosNodeUrl()
       const PACKAGE = getActivePackage()
-      const walletAddress = account.address.toString()
+      const walletAddress = ownerAddress
       console.log("🔍 Fetching balance for wallet:", walletAddress)
 
       // Fetch APT balance
@@ -153,12 +155,12 @@ export function WalletBalanceProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [connected, account])
+  }, [connected, ownerAddress])
 
   // Fetch on mount and when account changes
   useEffect(() => {
     fetchBalance()
-  }, [connected, account])
+  }, [fetchBalance])
 
   const value: WalletBalanceState = {
     balance,

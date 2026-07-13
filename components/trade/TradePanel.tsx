@@ -16,6 +16,7 @@ import {
 } from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
+import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import {
   COLLATERAL_TOKENS,
   type CollateralToken,
@@ -68,7 +69,8 @@ export function TradePanel({
   chartHeight?: number;
   className?: string;
 }) {
-  const { account, connected, signAndSubmitTransaction } = useWallet();
+  const { account, connected } = useWallet();
+  const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const [side, setSide] = useState<"long" | "short">("long");
   const [amount, setAmount] = useState("");
   const [collateralToken, setCollateralToken] = useState<CollateralToken>("USDC");
@@ -94,6 +96,7 @@ export function TradePanel({
     hasDecibelAccount,
     isLoadingSubaccounts,
     lookupIncomplete,
+    owner,
     selectedSubaccount,
     subaccounts,
   } = useDecibelSubaccounts();
@@ -101,7 +104,7 @@ export function TradePanel({
     marketName ||
     (marketId && PERP_MARKET_DATA[marketId]?.marketName) ||
     market.replace(" PERPS", "").replace("/USDT", "/USD").replace("/USDC", "/USD");
-  const tradeContext = `${account?.address?.toString() ?? ""}:${decibelNetwork}:${selectedSubaccount ?? ""}:${decibelMarketName}`;
+  const tradeContext = `${owner}:${decibelNetwork}:${selectedSubaccount ?? ""}:${decibelMarketName}`;
   const tradeContextRef = useRef(tradeContext);
   tradeContextRef.current = tradeContext;
   const inputAmount = Number(amount);
@@ -343,7 +346,7 @@ export function TradePanel({
       if (json.meta?.marketStatus) setMarketStatus(json.meta.marketStatus);
       setOrderLifecycle("wallet");
       setStatusMessage("Sign Decibel order in your wallet...");
-      const result = await signAndSubmitTransaction({ data: json.payload });
+      const result = await signAndSubmitDecibelTransaction({ data: json.payload });
       if (isCurrentSubmission()) {
         setStatusHash(result.hash);
         setOrderLifecycle("submitted");
@@ -433,7 +436,7 @@ export function TradePanel({
     marketStatus,
     selectedSubaccount,
     side,
-    signAndSubmitTransaction,
+    signAndSubmitDecibelTransaction,
     subaccounts,
     supportedDecibelMarket,
   ]);

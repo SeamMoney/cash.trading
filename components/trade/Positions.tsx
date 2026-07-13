@@ -18,6 +18,8 @@ import {
 } from "@/lib/decibel-public";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
+import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
@@ -443,8 +445,9 @@ function actionErrorMessage(error: unknown, fallback: string) {
  * flicker between polls.
  */
 export function Positions({ showOverview = true }: { showOverview?: boolean } = {}) {
-  const { account, connected, signAndSubmitTransaction } = useWallet();
-  const ownerAddress = account?.address?.toString() ?? "";
+  const { connected } = useWallet();
+  const { ownerAddress } = useDecibelWalletIdentity();
+  const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -640,7 +643,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         });
         return;
       }
-      if (!signAndSubmitTransaction) {
+      if (!signAndSubmitDecibelTransaction) {
         setActionStatus({
           tone: "error",
           message: "Wallet signing is not available.",
@@ -685,7 +688,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
             subaccount: selectedSubaccount,
             network: decibelNetwork,
           },
-          signAndSubmitTransaction,
+          signAndSubmitDecibelTransaction,
           () =>
             closingActionTokensRef.current.get(key) === token
             && actionContextRef.current === startedInContext,
@@ -726,7 +729,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       selectedSubaccount,
       decibelNetwork,
       setClosingPosition,
-      signAndSubmitTransaction,
+      signAndSubmitDecibelTransaction,
     ]
   );
 
@@ -741,7 +744,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         });
         return;
       }
-      if (!signAndSubmitTransaction) {
+      if (!signAndSubmitDecibelTransaction) {
         setActionStatus({
           tone: "error",
           message: "Wallet signing is not available.",
@@ -775,7 +778,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
             orderId,
             network: decibelNetwork,
           },
-          signAndSubmitTransaction,
+          signAndSubmitDecibelTransaction,
           () =>
             cancelingActionTokensRef.current.get(orderId) === token
             && actionContextRef.current === startedInContext,
@@ -815,7 +818,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         }
       }
     },
-    [decibelNetwork, selectedSubaccount, setCancelingOrder, signAndSubmitTransaction]
+    [decibelNetwork, selectedSubaccount, setCancelingOrder, signAndSubmitDecibelTransaction]
   );
 
   useEffect(() => {

@@ -2,7 +2,7 @@
  * Trade attribution reader — reads on-chain TradeLog from indicator::get_trades()
  * and indicator::get_trade_stats().
  *
- * GET /api/launchpad/trades?addr=<indicator_addr>
+ * GET /api/launchpad/trades?addr=<indicator_addr>[&pkg=<package_addr>]
  * Returns: { stats, trades[] } where trades include entry/exit prices, P&L, signal type
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -54,6 +54,11 @@ function isMissingIndicator(error: unknown): boolean {
   return status === 404 || /not found|resource_not_found|does not exist|failed to borrow global resource/i.test(message);
 }
 
+function isUnsupportedTradeHistory(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /could not find view function|function_not_found|get_trade_(stats|trades).*not found/i.test(message);
+}
+
 export async function GET(req: NextRequest) {
   const rate = checkApiRateLimit(req, "launchpad-trades", 60, 60_000);
   if (!rate.allowed) {
@@ -68,19 +73,21 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const addr = url.searchParams.get("addr");
+  const pkgParam = url.searchParams.get("pkg");
 
-  if (!isValidAptosAddress(addr)) {
+  if (!isValidAptosAddress(addr) || (pkgParam !== null && !isValidAptosAddress(pkgParam))) {
     return NextResponse.json(
-      { error: "a valid addr is required" },
+      { error: "a valid addr and pkg are required" },
       { status: 400, headers: NO_STORE_HEADERS },
     );
   }
   const indicatorAddress = normalizeAptosAddress(addr, "addr");
+  const contractAt = pkgParam ? normalizeAptosAddress(pkgParam, "pkg") : CONTRACT;
 
   try {
     const [statsResult, tradesResult] = await Promise.all([
-      safeView(`${CONTRACT}::indicator::get_trade_stats` as ViewFn, [indicatorAddress]),
-      safeView(`${CONTRACT}::indicator::get_trades` as ViewFn, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_trade_stats` as ViewFn, [indicatorAddress]),
+      safeView(`${contractAt}::indicator::get_trades` as ViewFn, [indicatorAddress]),
     ]);
 
     // get_trade_stats returns (total_trades, win_trades, loss_trades, total_gain_bps, total_loss_bps)
@@ -130,6 +137,12 @@ export async function GET(req: NextRequest) {
       pairs,
     }, { headers: NO_STORE_HEADERS });
   } catch (err) {
+    if (isUnsupportedTradeHistory(err)) {
+      return NextResponse.json(
+        { onChain: true, unavailable: true, reason: "trade_history_not_supported", trades: [], pairs: [] },
+        { status: 501, headers: NO_STORE_HEADERS },
+      );
+    }
     if (isMissingIndicator(err)) {
       return NextResponse.json(
         { onChain: false, unavailable: false, reason: "indicator_not_found", trades: [], pairs: [] },

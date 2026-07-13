@@ -265,9 +265,12 @@ function buildLineHistory(
 }
 
 function getLineIntervalForWindow(windowSecs: number): ChartInterval {
-  if (windowSecs <= 15 * 60) return "1s";
-  if (windowSecs <= 75 * 60) return "5s";
-  if (windowSecs <= 4 * 60 * 60) return "15s";
+  // Decibel's recent-trades endpoint currently returns at most 200 fills,
+  // which covers roughly 60-100 seconds on BTC. Mixing that dense tail into
+  // sparse minute history made 5m+ lines visibly change character halfway
+  // across the plot. Keep raw ticks only where they cover the whole preset;
+  // longer windows use real minute closes plus the latest live mark below.
+  if (windowSecs <= MIN_LINE_WINDOW_SECS) return "1s";
   return "1m";
 }
 

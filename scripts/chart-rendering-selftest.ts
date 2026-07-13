@@ -172,6 +172,14 @@ assert.ok(
   "the candle renderer must build OHLC from observed Decibel fills, not mark-price line ticks",
 );
 assert.ok(
+  lineChartSource.includes('if (windowSecs <= MIN_LINE_WINDOW_SECS) return "1s";'),
+  "only the one-minute line may use Decibel's short raw-tick history",
+);
+assert.ok(
+  lineChartSource.includes("longer windows use real minute closes plus the latest live mark"),
+  "longer line windows must not mix a dense raw-tick tail into sparse minute history",
+);
+assert.ok(
   lineChartSource.includes("transaction_unix_ms / 1_000"),
   "the realtime chart must retain Decibel's exchange timestamps",
 );

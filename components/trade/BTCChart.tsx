@@ -828,8 +828,8 @@ export function BTCChart({
   const chartActive = pageVisible && inViewport;
   const [market, setMarket] = useState(defaultMarket ?? activeMarkets[0]?.id ?? "BTC/USD");
   const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState<"line" | "candle">("line");
-  const [perpsMode, setPerpsMode] = useState<"line" | "candle">("line");
+  const [mode, setMode] = useState<"line" | "candle">("candle");
+  const [perpsMode, setPerpsMode] = useState<"line" | "candle">("candle");
   const [overlayMode, setOverlayMode] = useState<"off" | "sma" | "ema" | "strategy">("off");
   const [windowSecs, setWindowSecs] = useState(60);
   const marketConfig = activeMarkets.find((m) => m.id === market) || activeMarkets[0] || MARKETS[0];

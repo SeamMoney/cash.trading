@@ -105,11 +105,12 @@ export async function signAndSubmitSponsored(args: {
     }),
   });
   const data = (await res.json().catch(() => null)) as
-    | { hash?: string; error?: string; reason?: string }
+    | { hash?: string; error?: string; reason?: string; vmStatus?: string }
     | null;
   if (!res.ok || !data?.hash) {
+    const reason = data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
     throw new Error(
-      data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`
+      data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason
     );
   }
   return { hash: data.hash, explorerUrl: explorerTxUrl(data.hash) };

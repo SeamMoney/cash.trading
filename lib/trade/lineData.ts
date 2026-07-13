@@ -91,6 +91,15 @@ export function dedupeAndSort(points: LivelinePoint[]): LivelinePoint[] {
   return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 }
 
+/** Keep the latest real observation in each second; never invent a sample. */
+export function sampleLatestPointPerSecond(points: LivelinePoint[]): LivelinePoint[] {
+  const bySecond = new Map<number, LivelinePoint>();
+  for (const point of dedupeAndSort(points)) {
+    bySecond.set(Math.floor(point.time), point);
+  }
+  return Array.from(bySecond.values()).sort((a, b) => a.time - b.time);
+}
+
 /**
  * Append a live tick to a committed history series, with strict isolation.
  *

@@ -10,6 +10,7 @@ import {
 import {
   candlesToCloseLinePoints,
   clipLineWindow,
+  sampleLatestPointPerSecond,
 } from "../lib/trade/lineData";
 
 const sparseLine = candlesToCloseLinePoints([
@@ -26,6 +27,20 @@ assert.deepEqual(
   clipLineWindow([], 1_000, 2_000),
   [],
   "an empty line window must remain empty instead of inventing boundary prices",
+);
+assert.deepEqual(
+  sampleLatestPointPerSecond([
+    { time: 101.1, value: 100 },
+    { time: 101.8, value: 102 },
+    { time: 100.9, value: 99 },
+    { time: 102.2, value: 101 },
+  ]),
+  [
+    { time: 100.9, value: 99 },
+    { time: 101.8, value: 102 },
+    { time: 102.2, value: 101 },
+  ],
+  "the one-minute view must retain one real latest observation per second",
 );
 
 const mergedTicks = mergeChartPriceTicks(
@@ -178,6 +193,10 @@ assert.ok(
 assert.ok(
   lineChartSource.includes("longer windows use real minute closes plus the latest live mark"),
   "longer line windows must not mix a dense raw-tick tail into sparse minute history",
+);
+assert.ok(
+  lineChartSource.includes("lineEndTime == null || lineResolvedEndTime == null"),
+  "the live line must not re-anchor its timestamps and jump backward on each new tick",
 );
 assert.ok(
   lineChartSource.includes("transaction_unix_ms / 1_000"),

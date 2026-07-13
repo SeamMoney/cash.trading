@@ -20,6 +20,7 @@ import {
   candlesToCloseLinePoints,
   clipLineWindow,
   dedupeAndSort,
+  sampleLatestPointPerSecond,
   withLiveTail,
 } from "@/lib/trade/lineData";
 import {
@@ -293,8 +294,10 @@ function buildHybridVisibleLinePoints(
   startTime: number,
   endTime: number,
 ) {
-  const visibleTicks = priceTicks.filter(
-    (tick) => tick.time >= startTime && tick.time <= endTime,
+  const visibleTicks = sampleLatestPointPerSecond(
+    priceTicks.filter(
+      (tick) => tick.time >= startTime && tick.time <= endTime,
+    ),
   );
   const recentStart = visibleTicks[0]?.time ?? endTime;
   const historicalPoints = candlesToCloseLinePoints(
@@ -628,7 +631,13 @@ function BtcPerpsChartComponent({
       lineWindowSecs,
     ],
   );
-  const renderTimeOffset = lineResolvedEndTime == null ? 0 : chartNowSec - lineResolvedEndTime;
+  // Liveline already anchors live exchange timestamps to wall-clock time.
+  // Re-anchoring them on every clock/tick update made the path creep forward,
+  // then jump backward whenever the latest exchange timestamp advanced.
+  // Only translated, deliberately panned history needs a wall-clock offset.
+  const renderTimeOffset = lineEndTime == null || lineResolvedEndTime == null
+    ? 0
+    : chartNowSec - lineResolvedEndTime;
   const renderLineData = useMemo(
     () => shiftLinePoints(lineData, renderTimeOffset),
     [lineData, renderTimeOffset],

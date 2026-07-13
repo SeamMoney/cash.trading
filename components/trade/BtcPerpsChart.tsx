@@ -31,6 +31,7 @@ import {
 type TradeSample = {
   price: number;
   size?: number;
+  trade_id?: string;
   transaction_unix_ms: number;
 };
 
@@ -125,6 +126,7 @@ function tradesToPriceTicks(trades: TradeSample[]): ChartPriceTick[] {
       value: trade.price,
       volume: Number.isFinite(trade.size ?? NaN) ? Math.abs(trade.size ?? 0) : 0,
       sequence,
+      identity: trade.trade_id,
     };
   });
 }

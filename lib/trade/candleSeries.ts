@@ -14,6 +14,7 @@ export type ChartPriceTick = {
   value: number;
   volume?: number;
   sequence?: number;
+  identity?: string;
 };
 
 function validCandle(candle: ChartCandle) {
@@ -48,7 +49,9 @@ export function mergeChartPriceTicks(
     const sequence = Number.isFinite(tick.sequence ?? NaN)
       ? Math.max(0, Math.floor(tick.sequence ?? 0))
       : 0;
-    const identity = `${timeKey}:${sequence}`;
+    const identity = tick.identity
+      ? `trade:${tick.identity}`
+      : `${timeKey}:${sequence}`;
     const prior = byTime.get(identity);
     byTime.set(identity, {
       ...tick,

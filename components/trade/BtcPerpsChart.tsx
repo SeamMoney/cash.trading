@@ -480,13 +480,21 @@ function BtcPerpsChartComponent({
       : decibelTradeTicks.filter((tick) => tick.time < firstMarkTime);
     return mergeChartPriceTicks(historicalTrades, decibelMarkTicks);
   }, [decibelMarkTicks, decibelTradeTicks]);
-  const decibelSecondCandles = useMemo(
+  const decibelLineSecondCandles = useMemo(
     () => chartPriceTicksToCandles(decibelChartTicks, 1).slice(-ONE_SECOND_WINDOW_SECS),
     [decibelChartTicks],
   );
-  const observedSecondCandles = useMemo(
-    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : decibelSecondCandles),
-    [coinbaseSecondCandles, decibelSecondCandles, useCoinbaseLineFeed],
+  const decibelTradeSecondCandles = useMemo(
+    () => chartPriceTicksToCandles(decibelTradeTicks, 1).slice(-ONE_SECOND_WINDOW_SECS),
+    [decibelTradeTicks],
+  );
+  const observedLineSecondCandles = useMemo(
+    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : decibelLineSecondCandles),
+    [coinbaseSecondCandles, decibelLineSecondCandles, useCoinbaseLineFeed],
+  );
+  const observedTradeSecondCandles = useMemo(
+    () => (useCoinbaseLineFeed ? coinbaseSecondCandles : decibelTradeSecondCandles),
+    [coinbaseSecondCandles, decibelTradeSecondCandles, useCoinbaseLineFeed],
   );
   const activePriceTicks = useMemo<LivelinePoint[]>(
     () => (useCoinbaseLineFeed ? coinbasePriceTicks : decibelChartTicks),
@@ -536,12 +544,12 @@ function BtcPerpsChartComponent({
   const lineBounds = useMemo(() => {
     const earliest = activeMinuteCandles[0]?.time ?? activePriceTicks[0]?.time ?? null;
     const latest = activePriceTicks[activePriceTicks.length - 1]?.time
-      ?? observedSecondCandles[observedSecondCandles.length - 1]?.time
+      ?? observedLineSecondCandles[observedLineSecondCandles.length - 1]?.time
       ?? activeMinuteCandles[activeMinuteCandles.length - 1]?.time
       ?? null;
 
     return { earliest, latest };
-  }, [activeMinuteCandles, activePriceTicks, observedSecondCandles]);
+  }, [activeMinuteCandles, activePriceTicks, observedLineSecondCandles]);
 
   const lineResolvedEndTime = useMemo(() => {
     if (lineBounds.latest == null) return null;
@@ -551,13 +559,13 @@ function BtcPerpsChartComponent({
   }, [lineBounds.latest, lineEndTime]);
 
   const lineInterval = useMemo(
-    () => (observedSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
-    [lineWindowSecs, observedSecondCandles.length],
+    () => (observedLineSecondCandles.length === 0 ? "1m" : getLineIntervalForWindow(lineWindowSecs)),
+    [lineWindowSecs, observedLineSecondCandles.length],
   );
 
   const lineHistoryCandles = useMemo(
-    () => buildLineHistory(activeMinuteCandles, observedSecondCandles, lineInterval),
-    [activeMinuteCandles, lineInterval, observedSecondCandles],
+    () => buildLineHistory(activeMinuteCandles, observedLineSecondCandles, lineInterval),
+    [activeMinuteCandles, lineInterval, observedLineSecondCandles],
   );
 
   const lineVisibleCandles = useMemo(() => {
@@ -621,8 +629,8 @@ function BtcPerpsChartComponent({
     [lineData, renderTimeOffset],
   );
   const renderSecondCandles = useMemo(
-    () => shiftCandles(observedSecondCandles, renderTimeOffset),
-    [observedSecondCandles, renderTimeOffset],
+    () => shiftCandles(observedTradeSecondCandles, renderTimeOffset),
+    [observedTradeSecondCandles, renderTimeOffset],
   );
   const displayedLineValue = lineData[lineData.length - 1]?.value ?? snapshot.price;
 
@@ -1544,7 +1552,7 @@ function BtcPerpsChartComponent({
         liquidationLines={liquidationLines}
         minuteCandles={activeMinuteCandles}
         overlayMode={overlayMode}
-        secondCandles={observedSecondCandles}
+        secondCandles={observedTradeSecondCandles}
       />
     );
   }
@@ -1584,7 +1592,7 @@ function BtcPerpsChartComponent({
           fill={false}
           lerpSpeed={0.35}
           formatValue={(value: number) => formatPerpPrice(value, market.priceDecimals)}
-          loading={loading && lineData.length === 0 && observedSecondCandles.length === 0}
+          loading={loading && lineData.length === 0 && observedLineSecondCandles.length === 0}
           emptyText=""
           padding={linePadding}
           paused={!active}

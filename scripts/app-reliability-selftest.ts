@@ -88,6 +88,8 @@ const sharedHeader = readFileSync("components/layout/Header.tsx", "utf8");
 const automationPage = readFileSync("app/automation/page.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
 const sponsorSubmitRoute = readFileSync("app/api/decibel/sponsor-submit/route.ts", "utf8");
+const evmDerivedAptos = readFileSync("lib/evm-derived-aptos.ts", "utf8");
+const txUtils = readFileSync("lib/tx-utils.ts", "utf8");
 const legacyBotRoutes = [
   "app/api/bot/start/route.ts",
   "app/api/bot/stop/route.ts",
@@ -510,6 +512,16 @@ for (const functionName of [
 assert.ok(
   !sponsorSubmitRoute.includes("BOT_OPERATOR_PRIVATE_KEY"),
   "gas sponsorship must use a dedicated sponsor key",
+);
+assert.match(evmDerivedAptos, /accountSequenceNumber/);
+assert.match(evmDerivedAptos, /SEQUENCE_LOOKUP_ATTEMPTS = 3/);
+assert.ok(
+  evmDerivedAptos.includes("error instanceof AptosApiError && error.status === 404"),
+  "only a confirmed missing derived account may use sponsored sequence zero",
+);
+assert.ok(
+  evmDerivedAptos.includes("data?.vmStatus") && txUtils.includes("data?.vmStatus"),
+  "sponsor failures must expose the Aptos VM reason",
 );
 assert.match(legacyBotGuard, /reason: "legacy_bot_api_not_enabled"/);
 for (const [path, source] of legacyBotRoutes) {

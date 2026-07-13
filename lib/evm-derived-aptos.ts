@@ -6,7 +6,7 @@ import {
   type EthereumAddress,
 } from "@aptos-labs/derived-wallet-ethereum";
 import type { InputGenerateTransactionPayloadData } from "@aptos-labs/ts-sdk";
-import { AccountAddress } from "@aptos-labs/ts-sdk";
+import { AccountAddress, AptosApiError } from "@aptos-labs/ts-sdk";
 import { BrowserProvider, getAddress } from "ethers";
 import { aptos } from "@/lib/aptos";
 import { getEvmProvider, type Eip1193Provider } from "@/lib/evm-cctp";
@@ -49,6 +49,7 @@ export function deriveEvmAptosAddress(args: {
  * INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE.
  */
 const MIN_SELF_GAS_OCTAS = 1_000_000n; // 0.01 APT
+const SEQUENCE_LOOKUP_ATTEMPTS = 3;
 
 export async function needsSponsoredGas(accountAddress: string): Promise<boolean> {
   try {
@@ -60,6 +61,25 @@ export async function needsSponsoredGas(accountAddress: string): Promise<boolean
     // Account not found on chain yet — it certainly has no APT.
     return true;
   }
+}
+
+async function getSponsoredAccountSequenceNumber(accountAddress: string): Promise<bigint> {
+  for (let attempt = 0; attempt < SEQUENCE_LOOKUP_ATTEMPTS; attempt += 1) {
+    try {
+      const account = await aptos.getAccountInfo({
+        accountAddress: normalizeAptosAddress(accountAddress),
+      });
+      return BigInt(account.sequence_number);
+    } catch (error) {
+      // A brand-new derived account legitimately starts at sequence zero.
+      if (error instanceof AptosApiError && error.status === 404) return 0n;
+      if (attempt === SEQUENCE_LOOKUP_ATTEMPTS - 1) {
+        throw new Error("Could not verify the Aptos account sequence. Please try the claim again.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw new Error("Could not verify the Aptos account sequence. Please try the claim again.");
 }
 
 export async function submitEvmDerivedAptosPayload(args: {
@@ -94,6 +114,13 @@ export async function submitEvmDerivedAptosPayload(args: {
   }
 
   args.onStep?.(`Build Aptos transaction for ${args.domain}...`);
+  // The SDK treats any sponsored-account lookup failure as "account does not
+  // exist" and silently builds sequence 0. Existing derived accounts then
+  // fail sponsor simulation with SEQUENCE_NUMBER_TOO_OLD. Resolve it first,
+  // retry transient RPC failures, and pass the verified value explicitly.
+  const accountSequenceNumber = args.sponsored
+    ? await getSponsoredAccountSequenceNumber(sender)
+    : undefined;
   const transaction = await aptos.transaction.build.simple({
     sender,
     data: args.payload,
@@ -101,7 +128,9 @@ export async function submitEvmDerivedAptosPayload(args: {
     // The sponsor route caps max_gas_amount * gas_unit_price at 0.05 APT;
     // the SDK's 200k-unit default would blow through that, and these claim/
     // deposit transactions use well under 20k units.
-    options: args.sponsored ? { maxGasAmount: 20_000 } : undefined,
+    options: args.sponsored
+      ? { maxGasAmount: 20_000, accountSequenceNumber }
+      : undefined,
   });
 
   const issuedAt = new Date();
@@ -138,11 +167,12 @@ export async function submitEvmDerivedAptosPayload(args: {
       }),
     });
     const data = (await res.json().catch(() => null)) as
-      | { hash?: string; error?: string; reason?: string }
+      | { hash?: string; error?: string; reason?: string; vmStatus?: string }
       | null;
     if (!res.ok || !data?.hash) {
+      const reason = data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
       throw new Error(
-        data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`,
+        data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason,
       );
     }
     return { hash: data.hash };

@@ -1148,6 +1148,8 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
       {actionStatus && (
         <div
+          aria-live={actionStatus.tone === "error" ? "assertive" : "polite"}
+          role={actionStatus.tone === "error" ? "alert" : "status"}
           className={`surface-1 rounded-[12px] p-3 text-[12px] ${
             actionStatus.tone === "success"
               ? "text-success"
@@ -1245,6 +1247,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                       </div>
                       <button
                         type="button"
+                        aria-label={`Close ${p.market} ${p.isLong ? "long" : "short"} position`}
                         onClick={() => void handleClosePosition(p)}
                         disabled={!canClose}
                         className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1429,6 +1432,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
+                          aria-label={`Close ${p.market} ${p.isLong ? "long" : "short"} position`}
                           onClick={() => void handleClosePosition(p)}
                           disabled={!canClose}
                           className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1490,6 +1494,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                     </div>
                     <button
                       type="button"
+                      aria-label={`Cancel ${o.market} ${o.isBuy ? "buy" : "sell"} order`}
                       onClick={() => void handleCancelOrder(o)}
                       disabled={!canCancel}
                       className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1572,6 +1577,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
+                          aria-label={`Cancel ${o.market} ${o.isBuy ? "buy" : "sell"} order`}
                           onClick={() => void handleCancelOrder(o)}
                           disabled={!canCancel}
                           className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"

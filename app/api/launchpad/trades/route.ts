@@ -13,6 +13,7 @@ import {
   pairOnChainTrades,
   parseOnChainTradeVectors,
   parseSafeUnsigned,
+  sanitizeOnChainTrades,
 } from "@/lib/launchpad/move-view";
 
 export const runtime = "nodejs";
@@ -94,17 +95,28 @@ export async function GET(req: NextRequest) {
     if (!Array.isArray(statsResult) || statsResult.length !== 5) {
       throw new Error("get_trade_stats returned an unexpected tuple");
     }
-    const totalTrades = parseSafeUnsigned(statsResult[0], "total trades");
-    const winTrades = parseSafeUnsigned(statsResult[1], "win trades");
-    const lossTrades = parseSafeUnsigned(statsResult[2], "loss trades");
-    const totalGainBps = parseSafeUnsigned(statsResult[3], "total gain bps");
-    const totalLossBps = parseSafeUnsigned(statsResult[4], "total loss bps");
+    const recordedTotalTrades = parseSafeUnsigned(statsResult[0], "total trades");
+    statsResult.slice(1).forEach((value, index) => {
+      parseSafeUnsigned(value, `trade stat[${index + 1}]`);
+    });
 
     // Aptos serializes vector<u8> as a single 0x-prefixed byte string. Decode
     // it before aligning it with the five ordinary vectors.
-    const trades = parseOnChainTradeVectors(tradesResult);
+    const rawTrades = parseOnChainTradeVectors(tradesResult);
+    const trades = sanitizeOnChainTrades(rawTrades);
     const pairs = pairOnChainTrades(trades);
-    const completedTrades = winTrades + lossTrades;
+    const completedPairs = pairs.filter((pair) => pair.exitTrade !== null);
+    const completedTrades = completedPairs.length;
+    const winTrades = completedPairs.filter((pair) => pair.pnlBps > 0).length;
+    const lossTrades = completedPairs.filter((pair) => pair.pnlBps < 0).length;
+    const totalGainBps = completedPairs.reduce(
+      (sum, pair) => sum + Math.max(0, pair.pnlBps),
+      0,
+    );
+    const totalLossBps = completedPairs.reduce(
+      (sum, pair) => sum + Math.max(0, -pair.pnlBps),
+      0,
+    );
 
     const winRate = completedTrades > 0
       ? Math.round((winTrades / completedTrades) * 100)
@@ -122,7 +134,9 @@ export async function GET(req: NextRequest) {
       onChain: true,
       indicatorAddr: indicatorAddress,
       stats: {
-        totalTrades,
+        totalTrades: trades.length,
+        recordedTotalTrades,
+        discardedTrades: rawTrades.length - trades.length,
         completedTrades,
         winTrades,
         lossTrades,

@@ -101,6 +101,26 @@ export function parseOnChainTradeVectors(value: unknown): OnChainTradeRecord[] {
   });
 }
 
+/** Remove poisoned bootstrap records while preserving every plausible on-chain trade. */
+export function sanitizeOnChainTrades(trades: OnChainTradeRecord[]): OnChainTradeRecord[] {
+  const positivePrices = trades
+    .map((trade) => trade.price)
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
+  if (positivePrices.length === 0) return [];
+  const median = positivePrices[Math.floor(positivePrices.length / 2)];
+  const minPlausiblePrice = median / 100;
+  const maxPlausiblePrice = median * 100;
+  const maxPlausibleGainBps = 1_000_000; // A 100x gain is already the edge of the price window.
+
+  return trades.filter((trade) => (
+    trade.price >= minPlausiblePrice &&
+    trade.price <= maxPlausiblePrice &&
+    trade.gainBps <= maxPlausibleGainBps &&
+    trade.lossBps <= 10_000
+  ));
+}
+
 /**
  * The Move contract replaces its entry price on every BUY crossover. Pair a
  * SELL with the most recent unmatched BUY so the UI mirrors that state machine.

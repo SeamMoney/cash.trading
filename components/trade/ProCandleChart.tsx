@@ -126,16 +126,6 @@ function ema(candles: BklitPlotCandle[], period: number) {
   return result;
 }
 
-function formatLegend(candle: BklitPlotCandle | undefined, decimals: number) {
-  if (!candle) return "";
-  const format = (value: number) => value.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-  const change = candle.open > 0 ? (candle.close - candle.open) / candle.open * 100 : 0;
-  return `O ${format(candle.open)}  H ${format(candle.high)}  L ${format(candle.low)}  C ${format(candle.close)}  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
-}
-
 function ProCandleChartComponent({
   market,
   active,
@@ -152,7 +142,6 @@ function ProCandleChartComponent({
   const [errorText, setErrorText] = useState<string | null>(null);
   const [offsetFromEnd, setOffsetFromEnd] = useState(0);
   const [visibleBars, setVisibleBars] = useState(() => DEFAULT_VISIBLE_BARS[DEFAULT_CHART_INTERVAL]);
-  const [inspected, setInspected] = useState<BklitPlotCandle | null>(null);
   const interactionRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startOffset: number; width: number } | null>(null);
 
@@ -163,7 +152,6 @@ function ProCandleChartComponent({
   useEffect(() => {
     setVisibleBars(DEFAULT_VISIBLE_BARS[interval]);
     setOffsetFromEnd(0);
-    setInspected(null);
   }, [interval, market.marketAddr, market.marketName]);
 
   useEffect(() => {
@@ -339,8 +327,6 @@ function ProCandleChartComponent({
     </button>
   )), [handleIntervalChange, interval]);
 
-  const legendCandle = inspected ?? latestVisible;
-
   return (
     <div
       ref={interactionRef}
@@ -364,16 +350,12 @@ function ProCandleChartComponent({
           color: line.side === "long" ? "var(--warning)" : "var(--danger)",
         }))}
         lines={overlayLines}
-        onInspect={setInspected}
         priceDecimals={market.priceDecimals}
       />
 
-      <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-1">
+      <div className="pointer-events-none absolute left-2 top-2 z-10">
         <div className="pointer-events-auto flex items-center gap-0.5 self-start rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm">
           {intervalButtons}
-        </div>
-        <div className="self-start font-mono text-[10px] leading-4 text-zinc-400">
-          {formatLegend(legendCandle, market.priceDecimals)}
         </div>
       </div>
 

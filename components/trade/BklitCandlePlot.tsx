@@ -423,7 +423,7 @@ function BklitCandlePlotComponent({
       <CandlestickChart
         animationDuration={0}
         aspectRatio="auto"
-        candleGap={0.24}
+        candleGap={0.12}
         className="h-full w-full"
         data={points}
         margin={{ top: 40, right: 80, bottom: 36, left: 8 }}

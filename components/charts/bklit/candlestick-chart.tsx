@@ -437,9 +437,16 @@ export function CandlestickChart({
 
   return (
     <div
-      className={cn("relative w-full", className)}
+      className={cn("relative w-full select-none", className)}
       ref={containerRef}
-      style={{ aspectRatio, touchAction, ...style }}
+      style={{
+        aspectRatio,
+        touchAction,
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+        ...style,
+      }}
     >
       <ParentSize debounceTime={10}>
         {({ width, height }) => (
@@ -474,4 +481,3 @@ export function CandlestickChart({
 CandlestickChart.displayName = "CandlestickChart";
 
 export default CandlestickChart;
-

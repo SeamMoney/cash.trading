@@ -139,6 +139,7 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
+const bklitChartSource = readFileSync("components/charts/bklit/candlestick-chart.tsx", "utf8");
 const bklitTooltipSource = readFileSync("components/charts/bklit/chart-tooltip.tsx", "utf8");
 const bklitCandlestickSource = readFileSync("components/charts/bklit/candlestick.tsx", "utf8");
 const bklitInteractionSource = readFileSync("components/charts/bklit/use-chart-interaction.ts", "utf8");
@@ -173,6 +174,13 @@ assert.ok(
     && plotSource.includes("fadedOpacity={0.25}")
     && !plotSource.includes("showHoverFade={false}"),
   "trade candles must expose bklit's tooltip and hover-fade interaction",
+);
+assert.ok(
+  plotSource.includes('touchAction="pan-y"')
+    && !plotSource.includes('touchAction="none"')
+    && bklitChartSource.includes('WebkitUserSelect: "none"')
+    && bklitChartSource.includes('WebkitTouchCallout: "none"'),
+  "mobile candle inspection must preserve vertical scrolling without triggering iOS text selection",
 );
 assert.ok(
   bklitCandlestickSource.includes("geometry.time > hoveredTime")

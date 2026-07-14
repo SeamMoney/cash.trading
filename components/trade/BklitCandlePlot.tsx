@@ -378,7 +378,7 @@ function BklitCandlePlotComponent({
         maxTooltipDistanceMs={intervalSeconds * 1.5 * 1000}
         selectionEnabled={false}
         style={{ height: "100%" }}
-        touchAction="none"
+        touchAction="pan-y"
         xDomain={xDomain}
         xDomainSlotCount={xDomainSlotCount}
         yDomain={yDomain}

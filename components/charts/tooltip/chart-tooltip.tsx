@@ -2,7 +2,11 @@
 
 import { motion, useSpring } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { chartCssVars, useChart } from "../chart-context";
+import {
+  chartCssVars,
+  useChart,
+  type ChartContextValue,
+} from "../chart-context";
 import { DateTicker } from "./date-ticker";
 import { TooltipBox } from "./tooltip-box";
 import { TooltipContent, type TooltipRow } from "./tooltip-content";
@@ -32,7 +36,8 @@ export interface ChartTooltipProps {
   className?: string;
 }
 
-export function ChartTooltip({
+export function ChartTooltipRenderer({
+  chart,
   showDatePill = true,
   showCrosshair = true,
   showDots = true,
@@ -40,7 +45,7 @@ export function ChartTooltip({
   rows: rowsRenderer,
   children,
   className = "",
-}: ChartTooltipProps) {
+}: ChartTooltipProps & { chart: ChartContextValue }) {
   const {
     tooltipData,
     width,
@@ -54,7 +59,7 @@ export function ChartTooltip({
     containerRef,
     orientation,
     barXAccessor,
-  } = useChart();
+  } = chart;
 
   const isHorizontal = orientation === "horizontal";
 
@@ -220,6 +225,11 @@ export function ChartTooltip({
   );
 
   return createPortal(tooltipContent, container);
+}
+
+export function ChartTooltip(props: ChartTooltipProps) {
+  const chart = useChart();
+  return <ChartTooltipRenderer {...props} chart={chart} />;
 }
 
 ChartTooltip.displayName = "ChartTooltip";

@@ -8,15 +8,13 @@
 
 import { curveLinear } from "@visx/curve";
 import { LinePath } from "@visx/shape";
-import { memo, useEffect, useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import { Background } from "@/components/charts/bklit/background";
 import { CandlestickChart } from "@/components/charts/bklit/candlestick-chart";
 import { Candlestick } from "@/components/charts/bklit/candlestick";
-import {
-  useChartHover,
-  useChartStable,
-} from "@/components/charts/bklit/chart-context";
+import { ChartTooltip } from "@/components/charts/bklit/chart-tooltip";
+import { useChartStable } from "@/components/charts/bklit/chart-context";
 import type { ChartCandle } from "@/lib/trade/candleSeries";
 
 export type BklitPlotCandle = ChartCandle;
@@ -54,7 +52,6 @@ type BklitCandlePlotProps = {
   levels?: Array<{ id: string; price: number; color: string }>;
   lines?: BklitPlotLine[];
   markers?: BklitPlotMarker[];
-  onInspect?: (candle: BklitPlotCandle | null) => void;
   priceDecimals: number;
 };
 
@@ -82,6 +79,48 @@ function formatTime(value: Date, intervalSeconds: number) {
     second: intervalSeconds < 60 ? "2-digit" : undefined,
     timeZone: "UTC",
   });
+}
+
+function CandlestickTooltipContent({
+  intervalSeconds,
+  point,
+  priceDecimals,
+}: {
+  intervalSeconds: number;
+  point: Record<string, unknown>;
+  priceDecimals: number;
+}) {
+  const date = point.date instanceof Date ? point.date : new Date(Number(point.time) * 1000);
+  const rows = [
+    ["Open", Number(point.open)],
+    ["High", Number(point.high)],
+    ["Low", Number(point.low)],
+    ["Close", Number(point.close)],
+  ] as const;
+
+  return (
+    <div className="px-3 py-2.5 font-mono">
+      <div className="mb-2 text-[10px] text-chart-tooltip-muted">
+        {date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        })}{" "}
+        · {formatTime(date, intervalSeconds)} UTC
+      </div>
+      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[11px]">
+        {rows.map(([label, value]) => (
+          <div className="contents" key={label}>
+            <span className="text-chart-tooltip-muted">{label}</span>
+            <span className="text-right tabular-nums text-chart-tooltip-foreground">
+              {Number.isFinite(value) ? formatPrice(value, priceDecimals) : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function PlotVolume() {
@@ -250,51 +289,6 @@ function PlotAxes({ intervalSeconds }: { intervalSeconds: number }) {
   );
 }
 
-function PlotInspection({
-  onInspect,
-}: {
-  onInspect?: (candle: BklitPlotCandle | null) => void;
-}) {
-  const { tooltipData } = useChartHover();
-  const { innerHeight, innerWidth, yScale } = useChartStable();
-  const point = tooltipData?.point as PlotPoint | undefined;
-
-  useEffect(() => {
-    onInspect?.(point ?? null);
-  }, [onInspect, point]);
-
-  if (!tooltipData || !point) return null;
-  const y = yScale(point.close) ?? 0;
-  return (
-    <g aria-hidden="true" className="pointer-events-none font-mono">
-      <line
-        stroke="var(--chart-crosshair)"
-        strokeDasharray="3 4"
-        x1={tooltipData.x}
-        x2={tooltipData.x}
-        y1={0}
-        y2={innerHeight}
-      />
-      <line
-        stroke="var(--chart-crosshair)"
-        strokeDasharray="3 4"
-        x1={0}
-        x2={innerWidth}
-        y1={y}
-        y2={y}
-      />
-      <circle
-        cx={tooltipData.x}
-        cy={y}
-        fill="var(--chart-background)"
-        r={3.5}
-        stroke={point.close >= point.open ? "var(--chart-line-primary)" : "var(--foreground)"}
-        strokeWidth={1.5}
-      />
-    </g>
-  );
-}
-
 function CurrentPrice({ candle, price, priceDecimals }: { candle: PlotPoint; price: number; priceDecimals: number }) {
   const { innerHeight, innerWidth, yScale } = useChartStable();
   const y = yScale(price);
@@ -337,7 +331,6 @@ function BklitCandlePlotComponent({
   levels = [],
   lines = [],
   markers = [],
-  onInspect,
   priceDecimals,
 }: BklitCandlePlotProps) {
   const points = useMemo<PlotPoint[]>(() => candles.map((candle) => ({
@@ -396,7 +389,7 @@ function BklitCandlePlotComponent({
         <PlotFills fills={fills} />
         <Candlestick
           bodyStrokeWidth={1.25}
-          fadedOpacity={0.2}
+          fadedOpacity={0.25}
           negativeBodyFill="var(--chart-background)"
           negativeFill="var(--foreground)"
           negativeStroke="var(--foreground)"
@@ -405,7 +398,17 @@ function BklitCandlePlotComponent({
           positiveFill="var(--chart-line-primary)"
           positiveStroke="var(--chart-line-primary)"
           positiveWickFill="var(--chart-line-primary)"
-          showHoverFade={false}
+        />
+        <ChartTooltip
+          content={({ point }) => (
+            <CandlestickTooltipContent
+              intervalSeconds={intervalSeconds}
+              point={point}
+              priceDecimals={priceDecimals}
+            />
+          )}
+          showCrosshair={false}
+          showDots={false}
         />
         <PlotLines lines={lines} />
         <PlotMarkers markers={markers} />
@@ -416,7 +419,6 @@ function BklitCandlePlotComponent({
           price={Number.isFinite(currentPrice) && (currentPrice ?? 0) > 0 ? currentPrice! : latest.close}
           priceDecimals={priceDecimals}
         />
-        <PlotInspection onInspect={onInspect} />
       </CandlestickChart>
     </div>
   );

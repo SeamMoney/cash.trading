@@ -5,7 +5,6 @@ import { Liveline, type CandlePoint, type LivelinePoint, type LivelineSeries, ty
 import { TetherLoader } from "@/components/layout/TetherLoader";
 import { ProCandleChart } from "@/components/trade/ProCandleChart";
 import type { PerpMarketData } from "@/components/trade/perpMarketConfig";
-import { useIsMobile } from "@/components/ui/use-mobile";
 import { getPriceCandleProductId, supportsPriceCandleMarket, usePriceCandles } from "@/hooks/useBtcCandles";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import {
@@ -58,7 +57,7 @@ export interface PerpMarketSnapshot {
 
 type ChartInterval = "1s" | "5s" | "15s" | "1m";
 
-const CHART_PADDING = { top: 8, right: 80, bottom: 36, left: 8 } as const;
+const CHART_PADDING = { top: 8, right: 8, bottom: 36, left: 8 } as const;
 const STREAM_FRESH_MS = 15_000;
 const TRADE_FALLBACK_POLL_MS = 20_000;
 const PRICE_FALLBACK_POLL_MS = 10_000;
@@ -69,9 +68,7 @@ const MAX_DECIBEL_MINUTE_CANDLES = Math.ceil(DECIBEL_VOLUME_WINDOW_MS / 60_000) 
 const INITIAL_TRADE_LIMIT = 900;
 const LIVE_TRADE_REFRESH_LIMIT = 240;
 const BTC_FALLBACK_ACTIVATE_MS = 3500;
-const DEFAULT_LINE_WINDOW_SECS = 5 * 60;
-const MOBILE_BTC_LINE_WINDOW_SECS = 3 * 60;
-const MOBILE_SPARSE_MARKET_LINE_WINDOW_SECS = 2 * 60 * 60;
+const DEFAULT_LINE_WINDOW_SECS = 60;
 const MIN_LINE_WINDOW_SECS = 60;
 const MAX_LINE_WINDOW_SECS = MINUTE_HISTORY_MS / 1000;
 const LIVE_EDGE_HEADROOM_SECS = 2;
@@ -91,15 +88,33 @@ const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "1m": 60,
 };
 
-// Window presets for the live line view (max = 12h of minute history).
+// Two intent-based views: every observed live move, or the full loaded history.
 const LINE_WINDOW_OPTIONS: WindowOption[] = [
-  { label: "1m", secs: 60 },
-  { label: "5m", secs: 5 * 60 },
-  { label: "15m", secs: 15 * 60 },
-  { label: "1H", secs: 60 * 60 },
-  { label: "6H", secs: 6 * 60 * 60 },
-  { label: "12H", secs: 12 * 60 * 60 },
+  { label: "LIVE", secs: 60 },
+  { label: "HISTORY", secs: 12 * 60 * 60 },
 ];
+
+function ChartDotBackground({
+  padding,
+}: {
+  padding: { top: number; right: number; bottom: number; left: number };
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute"
+      style={{
+        backgroundImage: "radial-gradient(circle, var(--chart-grid) 1.5px, transparent 1.5px)",
+        backgroundSize: "10px 10px",
+        bottom: padding.bottom,
+        left: padding.left,
+        opacity: 0.85,
+        right: padding.right,
+        top: padding.top,
+      }}
+    />
+  );
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -380,7 +395,6 @@ function BtcPerpsChartComponent({
   marketRef.current = market;
   const marketKey = `${market.marketName}:${market.marketAddr ?? ""}`;
   const marketAddress = market.marketAddr;
-  const isMobile = useIsMobile();
   const [decibelTradeTicks, setDecibelTradeTicks] = useState<ChartPriceTick[]>([]);
   const [decibelMarkTicks, setDecibelMarkTicks] = useState<ChartPriceTick[]>([]);
   const [minuteCandles, setMinuteCandles] = useState<CandlePoint[]>([]);
@@ -524,13 +538,6 @@ function BtcPerpsChartComponent({
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
   const lineViewResetKeyRef = useRef<string | null>(null);
-
-  const defaultLineWindowSecs = useMemo(() => {
-    if (!isMobile) return DEFAULT_LINE_WINDOW_SECS;
-    return market.marketName === "BTC/USD"
-      ? MOBILE_BTC_LINE_WINDOW_SECS
-      : MOBILE_SPARSE_MARKET_LINE_WINDOW_SECS;
-  }, [isMobile, market.marketName]);
 
   useEffect(() => {
     const interactionNode = lineInteractionRef.current;
@@ -1168,7 +1175,7 @@ function BtcPerpsChartComponent({
       setLoading(true);
       if (lineViewResetKeyRef.current !== marketKey) {
         lineViewResetKeyRef.current = marketKey;
-        setLineWindowSecs(defaultLineWindowSecs);
+        setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }
@@ -1200,7 +1207,7 @@ function BtcPerpsChartComponent({
       // chosen window/pan.
       if (lineViewResetKeyRef.current !== marketKey) {
         lineViewResetKeyRef.current = marketKey;
-        setLineWindowSecs(defaultLineWindowSecs);
+        setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }
@@ -1300,7 +1307,7 @@ function BtcPerpsChartComponent({
     return () => {
       cancelled = true;
     };
-  }, [defaultLineWindowSecs, marketKey, useCoinbaseLineFeed]);
+  }, [marketKey, useCoinbaseLineFeed]);
 
   useEffect(() => {
     if (!active || !marketAddress || useCoinbaseLineFeed) {
@@ -1590,6 +1597,7 @@ function BtcPerpsChartComponent({
         onWheel={handleLineWheel}
         style={{ touchAction: "none", overscrollBehavior: "contain" }}
       >
+        <ChartDotBackground padding={linePadding} />
         <Liveline
           data={renderLineData}
           series={indicatorSeries.length > 0 ? indicatorSeries : undefined}
@@ -1597,9 +1605,10 @@ function BtcPerpsChartComponent({
           theme="dark"
           color={lineColor}
           window={Math.max(MIN_LINE_WINDOW_SECS, lineWindowSecs)}
-          grid
+          grid={false}
           scrub
           badge
+          badgeInside
           momentum={false}
           badgeTail={false}
           badgeVariant="minimal"
@@ -1642,7 +1651,7 @@ function BtcPerpsChartComponent({
         </div>
         <div
           aria-hidden="true"
-          className="absolute inset-y-0 right-0 z-10 w-[84px] cursor-ns-resize"
+          className="absolute inset-y-0 right-0 z-10 w-6 cursor-ns-resize"
           onWheel={handleLineAxisWheel}
           onDoubleClick={() => setManualLineVerticalPad(0)}
         />

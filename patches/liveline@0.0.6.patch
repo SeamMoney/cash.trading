@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b3993890736 100644
+index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..5e0c68527c45fb1cbe4e79bd8b69c57d3bb5c260 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -387,7 +387,16 @@ function blendColor(c1, c2, t) {
@@ -89,7 +89,18 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b39
      resultWindow = cfg.windowSecs;
    } else {
      const elapsed = now_ms - wt.startMs;
-@@ -2526,7 +2538,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2177,7 +2189,9 @@ function updateBadgeDOM(badge, cfg, smoothValue, layout, momentum, badgeY, badge
+     const badgeSpeed = isWindowTransitioning ? BADGE_Y_LERP_TRANSITIONING : BADGE_Y_LERP;
+     badgeY = lerp(badgeY, targetBadgeY, badgeSpeed, dt);
+   }
+-  const badgeLeft = w - pad.right + 8 - BADGE_PAD_X - tailLen;
++  const badgeLeft = cfg.badgeInside
++    ? w - pad.right - totalW - 8
++    : w - pad.right + 8 - BADGE_PAD_X - tailLen;
+   const badgeTop = badgeY - pillH / 2;
+   badge.container.style.transform = `translate3d(${badgeLeft}px, ${badgeTop}px, 0)`;
+   if (cfg.badgeVariant === "minimal") {
+@@ -2526,7 +2540,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
        return;
      }
      applyDpr(ctx, dpr, w, h);
@@ -98,7 +109,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b39
      const isCandle = cfg.mode === "candle";
      if (isCandle) {
        if (cfg.paused && pausedCandlesRef.current === null && (cfg.candles?.length ?? 0) > 0) {
-@@ -2585,12 +2597,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2585,12 +2599,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
      if (loadingAlphaRef.current > 0.99) loadingAlphaRef.current = 1;
      const loadingAlpha = loadingAlphaRef.current;
      const revealTarget = !cfg.loading && hasData ? 1 : 0;
@@ -119,7 +130,15 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b39
      if (Math.abs(chartRevealRef.current - revealTarget) < 5e-3) {
        chartRevealRef.current = revealTarget;
      }
-@@ -3556,6 +3570,9 @@ function Liveline({
+@@ -3530,6 +3546,7 @@ function Liveline({
+   degen: degenProp,
+   badgeTail = true,
+   badgeVariant = "default",
++  badgeInside = false,
+   showValue = false,
+   valueMomentumColor = false,
+   windows,
+@@ -3556,6 +3573,9 @@ function Liveline({
    onModeChange,
    onSeriesToggle,
    seriesToggleCompact = false,
@@ -129,7 +148,15 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b39
    className,
    style
  }) {
-@@ -3686,7 +3703,10 @@ function Liveline({
+@@ -3669,6 +3689,7 @@ function Liveline({
+     degenOptions: isMultiSeries ? void 0 : degenOptions,
+     badgeTail,
+     badgeVariant,
++    badgeInside,
+     tooltipY,
+     tooltipOutline,
+     valueMomentumColor,
+@@ -3686,7 +3707,10 @@ function Liveline({
      lineValue,
      multiSeries,
      isMultiSeries,
@@ -142,10 +169,19 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..24f8bd0aa3550325d5a317e833856b39
    const cursorStyle = scrub ? cursor : "default";
    const activeColor = isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.55)";
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..987839e3cd9049a5a278ac723b068a85872e9c66 100644
+index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..a3e45979b4027d85047e1c658060256d90d54611 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
-@@ -91,6 +91,12 @@ interface LivelineProps {
+@@ -70,6 +70,8 @@ interface LivelineProps {
+     onWindowChange?: (secs: number) => void;
+     windowStyle?: WindowStyle;
+     badgeVariant?: BadgeVariant;
++    /** Place the live value badge inside the plot instead of reserving a right axis gutter. */
++    badgeInside?: boolean;
+     tooltipY?: number;
+     tooltipOutline?: boolean;
+     orderbook?: OrderbookData;
+@@ -91,6 +93,12 @@ interface LivelineProps {
      onModeChange?: (mode: 'line' | 'candle') => void;
      onSeriesToggle?: (id: string, visible: boolean) => void;
      seriesToggleCompact?: boolean;
@@ -158,20 +194,29 @@ index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..987839e3cd9049a5a278ac723b068a85
      className?: string;
      style?: CSSProperties;
  }
-@@ -102,7 +108,7 @@ interface CandlePoint {
+@@ -102,7 +110,7 @@ interface CandlePoint {
      close: number;
  }
  
 -declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
-+declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, lineInterpolation, animateInitial, animated, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
++declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, badgeInside, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, lineInterpolation, animateInitial, animated, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
  
  interface LivelineTransitionProps {
      /** Key of the active child to display. Must match a child's `key` prop. */
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..987839e3cd9049a5a278ac723b068a85872e9c66 100644
+index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..a3e45979b4027d85047e1c658060256d90d54611 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -91,6 +91,12 @@ interface LivelineProps {
+@@ -70,6 +70,8 @@ interface LivelineProps {
+     onWindowChange?: (secs: number) => void;
+     windowStyle?: WindowStyle;
+     badgeVariant?: BadgeVariant;
++    /** Place the live value badge inside the plot instead of reserving a right axis gutter. */
++    badgeInside?: boolean;
+     tooltipY?: number;
+     tooltipOutline?: boolean;
+     orderbook?: OrderbookData;
+@@ -91,6 +93,12 @@ interface LivelineProps {
      onModeChange?: (mode: 'line' | 'candle') => void;
      onSeriesToggle?: (id: string, visible: boolean) => void;
      seriesToggleCompact?: boolean;
@@ -184,17 +229,17 @@ index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..987839e3cd9049a5a278ac723b068a85
      className?: string;
      style?: CSSProperties;
  }
-@@ -102,7 +108,7 @@ interface CandlePoint {
+@@ -102,7 +110,7 @@ interface CandlePoint {
      close: number;
  }
  
 -declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
-+declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, lineInterpolation, animateInitial, animated, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
++declare function Liveline({ data, value, series: seriesProp, theme, color, window: windowSecs, grid, badge, momentum, fill, scrub, loading, paused, emptyText, exaggerate, degen: degenProp, badgeTail, badgeVariant, badgeInside, showValue, valueMomentumColor, windows, onWindowChange, windowStyle, tooltipY, tooltipOutline, orderbook, referenceLine, formatValue, formatTime, lerpSpeed, padding: paddingOverride, onHover, cursor, pulse, mode, candles, candleWidth, liveCandle, lineMode, lineData, lineValue, onModeChange, onSeriesToggle, seriesToggleCompact, lineInterpolation, animateInitial, animated, className, style, }: LivelineProps): react_jsx_runtime.JSX.Element;
  
  interface LivelineTransitionProps {
      /** Key of the active child to display. Must match a child's `key` prop. */
 diff --git a/dist/index.js b/dist/index.js
-index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..99ca86e021800e4f573341cd3b91f28b00e3b0a8 100644
+index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..ffff0b722ecaf824d94c8d8b83ab9f1f3a21ad0c 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -360,7 +360,16 @@ function blendColor(c1, c2, t) {
@@ -284,7 +329,18 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..99ca86e021800e4f573341cd3b91f28b
      resultWindow = cfg.windowSecs;
    } else {
      const elapsed = now_ms - wt.startMs;
-@@ -2499,7 +2511,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2150,7 +2162,9 @@ function updateBadgeDOM(badge, cfg, smoothValue, layout, momentum, badgeY, badge
+     const badgeSpeed = isWindowTransitioning ? BADGE_Y_LERP_TRANSITIONING : BADGE_Y_LERP;
+     badgeY = lerp(badgeY, targetBadgeY, badgeSpeed, dt);
+   }
+-  const badgeLeft = w - pad.right + 8 - BADGE_PAD_X - tailLen;
++  const badgeLeft = cfg.badgeInside
++    ? w - pad.right - totalW - 8
++    : w - pad.right + 8 - BADGE_PAD_X - tailLen;
+   const badgeTop = badgeY - pillH / 2;
+   badge.container.style.transform = `translate3d(${badgeLeft}px, ${badgeTop}px, 0)`;
+   if (cfg.badgeVariant === "minimal") {
+@@ -2499,7 +2513,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
        return;
      }
      applyDpr(ctx, dpr, w, h);
@@ -293,7 +349,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..99ca86e021800e4f573341cd3b91f28b
      const isCandle = cfg.mode === "candle";
      if (isCandle) {
        if (cfg.paused && pausedCandlesRef.current === null && (cfg.candles?.length ?? 0) > 0) {
-@@ -2558,12 +2570,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2558,12 +2572,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
      if (loadingAlphaRef.current > 0.99) loadingAlphaRef.current = 1;
      const loadingAlpha = loadingAlphaRef.current;
      const revealTarget = !cfg.loading && hasData ? 1 : 0;
@@ -314,7 +370,15 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..99ca86e021800e4f573341cd3b91f28b
      if (Math.abs(chartRevealRef.current - revealTarget) < 5e-3) {
        chartRevealRef.current = revealTarget;
      }
-@@ -3529,6 +3543,9 @@ function Liveline({
+@@ -3503,6 +3519,7 @@ function Liveline({
+   degen: degenProp,
+   badgeTail = true,
+   badgeVariant = "default",
++  badgeInside = false,
+   showValue = false,
+   valueMomentumColor = false,
+   windows,
+@@ -3529,6 +3546,9 @@ function Liveline({
    onModeChange,
    onSeriesToggle,
    seriesToggleCompact = false,
@@ -324,7 +388,15 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..99ca86e021800e4f573341cd3b91f28b
    className,
    style
  }) {
-@@ -3659,7 +3676,10 @@ function Liveline({
+@@ -3642,6 +3662,7 @@ function Liveline({
+     degenOptions: isMultiSeries ? void 0 : degenOptions,
+     badgeTail,
+     badgeVariant,
++    badgeInside,
+     tooltipY,
+     tooltipOutline,
+     valueMomentumColor,
+@@ -3659,7 +3680,10 @@ function Liveline({
      lineValue,
      multiSeries,
      isMultiSeries,

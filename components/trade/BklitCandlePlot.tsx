@@ -7,10 +7,10 @@
  */
 
 import { curveLinear } from "@visx/curve";
-import { GridColumns, GridRows } from "@visx/grid";
 import { LinePath } from "@visx/shape";
 import { memo, useEffect, useMemo } from "react";
 
+import { Background } from "@/components/charts/bklit/background";
 import { CandlestickChart } from "@/components/charts/bklit/candlestick-chart";
 import { Candlestick } from "@/components/charts/bklit/candlestick";
 import {
@@ -82,28 +82,6 @@ function formatTime(value: Date, intervalSeconds: number) {
     second: intervalSeconds < 60 ? "2-digit" : undefined,
     timeZone: "UTC",
   });
-}
-
-function PlotGrid() {
-  const { innerHeight, innerWidth, xScale, yScale } = useChartStable();
-  return (
-    <g aria-hidden="true">
-      <GridRows
-        height={innerHeight}
-        numTicks={Math.max(3, Math.min(5, Math.floor(innerHeight / 78)))}
-        scale={yScale}
-        stroke="var(--chart-grid)"
-        width={innerWidth}
-      />
-      <GridColumns
-        height={innerHeight}
-        numTicks={Math.max(2, Math.min(6, Math.floor(innerWidth / 120)))}
-        scale={xScale}
-        stroke="var(--chart-grid)"
-        width={innerWidth}
-      />
-    </g>
-  );
 }
 
 function PlotVolume() {
@@ -251,10 +229,9 @@ function PlotLevels({ levels }: { levels: Array<{ id: string; price: number; col
   );
 }
 
-function PlotAxes({ intervalSeconds, priceDecimals }: { intervalSeconds: number; priceDecimals: number }) {
-  const { innerHeight, innerWidth, xScale, yScale } = useChartStable();
+function PlotAxes({ intervalSeconds }: { intervalSeconds: number }) {
+  const { innerHeight, innerWidth, xScale } = useChartStable();
   const xTicks = xScale.ticks(Math.max(2, Math.min(6, Math.floor(innerWidth / 120))));
-  const yTicks = yScale.ticks(Math.max(3, Math.min(5, Math.floor(innerHeight / 78))));
   return (
     <g aria-hidden="true" className="pointer-events-none font-mono">
       {xTicks.map((tick) => (
@@ -269,28 +246,14 @@ function PlotAxes({ intervalSeconds, priceDecimals }: { intervalSeconds: number;
           {formatTime(tick, intervalSeconds)}
         </text>
       ))}
-      {yTicks.map((tick) => (
-        <text
-          dominantBaseline="middle"
-          fill="var(--chart-label, #7f7f7f)"
-          fontSize={10}
-          key={tick}
-          x={innerWidth + 10}
-          y={yScale(tick) ?? 0}
-        >
-          {formatPrice(tick, priceDecimals)}
-        </text>
-      ))}
     </g>
   );
 }
 
 function PlotInspection({
   onInspect,
-  priceDecimals,
 }: {
   onInspect?: (candle: BklitPlotCandle | null) => void;
-  priceDecimals: number;
 }) {
   const { tooltipData } = useChartHover();
   const { innerHeight, innerWidth, yScale } = useChartStable();
@@ -328,16 +291,6 @@ function PlotInspection({
         stroke={point.close >= point.open ? "var(--chart-line-primary)" : "var(--foreground)"}
         strokeWidth={1.5}
       />
-      <text
-        dominantBaseline="middle"
-        fill="var(--chart-tooltip-foreground)"
-        fontSize={10}
-        fontWeight={700}
-        x={innerWidth + 10}
-        y={Math.max(10, Math.min(innerHeight - 10, y))}
-      >
-        {formatPrice(point.close, priceDecimals)}
-      </text>
     </g>
   );
 }
@@ -366,7 +319,8 @@ function CurrentPrice({ candle, price, priceDecimals }: { candle: PlotPoint; pri
         fill={color}
         fontSize={10}
         fontWeight={700}
-        x={innerWidth + 10}
+        textAnchor="end"
+        x={innerWidth - 9}
         y={badgeY}
       >
         {formatPrice(price, priceDecimals)}
@@ -423,10 +377,10 @@ function BklitCandlePlotComponent({
       <CandlestickChart
         animationDuration={0}
         aspectRatio="auto"
-        candleGap={0.12}
+        candleGap={0.3}
         className="h-full w-full"
         data={points}
-        margin={{ top: 40, right: 80, bottom: 36, left: 8 }}
+        margin={{ top: 40, right: 8, bottom: 36, left: 8 }}
         maxDataGapMs={intervalSeconds * 4 * 1000}
         maxTooltipDistanceMs={intervalSeconds * 1.5 * 1000}
         selectionEnabled={false}
@@ -437,7 +391,7 @@ function BklitCandlePlotComponent({
         yDomain={yDomain}
         yPaddingRatio={0.08}
       >
-        <PlotGrid />
+        <Background pattern="dots" opacity={0.85} />
         <PlotVolume />
         <PlotFills fills={fills} />
         <Candlestick
@@ -456,13 +410,13 @@ function BklitCandlePlotComponent({
         <PlotLines lines={lines} />
         <PlotMarkers markers={markers} />
         <PlotLevels levels={levels} />
-        <PlotAxes intervalSeconds={intervalSeconds} priceDecimals={priceDecimals} />
+        <PlotAxes intervalSeconds={intervalSeconds} />
         <CurrentPrice
           candle={latest}
           price={Number.isFinite(currentPrice) && (currentPrice ?? 0) > 0 ? currentPrice! : latest.close}
           priceDecimals={priceDecimals}
         />
-        <PlotInspection onInspect={onInspect} priceDecimals={priceDecimals} />
+        <PlotInspection onInspect={onInspect} />
       </CandlestickChart>
     </div>
   );

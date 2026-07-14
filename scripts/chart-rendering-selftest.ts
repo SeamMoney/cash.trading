@@ -139,6 +139,7 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
+const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
 const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
@@ -154,8 +155,22 @@ assert.ok(
   "the active candle renderer must use the local bklit primitives",
 );
 assert.ok(
-  plotSource.includes("candleGap={0.12}"),
-  "trade candle bodies must remain wide enough to read at the default zoom",
+  plotSource.includes("candleGap={0.3}")
+    && proChartSource.includes('"1m": 80'),
+  "trade candles must be wide while retaining visible space between bodies",
+);
+assert.ok(
+  plotSource.includes('<Background pattern="dots" opacity={0.85} />')
+    && backgroundSource.includes('<pattern')
+    && !plotSource.includes("GridRows")
+    && !plotSource.includes("GridColumns"),
+  "trade charts must use the requested bklit-style dot background instead of line grids",
+);
+assert.ok(
+  plotSource.includes("margin={{ top: 40, right: 8, bottom: 36, left: 8 }}")
+    && !plotSource.includes("yTicks")
+    && plotSource.includes('textAnchor="end"'),
+  "the candle plot must reclaim the Y-axis gutter and retain only the endpoint price",
 );
 assert.ok(
   !proChartSource.includes("formatLegend") && !proChartSource.includes("legendCandle"),
@@ -203,6 +218,15 @@ assert.ok(
   "timeframe switches must adopt the real historical Y-range immediately instead of clamping it to the old scale",
 );
 assert.ok(
+  lineChartSource.includes('{ label: "LIVE", secs: 60 }')
+    && lineChartSource.includes('{ label: "HISTORY", secs: 12 * 60 * 60 }')
+    && lineChartSource.includes("grid={false}")
+    && lineChartSource.includes("badgeInside")
+    && lineChartSource.includes("radial-gradient(circle, var(--chart-grid)")
+    && livelinePatchSource.includes("cfg.badgeInside"),
+  "the line chart must expose only live/history, use dots, and keep its price badge inside the plot",
+);
+assert.ok(
   lineChartSource.includes("decibelMarkTicks") && lineChartSource.includes("decibelTradeTicks"),
   "the chart must isolate live mark updates from trade history instead of interleaving price bases",
 );
@@ -233,8 +257,11 @@ assert.ok(
 );
 assert.ok(
   proChartSource.includes('const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m"')
+    && proChartSource.includes('"1m": "LIVE"')
+    && proChartSource.includes('"1d": "HISTORY"')
+    && !proChartSource.includes('"5m",')
     && !proChartSource.includes("INTERVAL_STORAGE_KEY"),
-  "candle charts must open at 1m on every fresh page load",
+  "candle charts must open at live 1m and expose only live/history choices",
 );
 assert.ok(
   !chartShellSource.includes('return "0.0010%"')

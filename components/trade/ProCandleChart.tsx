@@ -59,40 +59,24 @@ type RestCandle = {
 };
 
 export const CHART_INTERVALS = [
-  "1s",
-  "5s",
-  "15s",
   "1m",
-  "5m",
-  "15m",
-  "1h",
-  "4h",
   "1d",
 ] as const;
 export type ProChartInterval = (typeof CHART_INTERVALS)[number];
 
 const INTERVAL_SECS: Record<ProChartInterval, number> = {
-  "1s": 1,
-  "5s": 5,
-  "15s": 15,
   "1m": 60,
-  "5m": 300,
-  "15m": 900,
-  "1h": 3_600,
-  "4h": 14_400,
   "1d": 86_400,
 };
 
 const DEFAULT_VISIBLE_BARS: Record<ProChartInterval, number> = {
-  "1s": 90,
-  "5s": 100,
-  "15s": 100,
-  "1m": 120,
-  "5m": 120,
-  "15m": 120,
-  "1h": 120,
-  "4h": 120,
-  "1d": 120,
+  "1m": 80,
+  "1d": 80,
+};
+
+const INTERVAL_LABELS: Record<ProChartInterval, string> = {
+  "1m": "LIVE",
+  "1d": "HISTORY",
 };
 
 const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m";
@@ -314,6 +298,7 @@ function ProCandleChartComponent({
 
   const intervalButtons = useMemo(() => CHART_INTERVALS.map((option) => (
     <button
+      aria-label={option === "1m" ? "Live one-minute candles" : "Long daily candle history"}
       key={option}
       type="button"
       onClick={() => handleIntervalChange(option)}
@@ -323,7 +308,7 @@ function ProCandleChartComponent({
           : "text-zinc-500 hover:text-zinc-300"
       }`}
     >
-      {option}
+      {INTERVAL_LABELS[option]}
     </button>
   )), [handleIntervalChange, interval]);
 

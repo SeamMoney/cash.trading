@@ -50,6 +50,7 @@ interface ChartInteractionResult {
     onTouchStart?: (event: React.TouchEvent<SVGGElement>) => void;
     onTouchMove?: (event: React.TouchEvent<SVGGElement>) => void;
     onTouchEnd?: () => void;
+    onTouchCancel?: () => void;
   };
   interactionStyle: React.CSSProperties;
 }
@@ -334,7 +335,9 @@ export function useChartInteraction({
     [canSelect, getChartX, resolveTooltipFromX, resolveIndexFromX, scheduleTooltip]
   );
 
-  const handleTouchEnd = useCallback(() => {
+  const clearTouchInteraction = useCallback(() => {
+    lastHoveredXRef.current = null;
+    isDraggingRef.current = false;
     clearTooltip();
     setSelection(null);
   }, [clearTooltip]);
@@ -365,7 +368,8 @@ export function useChartInteraction({
           : {}),
         onTouchStart: handleTouchStart,
         onTouchMove: handleTouchMove,
-        onTouchEnd: handleTouchEnd,
+        onTouchEnd: clearTouchInteraction,
+        onTouchCancel: clearTouchInteraction,
       }
     : {};
 
@@ -383,4 +387,3 @@ export function useChartInteraction({
     interactionStyle,
   };
 }
-

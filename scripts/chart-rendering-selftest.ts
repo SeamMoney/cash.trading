@@ -139,6 +139,7 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
+const bklitTooltipSource = readFileSync("components/charts/bklit/chart-tooltip.tsx", "utf8");
 const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
@@ -158,6 +159,18 @@ assert.ok(
   plotSource.includes("candleGap={0.3}")
     && proChartSource.includes('"1m": 80'),
   "trade candles must be wide while retaining visible space between bodies",
+);
+assert.ok(
+  plotSource.includes("<ChartTooltip")
+    && plotSource.includes("@/components/charts/bklit/chart-tooltip")
+    && bklitTooltipSource.includes("ChartTooltipRenderer")
+    && bklitTooltipSource.includes('from "./chart-context"')
+    && plotSource.includes("CandlestickTooltipContent")
+    && plotSource.includes("showCrosshair={false}")
+    && plotSource.includes("showDots={false}")
+    && plotSource.includes("fadedOpacity={0.25}")
+    && !plotSource.includes("showHoverFade={false}"),
+  "trade candles must expose bklit's tooltip and hover-fade interaction",
 );
 assert.ok(
   plotSource.includes('<Background pattern="dots" opacity={0.85} />')

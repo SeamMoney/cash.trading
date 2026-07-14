@@ -18,6 +18,7 @@ import {
 } from "../lib/launchpad/move-view";
 import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
 import { resolveDecibelWalletIdentity } from "../lib/decibel-wallet-identity";
+import { parseCctpMessage } from "../lib/decibel-cctp";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -51,6 +52,9 @@ const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8"
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const accountManager = readFileSync("components/trade/DecibelAccountManager.tsx", "utf8");
+const mobileModalSheet = readFileSync("components/ui/mobile-modal-sheet.tsx", "utf8");
+const mobilePortfolioSheet = readFileSync("components/trade/MobilePortfolioSheet.tsx", "utf8");
+const walletAccountModal = readFileSync("components/wallet/wallet-account-modal.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
 const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
@@ -128,6 +132,7 @@ const coinbaseTickerRoute = readFileSync("app/api/coinbase/ticker/route.ts", "ut
 const coinbaseTradesRoute = readFileSync("app/api/coinbase/trades/route.ts", "utf8");
 const cctpStatusRoute = readFileSync("app/api/decibel/cctp/status/route.ts", "utf8");
 const cctpDiscoverRoute = readFileSync("app/api/decibel/cctp/discover/route.ts", "utf8");
+const cctpClaimRoute = readFileSync("app/api/decibel/cctp/claim/route.ts", "utf8");
 const decibelOrderRoute = readFileSync("app/api/decibel/order/route.ts", "utf8");
 const decibelCancelOrderRoute = readFileSync("app/api/decibel/cancel-order/route.ts", "utf8");
 const decibelCreateSubaccountRoute = readFileSync("app/api/decibel/create-subaccount/route.ts", "utf8");
@@ -225,6 +230,15 @@ assert.ok(!portfolioPage.includes("position.estimatedPnl ?? 0"), "an unavailable
 assert.match(sharedHeader, /balanceRequestIdRef/);
 assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
 assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
+assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
+assert.match(btcChart, /type="search"/);
+assert.match(btcChart, /text-\[16px\]/);
+assert.match(btcChart, /MobileModalSheet/);
+assert.match(walletAccountModal, /MobileModalSheet/);
+assert.match(mobileModalSheet, /animateMobileSheetSpring/);
+assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);
+assert.match(mobileModalSheet, /overflow-y-auto overscroll-contain/);
+assert.match(mobileModalSheet, /WebkitOverflowScrolling: "touch"/);
 assert.ok(
   portfolioPage.indexOf("await waitForTransactionConfirmation(cancel.hash)")
     < portfolioPage.indexOf("openOrders: prev.openOrders.filter"),
@@ -495,16 +509,20 @@ assert.ok(!decibelDepthRoute.includes("generateSyntheticDepth"), "order-book dep
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");
 assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-submit"/);
-assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-info"/);
-assert.match(sponsorSubmitRoute, /feePayerAddress: sponsor\.accountAddress\.toStringLong\(\)/);
-assert.match(sponsorSubmitRoute, /transaction\.feePayerAddress\.equals\(sponsor\.accountAddress\)/);
+assert.match(sponsorSubmitRoute, /transaction\.feePayerAddress\.equals\(AccountAddress\.ZERO\)/);
+assert.match(sponsorSubmitRoute, /transaction\.feePayerAddress = sponsor\.accountAddress/);
 assert.ok(
-  !sponsorSubmitRoute.includes("transaction.feePayerAddress = sponsor.accountAddress"),
-  "the sponsor must not mutate the fee payer after the sender signs",
+  sponsorSubmitRoute.indexOf("transaction.feePayerAddress = sponsor.accountAddress")
+    < sponsorSubmitRoute.indexOf("aptos.transaction.simulate.simple"),
+  "the server must bind the sponsor after sender approval and before simulation",
 );
 assert.match(sponsorSubmitRoute, /checkRateLimitForKey\("sponsor-submit-sender"/);
 assert.match(sponsorSubmitRoute, /MAX_BODY_BYTES/);
 assert.match(sponsorSubmitRoute, /moduleName === "dex_accounts_entry"/);
+assert.ok(
+  !sponsorSubmitRoute.includes("TransactionPayloadScript"),
+  "EVM-derived sponsorship must only accept entry-function transactions",
+);
 for (const functionName of [
   "cancel_order_to_subaccount",
   "deposit_to_subaccount_at",
@@ -531,14 +549,12 @@ assert.ok(
   "sponsor failures must expose the Aptos VM reason",
 );
 assert.ok(
-  evmDerivedAptos.indexOf("transaction.feePayerAddress = feePayerAddress")
-    < evmDerivedAptos.indexOf("const { siweMessage, signingMessageDigest }"),
-  "EVM-derived transactions must bind the sponsor before creating the SIWE message",
+  !evmDerivedAptos.includes("transaction.feePayerAddress ="),
+  "EVM-derived senders must sign Aptos's canonical zero-address fee-payer placeholder",
 );
 assert.ok(
-  txUtils.indexOf("transaction.feePayerAddress = feePayerAddress")
-    < txUtils.indexOf("args.signTransaction"),
-  "wallet-adapter transactions must bind the sponsor before signing",
+  !txUtils.includes("transaction.feePayerAddress ="),
+  "wallet-adapter senders must leave fee-payer binding to the sponsor service",
 );
 assert.match(legacyBotGuard, /reason: "legacy_bot_api_not_enabled"/);
 for (const [path, source] of legacyBotRoutes) {
@@ -679,6 +695,7 @@ assert.match(coinbaseTradesRoute, /COINBASE_TRADES_TIMEOUT_MS/);
 assert.match(cctpStatusRoute, /checkApiRateLimit\(req, "cctp-status"/);
 assert.match(cctpStatusRoute, /rawNetwork !== "testnet" && rawNetwork !== "mainnet"/);
 assert.match(cctpStatusRoute, /MAX_IRIS_RESPONSE_BYTES/);
+assert.match(cctpStatusRoute, /destinationCaller: parsed\.destinationCaller/);
 assert.match(cctpDiscoverRoute, /Promise\.allSettled/);
 assert.match(cctpDiscoverRoute, /https:\/\/base\.drpc\.org/);
 assert.match(cctpDiscoverRoute, /chunkBlocks: 10_000/);
@@ -688,6 +705,36 @@ assert.ok(
   !cctpStatusRoute.includes("{ error: rawText"),
   "CCTP status must not echo arbitrary Circle response bodies",
 );
+assert.match(cctpClaimRoute, /checkApiRateLimit\(req, "cctp-claim"/);
+assert.match(cctpClaimRoute, /checkRateLimitForKey\(\s*"cctp-claim-transfer"/);
+assert.match(cctpClaimRoute, /parsed\.destinationCaller !== ZERO_CCTP_ADDRESS/);
+assert.match(cctpClaimRoute, /sender: sponsor\.accountAddress/);
+assert.match(cctpClaimRoute, /signerPublicKey: sponsor\.publicKey/);
+assert.match(cctpClaimRoute, /MAX_RELAY_GAS_OCTAS/);
+assert.match(accountManager, /fetch\("\/api\/decibel\/cctp\/claim"/);
+assert.ok(
+  !accountManager.includes("buildAptosCctpClaimPayload"),
+  "wallets must not be asked to authenticate Circle's Move script",
+);
+const cctpBytes = new Uint8Array(216);
+const cctpView = new DataView(cctpBytes.buffer);
+cctpView.setUint32(4, 6, false);
+cctpView.setUint32(8, 9, false);
+cctpView.setBigUint64(12, 77n, false);
+cctpBytes[183] = 0xab;
+let cctpAmount = 56_014_641n;
+for (let i = 215; i >= 184; i -= 1) {
+  cctpBytes[i] = Number(cctpAmount & 0xffn);
+  cctpAmount >>= 8n;
+}
+const parsedCctp = parseCctpMessage(
+  `0x${Buffer.from(cctpBytes).toString("hex")}`,
+);
+assert.equal(parsedCctp?.sourceDomain, 6);
+assert.equal(parsedCctp?.destinationDomain, 9);
+assert.equal(parsedCctp?.destinationCaller, `0x${"0".repeat(64)}`);
+assert.equal(parsedCctp?.mintRecipient, `0x${"0".repeat(62)}ab`);
+assert.equal(parsedCctp?.amount, 56.014641);
 assert.equal(normalizePositiveU64("18446744073709551615"), "18446744073709551615");
 assert.equal(normalizePositiveU64("000001"), "1");
 assert.throws(() => normalizePositiveU64("18446744073709551616"), /within range/);

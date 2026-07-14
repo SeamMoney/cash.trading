@@ -19,16 +19,16 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Bot, CandlestickChart, Rocket, Trophy } from "lucide-react";
+import {
+  animateMobileSheetSpring,
+  MOBILE_SHEET_MID_VH,
+  MOBILE_SHEET_RUBBER_BAND_K,
+  MOBILE_SHEET_VELOCITY_THRESHOLD,
+  mobileSheetRubberBand,
+} from "@/lib/mobile-sheet-motion";
 
 const PEEK_FROM_BOTTOM = 72;
 const INITIAL_SHEET_OFFSET = 800;
-const MID_VH = 0.6;
-const RUBBER_BAND_K = 0.35;
-const VELOCITY_THRESHOLD = 0.4;
-const SPRING_STIFFNESS = 300;
-const SPRING_DAMPING = 30;
-const SPRING_MASS = 1;
-const SPRING_REST_THRESHOLD = 0.5;
 
 const NAV_ITEMS = [
   { href: "/", label: "Trade", icon: CandlestickChart },
@@ -37,50 +37,6 @@ const NAV_ITEMS = [
   { href: "/automation", label: "Bots", icon: Bot },
   { href: "/points", label: "Points", icon: Trophy },
 ] as const;
-
-function springAnimate(
-  from: number,
-  to: number,
-  velocity: number,
-  onUpdate: (v: number) => void,
-  onDone: () => void,
-) {
-  let position = from;
-  let vel = velocity;
-  let lastTime = performance.now();
-  let raf: number;
-
-  const tick = (now: number) => {
-    const dt = Math.min((now - lastTime) / 1000, 0.064);
-    lastTime = now;
-
-    const displacement = position - to;
-    const springForce = -SPRING_STIFFNESS * displacement;
-    const dampingForce = -SPRING_DAMPING * vel;
-    const acceleration = (springForce + dampingForce) / SPRING_MASS;
-
-    vel += acceleration * dt;
-    position += vel * dt;
-
-    onUpdate(position);
-
-    if (Math.abs(position - to) < SPRING_REST_THRESHOLD && Math.abs(vel) < SPRING_REST_THRESHOLD) {
-      onUpdate(to);
-      onDone();
-      return;
-    }
-
-    raf = requestAnimationFrame(tick);
-  };
-
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}
-
-function rubberBand(offset: number): number {
-  if (offset >= 0) return offset;
-  return offset * RUBBER_BAND_K;
-}
 
 export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -155,7 +111,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
 
   const getSnaps = useCallback(() => {
     const vh = stableVh.current || window.innerHeight;
-    return [vh - PEEK_FROM_BOTTOM, vh * (1 - MID_VH), safeInsetTop.current];
+    return [vh - PEEK_FROM_BOTTOM, vh * (1 - MOBILE_SHEET_MID_VH), safeInsetTop.current];
   }, []);
 
   const applyPosition = useCallback((top: number) => {
@@ -165,7 +121,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
 
     const vh = stableVh.current || window.innerHeight;
     const peekTop = vh - PEEK_FROM_BOTTOM;
-    const midTop = vh * (1 - MID_VH);
+    const midTop = vh * (1 - MOBILE_SHEET_MID_VH);
     const progress = Math.max(0, Math.min(1, 1 - top / peekTop));
 
     if (overlayRef.current) {
@@ -190,7 +146,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
     const from = drag.current.currentTop;
 
     drag.current.cancelSpring?.();
-    drag.current.cancelSpring = springAnimate(
+    drag.current.cancelSpring = animateMobileSheetSpring(
       from,
       target,
       velocityPxMs * 1000,
@@ -246,8 +202,8 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
     const maxTop = snaps[0];
     const minTop = snaps[snaps.length - 1];
     let rawTop = drag.current.startTop + (clientY - drag.current.startY);
-    if (rawTop < minTop) rawTop = minTop + rubberBand(rawTop - minTop);
-    else if (rawTop > maxTop) rawTop = maxTop + (rawTop - maxTop) * RUBBER_BAND_K;
+    if (rawTop < minTop) rawTop = minTop + mobileSheetRubberBand(rawTop - minTop);
+    else if (rawTop > maxTop) rawTop = maxTop + (rawTop - maxTop) * MOBILE_SHEET_RUBBER_BAND_K;
 
     drag.current.currentTop = rawTop;
     applyPosition(rawTop);
@@ -278,7 +234,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
     const currentSnap = drag.current.snapIndex;
     let targetSnap: number;
 
-    if (Math.abs(v) > VELOCITY_THRESHOLD) {
+    if (Math.abs(v) > MOBILE_SHEET_VELOCITY_THRESHOLD) {
       targetSnap = v < 0
         ? Math.min(currentSnap + 1, snaps.length - 1)
         : Math.max(currentSnap - 1, 0);

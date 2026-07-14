@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { explorerAccountUrl } from "@/lib/constants";
 import { DecibelAccountManager } from "@/components/trade/DecibelAccountManager";
+import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import {
   getDecibelPublicNetwork,
@@ -29,6 +30,7 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   } = useDecibelSubaccounts();
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
 
   // The app's Decibel network and the wallet's own network are independent; a
@@ -42,6 +44,13 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -69,26 +78,8 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
     onClose();
   };
 
-  const content = (
-    <div className="cash-trade-theme fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/75 modal-backdrop" onClick={onClose} />
-
-      <div className="relative w-full max-h-[calc(100dvh-16px)] overflow-y-auto bg-[#0b0b0b] px-5 pb-5 pt-4 shadow-2xl shadow-black/60 sm:mx-4 sm:max-w-[440px] sm:rounded-[14px] sm:border sm:border-white/[0.08] sm:px-6 sm:pb-6 modal-panel">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-[18px] font-semibold text-zinc-100">
-            Account
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close account modal"
-            className="flex size-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/[0.05] hover:text-white"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="mt-5 space-y-5">
+  const accountContent = (
+    <div className="space-y-5 py-4 sm:pb-0 sm:pt-5">
           <div className="flex items-center gap-3">
             <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-white/[0.04]">
               {wallet?.icon ? (
@@ -194,12 +185,54 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
               Disconnect
             </button>
           </div>
-        </div>
-
-        <div className="pb-[env(safe-area-inset-bottom)]" />
-      </div>
     </div>
   );
 
-  return createPortal(content, document.body);
+  if (isMobile) {
+    return createPortal(
+      <div className="cash-trade-theme">
+        <MobileModalSheet
+          open={open}
+          onClose={onClose}
+          title="Account"
+          description="Wallet, Decibel account, and transfers"
+          titleId="wallet-account-sheet-title"
+        >
+          {accountContent}
+        </MobileModalSheet>
+      </div>,
+      document.body,
+    );
+  }
+
+  return createPortal(
+    <div className="cash-trade-theme fixed inset-0 z-[100] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/75 modal-backdrop" onClick={onClose} />
+      <div
+        aria-labelledby="wallet-account-modal-title"
+        aria-modal="true"
+        role="dialog"
+        className="modal-panel relative mx-4 max-h-[calc(100dvh-32px)] w-full max-w-[440px] overflow-y-auto rounded-[14px] border border-white/[0.08] bg-[#0b0b0b] px-6 pb-6 pt-4 shadow-2xl shadow-black/60"
+      >
+        <div className="flex items-center justify-between">
+          <h2
+            id="wallet-account-modal-title"
+            className="font-display text-[18px] font-semibold text-zinc-100"
+          >
+            Account
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close account modal"
+            className="flex size-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/[0.05] hover:text-white"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+        {accountContent}
+      </div>
+    </div>,
+    document.body,
+  );
 }

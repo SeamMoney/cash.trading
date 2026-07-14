@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   Account,
+  AccountAddress,
   AccountAuthenticator,
   Deserializer,
   Ed25519PrivateKey,
   Hex,
   SimpleTransaction,
   TransactionPayloadEntryFunction,
-  TransactionPayloadScript,
 } from "@aptos-labs/ts-sdk";
 import { aptos } from "@/lib/aptos";
 import { DECIBEL_PACKAGE, MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
-import { APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE } from "@/lib/decibel-cctp";
 import { checkApiRateLimit, checkRateLimitForKey } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
@@ -26,10 +25,6 @@ const NO_STORE_HEADERS = {
 // max_gas_amount * gas_unit_price <= 0.05 APT.
 const MAX_SPONSORED_GAS_OCTAS = 5_000_000n;
 const MAX_BODY_BYTES = 256_000;
-
-const ALLOWED_CLAIM_BYTECODES = new Set(
-  Object.values(APTOS_CCTP_HANDLE_RECEIVE_MESSAGE_BYTECODE).map((b) => b.toLowerCase()),
-);
 
 const ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS = new Set([
   "cancel_order_to_subaccount",
@@ -49,52 +44,17 @@ function getSponsorAccount(): Account | null {
   }
 }
 
-export async function GET(req: NextRequest) {
-  const rate = checkApiRateLimit(req, "sponsor-info", 60, 60_000);
-  if (!rate.allowed) {
-    return NextResponse.json(
-      { error: "rate limited", retryAfterS: rate.retryAfterS },
-      {
-        status: 429,
-        headers: { ...NO_STORE_HEADERS, "Retry-After": String(rate.retryAfterS ?? 60) },
-      },
-    );
-  }
-
-  const sponsor = getSponsorAccount();
-  if (!sponsor) {
-    return NextResponse.json(
-      { unavailable: true, reason: "sponsor_not_configured" },
-      { status: 501, headers: NO_STORE_HEADERS },
-    );
-  }
-
-  return NextResponse.json(
-    { feePayerAddress: sponsor.accountAddress.toStringLong() },
-    { headers: NO_STORE_HEADERS },
-  );
-}
-
 /**
- * Sponsor the exact Circle claim bytecode and a small allowlist of Decibel
- * account entry functions. This lets an EVM-derived Decibel owner with no APT
- * claim, deposit, trade, cancel, and withdraw without turning the endpoint
- * into a general-purpose gas faucet.
+ * Sponsor a small allowlist of Decibel account entry functions. Circle claim
+ * scripts are submitted by the dedicated CCTP relayer instead: derived EVM
+ * authenticators only support entry-function payloads.
  */
 function isSponsorablePayload(transaction: SimpleTransaction): {
   ok: boolean;
-  kind?: "cctp_claim" | "decibel_account_action";
+  kind?: "decibel_account_action";
   reason?: string;
 } {
   const payload = transaction.rawTransaction.payload;
-
-  if (payload instanceof TransactionPayloadScript) {
-    const bytecode = Hex.fromHexInput(payload.script.bytecode).toString().toLowerCase();
-    if (ALLOWED_CLAIM_BYTECODES.has(bytecode)) {
-      return { ok: true, kind: "cctp_claim" };
-    }
-    return { ok: false, reason: "script_not_allowlisted" };
-  }
 
   if (payload instanceof TransactionPayloadEntryFunction) {
     const fn = payload.entryFunction;
@@ -200,9 +160,9 @@ export async function POST(req: NextRequest) {
       { status: 400, headers: NO_STORE_HEADERS },
     );
   }
-  if (!transaction.feePayerAddress.equals(sponsor.accountAddress)) {
+  if (!transaction.feePayerAddress.equals(AccountAddress.ZERO)) {
     return NextResponse.json(
-      { error: "transaction was not signed for the active gas sponsor" },
+      { error: "transaction must use the unsigned fee-payer placeholder" },
       { status: 409, headers: NO_STORE_HEADERS },
     );
   }
@@ -226,6 +186,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Aptos's canonical sponsored flow has the sender sign the zero-address
+    // fee-payer placeholder. The sponsor is bound only after that signature,
+    // immediately before simulation and fee-payer signing.
+    transaction.feePayerAddress = sponsor.accountAddress;
+
     // Simulate before paying: a transaction that aborts on-chain still charges
     // the fee payer, so garbage claims must be rejected while it's still free.
     const [simulation] = await aptos.transaction.simulate.simple({ transaction });

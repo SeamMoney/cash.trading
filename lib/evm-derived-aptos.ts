@@ -10,7 +10,6 @@ import { AccountAddress, AptosApiError } from "@aptos-labs/ts-sdk";
 import { BrowserProvider, getAddress } from "ethers";
 import { aptos } from "@/lib/aptos";
 import { getEvmProvider, type Eip1193Provider } from "@/lib/evm-cctp";
-import { getSponsorFeePayerAddress } from "@/lib/tx-utils";
 
 export const DECIBEL_APP_DERIVED_DOMAIN = "app.decibel.trade";
 export const DECIBEL_APP_DERIVED_URI = "https://app.decibel.trade";
@@ -119,12 +118,9 @@ export async function submitEvmDerivedAptosPayload(args: {
   // exist" and silently builds sequence 0. Existing derived accounts then
   // fail sponsor simulation with SEQUENCE_NUMBER_TOO_OLD. Resolve it first,
   // retry transient RPC failures, and pass the verified value explicitly.
-  const [accountSequenceNumber, feePayerAddress] = args.sponsored
-    ? await Promise.all([
-        getSponsoredAccountSequenceNumber(sender),
-        getSponsorFeePayerAddress(),
-      ])
-    : [undefined, undefined];
+  const accountSequenceNumber = args.sponsored
+    ? await getSponsoredAccountSequenceNumber(sender)
+    : undefined;
   const transaction = await aptos.transaction.build.simple({
     sender,
     data: args.payload,
@@ -136,11 +132,6 @@ export async function submitEvmDerivedAptosPayload(args: {
       ? { maxGasAmount: 20_000, accountSequenceNumber }
       : undefined,
   });
-  if (feePayerAddress) {
-    // The EVM-derived authenticator signs the complete fee-payer transaction.
-    // Replacing this address after signing invalidates the SIWE digest.
-    transaction.feePayerAddress = feePayerAddress;
-  }
 
   const issuedAt = new Date();
   const { siweMessage, signingMessageDigest } =

@@ -153,6 +153,7 @@ export async function GET(req: NextRequest) {
       sourceDomain: parsed.sourceDomain,
       destinationChain: parsed.destinationChain,
       destinationDomain: parsed.destinationDomain,
+      destinationCaller: parsed.destinationCaller,
       destinationIsAptos,
       amount: parsed.amount,
       mintRecipient: parsed.mintRecipient,

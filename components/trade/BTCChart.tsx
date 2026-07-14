@@ -11,6 +11,7 @@ import { TetherLoader } from "@/components/layout/TetherLoader";
 import { BtcPerpsChart, type PerpMarketSnapshot } from "@/components/trade/BtcPerpsChart";
 import { PERP_MARKET_DATA, type PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -602,6 +603,7 @@ function MarketModal({
   // Lock body scroll + escape key
   useEffect(() => {
     if (!open) return;
+    if (!window.matchMedia("(min-width: 640px)").matches) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
@@ -635,28 +637,162 @@ function MarketModal({
 
   if (!open) return null;
 
-  return createPortal(
-    <div
-      className="cash-trade-theme fixed inset-0 z-[9999] flex items-end justify-center px-0 sm:items-center sm:px-4 sm:py-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/85" />
+  const marketContent = (
+    <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
+      <label className="flex h-10 items-center gap-3 rounded-md bg-white/[0.04] px-3 text-[#777] focus-within:bg-white/[0.06]">
+        <Search className="size-4 shrink-0" aria-hidden="true" />
+        <input
+          type="search"
+          inputMode="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="Search markets"
+          placeholder="Search markets"
+          className="min-w-0 flex-1 bg-transparent text-[16px] text-zinc-200 outline-none placeholder:text-zinc-500 sm:text-[14px]"
+        />
+      </label>
 
+      <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
+        {categoriesList.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            aria-pressed={activeCategory === tab.key}
+            onClick={() => setActiveCategory(tab.key)}
+            className={`shrink-0 pb-2 text-[13px] transition-colors ${
+              activeCategory === tab.key
+                ? "border-b-2 border-zinc-200 text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
+        <span className="text-xs font-bold">Symbol</span>
+        <span className="hidden text-right text-xs font-bold sm:block">Price</span>
+        <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
+        <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
+        <span className="text-right text-xs font-bold">Lev.</span>
+      </div>
+
+      <div className="pr-1 sm:max-h-[min(62dvh,600px)] sm:overflow-y-auto sm:overscroll-contain sm:scrollbar-thin">
+        <div>
+          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
+            <span className="text-[10px] font-bold uppercase text-[#555]">
+              {activeCategoryLabel}
+            </span>
+            {loading && (
+              <span className="text-[10px] font-bold uppercase text-green-500/60">
+                Syncing
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {filteredMarkets.map((market) => {
+              const isActive = market.id === selected;
+              const mark = market.perpData?.seedPrice ?? 0;
+              const fundingText =
+                market.fundingRateBps == null
+                  ? "—"
+                  : fmtFundingRate(market.fundingRateBps);
+              return (
+                <button
+                  key={market.id}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    onSelect(market.id);
+                    onClose();
+                  }}
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
+                    isActive
+                      ? "bg-white/[0.05] text-white"
+                      : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center">
+                      <MarketLogo market={market.id} size={20} />
+                    </span>
+                    <span className="truncate text-[13px] font-semibold">
+                      {market.label}
+                    </span>
+                    <span className="truncate text-[11px] text-[#555] sm:shrink-0">
+                      {market.pair.replace(/ PERPS$/, "")}
+                    </span>
+                    {isActive && (
+                      <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
+                    {mark > 0
+                      ? mark.toLocaleString("en-US", {
+                          minimumFractionDigits: getDisplayDecimals(mark),
+                          maximumFractionDigits: getDisplayDecimals(mark),
+                        })
+                      : "—"}
+                  </span>
+                  <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
+                    {fundingText}
+                  </span>
+                  <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
+                    {market.perpData?.openInterestLabel ?? "—"}
+                  </span>
+                  <span
+                    className={`text-right text-xs font-bold tabular-nums ${
+                      isActive ? "text-green-400" : "text-[#666]"
+                    }`}
+                  >
+                    {market.leverage > 0 ? `${market.leverage}x` : "Spot"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {filteredMarkets.length === 0 && (
+          <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
+            No {activeCategoryLabel.toLowerCase()} markets match this search.
+          </div>
+        )}
+        <div className="h-3" />
+      </div>
+    </div>
+  );
+
+  return createPortal(
+    <div className="cash-trade-theme">
+      <MobileModalSheet
+        open={open}
+        onClose={onClose}
+        title="Select market"
+        description={`${network} markets`}
+        titleId="market-selector-title"
+      >
+        {marketContent}
+      </MobileModalSheet>
+      <div
+        className="fixed inset-0 z-[9999] hidden items-center justify-center px-4 py-4 sm:flex"
+        onClick={onClose}
+      >
+        <div className="absolute inset-0 bg-black/85" />
       <div
         ref={dialogRef}
-        aria-labelledby="market-selector-title"
+        aria-labelledby="market-selector-title-desktop"
         aria-modal="true"
         role="dialog"
         onClick={(e) => e.stopPropagation()}
-        className="relative max-h-[calc(100dvh-0.75rem)] w-full overflow-hidden rounded-t-[14px] border-t border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70 sm:max-w-[900px] sm:rounded-[12px] sm:border"
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[900px] overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70"
         style={{ animation: "market-modal-in 0.2s ease-out" }}
       >
         <div className="overflow-hidden">
-          {/* Header — same style as PAYMENT_LOGS / APTOS_MAINNET */}
-          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-4 py-3 font-mono text-[13px] font-semibold text-[#888] sm:px-5">
+          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
-              <span id="market-selector-title">SELECT MARKET</span>
+              <span id="market-selector-title-desktop">SELECT MARKET</span>
               <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
                 {network}
               </span>
@@ -670,120 +806,11 @@ function MarketModal({
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </header>
-
-          {/* Content — grid rows matching table style */}
-          <div className="bg-[#101010] p-3 font-mono text-sm font-medium sm:p-4">
-            <label className="flex h-10 items-center gap-3 rounded-md bg-white/[0.04] px-3 text-[#777] focus-within:bg-white/[0.06]">
-              <Search className="size-4 shrink-0" aria-hidden="true" />
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoFocus
-                aria-label="Search markets"
-                placeholder="Search markets"
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-zinc-200 outline-none placeholder:text-zinc-500"
-              />
-            </label>
-
-            <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
-              {categoriesList.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  aria-pressed={activeCategory === tab.key}
-                  onClick={() => setActiveCategory(tab.key)}
-                  className={`pb-2 text-[13px] transition-colors ${
-                    activeCategory === tab.key
-                      ? "border-b-2 border-zinc-200 text-zinc-100"
-                      : "text-zinc-500 hover:text-zinc-300"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Column headers */}
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
-              <span className="text-xs font-bold">Symbol</span>
-              <span className="hidden text-right text-xs font-bold sm:block">Price</span>
-              <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
-              <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
-              <span className="text-right text-xs font-bold">Lev.</span>
-            </div>
-
-            {/* Market rows */}
-            <div className="max-h-[calc(100dvh-230px)] overflow-y-auto overscroll-contain pr-1 scrollbar-thin sm:max-h-[min(62dvh,600px)]">
-                <div>
-                  <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
-                    <span className="text-[10px] font-bold uppercase text-[#555]">
-                      {activeCategoryLabel}
-                    </span>
-                    {loading && (
-                      <span className="text-[10px] font-bold uppercase text-green-500/60">
-                        Syncing
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {filteredMarkets.map((m) => {
-                      const isActive = m.id === selected;
-                      const mark = m.perpData?.seedPrice ?? 0;
-                      const fundingText = m.fundingRateBps == null ? "—" : fmtFundingRate(m.fundingRateBps);
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          aria-pressed={isActive}
-                          onClick={() => { onSelect(m.id); onClose(); }}
-                          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
-                            isActive
-                              ? "bg-white/[0.05] text-white"
-                              : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2 min-w-0">
-                            <span className="shrink-0 flex items-center justify-center w-5 h-5">
-                              <MarketLogo market={m.id} size={20} />
-                            </span>
-                            <span className="text-[13px] font-semibold truncate">{m.label}</span>
-                            <span className="truncate text-[11px] text-[#555] sm:shrink-0">{m.pair.replace(/ PERPS$/, "")}</span>
-                            {isActive && (
-                              <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
-                            )}
-                          </span>
-                          <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
-                            {mark > 0 ? mark.toLocaleString("en-US", {
-                              minimumFractionDigits: getDisplayDecimals(mark),
-                              maximumFractionDigits: getDisplayDecimals(mark),
-                            }) : "—"}
-                          </span>
-                          <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
-                            {fundingText}
-                          </span>
-                          <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
-                            {m.perpData?.openInterestLabel ?? "—"}
-                          </span>
-                          <span className={`text-right text-xs font-bold tabular-nums ${
-                            isActive ? "text-green-400" : "text-[#666]"
-                          }`}>
-                            {m.leverage > 0 ? `${m.leverage}x` : "Spot"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-            {filteredMarkets.length === 0 && (
-              <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
-                No {activeCategoryLabel.toLowerCase()} markets match this search.
-              </div>
-            )}
-            <div className="h-3" />
-            </div>
+          <div className="p-4">
+            {marketContent}
           </div>
         </div>
+      </div>
       </div>
     </div>,
     document.body,

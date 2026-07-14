@@ -239,6 +239,14 @@ assert.match(mobileModalSheet, /animateMobileSheetSpring/);
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);
 assert.match(mobileModalSheet, /overflow-y-auto overscroll-contain/);
 assert.match(mobileModalSheet, /WebkitOverflowScrolling: "touch"/);
+assert.match(mobileModalSheet, /addEventListener\("touchcancel"/);
+assert.match(mobileModalSheet, /addEventListener\("mousedown"/);
+assert.match(mobileModalSheet, /window\.addEventListener\("mousemove"/);
+assert.match(mobileModalSheet, /data-mobile-sheet-drag-surface="true"/);
+assert.match(mobileModalSheet, /data-mobile-sheet-drag-handle="true"/);
+assert.match(mobileModalSheet, /data-mobile-sheet-scroll-area="true"/);
+assert.match(mobileModalSheet, /startedInScrollArea/);
+assert.match(mobileModalSheet, /touchAction: "pan-y"/);
 assert.ok(
   portfolioPage.indexOf("await waitForTransactionConfirmation(cancel.hash)")
     < portfolioPage.indexOf("openOrders: prev.openOrders.filter"),

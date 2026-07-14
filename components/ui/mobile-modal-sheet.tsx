@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { X } from "lucide-react";
@@ -46,6 +47,7 @@ export function MobileModalSheet({
   const safeInsetTop = useRef(0);
   const inputFocused = useRef(false);
   const reducedMotion = useRef(false);
+  const suppressClickUntil = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -53,6 +55,7 @@ export function MobileModalSheet({
     active: false,
     cancelSpring: null as (() => void) | null,
     currentTop: 0,
+    didMove: false,
     lastTime: 0,
     lastY: 0,
     pendingClientY: 0,
@@ -60,6 +63,7 @@ export function MobileModalSheet({
     snapIndex: 0,
     startTop: 0,
     startY: 0,
+    startedInScrollArea: false,
     velocityY: 0,
   });
 
@@ -198,12 +202,17 @@ export function MobileModalSheet({
     drag.current.lastY = clientY;
     drag.current.lastTime = performance.now();
     drag.current.velocityY = 0;
+    drag.current.didMove = false;
+    drag.current.startedInScrollArea = Boolean(isInScrollArea);
     return true;
   }, []);
 
   const processDragMove = useCallback((clientY: number) => {
     const now = performance.now();
     const elapsed = now - drag.current.lastTime;
+    if (Math.abs(clientY - drag.current.startY) > 3) {
+      drag.current.didMove = true;
+    }
     if (elapsed > 0) {
       const instantVelocity = (clientY - drag.current.lastY) / elapsed;
       drag.current.velocityY =
@@ -243,6 +252,9 @@ export function MobileModalSheet({
       cancelAnimationFrame(drag.current.rafId);
       drag.current.rafId = null;
     }
+    if (drag.current.didMove) {
+      suppressClickUntil.current = performance.now() + 250;
+    }
     const snaps = getSnaps();
     const velocity = drag.current.velocityY;
     let targetIndex = drag.current.snapIndex;
@@ -268,23 +280,95 @@ export function MobileModalSheet({
     const sheet = sheetRef.current;
     if (!sheet) return;
     const onTouchStart = (event: TouchEvent) => {
-      handleDragStart(event.touches[0].clientY, event.target as HTMLElement);
+      const touch = event.touches[0];
+      if (!touch) return;
+      handleDragStart(touch.clientY, event.target as HTMLElement);
     };
     const onTouchMove = (event: TouchEvent) => {
       if (!drag.current.active) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      // At the full-height snap, an upward gesture inside the content belongs
+      // to the native scroller. A downward gesture at scrollTop=0 belongs to
+      // the sheet. This is the same scroll-to-drag handoff users expect from
+      // the persistent Portfolio surface.
+      const deltaY = touch.clientY - drag.current.startY;
+      const fullSnapIndex = getSnaps().length - 1;
+      if (
+        drag.current.startedInScrollArea &&
+        drag.current.snapIndex === fullSnapIndex &&
+        deltaY < -3
+      ) {
+        drag.current.active = false;
+        if (drag.current.rafId !== null) {
+          cancelAnimationFrame(drag.current.rafId);
+          drag.current.rafId = null;
+        }
+        return;
+      }
+      if (
+        drag.current.startedInScrollArea &&
+        drag.current.snapIndex === fullSnapIndex &&
+        Math.abs(deltaY) <= 3
+      ) {
+        return;
+      }
       event.preventDefault();
-      handleDragMove(event.touches[0].clientY);
+      handleDragMove(touch.clientY);
     };
     const onTouchEnd = () => handleDragEnd();
+    const onTouchCancel = () => handleDragEnd();
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (handleDragStart(event.clientY, event.target as HTMLElement)) {
+        event.preventDefault();
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      }
+    };
+    const onMouseMove = (event: MouseEvent) => {
+      if (!drag.current.active) return;
+      event.preventDefault();
+      handleDragMove(event.clientY);
+    };
+    const onMouseUp = () => {
+      handleDragEnd();
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
     sheet.addEventListener("touchstart", onTouchStart, { passive: true });
     sheet.addEventListener("touchmove", onTouchMove, { passive: false });
     sheet.addEventListener("touchend", onTouchEnd, { passive: true });
+    sheet.addEventListener("touchcancel", onTouchCancel, { passive: true });
+    sheet.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     return () => {
       sheet.removeEventListener("touchstart", onTouchStart);
       sheet.removeEventListener("touchmove", onTouchMove);
       sheet.removeEventListener("touchend", onTouchEnd);
+      sheet.removeEventListener("touchcancel", onTouchCancel);
+      sheet.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
-  }, [handleDragEnd, handleDragMove, handleDragStart, open]);
+  }, [getSnaps, handleDragEnd, handleDragMove, handleDragStart, open]);
+
+  const handleSheetClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (performance.now() < suppressClickUntil.current) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, []);
+
+  const handleHeaderClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (drag.current.didMove) return;
+    if ((event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
+    snapTo(drag.current.snapIndex === 2 ? 1 : 2);
+  }, [snapTo]);
 
   useEffect(() => {
     if (!open) return;
@@ -320,14 +404,19 @@ export function MobileModalSheet({
         aria-modal="true"
         role="dialog"
         tabIndex={-1}
+        data-mobile-sheet-drag-surface="true"
+        onClickCapture={handleSheetClickCapture}
         className="fixed inset-x-0 bottom-0 z-[9999] outline-none sm:hidden"
         style={{
           height: "100dvh",
           transform: "translate3d(0, 100dvh, 0)",
           willChange: "transform",
-          touchAction: "none",
+          // Header opts out with `none`; the content keeps `pan-y` so the
+          // browser can own scrolling once the sheet reaches its full snap.
+          touchAction: "pan-y",
           userSelect: "none",
           WebkitUserSelect: "none",
+          cursor: "grab",
         }}
       >
         <div
@@ -338,7 +427,12 @@ export function MobileModalSheet({
             WebkitBackdropFilter: "blur(20px)",
           }}
         >
-          <div className="shrink-0" style={{ touchAction: "none" }}>
+          <div
+            className="shrink-0"
+            data-mobile-sheet-drag-handle="true"
+            onClick={handleHeaderClick}
+            style={{ touchAction: "none" }}
+          >
             <div className="flex justify-center pb-1.5 pt-2.5">
               <div className="h-1 w-9 rounded-full bg-white/[0.15]" />
             </div>
@@ -373,6 +467,7 @@ export function MobileModalSheet({
           >
             <div
               ref={scrollAreaRef}
+              data-mobile-sheet-scroll-area="true"
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
               style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
             >

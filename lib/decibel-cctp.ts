@@ -17,6 +17,7 @@ export type ParsedCctpMessage = {
   sourceChain: CctpChainName | "Unknown";
   destinationDomain: number;
   destinationChain: CctpChainName | "Unknown";
+  destinationCaller: string;
   nonce: string;
   mintRecipient: string;
   amount: number;
@@ -115,6 +116,7 @@ export function parseCctpMessage(message: string): ParsedCctpMessage | null {
   const sourceDomain = readUint32(hex, 8);
   const destinationDomain = readUint32(hex, 16);
   const nonce = readUint64(hex, 24);
+  const destinationCaller = `0x${hex.slice(168, 232).toLowerCase()}`;
   const mintRecipient = `0x${hex.slice(304, 368).toLowerCase()}`;
   const rawAmount = readUint256(hex, 368);
   const whole = rawAmount / 1_000_000n;
@@ -125,6 +127,7 @@ export function parseCctpMessage(message: string): ParsedCctpMessage | null {
     sourceChain: getCctpChain(sourceDomain),
     destinationDomain,
     destinationChain: getCctpChain(destinationDomain),
+    destinationCaller,
     nonce,
     mintRecipient,
     amount: Number(whole) + Number(fractional) / 1_000_000,

@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { walletNetworkMismatchMessage } from "@/lib/wallet-network";
-import { buildAptosCctpClaimPayload } from "@/lib/decibel-cctp";
 import {
   fetchEvmUsdcBalance,
   startEvmCctpDeposit,
@@ -76,6 +75,32 @@ interface CctpStatusResponse {
 }
 
 const BRIDGE_SOURCE_CHAINS: BridgeSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
+
+async function relayAptosCctpClaim(args: {
+  attestation: string;
+  messageBytes: string;
+  network: "mainnet" | "testnet";
+}): Promise<{ alreadyClaimed: boolean; hash?: string }> {
+  const res = await fetch("/api/decibel/cctp/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  const data = (await res.json().catch(() => null)) as
+    | {
+        alreadyClaimed?: boolean;
+        error?: string;
+        hash?: string;
+        vmStatus?: string;
+      }
+    | null;
+  if (data?.alreadyClaimed) return { alreadyClaimed: true };
+  if (!res.ok || !data?.hash) {
+    const reason = data?.error || `Circle claim relayer failed (${res.status}).`;
+    throw new Error(data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason);
+  }
+  return { alreadyClaimed: false, hash: data.hash };
+}
 
 function formatDepositInputAmount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
@@ -678,38 +703,21 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       if (sponsored) {
         setBridgeMessage("Wallet has no APT for gas — using sponsored submission...");
       }
-      let skipClaim = false;
-      try {
-        const claimPayload = buildAptosCctpClaimPayload({
-          attestation: bridgeTransfer.attestation,
-          messageBytes: bridgeTransfer.messageBytes,
-          network: decibelNetwork,
-        });
-        const claimResult = sponsored
-          ? await signAndSubmitSponsored({
-              senderAddress,
-              payload: claimPayload,
-              signTransaction,
-            })
-          : await signAndSubmitTransaction({ data: claimPayload });
-        if (!isCurrentAccountAction(action)) return;
+      setBridgeMessage("Relaying the Circle claim on Aptos...");
+      const claimResult = await relayAptosCctpClaim({
+        attestation: bridgeTransfer.attestation,
+        messageBytes: bridgeTransfer.messageBytes,
+        network: decibelNetwork,
+      });
+      if (!isCurrentAccountAction(action)) return;
+      const skipClaim = claimResult.alreadyClaimed;
+      if (claimResult.hash) {
         setStatusHash(claimResult.hash);
         setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
         await waitForTransactionConfirmation(claimResult.hash);
         if (!isCurrentAccountAction(action)) return;
-      } catch (claimErr) {
-        if (!isCurrentAccountAction(action)) return;
-        const claimMessage =
-          claimErr instanceof Error ? claimErr.message : String(claimErr);
-        if (
-          claimMessage.toLowerCase().includes("nonce") ||
-          claimMessage.toLowerCase().includes("already")
-        ) {
-          skipClaim = true;
-          setBridgeMessage("Transfer appears already claimed. Depositing available USDC...");
-        } else {
-          throw claimErr;
-        }
+      } else {
+        setBridgeMessage("Transfer is already claimed. Depositing available USDC...");
       }
 
       if (!skipClaim) {
@@ -809,55 +817,39 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setStatus("submitting");
     setStatusHash("");
     setBridgeLookupStatus("loading");
-    setBridgeMessage("Claim with your app.decibel.trade derived account...");
+    setBridgeMessage("Relaying the Circle claim on Aptos...");
     try {
-      // Bridged-only derived accounts hold zero APT, so claim/deposit gas
-      // must come from the server fee-payer when the account can't self-fund.
-      const sponsored = await needsSponsoredGas(bridgeTransfer.mintRecipient);
+      // Circle messages with an empty destination caller are permissionless:
+      // the relayer can execute the Move script while Circle still mints to
+      // the recipient encoded in the signed message. This avoids asking an
+      // EVM-derived Aptos account to sign an unsupported script payload.
+      const claimResult = await relayAptosCctpClaim({
+        attestation: bridgeTransfer.attestation,
+        messageBytes: bridgeTransfer.messageBytes,
+        network: decibelNetwork,
+      });
       if (!isCurrentAccountAction(action)) return;
-      if (sponsored) {
-        setBridgeMessage("Derived account has no APT for gas — using sponsored submission...");
-      }
-      let skipClaim = false;
-      try {
-        const claimPayload = buildAptosCctpClaimPayload({
-          attestation: bridgeTransfer.attestation,
-          messageBytes: bridgeTransfer.messageBytes,
-          network: decibelNetwork,
-        });
-        const claimResult = await submitEvmDerivedAptosPayload({
-          domain: DECIBEL_APP_DERIVED_DOMAIN,
-          expectedSenderAddress: bridgeTransfer.mintRecipient,
-          payload: claimPayload,
-          preferredWalletName: wallet?.name,
-          sponsored,
-          uri: DECIBEL_APP_DERIVED_URI,
-          onStep: (message) => {
-            if (isCurrentAccountAction(action)) setBridgeMessage(message);
-          },
-        });
-        if (!isCurrentAccountAction(action)) return;
+      const skipClaim = claimResult.alreadyClaimed;
+      if (claimResult.hash) {
         setStatusHash(claimResult.hash);
         setBridgeMessage("Claim submitted. Waiting for Aptos confirmation...");
         await waitForTransactionConfirmation(claimResult.hash);
         if (!isCurrentAccountAction(action)) return;
-      } catch (claimErr) {
-        if (!isCurrentAccountAction(action)) return;
-        const claimMessage =
-          claimErr instanceof Error ? claimErr.message : String(claimErr);
-        if (
-          claimMessage.toLowerCase().includes("nonce") ||
-          claimMessage.toLowerCase().includes("already")
-        ) {
-          skipClaim = true;
-          setBridgeMessage("Transfer appears already claimed. Depositing available USDC...");
-        } else {
-          throw claimErr;
-        }
+      } else {
+        setBridgeMessage("Transfer is already claimed. Preparing the Decibel deposit...");
       }
 
       if (!skipClaim) {
         setBridgeMessage("Claim confirmed. Depositing USDC to cash.trading Decibel account...");
+      }
+
+      // The deposit is an entry function, which the EVM-derived account can
+      // authenticate. Sponsor only this wallet-signed Decibel action when the
+      // derived account has no APT of its own.
+      const sponsored = await needsSponsoredGas(bridgeTransfer.mintRecipient);
+      if (!isCurrentAccountAction(action)) return;
+      if (sponsored) {
+        setBridgeMessage("USDC is claimed. Using sponsored gas for the Decibel deposit...");
       }
 
       const raw = String(Math.floor(bridgeTransfer.amount * 1_000_000));

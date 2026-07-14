@@ -1,6 +1,5 @@
 import { explorerTxUrl } from "./constants";
 import { aptos } from "./aptos";
-import { AccountAddress } from "@aptos-labs/ts-sdk";
 
 /**
  * Shared transaction utility for the payload-builder pattern.
@@ -12,25 +11,6 @@ import { AccountAddress } from "@aptos-labs/ts-sdk";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SignFn = (transaction: any) => Promise<any>;
-
-export async function getSponsorFeePayerAddress(): Promise<AccountAddress> {
-  const res = await fetch("/api/decibel/sponsor-submit", {
-    cache: "no-store",
-  });
-  const data = (await res.json().catch(() => null)) as
-    | { error?: string; feePayerAddress?: string; reason?: string }
-    | null;
-  if (!res.ok || !data?.feePayerAddress) {
-    throw new Error(
-      data?.error || data?.reason || `Gas sponsor is unavailable (${res.status}).`,
-    );
-  }
-  try {
-    return AccountAddress.fromString(data.feePayerAddress);
-  } catch {
-    throw new Error("Gas sponsor returned an invalid fee-payer address.");
-  }
-}
 
 export async function buildAndSign(
   apiUrl: string,
@@ -104,7 +84,6 @@ export async function signAndSubmitSponsored(args: {
   payload: any;
   signTransaction: SignTransactionFn;
 }): Promise<{ hash: string; explorerUrl: string }> {
-  const feePayerAddress = await getSponsorFeePayerAddress();
   const transaction = await aptos.transaction.build.simple({
     sender: args.senderAddress,
     data: args.payload,
@@ -112,9 +91,6 @@ export async function signAndSubmitSponsored(args: {
     // Sponsor route caps max_gas_amount * gas_unit_price at 0.05 APT.
     options: { maxGasAmount: 20_000 },
   });
-  // Fee-payer transactions bind the sponsor address into the sender's signing
-  // digest, so the real public address must be present before wallet approval.
-  transaction.feePayerAddress = feePayerAddress;
 
   const { authenticator } = await args.signTransaction({
     transactionOrPayload: transaction,

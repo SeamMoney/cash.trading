@@ -141,6 +141,7 @@ const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
 const bklitTooltipSource = readFileSync("components/charts/bklit/chart-tooltip.tsx", "utf8");
 const bklitCandlestickSource = readFileSync("components/charts/bklit/candlestick.tsx", "utf8");
+const bklitInteractionSource = readFileSync("components/charts/bklit/use-chart-interaction.ts", "utf8");
 const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
@@ -177,6 +178,13 @@ assert.ok(
   bklitCandlestickSource.includes("geometry.time > hoveredTime")
     && !bklitCandlestickSource.includes("geometry.time !== hoveredTime"),
   "candle hover must fade only future candles, never historical candles",
+);
+assert.ok(
+  bklitInteractionSource.includes("const clearTouchInteraction = useCallback(() => {")
+    && bklitInteractionSource.includes("lastHoveredXRef.current = null;")
+    && bklitInteractionSource.includes("onTouchEnd: clearTouchInteraction")
+    && bklitInteractionSource.includes("onTouchCancel: clearTouchInteraction"),
+  "mobile candle inspection must clear its retained hover anchor on touch release or cancellation",
 );
 assert.ok(
   plotSource.includes('<Background pattern="dots" opacity={0.85} />')

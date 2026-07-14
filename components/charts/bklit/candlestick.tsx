@@ -35,9 +35,9 @@ export interface CandlestickProps {
   bodyPatternNegative?: string;
   /** Inner border width on the body (drawn inside so it does not expand the shape). Default: 0 (off). */
   insideStrokeWidth?: number;
-  /** Opacity when another candle is hovered. Default: 0.3 */
+  /** Opacity for candles after the hovered candle. Default: 0.3 */
   fadedOpacity?: number;
-  /** Dim non-hovered candles on hover. Default: true */
+  /** Dim future candles on hover. Default: true */
   showHoverFade?: boolean;
 }
 
@@ -163,7 +163,7 @@ function geometryDimOpacity(
       (legendHoveredIndex === 1 && geometry.isPositive);
     return dimFromLegend ? fadedOpacity : 1;
   }
-  if (hoveredTime !== null && geometry.time !== hoveredTime) {
+  if (hoveredTime !== null && geometry.time > hoveredTime) {
     return fadedOpacity;
   }
   return 1;

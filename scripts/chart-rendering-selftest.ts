@@ -140,6 +140,7 @@ assert.equal(afterOutage.at(-1)?.open, 110, "a new live bar must not bridge an u
 const proChartSource = readFileSync("components/trade/ProCandleChart.tsx", "utf8");
 const plotSource = readFileSync("components/trade/BklitCandlePlot.tsx", "utf8");
 const bklitTooltipSource = readFileSync("components/charts/bklit/chart-tooltip.tsx", "utf8");
+const bklitCandlestickSource = readFileSync("components/charts/bklit/candlestick.tsx", "utf8");
 const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
@@ -171,6 +172,11 @@ assert.ok(
     && plotSource.includes("fadedOpacity={0.25}")
     && !plotSource.includes("showHoverFade={false}"),
   "trade candles must expose bklit's tooltip and hover-fade interaction",
+);
+assert.ok(
+  bklitCandlestickSource.includes("geometry.time > hoveredTime")
+    && !bklitCandlestickSource.includes("geometry.time !== hoveredTime"),
+  "candle hover must fade only future candles, never historical candles",
 );
 assert.ok(
   plotSource.includes('<Background pattern="dots" opacity={0.85} />')

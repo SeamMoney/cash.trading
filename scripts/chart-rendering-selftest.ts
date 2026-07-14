@@ -153,6 +153,14 @@ assert.ok(
   plotSource.includes("@/components/charts/bklit/candlestick"),
   "the active candle renderer must use the local bklit primitives",
 );
+assert.ok(
+  plotSource.includes("candleGap={0.12}"),
+  "trade candle bodies must remain wide enough to read at the default zoom",
+);
+assert.ok(
+  !proChartSource.includes("formatLegend") && !proChartSource.includes("legendCandle"),
+  "the chart must not render an OHLC number row below the timeframe selector",
+);
 assert.ok(!launchpadChartSource.includes("lightweight-charts"), "the launchpad candle chart must not use TradingView");
 assert.ok(
   launchpadChartSource.includes("@/components/trade/BklitCandlePlot"),

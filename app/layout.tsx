@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://cash.trading"),
   title: "cash.trading - Aptos Perps and CASH Rewards",
   description:
-    "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
+    "Aptos perp trading, analytics, indicator strategies, automated trading, and capped on-chain CASH rewards.",
   keywords: [
     "cash.trading",
     "CASH",
@@ -44,14 +44,14 @@ export const metadata: Metadata = {
     url: "https://cash.trading",
     title: "cash.trading - Aptos Perps and CASH Rewards",
     description:
-      "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
+      "Aptos perp trading, analytics, indicator strategies, automated trading, and capped on-chain CASH rewards.",
     siteName: "cash.trading",
   },
   twitter: {
     card: "summary_large_image",
     title: "cash.trading - Aptos Perps and CASH Rewards",
     description:
-      "Aptos perp trading, analytics, indicator strategies, automated trading, and direct CASH rewards.",
+      "Aptos perp trading, analytics, indicator strategies, automated trading, and capped on-chain CASH rewards.",
   },
   robots: {
     index: true,

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "cash.trading",
-  description: "Aptos perp trading, analytics, launchpad strategies, and direct CASH rewards.",
+  description: "Aptos perp trading, analytics, launchpad strategies, and capped on-chain CASH rewards.",
 };
 
 export default async function Home() {

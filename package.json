@@ -13,6 +13,8 @@
     "dev": "next dev",
     "lint": "next lint",
     "test:charts": "tsx scripts/chart-rendering-selftest.ts",
+    "test:cash-rewards": "tsx scripts/cash-rewards-selftest.ts",
+    "test:cash-rewards:testnet": "tsx scripts/cash-rewards-testnet-canary.ts",
     "test:reliability": "tsx scripts/app-reliability-selftest.ts",
     "start": "next start",
     "postinstall": "prisma generate"

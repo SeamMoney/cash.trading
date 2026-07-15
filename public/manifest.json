@@ -1,7 +1,7 @@
 {
   "name": "cash.trading - Aptos Perps",
   "short_name": "CASH",
-  "description": "Trade Decibel perps on Aptos with live analytics, automated strategies, and direct CASH rewards.",
+  "description": "Trade Decibel perps on Aptos with live analytics, automated strategies, and capped on-chain CASH rewards.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

@@ -82,6 +82,7 @@ grid-mm-pnl-data.json
 
 # Launchpad runtime state
 .data/
+.cash-rewards/
 
 # Local diagnostic reports
 .reports/

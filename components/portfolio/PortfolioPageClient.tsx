@@ -25,6 +25,7 @@ import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { isValidAptosAddress } from "@/lib/decibel";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { CashRewardsPanel } from "@/components/portfolio/CashRewardsPanel";
 
 type Position = {
   market: string;
@@ -1014,6 +1015,13 @@ export function PortfolioPageClient() {
             </div>
           ))}
         </section>
+
+        <CashRewardsPanel
+          connected={connected}
+          network={decibelNetwork}
+          owner={owner}
+          subaccount={selectedSubaccount}
+        />
 
         <section className="mt-10 grid gap-10 lg:grid-cols-[310px_minmax(0,1fr)]">
           <aside>

@@ -295,7 +295,8 @@ function CurrentPrice({ candle, price, priceDecimals }: { candle: PlotPoint; pri
   if (y == null) return null;
   const positive = candle.close >= candle.open;
   const color = positive ? "var(--chart-line-primary)" : "var(--foreground)";
-  const badgeY = Math.max(10, Math.min(innerHeight - 10, y));
+  const labelOffset = y < 26 ? 14 : -14;
+  const badgeY = Math.max(10, Math.min(innerHeight - 10, y + labelOffset));
   return (
     <g aria-hidden="true" className="pointer-events-none font-mono">
       <line

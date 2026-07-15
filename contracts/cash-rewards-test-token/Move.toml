@@ -1,0 +1,10 @@
+[package]
+name = "CashRewardsTestToken"
+version = "0.1.0"
+authors = ["SeamMoney"]
+
+[addresses]
+cash_test_token = "_"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }

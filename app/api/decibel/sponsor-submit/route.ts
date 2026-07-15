@@ -12,6 +12,7 @@ import {
 import { aptos } from "@/lib/aptos";
 import { DECIBEL_PACKAGE, MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
 import { checkApiRateLimit, checkRateLimitForKey } from "@/lib/api-rate-limit";
+import cashRewardConfig from "@/config/cash-rewards.json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ function getSponsorAccount(): Account | null {
  */
 function isSponsorablePayload(transaction: SimpleTransaction): {
   ok: boolean;
-  kind?: "decibel_account_action";
+  kind?: "decibel_account_action" | "cash_reward_claim";
   reason?: string;
 } {
   const payload = transaction.rawTransaction.payload;
@@ -72,6 +73,15 @@ function isSponsorablePayload(transaction: SimpleTransaction): {
       allowedPackages.has(moduleAddress.toLowerCase())
     ) {
       return { ok: true, kind: "decibel_account_action" };
+    }
+    if (
+      moduleAddress.toLowerCase() === cashRewardConfig.managerAddress.toLowerCase() &&
+      moduleName === "cash_rewards" &&
+      functionName === "claim"
+    ) {
+      // The contract verifies an owner-bound, expiring Ed25519 voucher and
+      // enforces wallet/global epoch caps before the sponsor pays any gas.
+      return { ok: true, kind: "cash_reward_claim" };
     }
     return { ok: false, reason: "entry_function_not_allowlisted" };
   }

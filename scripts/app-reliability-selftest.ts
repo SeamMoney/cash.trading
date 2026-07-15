@@ -393,11 +393,11 @@ assert.match(vaultTotalRoute, /protocolTvl/);
 assert.match(vaultUserRoute, /'mainnet', true/);
 assert.match(decibelPoints, /typeof value !== 'number'/);
 assert.match(readFileSync("lib/decibel-api.ts", "utf8"), /VAULT_READ_TIMEOUT_MS = 12_000/);
-assert.match(cashRewardsRoute, /reason: 'database_not_configured'/);
-assert.match(cashRewardsRoute, /checkApiRateLimit\(request, 'cash-rewards-read'/);
-assert.match(cashRewardsRoute, /checkApiRateLimit\(request, 'cash-rewards-process'/);
-assert.match(cashRewardsRoute, /isValidAptosAddress\(rawWalletAddress\)/);
-assert.match(cashRewardsRoute, /MAX_BODY_BYTES = 4_000/);
+assert.doesNotMatch(cashRewardsRoute, /DATABASE_URL/);
+assert.match(cashRewardsRoute, /checkApiRateLimit\(request, "cash-rewards-read"/);
+assert.match(cashRewardsRoute, /verifyDecibelSubaccountOwnership/);
+assert.match(cashRewardsRoute, /getCashRewardSnapshot/);
+assert.match(cashRewardsRoute, /Direct server payouts are disabled/);
 for (const [name, source] of [
   ["dashboard history", dashboardHistory],
   ["bot status history", botStatusMonitor],
@@ -553,6 +553,13 @@ assert.ok(
 assert.match(sponsorSubmitRoute, /checkRateLimitForKey\("sponsor-submit-sender"/);
 assert.match(sponsorSubmitRoute, /MAX_BODY_BYTES/);
 assert.match(sponsorSubmitRoute, /moduleName === "dex_accounts_entry"/);
+assert.match(sponsorSubmitRoute, /moduleName === "cash_rewards"/);
+assert.match(sponsorSubmitRoute, /functionName === "claim"/);
+assert.match(sponsorSubmitRoute, /cashRewardConfig\.managerAddress/);
+assert.ok(
+  !sponsorSubmitRoute.includes('functionName === "fund"'),
+  "the public sponsor must never pay for reward-vault administration",
+);
 assert.ok(
   !sponsorSubmitRoute.includes("TransactionPayloadScript"),
   "EVM-derived sponsorship must only accept entry-function transactions",

@@ -1,6 +1,6 @@
 # cash.trading - Decibel Trading Frontend
 
-A Decibel trading frontend for Aptos with live market data, wallet-signed execution, portfolio management, indicator automation, vault workflows, and direct CASH rewards for product usage.
+A Decibel trading frontend for Aptos with live market data, wallet-signed execution, portfolio management, indicator automation, vault workflows, and capped on-chain CASH rewards for verified activity.
 
 **Status**: Mainnet deployed | Trading, portfolio, automation, and launchpad flows in active development
 
@@ -32,13 +32,13 @@ A Decibel trading frontend for Aptos with live market data, wallet-signed execut
 - **Session Tracking** - Each bot run tracked separately with unique session ID
 - **Multi-Wallet Support** - Petra, Martian, Pontem, and 15+ Aptos wallets
 - **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
-- **Direct CASH Rewards** - Successful bot trade records can trigger live mainnet `$CASH` transfers from a funded rewards treasury
+- **Capped CASH Rewards** - Owner-verified Decibel activity earns cumulative `$CASH` vouchers enforced by an isolated on-chain distributor
 
 ---
 
-## Direct CASH Rewards
+## CASH Rewards
 
-The app rewards confirmed bot trading activity with direct `$CASH` transfers. This is not an internal points balance: each reward is stored as an idempotent transfer attempt with status, amount, recipient, and Aptos transaction hash.
+The app rewards owner-verified Decibel fills, fees, and conservative capital-time. The server never holds the reward vault key and never transfers tokens after an individual trade. Users claim cumulative, expiring vouchers; Move enforces both wallet and global weekly ceilings.
 
 Mainnet CASH is a legacy Aptos Coin:
 
@@ -50,28 +50,20 @@ decimals: 6
 Required env:
 
 ```bash
-CASH_REWARDS_ENABLED=true
-CASH_REWARD_TREASURY_PRIVATE_KEY=ed25519-priv-0x...
-CASH_REWARD_CASH_PER_USD_VOLUME=0.01
-CASH_REWARD_NETWORK=mainnet
+CASH_REWARDS_ENABLED=false
+CASH_REWARD_ISSUER_PRIVATE_KEY=ed25519-priv-0x...
 ```
 
-Safety env:
+The issuer can authorize only claims that fit the immutable on-chain caps. It cannot withdraw CASH. Keep the manager/admin key offline and never add it to Vercel.
 
-```bash
-CASH_REWARD_MIN_VOLUME_USD=1
-CASH_REWARD_MAX_CASH_PER_TRADE=100
-CASH_REWARD_DAILY_WALLET_CAP=1000
-CASH_REWARD_DAILY_GLOBAL_CAP=100000
-```
-
-Reward status API:
+Verified reward snapshot API:
 
 ```text
-GET /api/cash/rewards?userWalletAddress=0x...&userSubaccount=0x...
-POST /api/cash/rewards
-Authorization: Bearer <CASH_REWARD_ADMIN_SECRET or CRON_SECRET>
+GET /api/cash/rewards?owner=0x...&subaccount=0x...&network=mainnet
 ```
+
+Contract controls, launch sequence, and funding safeguards are documented in
+[`docs/cash-rewards.md`](docs/cash-rewards.md).
 
 ## Quick Start
 

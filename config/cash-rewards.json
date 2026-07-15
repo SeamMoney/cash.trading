@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "network": "mainnet",
+  "status": "awaiting_manager_gas",
+  "managerAddress": "0x69d3e19408b35905854a56f14dc7381850b6e55a43a2d7bc2fd9bd176cbe39fa",
+  "issuerPublicKey": "0x8881213155e405d6e1e2b34c7700197166c28b5599c4006f93c2317473f6dee8",
+  "cashCoinType": "0x61ed8b048636516b4eaf4c74250fa4f9440d9c3e163d96aeb863fe658a4bdc67::CASH::CASH",
+  "cashDecimals": 6,
+  "epochDurationSeconds": 604800,
+  "maxEpochEmissionAtomic": "4200000000000",
+  "maxWalletEpochAtomic": "100000000000",
+  "voucherTtlSeconds": 900
+}

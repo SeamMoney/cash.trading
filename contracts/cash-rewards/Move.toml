@@ -1,0 +1,11 @@
+[package]
+name = "CashRewards"
+version = "0.1.0"
+authors = ["SeamMoney"]
+
+[addresses]
+# Compile/publish with --named-addresses cash_rewards=0x...
+cash_rewards = "_"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }

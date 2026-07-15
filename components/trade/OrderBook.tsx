@@ -267,8 +267,7 @@ function LadderRowView({
       type="button"
       onClick={() => onPriceClick?.(row.price)}
       className={cn(
-        "group relative grid w-full shrink-0 grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
-        isCenter ? "h-7" : "h-6",
+        "group relative grid h-full min-h-6 w-full grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
       )}
     >
       <div className="relative h-full min-w-0">
@@ -349,43 +348,49 @@ function TradesTable({
   status: "loading" | "live" | "waiting" | "unavailable";
 }) {
   return (
-    <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
-      <div className="grid grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
+    <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
+      <div className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
         <span>Time</span>
         <span className="text-right">Price</span>
         <span className="text-right">Size</span>
         <span className="text-right">Tx</span>
       </div>
-      <div className="pt-1">
-        {trades.map((trade) => (
+      {trades.length > 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1 scrollbar-thin">
           <div
-            key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
-            className="grid h-7 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
+            className="grid min-h-full"
+            style={{ gridTemplateRows: `repeat(${trades.length}, minmax(28px, 1fr))` }}
           >
-            <span className="truncate text-zinc-600">{formatTime(trade.timestamp)}</span>
-            <span
-              className="text-right font-semibold"
-              style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
-            >
-              {formatPrice(trade.price)}
-            </span>
-            <span className="truncate text-right text-zinc-400">{formatSize(trade.size)}</span>
-            {trade.txRef ? (
-              <a
-                href={explorerTxnUrl(trade.txRef, network)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-right text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
+            {trades.map((trade) => (
+              <div
+                key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
+                className="grid h-full min-h-7 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
               >
-                View
-              </a>
-            ) : (
-              <span className="text-right text-zinc-700">—</span>
-            )}
+                <span className="truncate text-zinc-600">{formatTime(trade.timestamp)}</span>
+                <span
+                  className="text-right font-semibold"
+                  style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
+                >
+                  {formatPrice(trade.price)}
+                </span>
+                <span className="truncate text-right text-zinc-400">{formatSize(trade.size)}</span>
+                {trade.txRef ? (
+                  <a
+                    href={explorerTxnUrl(trade.txRef, network)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-right text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
+                  >
+                    View
+                  </a>
+                ) : (
+                  <span className="text-right text-zinc-700">—</span>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {trades.length === 0 && (
+        </div>
+      ) : (
         <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-[12px] text-zinc-600">
           {status === "loading" ? "Loading trades..." : "Waiting for live trades"}
         </div>
@@ -619,8 +624,11 @@ export function OrderBook({
       </div>
 
       {activeTab === "book" ? (
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
-          <div className="flex min-h-full flex-col justify-center">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+          <div
+            className="grid min-h-full py-1"
+            style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
+          >
             {rows.map((row) => (
               <LadderRowView
                 key={row.price}

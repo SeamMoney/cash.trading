@@ -206,31 +206,36 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   }
 
   return createPortal(
-    <div className="cash-trade-theme fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/75 modal-backdrop" onClick={onClose} />
+    <div
+      className="cash-trade-theme fixed inset-0 z-[9999] flex items-center justify-center px-4 py-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/85" />
       <div
         aria-labelledby="wallet-account-modal-title"
         aria-modal="true"
         role="dialog"
-        className="modal-panel relative mx-4 max-h-[calc(100dvh-32px)] w-full max-w-[440px] overflow-y-auto rounded-[14px] border border-white/[0.08] bg-[#0b0b0b] px-6 pb-6 pt-4 shadow-2xl shadow-black/60"
+        onClick={(event) => event.stopPropagation()}
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[900px] overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70"
+        style={{ animation: "market-modal-in 0.2s ease-out" }}
       >
-        <div className="flex items-center justify-between">
-          <h2
-            id="wallet-account-modal-title"
-            className="font-display text-[18px] font-semibold text-zinc-100"
-          >
-            Account
-          </h2>
+        <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
+          <span className="flex items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
+            <span id="wallet-account-modal-title">ACCOUNT</span>
+          </span>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close account modal"
-            className="flex size-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/[0.05] hover:text-white"
+            className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white"
           >
-            <X className="size-4" aria-hidden="true" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
+        </header>
+        <div className="max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain px-5 pb-5 scrollbar-thin">
+          {accountContent}
         </div>
-        {accountContent}
       </div>
     </div>,
     document.body,

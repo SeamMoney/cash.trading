@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { curveLinear } from "@visx/curve";
+import { Area, AreaChart } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
+import { XAxis } from "@/components/charts/x-axis";
 import { Header } from "@/components/layout/Header";
 import {
   AlertDialog,
@@ -70,6 +75,13 @@ type AccountState = {
   overview: Overview | null;
 };
 
+type PortfolioChartRange = "24h" | "7d" | "30d" | "90d" | "all";
+
+type PortfolioHistoryPoint = {
+  date: Date;
+  value: number;
+};
+
 type DecibelWsPosition = {
   market: string;
   size: number;
@@ -130,6 +142,17 @@ const TABS = [
   "Order History",
   "Transfers",
 ] as const;
+
+const PORTFOLIO_CHART_RANGES: ReadonlyArray<{
+  value: PortfolioChartRange;
+  label: string;
+}> = [
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+  { value: "all", label: "All" },
+];
 
 function formatUsd(value: number | null | undefined, signed = false) {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -347,6 +370,10 @@ export function PortfolioPageClient() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Positions");
   const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">("pnl");
+  const [chartRange, setChartRange] = useState<PortfolioChartRange>("30d");
+  const [historyPoints, setHistoryPoints] = useState<PortfolioHistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
@@ -355,6 +382,7 @@ export function PortfolioPageClient() {
   const [closingKeys, setClosingKeys] = useState<Set<string>>(() => new Set());
   const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
+  const historyAbortRef = useRef<AbortController | null>(null);
   const withdrawingRef = useRef(false);
   const withdrawalTokenRef = useRef<symbol | null>(null);
   const closingActionTokensRef = useRef(new Map<string, symbol>());
@@ -370,6 +398,14 @@ export function PortfolioPageClient() {
   const selectedLabel =
     selectedSubaccountRecord?.name ||
     (selectedSubaccount ? shortAddress(selectedSubaccount) : "No Decibel account");
+  const chartColor =
+    chartMetric === "pnl" && (historyPoints.at(-1)?.value ?? 0) < 0
+      ? "#e8774f"
+      : "#75ff47";
+  const chartData = useMemo(
+    () => historyPoints as unknown as Record<string, unknown>[],
+    [historyPoints],
+  );
 
   useEffect(() => {
     stateRef.current = state;
@@ -387,6 +423,73 @@ export function PortfolioPageClient() {
     setState({ positions: [], openOrders: [], overview: null });
     setError("");
   }, [actionContext]);
+
+  useEffect(() => {
+    historyAbortRef.current?.abort();
+    if (!connected || !selectedSubaccount) {
+      setHistoryPoints([]);
+      setHistoryLoading(false);
+      setHistoryError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestContext = actionContextRef.current;
+    historyAbortRef.current = controller;
+    setHistoryPoints([]);
+    setHistoryLoading(true);
+    setHistoryError("");
+
+    const loadHistory = async () => {
+      try {
+        const params = new URLSearchParams({
+          address: selectedSubaccount,
+          network: decibelNetwork,
+          range: chartRange,
+          type: chartMetric === "pnl" ? "pnl" : "account_value",
+        });
+        const response = await fetch(`/api/decibel/portfolio-chart?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const json = await response.json();
+        if (!response.ok || json.error) {
+          throw new Error(json.error || "Failed to load portfolio history");
+        }
+        if (controller.signal.aborted || actionContextRef.current !== requestContext) return;
+
+        const points = Array.isArray(json.points)
+          ? json.points
+              .map((row: unknown) => {
+                if (typeof row !== "object" || row === null) return null;
+                const record = row as Record<string, unknown>;
+                const timestamp = Number(record.timestamp);
+                const value = Number(record.value);
+                if (!Number.isFinite(timestamp) || !Number.isFinite(value) || timestamp <= 0) return null;
+                return { date: new Date(timestamp), value };
+              })
+              .filter((point: PortfolioHistoryPoint | null): point is PortfolioHistoryPoint => point != null)
+          : [];
+        setHistoryPoints(points);
+      } catch (historyRequestError) {
+        if (historyRequestError instanceof DOMException && historyRequestError.name === "AbortError") return;
+        if (actionContextRef.current !== requestContext) return;
+        setHistoryError(
+          historyRequestError instanceof Error
+            ? historyRequestError.message
+            : "Failed to load portfolio history",
+        );
+      } finally {
+        if (historyAbortRef.current === controller) {
+          historyAbortRef.current = null;
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => controller.abort();
+  }, [chartMetric, chartRange, connected, decibelNetwork, selectedSubaccount]);
 
   const fetchAccountState = useCallback(async () => {
     if (!connected || !selectedSubaccount) {
@@ -934,7 +1037,9 @@ export function PortfolioPageClient() {
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Profit/Loss</h2>
+                <h2 className="text-balance text-[18px] font-semibold text-zinc-200">
+                  {chartMetric === "pnl" ? "Profit/Loss" : "Portfolio Value"}
+                </h2>
                 <NumberTicker
                   value={chartMetric === "pnl" ? totalPnl : overview?.equity}
                   fallback="—"
@@ -948,7 +1053,7 @@ export function PortfolioPageClient() {
                   className="mt-3 block font-mono text-[28px] font-semibold text-zinc-200"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <div className="flex flex-wrap items-center justify-end gap-2 text-[12px]">
                 <div className="rounded-[4px] bg-[#1d1d1d] p-1">
                   {[
                     ["pnl", "PnL"],
@@ -958,6 +1063,7 @@ export function PortfolioPageClient() {
                       key={value}
                       type="button"
                       onClick={() => setChartMetric(value as "pnl" | "portfolio")}
+                      aria-pressed={chartMetric === value}
                       className={cn(
                         "rounded-[3px] px-2 py-1 text-zinc-500",
                         chartMetric === value && "bg-[#2a2a2a] text-zinc-200",
@@ -967,19 +1073,83 @@ export function PortfolioPageClient() {
                     </button>
                   ))}
                 </div>
+                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
+                  {PORTFOLIO_CHART_RANGES.map((range) => (
+                    <button
+                      key={range.value}
+                      type="button"
+                      onClick={() => setChartRange(range.value)}
+                      aria-pressed={chartRange === range.value}
+                      className={cn(
+                        "rounded-[3px] px-2 py-1 text-zinc-500",
+                        chartRange === range.value && "bg-[#2a2a2a] text-zinc-200",
+                      )}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="mt-6 h-[360px] min-h-[260px]">
-              <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a]">
-                <span className="text-[13px] text-zinc-500">
-                  {connected ? "Historical portfolio series is unavailable" : "Connect a wallet to see your Decibel portfolio"}
-                </span>
-                <span className="text-[11px] text-zinc-700">
-                  {connected
-                    ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
-                    : "Live equity, PnL, positions, and orders will load after connection."}
-                </span>
-              </div>
+              {historyPoints.length >= 2 ? (
+                <AreaChart
+                  data={chartData}
+                  xDataKey="date"
+                  aspectRatio="auto"
+                  className="!h-full"
+                  margin={{ top: 12, right: 8, bottom: 30, left: 8 }}
+                  animationDuration={350}
+                  touchAction="pan-y"
+                >
+                  <Grid
+                    horizontal
+                    fadeHorizontal
+                    numTicksRows={4}
+                    stroke="rgba(255,255,255,0.07)"
+                    strokeDasharray="2,5"
+                  />
+                  <Area
+                    dataKey="value"
+                    fill={chartColor}
+                    fillOpacity={0.16}
+                    stroke={chartColor}
+                    strokeWidth={2}
+                    gradientToOpacity={0}
+                    curve={curveLinear}
+                    animate={false}
+                  />
+                  <ChartTooltip
+                    showCrosshair
+                    showDots
+                    rows={(point) => [
+                      {
+                        color: chartColor,
+                        label: chartMetric === "pnl" ? "PnL" : "Portfolio value",
+                        value: formatUsd(Number(point.value), chartMetric === "pnl"),
+                      },
+                    ]}
+                  />
+                  <XAxis numTicks={5} />
+                </AreaChart>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a] px-6 text-center">
+                  <span className="text-[13px] text-zinc-500">
+                    {!connected
+                      ? "Connect a wallet to see your Decibel portfolio"
+                      : !selectedSubaccount
+                        ? "Select a Decibel account to load portfolio history"
+                        : historyLoading
+                          ? `Loading ${chartRange} portfolio history...`
+                          : historyError || `No ${chartRange} portfolio history was returned`}
+                  </span>
+                  <span className="text-[11px] text-zinc-700">
+                    {connected
+                      ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
+                      : "Live equity, PnL, positions, and orders will load after connection."}
+                  </span>
+                </div>
+              )}
             </div>
           </section>
         </section>

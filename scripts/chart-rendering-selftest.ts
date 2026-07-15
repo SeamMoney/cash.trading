@@ -204,7 +204,8 @@ assert.ok(
 assert.ok(
   plotSource.includes("margin={{ top: 40, right: 8, bottom: 36, left: 8 }}")
     && !plotSource.includes("yTicks")
-    && plotSource.includes('textAnchor="end"'),
+    && plotSource.includes('textAnchor="end"')
+    && plotSource.includes("const labelOffset = y < 26 ? 14 : -14"),
   "the candle plot must reclaim the Y-axis gutter and retain only the endpoint price",
 );
 assert.ok(
@@ -257,9 +258,11 @@ assert.ok(
     && lineChartSource.includes('{ label: "HISTORY", secs: 12 * 60 * 60 }')
     && lineChartSource.includes("grid={false}")
     && lineChartSource.includes("badgeInside")
+    && lineChartSource.includes("badgeOffsetY={-14}")
     && lineChartSource.includes("radial-gradient(circle, var(--chart-grid)")
-    && livelinePatchSource.includes("cfg.badgeInside"),
-  "the line chart must expose only live/history, use dots, and keep its price badge inside the plot",
+    && livelinePatchSource.includes("cfg.badgeInside")
+    && livelinePatchSource.includes("cfg.badgeOffsetY"),
+  "the line chart must expose only live/history, use dots, and keep its price badge inside without covering the endpoint",
 );
 assert.ok(
   lineChartSource.includes("decibelMarkTicks") && lineChartSource.includes("decibelTradeTicks"),

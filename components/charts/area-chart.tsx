@@ -6,6 +6,7 @@ import { bisector } from "d3-array";
 import {
   Children,
   isValidElement,
+  type CSSProperties,
   type ReactElement,
   type ReactNode,
   useCallback,
@@ -54,6 +55,8 @@ export interface AreaChartProps {
   aspectRatio?: string;
   /** Additional class name for the container */
   className?: string;
+  /** Native touch behavior for the chart surface. Default: "none" */
+  touchAction?: CSSProperties["touchAction"];
   /** Child components (Area, Grid, ChartTooltip, etc.) */
   children: ReactNode;
 }
@@ -324,6 +327,7 @@ export function AreaChart({
   animationDuration = 1100,
   aspectRatio = "2 / 1",
   className = "",
+  touchAction = "none",
   children,
 }: AreaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -333,7 +337,7 @@ export function AreaChart({
     <div
       className={cn("relative w-full", className)}
       ref={containerRef}
-      style={{ aspectRatio, touchAction: "none" }}
+      style={{ aspectRatio, touchAction }}
     >
       <ParentSize debounceTime={10}>
         {({ width, height }) => (

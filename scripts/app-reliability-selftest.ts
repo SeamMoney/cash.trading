@@ -116,6 +116,7 @@ const sdkTestRoute = readFileSync("app/api/sdk-test/route.ts", "utf8");
 const botDebugRoute = readFileSync("app/api/bot/debug/route.ts", "utf8");
 const dlpBenchmarkRoute = readFileSync("app/api/dlp/benchmark/route.ts", "utf8");
 const decibelPositionsRoute = readFileSync("app/api/decibel/positions/route.ts", "utf8");
+const decibelPortfolioChartRoute = readFileSync("app/api/decibel/portfolio-chart/route.ts", "utf8");
 const decibelSubaccountRoute = readFileSync("app/api/decibel/subaccount/route.ts", "utf8");
 const decibelWalletBalanceRoute = readFileSync("app/api/decibel/wallet-balance/route.ts", "utf8");
 const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8");
@@ -141,6 +142,7 @@ const decibelWithdrawRoute = readFileSync("app/api/decibel/withdraw/route.ts", "
 const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/route.ts", "utf8");
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
 const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
+const orderBook = readFileSync("components/trade/OrderBook.tsx", "utf8");
 const explainerPage = readFileSync("app/explainer/page.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
@@ -219,6 +221,17 @@ for (const fabricatedMetric of ["2.0139", "67.28%", "41.67%"] as const) {
   assert.ok(!portfolioPage.includes(fabricatedMetric), "portfolio risk metrics must not be hard-coded");
 }
 assert.match(portfolioPage, /cash\.trading does not fabricate missing history/);
+assert.match(portfolioPage, /\/api\/decibel\/portfolio-chart/);
+assert.match(portfolioPage, /PORTFOLIO_CHART_RANGES/);
+for (const range of ['"24h"', '"7d"', '"30d"', '"90d"', '"all"'] as const) {
+  assert.ok(portfolioPage.includes(range), `portfolio chart must expose ${range}`);
+}
+assert.match(decibelPortfolioChartRoute, /portfolioChart\.getByAddr/);
+assert.match(decibelPortfolioChartRoute, /source: "decibel"/);
+assert.ok(
+  !decibelPortfolioChartRoute.includes("Math.random"),
+  "portfolio history must come from Decibel rather than generated points",
+);
 assert.match(portfolioPage, /withdrawingRef\.current/);
 assert.match(portfolioPage, /withdrawalTokenRef/);
 assert.match(portfolioPage, /closingActionTokensRef/);
@@ -243,6 +256,11 @@ assert.match(btcChart, /cash:selected-trade-market:v1/);
 assert.match(btcChart, /persistedMarketRef/);
 assert.match(btcChart, /window\.localStorage\.setItem\(selectedMarketStorageKey\(network\), id\)/);
 assert.match(walletAccountModal, /MobileModalSheet/);
+assert.match(walletAccountModal, /max-w-\[900px\]/);
+assert.match(walletAccountModal, /bg-\[#171717\]/);
+assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
+assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(28px, 1fr\)\)`/);
+assert.ok(!orderBook.includes("flex-col justify-center"), "book rows must fill the pane instead of floating in the middle");
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);
 assert.match(mobileModalSheet, /overflow-y-auto overscroll-contain/);

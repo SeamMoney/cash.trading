@@ -1609,6 +1609,7 @@ function BtcPerpsChartComponent({
           scrub
           badge
           badgeInside
+          badgeOffsetY={-14}
           momentum={false}
           badgeTail={false}
           badgeVariant="minimal"

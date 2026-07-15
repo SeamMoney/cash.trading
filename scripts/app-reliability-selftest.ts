@@ -234,6 +234,14 @@ assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must
 assert.match(btcChart, /type="search"/);
 assert.match(btcChart, /text-\[16px\]/);
 assert.match(btcChart, /MobileModalSheet/);
+assert.ok(
+  !btcChart.includes('{displayConnected ? "Live" : "..."}')
+    && !btcChart.includes('displayConnected ? "bg-success" : "bg-muted"'),
+  "the asset selector header must not repeat live or network status",
+);
+assert.match(btcChart, /cash:selected-trade-market:v1/);
+assert.match(btcChart, /persistedMarketRef/);
+assert.match(btcChart, /window\.localStorage\.setItem\(selectedMarketStorageKey\(network\), id\)/);
 assert.match(walletAccountModal, /MobileModalSheet/);
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);

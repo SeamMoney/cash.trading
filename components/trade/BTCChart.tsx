@@ -65,6 +65,11 @@ const CANDLE_WINDOW_BUFFER = 0.05;
 const MARKET_REFRESH_MS = 60_000;
 const MARKET_HIDDEN_REFRESH_MS = 180_000;
 const SNAPSHOT_UI_COMMIT_MS = 250;
+const TRADE_MARKET_STORAGE_KEY = "cash:selected-trade-market:v1";
+
+function selectedMarketStorageKey(network: DecibelPublicNetwork) {
+  return `${TRADE_MARKET_STORAGE_KEY}:${network}`;
+}
 
 type LiquidationLine = { id: string; price: number; side: "long" | "short" };
 const EMPTY_HISTORY: MarketHistoryCandle[] = [];
@@ -854,6 +859,8 @@ export function BTCChart({
   const inViewport = useInViewport(chartRef, { rootMargin: "160px" });
   const chartActive = pageVisible && inViewport;
   const [market, setMarket] = useState(defaultMarket ?? activeMarkets[0]?.id ?? "BTC/USD");
+  const persistedMarketRef = useRef<string | null>(null);
+  const persistMarketSelection = marketsProp == null && defaultMarket == null;
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<"line" | "candle">("candle");
   const [perpsMode, setPerpsMode] = useState<"line" | "candle">("candle");
@@ -942,12 +949,32 @@ export function BTCChart({
   }, [marketsProp, network]);
 
   useEffect(() => {
+    persistedMarketRef.current = null;
+    if (!persistMarketSelection) return;
+    try {
+      persistedMarketRef.current = window.localStorage.getItem(
+        selectedMarketStorageKey(network),
+      );
+    } catch {
+      // Storage can be unavailable in private browsing; the chart still works
+      // with its normal first-market fallback.
+    }
+  }, [network, persistMarketSelection]);
+
+  useEffect(() => {
     if (activeMarkets.length === 0) return;
-    setMarket((current) => activeMarkets.some((entry) => entry.id === current)
-      ? current
-      : activeMarkets[0].id);
+    setMarket((current) => {
+      const persistedMarket = persistedMarketRef.current;
+      if (persistedMarket && activeMarkets.some((entry) => entry.id === persistedMarket)) {
+        persistedMarketRef.current = null;
+        return persistedMarket;
+      }
+      return activeMarkets.some((entry) => entry.id === current)
+        ? current
+        : activeMarkets[0].id;
+    });
   }, [activeMarkets]);
-  const { ticks, candles, liveCandle, price, connected } = usePriceCandles(
+  const { ticks, candles, liveCandle, price } = usePriceCandles(
     marketConfig.id,
     chartActive && !isPerpsMarket,
     marketConfig.id === "BTC/USD" ? initialHistory : EMPTY_HISTORY,
@@ -1013,9 +1040,6 @@ export function BTCChart({
   const displayPrice = isPerpsMarket
     ? perpsSnapshot?.price ?? perpData?.seedPrice ?? 0
     : price;
-  const displayConnected = isPerpsMarket
-    ? perpsSnapshot?.connected ?? false
-    : connected;
   const displayOracle = isPerpsMarket
     ? (perpsSnapshot?.oraclePrice || perpData?.oraclePrice || 0)
     : 0;
@@ -1042,6 +1066,14 @@ export function BTCChart({
   const displayStatDecimals = isPerpsMarket && perpData ? perpData.priceDecimals : 0;
 
   const handleMarketSelect = (id: string) => {
+    persistedMarketRef.current = null;
+    if (persistMarketSelection) {
+      try {
+        window.localStorage.setItem(selectedMarketStorageKey(network), id);
+      } catch {
+        // Keep selection functional when browser storage is unavailable.
+      }
+    }
     setMarket(id);
     setPerpsSnapshot(null);
     const m = activeMarkets.find((mk) => mk.id === id);
@@ -1081,19 +1113,6 @@ export function BTCChart({
             <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
           </button>
 
-          <div className="flex items-center gap-1">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                displayConnected ? "bg-success" : "bg-muted"
-              }`}
-            />
-            <span className="text-[11px] text-zinc-500">
-              {displayConnected ? "Live" : "..."}
-            </span>
-            <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase text-zinc-500">
-              {network}
-            </span>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">

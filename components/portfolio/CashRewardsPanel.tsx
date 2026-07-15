@@ -268,7 +268,9 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
               <p className="mt-2 text-[11px] text-zinc-600">Live estimate; server re-verifies every fill</p>
             </div>
             <div className="bg-[#050505] px-5 py-5 sm:px-6">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-600">Claimable</p>
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">
+                {snapshot?.contract.status === "live" ? "Claimable" : "Verified accrued"}
+              </p>
               <NumberTicker
                 value={snapshot?.totals.claimableCash}
                 fallback="—"
@@ -276,7 +278,11 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                 suffix=" CASH"
                 className="mt-2 block font-mono text-[24px] font-semibold text-zinc-200"
               />
-              <p className="mt-2 text-[11px] text-zinc-600">Owner-bound, expiring voucher</p>
+              <p className="mt-2 text-[11px] text-zinc-600">
+                {snapshot?.contract.status === "live"
+                  ? "Owner-bound, expiring voucher"
+                  : "Unlocks after the distributor launches"}
+              </p>
             </div>
             <div className="bg-[#050505] px-5 py-5 sm:px-6">
               <p className="text-[11px] uppercase tracking-wide text-zinc-600">Claimed this week</p>

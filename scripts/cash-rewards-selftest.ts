@@ -62,15 +62,43 @@ assert.equal(result.activeDays, 1, "only eligible fill days count");
 assert.equal(result.feeUsd, 0.225, "rebates receive the documented 25% multiplier");
 assert.equal(result.actualVolumeUsd, 210, "liquidations never add rewarded volume");
 assert.equal(result.capitalDollarHours, 2.5, "capital-time integrates only while the position is open");
-assert.equal(result.entitlementAtomic, 3_645_000_000n, "reward components must add deterministically");
+assert.equal(result.entitlementAtomic, 2_130_000_000n, "reward components must add deterministically");
+
+const carriedPosition = calculateCashRewardEntitlement({
+  trades: [
+    trade({ transaction_unix_ms: epochStartMs - 3_600_000, fee_amount: 100 }),
+    trade({
+      action: "CloseLong",
+      trade_id: 4,
+      order_id: "4",
+      transaction_version: 13,
+      transaction_unix_ms: epochStartMs + 2 * 3_600_000,
+      fee_amount: 0,
+    }),
+  ],
+  nowMs,
+  epochStartMs,
+});
+assert.equal(carriedPosition.trades.length, 1, "pre-epoch fills seed positions but do not count as weekly fills");
+assert.equal(carriedPosition.feeUsd, 0, "pre-epoch fees must never leak into a new reward week");
+assert.equal(carriedPosition.capitalDollarHours, 5, "positions carried across reset accrue from the epoch boundary");
+assert.equal(carriedPosition.currentCapitalBasisUsd, 0, "closed positions must stop the live reward stream");
+
+const stillOpen = calculateCashRewardEntitlement({
+  trades: [trade({ transaction_unix_ms: epochStartMs - 3_600_000, fee_amount: 0 })],
+  nowMs,
+  epochStartMs,
+});
+assert.equal(stillOpen.capitalDollarHours, 7.5, "a carried position accrues continuously after reset");
+assert.equal(stillOpen.currentCapitalBasisUsd, 2.5, "the live ticker rate must derive from reconstructed open capital");
 
 const capped = calculateCashRewardEntitlement({
   trades: [open, close],
   nowMs,
   epochStartMs,
-  walletCapAtomic: 3_000_000_000n,
+  walletCapAtomic: 2_000_000_000n,
 });
-assert.equal(capped.entitlementAtomic, 3_000_000_000n, "wallet cap must clamp cumulative entitlement");
+assert.equal(capped.entitlementAtomic, 2_000_000_000n, "wallet cap must clamp cumulative entitlement");
 
 const privateKey = Ed25519PrivateKey.generate();
 const voucher: CashRewardVoucher = {

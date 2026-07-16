@@ -8,9 +8,7 @@ import {
 } from "@aptos-labs/ts-sdk";
 import rewardConfig from "@/config/cash-rewards.json";
 import {
-  getDecibelAccountOverview,
   getDecibelTradeHistory,
-  type DecibelAccountOverview,
   type DecibelTrade,
 } from "@/lib/decibel-api";
 import type { DecibelNetwork } from "@/lib/decibel";
@@ -26,11 +24,11 @@ const MAINNET_CHAIN_ID = 1;
 const TESTNET_CHAIN_ID = 2;
 const MAX_TRADE_HISTORY = 1_000;
 const TRADE_HISTORY_PAGE_SIZE = 200;
-const FEE_REWARD_CASH_PER_USD = 5_000;
-const REBATE_REWARD_MULTIPLIER = 1.25;
-const CAPITAL_HOUR_REWARD_CASH = 8;
-const ACTIVE_DAY_REWARD_CASH = 2_500;
-const CONSERVATIVE_LEVERAGE = 40;
+const FEE_REWARD_CASH_PER_USD = rewardConfig.feeRewardCashPerUsd;
+const REBATE_REWARD_MULTIPLIER = rewardConfig.rebateRewardMultiplier;
+const CAPITAL_HOUR_REWARD_CASH = rewardConfig.capitalHourRewardCash;
+const ACTIVE_DAY_REWARD_CASH = rewardConfig.activeDayRewardCash;
+const CONSERVATIVE_LEVERAGE = rewardConfig.conservativeLeverage;
 
 type TradeRewardInput = {
   orderHistoryId?: string;
@@ -94,6 +92,10 @@ export type CashRewardSnapshot = {
     disabledReason?: string;
     network: DecibelNetwork;
     rewardRateCashPerUsd: number;
+    capitalHourRewardCash: number;
+    activeDayRewardCash: number;
+    formulaVersion: number;
+    formulaEffectiveEpoch: number;
     walletEpochCapCash: number;
     globalEpochCapCash: number;
     epochDurationSeconds: number;
@@ -244,14 +246,15 @@ export function calculateCashRewardEntitlement(args: {
   const deduped = new Map<string, DecibelTrade>();
   for (const trade of args.trades) {
     const timestamp = Number(trade.transaction_unix_ms);
-    if (!Number.isFinite(timestamp) || timestamp < args.epochStartMs || timestamp > args.nowMs) continue;
+    if (!Number.isFinite(timestamp) || timestamp > args.nowMs) continue;
     const key = `${trade.transaction_version}:${trade.trade_id}:${trade.market}:${trade.action}`;
     deduped.set(key, trade);
   }
 
-  const trades = [...deduped.values()].sort(
+  const history = [...deduped.values()].sort(
     (a, b) => a.transaction_unix_ms - b.transaction_unix_ms || a.trade_id - b.trade_id,
   );
+  const trades = history.filter((trade) => trade.transaction_unix_ms >= args.epochStartMs);
   const activeDays = new Set<string>();
   const positions = new Map<string, PositionAccumulator>();
   let lastTimestamp = args.epochStartMs;
@@ -259,14 +262,19 @@ export function calculateCashRewardEntitlement(args: {
   let feeUsd = 0;
   let actualVolumeUsd = 0;
 
-  for (const trade of trades) {
-    const timestamp = clampNumber(trade.transaction_unix_ms, lastTimestamp, args.nowMs);
-    capitalDollarHours += capitalBasis(positions) * ((timestamp - lastTimestamp) / 3_600_000);
-    lastTimestamp = timestamp;
-
+  for (const trade of history) {
+    const timestamp = Number(trade.transaction_unix_ms);
     const size = Math.abs(Number(trade.size));
     const price = Math.abs(Number(trade.price));
     if (!Number.isFinite(size) || !Number.isFinite(price) || size <= 0 || price <= 0) continue;
+
+    const inEpoch = timestamp >= args.epochStartMs;
+    if (inEpoch) {
+      const boundedTimestamp = clampNumber(timestamp, lastTimestamp, args.nowMs);
+      capitalDollarHours +=
+        capitalBasis(positions) * ((boundedTimestamp - lastTimestamp) / 3_600_000);
+      lastTimestamp = boundedTimestamp;
+    }
 
     const market = trade.market.toLowerCase();
     const current = positions.get(market) ?? { size: 0, lastPrice: price };
@@ -283,6 +291,7 @@ export function calculateCashRewardEntitlement(args: {
     current.lastPrice = price;
     positions.set(market, current);
 
+    if (!inEpoch) continue;
     const fee = Math.abs(Number(trade.fee_amount));
     if (Number.isFinite(fee)) {
       feeUsd += fee * (trade.is_rebate ? REBATE_REWARD_MULTIPLIER : 1);
@@ -292,6 +301,7 @@ export function calculateCashRewardEntitlement(args: {
   }
 
   capitalDollarHours += capitalBasis(positions) * ((args.nowMs - lastTimestamp) / 3_600_000);
+  const currentCapitalBasisUsd = capitalBasis(positions);
 
   const feeAtomic = cashToAtomic(feeUsd * FEE_REWARD_CASH_PER_USD);
   const capitalAtomic = cashToAtomic(capitalDollarHours * CAPITAL_HOUR_REWARD_CASH);
@@ -306,6 +316,7 @@ export function calculateCashRewardEntitlement(args: {
     feeUsd,
     actualVolumeUsd,
     capitalDollarHours,
+    currentCapitalBasisUsd,
     feeAtomic,
     capitalAtomic,
     activeDayAtomic,
@@ -508,14 +519,9 @@ export async function getCashRewardSnapshot(args: {
   const configured = getConfiguredCaps();
   const fallbackEpoch = currentEpochAt(Math.floor(nowMs / 1_000), configured.epochDurationSeconds);
   const fallbackEpochStartMs = fallbackEpoch * configured.epochDurationSeconds * 1_000;
-  const [contract, tradeResult, overview] = await Promise.all([
+  const [contract, tradeResult] = await Promise.all([
     readContractState({ network: args.network, recipient: args.owner, fallbackEpoch }),
     fetchEpochTrades(args.subaccount, args.network, fallbackEpochStartMs),
-    getDecibelAccountOverview(args.subaccount, {
-      network: args.network,
-      volumeWindow: "30d",
-      includePerformance: false,
-    }),
   ]);
 
   const epoch = contract.currentEpoch;
@@ -556,7 +562,11 @@ export async function getCashRewardSnapshot(args: {
     active && issuer && claimableAtomic > 0n
       ? Array.from(issuer.sign(serializeCashRewardVoucher(voucher)).toUint8Array())
       : null;
-  const estimatedCashPerSecond = calculateEstimatedStreamRate(overview, earnedAtomic, contract.maxWalletAtomic);
+  const estimatedCashPerSecond = calculateEstimatedStreamRate(
+    eligibility.currentCapitalBasisUsd,
+    earnedAtomic,
+    contract.maxWalletAtomic,
+  );
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -594,6 +604,10 @@ export async function getCashRewardSnapshot(args: {
       disabledReason: status.reason,
       network: args.network,
       rewardRateCashPerUsd: FEE_REWARD_CASH_PER_USD,
+      capitalHourRewardCash: CAPITAL_HOUR_REWARD_CASH,
+      activeDayRewardCash: ACTIVE_DAY_REWARD_CASH,
+      formulaVersion: rewardConfig.formulaVersion,
+      formulaEffectiveEpoch: rewardConfig.formulaEffectiveEpoch,
       walletEpochCapCash: atomicToCash(contract.maxWalletAtomic),
       globalEpochCapCash: atomicToCash(contract.maxEpochAtomic),
       epochDurationSeconds: contract.epochDurationSeconds,
@@ -622,14 +636,13 @@ export async function getCashRewardSnapshot(args: {
 }
 
 function calculateEstimatedStreamRate(
-  overview: DecibelAccountOverview | null,
+  currentCapitalBasisUsd: number,
   earnedAtomic: bigint,
   walletCapAtomic: bigint,
 ): number {
-  if (!overview || earnedAtomic >= walletCapAtomic) return 0;
-  const margin = Number(overview.total_margin);
-  if (!Number.isFinite(margin) || margin <= 0) return 0;
-  return (margin * CAPITAL_HOUR_REWARD_CASH) / 3_600;
+  if (earnedAtomic >= walletCapAtomic) return 0;
+  if (!Number.isFinite(currentCapitalBasisUsd) || currentCapitalBasisUsd <= 0) return 0;
+  return (currentCapitalBasisUsd * CAPITAL_HOUR_REWARD_CASH) / 3_600;
 }
 
 /**

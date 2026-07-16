@@ -24,11 +24,13 @@ Only server-read Decibel trade history for an owner-verified subaccount counts.
 The cumulative weekly entitlement combines:
 
 - 5,000 CASH per dollar of paid trading fees (25% more for rebates/maker flow)
-- 8 CASH per conservative capital-dollar-hour reconstructed from fills
-- 2,500 CASH for each distinct UTC day with a verified fill
+- 2 CASH per conservative capital-dollar-hour reconstructed from fills
+- 1,000 CASH for each distinct UTC day with a verified fill
 
 The formula intentionally uses fee and conservative capital exposure instead
 of leveraged notional volume. It never pays simply for being liquidated.
+Formula v2 began with reward epoch 2950. Formula changes ship only at an epoch
+boundary so an active week's cumulative entitlement does not change mid-week.
 
 ## Launch sequence
 

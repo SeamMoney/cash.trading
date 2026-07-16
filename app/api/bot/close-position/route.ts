@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
               market: marketName,
               strategy: 'manual_close',
             }).catch((rewardError) => {
-              console.error('⚠️  [CLOSE] Failed to send CASH reward:', rewardError)
+              console.error('⚠️  [CLOSE] Failed to verify CASH reward eligibility:', rewardError)
             })
 
             // Update cumulative volume

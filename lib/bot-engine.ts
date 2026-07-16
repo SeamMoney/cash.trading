@@ -3558,7 +3558,7 @@ export class VolumeBotEngine {
             market: this.config.marketName,
             strategy: this.config.strategy || 'twap',
           }).catch((rewardError) => {
-            console.error('⚠️  Failed to send CASH reward:', rewardError)
+            console.error('⚠️  Failed to verify CASH reward eligibility:', rewardError)
           })
 
           // Update bot instance status - INCREMENT the database values
@@ -3634,7 +3634,7 @@ export class VolumeBotEngine {
               market: this.config.marketName,
               strategy: this.config.strategy || 'twap',
             }).catch((rewardError) => {
-              console.error('⚠️  Failed to send CASH reward after DB retry:', rewardError)
+              console.error('⚠️  Failed to verify CASH reward eligibility after DB retry:', rewardError)
             })
 
             const newCumulativeVolume = botInstance.cumulativeVolume + result.volumeGenerated

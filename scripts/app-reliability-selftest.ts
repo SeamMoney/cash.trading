@@ -65,6 +65,14 @@ const pointsCalculator = readFileSync("components/points/points-calculator.tsx",
 const pointsLeaderboard = readFileSync("components/points/leaderboard.tsx", "utf8");
 const farmingTips = readFileSync("components/points/farming-tips.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
+const cashRewardsPanel = readFileSync("components/portfolio/CashRewardsPanel.tsx", "utf8");
+const cashRewardsLib = readFileSync("lib/cash-rewards.ts", "utf8");
+const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "utf8")) as {
+  formulaVersion: number;
+  formulaEffectiveEpoch: number;
+  capitalHourRewardCash: number;
+  activeDayRewardCash: number;
+};
 const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
 const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
 const launchpadCandlesRoute = readFileSync("app/api/launchpad/candles/route.ts", "utf8");
@@ -398,6 +406,23 @@ assert.match(cashRewardsRoute, /checkApiRateLimit\(request, "cash-rewards-read"/
 assert.match(cashRewardsRoute, /verifyDecibelSubaccountOwnership/);
 assert.match(cashRewardsRoute, /getCashRewardSnapshot/);
 assert.match(cashRewardsRoute, /Direct server payouts are disabled/);
+assert.match(cashRewardsPanel, /STREAM_PREVIEW_SECONDS = 15/);
+assert.match(cashRewardsPanel, /Server-verified · resets in/);
+assert.match(cashRewardsPanel, /Preview only — no CASH has been issued/);
+assert.match(cashRewardsPanel, /do not carry into a new reward week/);
+assert.match(cashRewardsLib, /currentCapitalBasisUsd/);
+assert.ok(
+  !cashRewardsLib.includes("getDecibelAccountOverview"),
+  "the reward stream must not use the stale indexed account-overview margin",
+);
+assert.equal(cashRewardsConfig.formulaVersion, 2);
+assert.equal(cashRewardsConfig.formulaEffectiveEpoch, 2950);
+assert.equal(cashRewardsConfig.capitalHourRewardCash, 2);
+assert.equal(cashRewardsConfig.activeDayRewardCash, 1_000);
+assert.ok(!botStatusMonitor.includes("CASH Sent"));
+assert.ok(!botStatusMonitor.includes("CASH Pending"));
+assert.match(botStatusMonitor, /CASH Claimed/);
+assert.match(botStatusMonitor, /Verified Accrued/);
 for (const [name, source] of [
   ["dashboard history", dashboardHistory],
   ["bot status history", botStatusMonitor],

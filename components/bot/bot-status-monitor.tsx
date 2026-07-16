@@ -71,8 +71,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       rewardRateCashPerUsd: number
     }
     totals: {
-      sentCash: number
-      pendingCash: number
+      earnedCash: number
+      claimedCash: number
     }
   } | null>(null)
   const lastTickTimeRef = useRef<number>(0)
@@ -776,10 +776,10 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/20" />
                 <div className="flex items-center gap-2 mb-1">
                   <Coins className="w-3 h-3 text-green-400" />
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CASH Sent</span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CASH Claimed</span>
                 </div>
                 <p className="text-lg font-bold text-green-400">
-                  {(cashRewards?.totals.sentCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                  {(cashRewards?.totals.claimedCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </p>
               </div>
 
@@ -787,10 +787,10 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                 <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/20" />
                 <div className="flex items-center gap-2 mb-1">
                   <Timer className="w-3 h-3 text-yellow-400" />
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CASH Pending</span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Verified Accrued</span>
                 </div>
                 <p className="text-lg font-bold text-yellow-400">
-                  {(cashRewards?.totals.pendingCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                  {(cashRewards?.totals.earnedCash ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </p>
               </div>
             </div>

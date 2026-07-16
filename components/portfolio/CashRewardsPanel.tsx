@@ -71,6 +71,8 @@ type Props = {
   subaccount: string;
 };
 
+const STREAM_PREVIEW_SECONDS = 15;
+
 function compactCash(value: number) {
   return value.toLocaleString("en-US", {
     maximumFractionDigits: value < 100 ? 2 : 0,
@@ -79,6 +81,19 @@ function compactCash(value: number) {
 
 function shortAddress(value: string) {
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+function resetCountdown(epochEndsAt: string, now: number) {
+  const remainingMinutes = Math.max(
+    0,
+    Math.ceil((new Date(epochEndsAt).getTime() - now) / 60_000),
+  );
+  if (remainingMinutes === 0) return "resetting now";
+  const days = Math.floor(remainingMinutes / (24 * 60));
+  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  const minutes = remainingMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 function statusTone(status: string) {
@@ -146,8 +161,11 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
   }, [refresh]);
 
   useEffect(() => {
-    if (!snapshot || snapshot.stream.estimatedCashPerSecond <= 0) return;
-    const interval = window.setInterval(() => setClock(Date.now()), 1_000);
+    if (!snapshot) return;
+    const interval = window.setInterval(
+      () => setClock(Date.now()),
+      snapshot.stream.estimatedCashPerSecond > 0 ? 1_000 : 60_000,
+    );
     return () => window.clearInterval(interval);
   }, [snapshot]);
 
@@ -159,9 +177,9 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
 
   const estimatedEarned = useMemo(() => {
     if (!snapshot) return null;
-    const elapsedSeconds = Math.max(
-      0,
-      (clock - new Date(snapshot.generatedAt).getTime()) / 1_000,
+    const elapsedSeconds = Math.min(
+      STREAM_PREVIEW_SECONDS,
+      Math.max(0, (clock - new Date(snapshot.generatedAt).getTime()) / 1_000),
     );
     const streamed = Math.min(
       snapshot.stream.remainingWalletCapCash,
@@ -255,6 +273,11 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
         </div>
       ) : (
         <>
+          {snapshot && snapshot.contract.status !== "live" && (
+            <div role="status" className="border-b border-yellow-500/15 bg-yellow-500/5 px-5 py-3 text-pretty text-[11px] leading-5 text-yellow-200/80 sm:px-6">
+              Preview only — no CASH has been issued. Weekly estimates reset and do not carry into a new reward week.
+            </div>
+          )}
           <div className="grid gap-px bg-[#1a1a1a] sm:grid-cols-2 lg:grid-cols-4">
             <div className="bg-[#050505] px-5 py-5 sm:px-6">
               <p className="text-[11px] uppercase tracking-wide text-zinc-600">Estimated this week</p>
@@ -265,7 +288,9 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                 suffix=" CASH"
                 className="mt-2 block font-mono text-[24px] font-semibold text-green-400"
               />
-              <p className="mt-2 text-[11px] text-zinc-600">Live estimate; server re-verifies every fill</p>
+              <p className="mt-2 text-[11px] text-zinc-600">
+                Server-verified · resets in {snapshot ? resetCountdown(snapshot.epochEndsAt, clock) : "—"}
+              </p>
             </div>
             <div className="bg-[#050505] px-5 py-5 sm:px-6">
               <p className="text-[11px] uppercase tracking-wide text-zinc-600">

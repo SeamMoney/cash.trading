@@ -2,6 +2,8 @@ import type { DecibelNetwork } from "@/lib/decibel";
 
 export type EvmCctpSourceChain = "Ethereum" | "Arbitrum" | "Base";
 
+export const EVM_SOURCE_CHAIN_STORAGE_KEY = "cash:evm-cctp-source-chain:v1";
+
 export type Eip1193Provider = {
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>;
 };

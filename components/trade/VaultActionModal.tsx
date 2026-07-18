@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import { useIsMobile } from "@/components/ui/use-mobile";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -117,6 +119,7 @@ export function VaultActionModal({
   const [txHash, setTxHash] = useState("");
   const [extractedVaultAddress, setExtractedVaultAddress] = useState("");
   const [statusResponse, setStatusResponse] = useState<unknown>(null);
+  const isMobile = useIsMobile();
 
   const copy = ACTION_COPY[mode];
   const requiresAmount = mode === "deposit" || mode === "withdraw";
@@ -236,25 +239,8 @@ export function VaultActionModal({
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("max-w-md gap-0 border-zinc-800 bg-zinc-950 p-0 text-zinc-100", className)}>
-        <DialogHeader className="border-b border-zinc-800 px-5 py-4 text-left">
-          <div className="flex items-start justify-between gap-3 pr-8">
-            <div className="min-w-0">
-              <DialogTitle className="text-balance text-base">{copy.title}</DialogTitle>
-              <DialogDescription className="mt-1 text-pretty text-xs text-zinc-400">
-                {copy.description}
-              </DialogDescription>
-            </div>
-            <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-              {mode}
-            </Badge>
-          </div>
-        </DialogHeader>
-
-        <form onSubmit={submit}>
-          <div className="space-y-4 px-5 py-4">
+  const formFields = (
+    <>
             <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex items-center gap-2">
                 <Activity className="size-4 text-primary" aria-hidden="true" />
@@ -321,9 +307,11 @@ export function VaultActionModal({
                 {JSON.stringify(statusResponse, null, 2)}
               </pre>
             ) : null}
-          </div>
+    </>
+  );
 
-          <DialogFooter className="border-t border-zinc-800 px-5 py-4 sm:justify-between">
+  const formActions = (
+    <>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isWorking}>
               Cancel
             </Button>
@@ -345,6 +333,49 @@ export function VaultActionModal({
                     ? "Saving vault"
                     : copy.submit}
             </Button>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <MobileModalSheet
+        open={open}
+        onClose={() => onOpenChange(false)}
+        title={copy.title}
+        description={copy.description}
+        titleId="vault-action-title"
+      >
+        <form onSubmit={submit} className="pt-3">
+          <div className="space-y-4 px-2 pb-4">{formFields}</div>
+          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4">
+            {formActions}
+          </div>
+        </form>
+      </MobileModalSheet>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={cn("max-w-md gap-0 border-zinc-800 bg-zinc-950 p-0 text-zinc-100", className)}>
+        <DialogHeader className="border-b border-zinc-800 px-5 py-4 text-left">
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div className="min-w-0">
+              <DialogTitle className="text-balance text-base">{copy.title}</DialogTitle>
+              <DialogDescription className="mt-1 text-pretty text-xs text-zinc-400">
+                {copy.description}
+              </DialogDescription>
+            </div>
+            <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+              {mode}
+            </Badge>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit}>
+          <div className="space-y-4 px-5 py-4">{formFields}</div>
+          <DialogFooter className="border-t border-zinc-800 px-5 py-4 sm:justify-between">
+            {formActions}
           </DialogFooter>
         </form>
       </DialogContent>

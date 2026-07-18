@@ -22,6 +22,8 @@ import {
 import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
 import { resolveDecibelWalletIdentity } from "../lib/decibel-wallet-identity";
 import { parseCctpMessage } from "../lib/decibel-cctp";
+import { summarizeDecibelFees } from "../lib/decibel-fees";
+import type { DecibelTrade } from "../lib/decibel-api";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -51,6 +53,7 @@ const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
 const decibelTransactionSubmitter = readFileSync("hooks/useDecibelTransactionSubmitter.ts", "utf8");
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
+const decibelFeesRoute = readFileSync("app/api/decibel/fees/route.ts", "utf8");
 const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
@@ -142,6 +145,7 @@ const decibelWalletBalanceRoute = readFileSync("app/api/decibel/wallet-balance/r
 const decibelStreamRoute = readFileSync("app/api/decibel/stream/route.ts", "utf8");
 const decibelVaultStatusRoute = readFileSync("app/api/decibel/vaults/status/route.ts", "utf8");
 const vaultActionModal = readFileSync("components/trade/VaultActionModal.tsx", "utf8");
+const cashWalletSelector = readFileSync("components/wallet/cash-wallet-selector.tsx", "utf8");
 const decibelVaultExtractRoute = readFileSync("app/api/decibel/vaults/extract/route.ts", "utf8");
 const decibelVaultApi = readFileSync("lib/decibel-vault-api.ts", "utf8");
 const decibelVaultDelegateRoute = readFileSync("app/api/decibel/vaults/delegate/route.ts", "utf8");
@@ -253,6 +257,48 @@ assert.ok(
   !decibelPortfolioChartRoute.includes("Math.random"),
   "portfolio history must come from Decibel rather than generated points",
 );
+assert.match(portfolioPage, /Total Fees Paid/);
+assert.match(portfolioPage, /\/api\/decibel\/fees/);
+assert.match(decibelFeesRoute, /MAX_TRADE_HISTORY/);
+assert.match(decibelFeesRoute, /strict: true/);
+const feeTrade = (overrides: Partial<DecibelTrade> = {}): DecibelTrade => ({
+  account: "0x1",
+  market: "BTC/USD",
+  action: "fill",
+  trade_id: 1,
+  size: 1,
+  price: 100,
+  is_profit: false,
+  realized_pnl_amount: 0,
+  is_funding_positive: false,
+  realized_funding_amount: 0,
+  is_rebate: false,
+  fee_amount: 0.25,
+  order_id: "1",
+  client_order_id: "1",
+  transaction_unix_ms: 1,
+  transaction_version: 1,
+  ...overrides,
+});
+assert.deepEqual(
+  summarizeDecibelFees([
+    feeTrade(),
+    feeTrade(),
+    feeTrade({ trade_id: 2, transaction_version: 2, fee_amount: 0.1, is_rebate: true }),
+  ]),
+  { fills: 2, totalFeesPaidUsd: 0.25, rebatesUsd: 0.1, netFeesUsd: 0.15 },
+  "all-time fees must deduplicate fills and report paid fees separately from rebates",
+);
+assert.match(vaultActionModal, /<MobileModalSheet/);
+assert.match(tradePage, /hasHolding \? "Manage" : "Deposit"/);
+assert.ok(
+  !btcChart.includes('placeholder="Search markets"'),
+  "the mobile market sheet must not summon a keyboard with a search field",
+);
+assert.match(cashWalletSelector, /<MobileModalSheet/);
+assert.match(cashWalletSelector, /Show more wallets/);
+assert.match(cashWalletSelector, /EVM_SOURCE_CHAINS/);
+assert.ok(!cashWalletSelector.toLowerCase().includes('"nightly"'), "Nightly must not be offered by cash.trading");
 assert.match(portfolioPage, /withdrawingRef\.current/);
 assert.match(portfolioPage, /withdrawalTokenRef/);
 assert.match(portfolioPage, /closingActionTokensRef/);
@@ -265,8 +311,7 @@ assert.match(sharedHeader, /balanceRequestIdRef/);
 assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
 assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
 assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
-assert.match(btcChart, /type="search"/);
-assert.match(btcChart, /text-\[16px\]/);
+assert.ok(!btcChart.includes('type="search"'), "the asset selector must not render a search control");
 assert.match(btcChart, /MobileModalSheet/);
 assert.ok(
   !btcChart.includes('{displayConnected ? "Live" : "..."}')
@@ -336,8 +381,8 @@ assert.ok(
   "the vault carousel must show every active vault returned by Decibel",
 );
 assert.match(tradePage, /vault-history\?vault=\$\{v\.address\}&range=all&type=pnl/);
-assert.match(tradePage, />\s*Deposit\s*</);
-assert.match(tradePage, />\s*Manage\s*</);
+assert.match(tradePage, /hasHolding \? "Manage" : "Deposit"/);
+assert.match(tradePage, /hasHolding \? "withdraw" : "deposit"/);
 assert.match(positionsComponent, /Vault Positions \(\{vaultHoldings\.length\}\)/);
 assert.match(positionsComponent, /\/api\/vault\/user\?account=/);
 
@@ -534,7 +579,7 @@ assert.match(positionsComponent, /Cancel \$\{o\.market\} \$\{o\.isBuy \? "buy" :
 assert.match(positionsComponent, /role=\{actionStatus\.tone === "error" \? "alert" : "status"\}/);
 assert.match(btcChart, /aria-modal="true"/);
 assert.match(btcChart, /role="dialog"/);
-assert.match(btcChart, /aria-label="Search markets"/);
+assert.ok(!btcChart.includes('aria-label="Search markets"'));
 
 const sanitizedTradeHistory = sanitizeOnChainTrades([
   { tradeId: 0, signal: 1, price: 0.00011, gainBps: 0, lossBps: 0, timestamp: 1, type: "BUY", pnlBps: 0 },

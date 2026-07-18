@@ -1574,7 +1574,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                     <button
                       type="button"
                       onClick={() => setVaultAction({ mode: "deposit", holding })}
-                      className="rounded-[8px] bg-accent px-3 py-2 text-[11px] font-semibold text-black transition-colors hover:bg-[#5dff3f]"
+                      className="rounded-[8px] bg-accent px-3 py-2 text-[11px] font-semibold text-black transition-[filter] hover:brightness-95"
                     >
                       Deposit
                     </button>

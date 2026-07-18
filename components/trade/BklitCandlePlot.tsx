@@ -220,7 +220,7 @@ function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
         if (x == null || rawY == null) return null;
         const buy = marker.side === "buy";
         const y = Math.max(12, Math.min(innerHeight - 12, rawY + (buy ? 8 : -8)));
-        const color = marker.color ?? (buy ? "#22c55e" : "#ef4444");
+        const color = marker.color ?? (buy ? "var(--accent)" : "#ef4444");
         const points = buy
           ? `${x},${y - 5} ${x - 4},${y + 2} ${x + 4},${y + 2}`
           : `${x},${y + 5} ${x - 4},${y - 2} ${x + 4},${y - 2}`;

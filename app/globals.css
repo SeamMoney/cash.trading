@@ -453,18 +453,21 @@
   --card-solid: #181818;
   --card-border: rgba(255, 255, 255, 0.08);
   --card-hover: rgba(255, 255, 255, 0.10);
+  --primary: #39ff14;
+  --primary-foreground: #0a0a0a;
   --accent: #39ff14;
-  --accent-dim: #22c55e;
+  --accent-dim: #39ff14;
   --accent-foreground: #0a0a0a;
   --secondary: #39ff14;
-  --secondary-dim: #16a34a;
+  --secondary-dim: #39ff14;
   --brand-blue: #39ff14;
   --muted: #7f7f7f;
   --muted-foreground: #999999;
-  --success: #0da726;
+  --success: #39ff14;
   --danger: #f21a1a;
   --warning: #f5a623;
   --border: rgba(255, 255, 255, 0.08);
+  --ring: #39ff14;
   --border-accent: rgba(57, 255, 20, 0.25);
   --border-strong: rgba(255, 255, 255, 0.18);
   --radius: 16px;
@@ -472,15 +475,15 @@
   --radius-xs: 6px;
   --radius-full: 9999px;
   --chart-1: #39ff14;
-  --chart-2: #86efac;
-  --chart-3: #22c55e;
-  --chart-4: #bbf7d0;
-  --chart-5: #16a34a;
+  --chart-2: #39ff14;
+  --chart-3: #39ff14;
+  --chart-4: #39ff14;
+  --chart-5: #39ff14;
   --chart-background: #0a0a0a;
   --chart-foreground: #eeeeee;
   --chart-foreground-muted: #7f7f7f;
   --chart-line-primary: #39ff14;
-  --chart-line-secondary: #86efac;
+  --chart-line-secondary: rgba(57, 255, 20, 0.55);
   --chart-crosshair: rgba(255, 255, 255, 0.15);
   --chart-grid: rgba(255, 255, 255, 0.06);
   --chart-tooltip-background: rgba(15, 15, 15, 0.9);
@@ -497,6 +500,15 @@
   --chart-segment-line: rgba(57, 255, 20, 0.4);
   --chart-indicator-color: #39ff14;
   --chart-indicator-secondary-color: rgba(255, 255, 255, 0.3);
+  /* Tailwind color utilities within the trading product share the same brand
+     hue instead of introducing a second green for every component family. */
+  --color-green-300: #39ff14;
+  --color-green-400: #39ff14;
+  --color-green-500: #39ff14;
+  --color-green-600: #39ff14;
+  --color-emerald-300: #39ff14;
+  --color-emerald-400: #39ff14;
+  --color-emerald-500: #39ff14;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
@@ -631,7 +643,8 @@
   }
 
   .btn-cash:hover {
-    background: #5dff3f;
+    background: #39ff14;
+    filter: brightness(0.95);
     box-shadow:
       0 4px 20px rgba(57, 255, 20, 0.22),
       0 0 0 1px rgba(57, 255, 20, 0.2),

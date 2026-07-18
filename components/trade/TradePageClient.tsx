@@ -47,7 +47,6 @@ interface DecibelVault {
   manager_cash_pct: number | null;
 }
 
-const VAULT_COLORS = ["#22c55e", "#3b82f6", "#eab308", "#ec4899", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#84cc16", "#6366f1"];
 const PRICE_UI_COMMIT_MS = 250;
 
 function formatUsd(n: number | null): string {
@@ -137,14 +136,65 @@ function useDecibelVaults(enabled = true) {
 
 function VaultsPanel({
   enabled = true,
+  holdingsRefreshNonce = 0,
   onAction,
+  ownerAddress,
 }: {
   enabled?: boolean;
+  holdingsRefreshNonce?: number;
   onAction: (mode: "deposit" | "withdraw", vault: DecibelVault) => void;
+  ownerAddress?: string | null;
 }) {
   const { vaults, loading, chartData, chartKind } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [managedVaultAddresses, setManagedVaultAddresses] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const fetchVaultHoldings = useCallback(async () => {
+    if (!enabled || !ownerAddress) {
+      setManagedVaultAddresses(new Set());
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/vault/user?account=${encodeURIComponent(ownerAddress)}`,
+        { cache: "no-store" },
+      );
+      const data = await response.json().catch(() => null) as {
+        unavailable?: boolean;
+        vaults?: Array<{
+          address?: string;
+          currentValue?: number;
+          shares?: number;
+        }>;
+      } | null;
+      if (!response.ok || !data || data.unavailable || !Array.isArray(data.vaults)) return;
+
+      setManagedVaultAddresses(new Set(
+        data.vaults
+          .filter((holding) =>
+            Boolean(holding.address)
+            && ((holding.shares ?? 0) > 0 || (holding.currentValue ?? 0) > 0),
+          )
+          .map((holding) => String(holding.address).toLowerCase()),
+      ));
+    } catch {
+      // Preserve the last verified holding state through a transient indexer miss.
+    }
+  }, [enabled, ownerAddress]);
+
+  useEffect(() => {
+    void fetchVaultHoldings();
+    const interval = enabled && ownerAddress
+      ? setInterval(() => void fetchVaultHoldings(), 30_000)
+      : null;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [fetchVaultHoldings, holdingsRefreshNonce, enabled, ownerAddress]);
 
   // Show every active Decibel vault; keep the protocol vault first.
   const displayVaults = [...vaults]
@@ -202,17 +252,18 @@ function VaultsPanel({
             className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
-              {displayVaults.map((vault, index) => {
+              {displayVaults.map((vault) => {
                 const pnlReturn = vault.all_time_return;
                 const displayVolume = vault.volume_30d ?? vault.volume;
                 const pnlNeg = pnlReturn != null && pnlReturn < 0;
                 const pnlStr = pnlReturn == null
                   ? "—"
                   : `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
-                const chartColor = pnlNeg ? "#ef4444" : VAULT_COLORS[index % VAULT_COLORS.length];
+                const chartColor = pnlNeg ? "#ef4444" : "var(--accent)";
                 const chartPoints = chartData[vault.address] ?? [];
                 const chartIsReal = chartKind[vault.address] === "real";
                 const chartUnavailable = chartKind[vault.address] === "unavailable";
+                const hasHolding = managedVaultAddresses.has(vault.address.toLowerCase());
 
                 return (
                 <div
@@ -353,20 +404,13 @@ function VaultsPanel({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3">
                     <button
                       type="button"
-                      onClick={() => onAction("deposit", vault)}
-                      className="rounded-lg bg-accent px-3 py-2 text-[12px] font-bold text-black transition-colors hover:bg-[#5dff3f]"
+                      onClick={() => onAction(hasHolding ? "withdraw" : "deposit", vault)}
+                      className="w-full rounded-lg bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[filter] hover:brightness-95"
                     >
-                      Deposit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onAction("withdraw", vault)}
-                      className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-                    >
-                      Manage
+                      {hasHolding ? "Manage" : "Deposit"}
                     </button>
                   </div>
                 </div>
@@ -803,9 +847,9 @@ function SignalProductsPanel({
                     type="button"
                     onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
                     className={cn(
-                      "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors",
+                      "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-[filter,background-color,color]",
                       vaultAddress
-                        ? "bg-accent text-black hover:bg-[#5dff3f]"
+                        ? "bg-accent text-black hover:brightness-95"
                         : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
                     )}
                   >
@@ -884,6 +928,7 @@ export function TradePageClient({
     mode: "deposit" | "withdraw";
     vault: DecibelVault;
   } | null>(null);
+  const [vaultHoldingsRefreshNonce, setVaultHoldingsRefreshNonce] = useState(0);
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
   const { owner, selectedSubaccount } = useDecibelSubaccounts();
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
@@ -1046,7 +1091,9 @@ export function TradePageClient({
         <div ref={vaultsSectionRef} id="vaults" className="mt-6 scroll-mt-20 animate-enter">
           <VaultsPanel
             enabled={vaultsActive}
+            holdingsRefreshNonce={vaultHoldingsRefreshNonce}
             onAction={(mode, vault) => setListedVaultAction({ mode, vault })}
+            ownerAddress={ownerWallet}
           />
         </div>
 
@@ -1118,7 +1165,10 @@ export function TradePageClient({
           subaccount={selectedSubaccount}
           ownerWallet={ownerWallet}
           signAndSubmitTransaction={signVaultTransaction}
-          onComplete={() => setListedVaultAction(null)}
+          onComplete={() => {
+            setListedVaultAction(null);
+            setVaultHoldingsRefreshNonce((value) => value + 1);
+          }}
         />
       )}
 

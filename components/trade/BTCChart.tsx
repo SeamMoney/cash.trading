@@ -3,7 +3,7 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Liveline } from "liveline";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { usePriceCandles } from "@/hooks/useBtcCandles";
 import { useInViewport } from "@/hooks/useInViewport";
 import { usePageVisible } from "@/hooks/usePageVisible";
@@ -285,9 +285,9 @@ const MARKET_COLORS: Record<string, string> = {
   NEAR: "#d9d9d9",
   SILVER: "#c0c0c0",
   SOL: "#9945ff",
-  SPY: "#72ff4b",
-  QQQ: "#72ff4b",
-  EWY: "#72ff4b",
+  SPY: "#39ff14",
+  QQQ: "#39ff14",
+  EWY: "#39ff14",
   SUI: "#6dd6ff",
   TAO: "#d9d9d9",
   TRUMP: "#d9d9d9",
@@ -573,7 +573,6 @@ function MarketModal({
   loading?: boolean;
   network: DecibelPublicNetwork;
 }) {
-  const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -585,20 +584,10 @@ function MarketModal({
     }
   }, [marketsList, open, selected]);
 
-  const filteredMarkets = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return marketsList.filter((market) => {
-      if (market.category !== activeCategory) return false;
-      if (!normalizedQuery) return true;
-      return [
-        market.label,
-        market.pair,
-        market.marketName,
-        market.id,
-        getBaseSymbol(market.id),
-      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedQuery));
-    });
-  }, [activeCategory, marketsList, query]);
+  const filteredMarkets = useMemo(
+    () => marketsList.filter((market) => market.category === activeCategory),
+    [activeCategory, marketsList],
+  );
 
   const activeCategoryLabel = useMemo(
     () => categoriesList.find((category) => category.key === activeCategory)?.label ?? "Markets",
@@ -644,20 +633,7 @@ function MarketModal({
 
   const marketContent = (
     <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
-      <label className="flex h-10 items-center gap-3 rounded-md bg-white/[0.04] px-3 text-[#777] focus-within:bg-white/[0.06]">
-        <Search className="size-4 shrink-0" aria-hidden="true" />
-        <input
-          type="search"
-          inputMode="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search markets"
-          placeholder="Search markets"
-          className="min-w-0 flex-1 bg-transparent text-[16px] text-zinc-200 outline-none placeholder:text-zinc-500 sm:text-[14px]"
-        />
-      </label>
-
-      <div className="mt-4 flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
+      <div className="flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
         {categoriesList.map((tab) => (
           <button
             key={tab.key}
@@ -760,7 +736,7 @@ function MarketModal({
         </div>
         {filteredMarkets.length === 0 && (
           <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
-            No {activeCategoryLabel.toLowerCase()} markets match this search.
+            No {activeCategoryLabel.toLowerCase()} markets are available.
           </div>
         )}
         <div className="h-3" />

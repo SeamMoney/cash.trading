@@ -607,7 +607,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                 type="button"
                 onClick={claim}
                 disabled={!snapshot?.voucher || claiming}
-                className="mt-4 w-full rounded-[4px] bg-green-500 px-4 py-2.5 text-[12px] font-semibold text-black hover:bg-green-400 disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:text-zinc-600"
+                className="mt-4 w-full rounded-[4px] bg-accent px-4 py-2.5 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95 disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:text-zinc-600"
               >
                 {claimLabel}
               </button>

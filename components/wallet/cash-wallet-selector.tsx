@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import {
@@ -8,244 +8,363 @@ import {
   isInstallRequired,
 } from "@aptos-labs/wallet-adapter-core";
 import type {
-  AdapterWallet,
   AdapterNotDetectedWallet,
+  AdapterWallet,
 } from "@aptos-labs/wallet-adapter-core";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
+
+import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import {
+  EVM_SOURCE_CHAIN_STORAGE_KEY,
+  type EvmCctpSourceChain,
+} from "@/lib/evm-cctp";
+import { cn } from "@/lib/utils";
 
 type AnyWallet = AdapterWallet | AdapterNotDetectedWallet;
+type WalletChain = "Aptos" | "Solana" | "EVM";
 
 interface WalletSelectorProps {
   open: boolean;
   onClose: () => void;
 }
 
-function CashLogo() {
-  return (
-    <div className="flex size-14 items-center justify-center rounded-2xl border border-accent/40 bg-accent text-black shadow-sm shadow-accent/20">
-      <span className="font-display text-[24px] font-black leading-none">$</span>
-    </div>
-  );
+const CHAIN_TABS: WalletChain[] = ["Aptos", "Solana", "EVM"];
+const EVM_SOURCE_CHAINS: EvmCctpSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
+const POPULAR_WALLETS: Record<WalletChain, string[]> = {
+  Aptos: ["Petra", "OKX Wallet", "Backpack", "Phantom"],
+  Solana: ["Phantom", "Backpack", "OKX Wallet"],
+  EVM: ["Rainbow", "MetaMask", "Rabby", "Coinbase Wallet", "OKX Wallet"],
+};
+
+function baseWalletName(name: string) {
+  return name.replace(/\s*\((?:Solana|Ethereum)\)\s*$/i, "").trim();
+}
+
+function isNightly(name: string) {
+  return /nightly/i.test(baseWalletName(name));
+}
+
+function walletChain(name: string): WalletChain {
+  if (/\(solana\)/i.test(name)) return "Solana";
+  if (/\(ethereum\)/i.test(name)) return "EVM";
+  return "Aptos";
+}
+
+function dedupeWallets(wallets: AnyWallet[]) {
+  const byName = new Map<string, AnyWallet>();
+  for (const wallet of wallets) {
+    const key = baseWalletName(wallet.name).toLowerCase();
+    if (!byName.has(key)) byName.set(key, wallet);
+  }
+  return [...byName.values()];
 }
 
 export function WalletSelector({ open, onClose }: WalletSelectorProps) {
   const { connect, wallets, notDetectedWallets } = useWallet();
   const [mounted, setMounted] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [activeChain, setActiveChain] = useState<WalletChain>("Aptos");
+  const [evmSourceChain, setEvmSourceChain] = useState<EvmCctpSourceChain>("Arbitrum");
+  const [showMore, setShowMore] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const wasOpenRef = useRef(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => setMounted(true), []);
+
+  const allWallets = useMemo(
+    () => [...wallets, ...notDetectedWallets].filter((wallet) => !isNightly(wallet.name)),
+    [notDetectedWallets, wallets],
+  );
+  const { petraWebWallets } = useMemo(
+    () => groupAndSortWallets(allWallets),
+    [allWallets],
+  );
+  const socialNames = useMemo(
+    () => new Set(petraWebWallets.map((wallet) => wallet.name)),
+    [petraWebWallets],
+  );
+  const googleWallet = petraWebWallets.find((wallet) => /google/i.test(wallet.name));
+  const appleWallet = petraWebWallets.find((wallet) => /apple/i.test(wallet.name));
+
+  const availableByChain = useMemo(() => {
+    const relevant = allWallets.filter((wallet) => !socialNames.has(wallet.name));
+    const result: Record<WalletChain, AnyWallet[]> = { Aptos: [], Solana: [], EVM: [] };
+    for (const chain of CHAIN_TABS) {
+      const popular = new Set(POPULAR_WALLETS[chain].map((name) => name.toLowerCase()));
+      const matching = relevant.filter((wallet) => {
+        if (walletChain(wallet.name) !== chain) return false;
+        return !isInstallRequired(wallet)
+          || popular.has(baseWalletName(wallet.name).toLowerCase());
+      });
+      result[chain] = dedupeWallets([
+        ...matching.filter((wallet) => !isInstallRequired(wallet)),
+        ...matching.filter((wallet) => isInstallRequired(wallet)),
+      ]);
+    }
+    return result;
+  }, [allWallets, socialNames]);
 
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
+    if (!open || wasOpenRef.current) {
+      wasOpenRef.current = open;
+      return;
     }
-  }, [open]);
-
-  const allWallets: AnyWallet[] = [...wallets, ...notDetectedWallets];
-  const { petraWebWallets } = groupAndSortWallets(allWallets);
-
-  // Parity with app.decibel.trade's connect modal: show EVERY detected wallet
-  // (Aptos AIP-62 natives plus EVM/Solana derived — Petra, Phantom, OKX,
-  // Nightly, MetaMask, Backpack, Rainbow, ...), deduped by base name, instead
-  // of a hardcoded allowlist that hid wallets users actually have.
-  const installedRaw = allWallets.filter(
-    (w) =>
-      !isInstallRequired(w) &&
-      !petraWebWallets.some((pw) => pw.name === w.name),
-  );
-  const seen = new Map<string, AnyWallet>();
-  for (const w of installedRaw) {
-    const base = w.name.replace(/\s*\(.*\)/, "").trim();
-    if (!seen.has(base)) seen.set(base, w);
-  }
-  const installed = Array.from(seen.values());
-
-  // Not-detected popular wallets get an install link (Decibel-style), rather
-  // than being hidden entirely.
-  const POPULAR_NOT_DETECTED = ["Petra", "Nightly", "OKX Wallet", "Backpack", "Bitget Wallet", "Phantom", "MetaMask", "Rainbow"];
-  const installedBases = new Set(seen.keys());
-  const moreWallets: AnyWallet[] = [];
-  const seenMore = new Set<string>();
-  for (const w of notDetectedWallets as AnyWallet[]) {
-    const base = w.name.replace(/\s*\(.*\)/, "").trim();
-    if (
-      POPULAR_NOT_DETECTED.includes(base) &&
-      !installedBases.has(base) &&
-      !seenMore.has(base)
-    ) {
-      seenMore.add(base);
-      moreWallets.push(w);
+    wasOpenRef.current = true;
+    setShowMore(false);
+    const hasDetectedEvm = availableByChain.EVM.some((wallet) => !isInstallRequired(wallet));
+    const hasDetectedSolana = availableByChain.Solana.some((wallet) => !isInstallRequired(wallet));
+    setActiveChain(hasDetectedEvm ? "EVM" : hasDetectedSolana ? "Solana" : "Aptos");
+    try {
+      const saved = window.localStorage.getItem(EVM_SOURCE_CHAIN_STORAGE_KEY) as EvmCctpSourceChain | null;
+      if (saved && EVM_SOURCE_CHAINS.includes(saved)) setEvmSourceChain(saved);
+    } catch {
+      // Storage is optional; the visible selector remains authoritative.
     }
-  }
+  }, [availableByChain, open]);
 
-  // Separate Google and Apple from other social wallets
-  const googleWallet = petraWebWallets.find((w) => w.name.toLowerCase().includes("google"));
-  const appleWallet = petraWebWallets.find((w) => w.name.toLowerCase().includes("apple"));
-
-  const handleConnect = useCallback(
-    async (walletName: string) => {
-      setConnecting(walletName);
-      try {
-        await connect(walletName);
+  useEffect(() => {
+    if (!open || typeof window === "undefined" || !window.matchMedia("(min-width: 640px)").matches) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         onClose();
-      } catch {
-        // User rejected or error
-      } finally {
-        setConnecting(null);
+        return;
       }
-    },
-    [connect, onClose],
-  );
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open]);
+
+  const handleConnect = useCallback(async (walletName: string) => {
+    setConnecting(walletName);
+    try {
+      await connect(walletName);
+      onClose();
+    } catch {
+      // Wallet rejection leaves the selector open so another option can be used.
+    } finally {
+      setConnecting(null);
+    }
+  }, [connect, onClose]);
+
+  const selectEvmSourceChain = useCallback((chain: EvmCctpSourceChain) => {
+    setEvmSourceChain(chain);
+    try {
+      window.localStorage.setItem(EVM_SOURCE_CHAIN_STORAGE_KEY, chain);
+    } catch {
+      // Storage is optional.
+    }
+  }, []);
 
   if (!open || !mounted) return null;
 
-  const hasSocial = googleWallet || appleWallet;
-  const hasWallets = installed.length > 0;
+  const chainWallets = availableByChain[activeChain];
+  const primaryWallets = chainWallets.slice(0, 3);
+  const hiddenWallets = chainWallets.slice(3);
+  const rows = showMore ? chainWallets : primaryWallets;
 
-  const content = (
-    <div className="cash-trade-theme fixed inset-0 z-[100] bg-[#0a0a0a] modal-backdrop overflow-y-auto">
+  const walletRow = (wallet: AnyWallet) => {
+    const needsInstall = isInstallRequired(wallet);
+    const displayName = baseWalletName(wallet.name);
+    const rowClass = "flex min-h-12 w-full items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.035] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.07]";
+    const identity = (
+      <span className="flex min-w-0 items-center gap-3">
+        {wallet.icon ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={wallet.icon} alt="" className="size-7 shrink-0 rounded-md object-contain" />
+        ) : (
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-xs font-bold text-zinc-400">
+            {displayName.charAt(0)}
+          </span>
+        )}
+        <span className="truncate text-[13px] font-semibold text-zinc-200">{displayName}</span>
+      </span>
+    );
+
+    if (needsInstall) {
+      return (
+        <a
+          key={wallet.name}
+          href={(wallet as { url?: string }).url ?? "#"}
+          target="_blank"
+          rel="noreferrer"
+          className={rowClass}
+        >
+          {identity}
+          <span className="shrink-0 text-[11px] font-medium text-zinc-500">Install</span>
+        </a>
+      );
+    }
+
+    return (
       <button
+        key={wallet.name}
         type="button"
-        onClick={onClose}
-        aria-label="Close wallet selector"
-        className="absolute top-4 right-4 z-10 flex size-9 items-center justify-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.1] hover:text-white"
+        onClick={() => void handleConnect(wallet.name)}
+        disabled={connecting !== null}
+        className={cn(rowClass, "disabled:cursor-wait disabled:opacity-50")}
       >
-        <X className="size-4" strokeWidth={2.5} />
+        {identity}
+        <span className="shrink-0 text-[11px] font-medium text-accent">
+          {connecting === wallet.name ? "Connecting…" : "Connect"}
+        </span>
       </button>
+    );
+  };
 
-      {/* Centered card */}
-      <div className="relative min-h-full flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[440px] bg-[#161616] border border-white/[0.08] rounded-2xl p-8 sm:p-10 modal-panel">
-          <div className="flex justify-center mb-5">
-            <CashLogo />
-          </div>
+  const selectorContent = (
+    <div className="space-y-4 bg-[#101010] py-3 font-mono sm:py-0">
+      {googleWallet ? (
+        <button
+          type="button"
+          onClick={() => void handleConnect(googleWallet.name)}
+          disabled={connecting !== null}
+          className="flex min-h-12 w-full items-center justify-between rounded-lg bg-accent px-4 py-3 text-left text-[13px] font-bold text-black transition-[filter] hover:brightness-95 disabled:cursor-wait disabled:opacity-50"
+        >
+          <span>Continue with Google</span>
+          <span>{connecting === googleWallet.name ? "Connecting…" : "Continue"}</span>
+        </button>
+      ) : null}
 
-          {/* Heading */}
-          <h1 className="text-[26px] font-bold text-white text-center mb-8">
-            Sign in to cash.trading
-          </h1>
-
-          {googleWallet && (
-            <button
-              onClick={() => handleConnect(googleWallet.name)}
-              disabled={!!connecting}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-xl bg-accent text-black hover:bg-[#5dff3f] active:scale-[0.98] transition-all disabled:opacity-50 mb-3"
-            >
-              <span className="text-[15px] font-semibold">
-                Continue with Google
-              </span>
-              {connecting === googleWallet.name && (
-                <div className="w-4 h-4 border-2 border-black/40 border-t-transparent rounded-full animate-spin ml-1" />
-              )}
-            </button>
-          )}
-
-          {/* OR divider (between Google and social icons row) */}
-          {googleWallet && (appleWallet || hasWallets) && (
-            <div className="flex items-center gap-4 my-5">
-              <div className="flex-1 h-px bg-white/[0.08]" />
-              <span className="text-[12px] text-zinc-500 font-medium tracking-wider">OR</span>
-              <div className="flex-1 h-px bg-white/[0.08]" />
-            </div>
-          )}
-
-          {/* Social icon buttons in a row (Apple + wallets) */}
-          {(hasSocial || hasWallets) && (
-            <div className="flex flex-wrap gap-3">
-              {/* Apple button */}
-              {appleWallet && (
-                <button
-                  type="button"
-                  aria-label="Continue with Apple"
-                  onClick={() => handleConnect(appleWallet.name)}
-                  disabled={!!connecting}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/[0.08] border border-white/[0.06] hover:bg-white/[0.12] active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  <span className="text-[13px] font-semibold text-white">Apple</span>
-                  {connecting === appleWallet.name && (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  )}
-                </button>
-              )}
-
-              {/* Wallet icon buttons */}
-              {installed.map((w) => {
-                const isActive = connecting === w.name;
-                return (
-                  <button
-                    key={w.name}
-                    type="button"
-                    aria-label={`Connect ${w.name}`}
-                    onClick={() => handleConnect(w.name)}
-                    disabled={!!connecting}
-                    className="flex-1 min-w-[88px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/[0.08] border border-white/[0.06] hover:bg-white/[0.12] active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {w.icon ? (
-                      <img src={w.icon} alt={w.name} className="w-5 h-5 rounded" />
-                    ) : (
-                      <span className="text-[14px] font-bold text-zinc-400">{w.name.charAt(0)}</span>
-                    )}
-                    {isActive && (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Not-detected popular wallets — install links (Decibel parity) */}
-          {moreWallets.length > 0 && (
-            <div className="mt-5">
-              <p className="text-[11px] uppercase tracking-wider text-zinc-600 font-medium mb-2.5">
-                More wallets
-              </p>
-              <div className="space-y-1.5">
-                {moreWallets.map((w) => (
-                  <a
-                    key={w.name}
-                    href={(w as { url?: string }).url ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.04] hover:bg-white/[0.08] transition-all"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      {w.icon ? (
-                        <img src={w.icon} alt={w.name} className="w-5 h-5 rounded" />
-                      ) : (
-                        <span className="text-[14px] font-bold text-zinc-400">{w.name.charAt(0)}</span>
-                      )}
-                      <span className="text-[13px] font-medium text-zinc-300">
-                        {w.name.replace(/\s*\(.*\)/, "")}
-                      </span>
-                    </span>
-                    <span className="text-[11px] text-zinc-500">Install</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {installed.length === 0 && petraWebWallets.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-[13px] text-zinc-500">No wallets detected.</p>
-              <p className="text-[12px] text-zinc-600 mt-1">Install a wallet extension to connect.</p>
-            </div>
-          )}
-
-          {/* Terms */}
-          <p className="text-[12px] text-zinc-500 text-center mt-8 leading-relaxed">
-            By signing in you agree to cash.trading&apos;s{" "}
-            <span className="underline underline-offset-2">Terms of Service</span>{" "}
-            and{" "}
-            <span className="underline underline-offset-2">Privacy Policy</span>.
-          </p>
-        </div>
+      <div className="grid grid-cols-3 gap-1 rounded-lg bg-white/[0.035] p-1" role="tablist" aria-label="Wallet network">
+        {CHAIN_TABS.map((chain) => (
+          <button
+            key={chain}
+            type="button"
+            role="tab"
+            aria-selected={activeChain === chain}
+            onClick={() => {
+              setActiveChain(chain);
+              setShowMore(false);
+            }}
+            className={cn(
+              "rounded-md px-3 py-2 text-[12px] font-semibold transition-colors",
+              activeChain === chain
+                ? "bg-white/[0.1] text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300",
+            )}
+          >
+            {chain}
+          </button>
+        ))}
       </div>
+
+      {activeChain === "EVM" ? (
+        <div>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">USDC source</p>
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/[0.05] p-1">
+            {EVM_SOURCE_CHAINS.map((chain) => (
+              <button
+                key={chain}
+                type="button"
+                aria-pressed={evmSourceChain === chain}
+                onClick={() => selectEvmSourceChain(chain)}
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors",
+                  evmSourceChain === chain
+                    ? "bg-white/[0.1] text-zinc-100"
+                    : "text-zinc-600 hover:text-zinc-300",
+                )}
+              >
+                {chain}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-2">
+        {rows.map(walletRow)}
+        {showMore && appleWallet ? walletRow(appleWallet) : null}
+        {rows.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center text-[12px] text-zinc-600">
+            No {activeChain} wallets detected.
+          </div>
+        ) : null}
+      </div>
+
+      {(hiddenWallets.length > 0 || appleWallet) ? (
+        <button
+          type="button"
+          onClick={() => setShowMore((value) => !value)}
+          aria-expanded={showMore}
+          className="flex w-full items-center justify-center gap-2 py-2 text-[11px] font-semibold text-zinc-500 transition-colors hover:text-zinc-300"
+        >
+          {showMore ? "Show fewer wallets" : `Show more wallets${hiddenWallets.length ? ` (${hiddenWallets.length + (appleWallet ? 1 : 0)})` : ""}`}
+          <ChevronDown className={cn("size-3 transition-transform", showMore && "rotate-180")} aria-hidden="true" />
+        </button>
+      ) : null}
+
+      <p className="px-2 text-center text-[11px] leading-relaxed text-zinc-600">
+        By connecting, you agree to cash.trading&apos;s Terms of Service and Privacy Policy.
+      </p>
     </div>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(
+    <div className="cash-trade-theme">
+      <MobileModalSheet
+        open={open}
+        onClose={onClose}
+        title="Connect wallet"
+        description="Choose Aptos, Solana, or EVM"
+        titleId="wallet-selector-title"
+      >
+        {selectorContent}
+      </MobileModalSheet>
+
+      <div
+        className="fixed inset-0 z-[9999] hidden items-center justify-center px-4 py-4 sm:flex"
+        onClick={onClose}
+      >
+        <div className="absolute inset-0 bg-black/85" />
+        <div
+          ref={dialogRef}
+          aria-labelledby="wallet-selector-title-desktop"
+          aria-modal="true"
+          role="dialog"
+          onClick={(event) => event.stopPropagation()}
+          className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[620px] overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70"
+          style={{ animation: "market-modal-in 0.2s ease-out" }}
+        >
+          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
+            <span className="flex items-center gap-2">
+              <span className="size-2 shrink-0 rounded-full bg-accent" />
+              <span id="wallet-selector-title-desktop">CONNECT WALLET</span>
+              <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-accent">
+                {activeChain}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close wallet selector"
+              className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </header>
+          <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain p-4">
+            {selectorContent}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }

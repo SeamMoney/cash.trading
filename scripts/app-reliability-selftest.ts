@@ -219,6 +219,12 @@ assert.ok(
   tradePanel.includes("availableUsdc") && tradePanel.includes("MAX"),
   "the trade collateral input must show withdrawable USDC and support MAX",
 );
+assert.ok(
+  !btcChart.includes(">Mark Price<")
+    && btcChart.includes("grid-cols-[1.15fr_0.8fr_1fr_1fr_0.85fr]")
+    && !btcChart.includes("Right fade to hint horizontal scroll"),
+  "the market stats row must start at Oracle and fit Funding without horizontal scrolling",
+);
 assert.notEqual(
   decibelSubaccountStorageKey("0xABC", "mainnet"),
   decibelSubaccountStorageKey("0xABC", "testnet"),
@@ -329,6 +335,11 @@ assert.match(cashWalletSelector, /<MobileModalSheet/);
 assert.match(cashWalletSelector, /Show more wallets/);
 assert.match(cashWalletSelector, /EVM_SOURCE_CHAINS/);
 assert.ok(!cashWalletSelector.toLowerCase().includes('"nightly"'), "Nightly must not be offered by cash.trading");
+assert.ok(
+  cashWalletSelector.includes("isRainbowWallet(b.name)")
+    && cashWalletSelector.includes("getPreferredWalletIcon(wallet.name, wallet.icon)"),
+  "Rainbow must be the first EVM option and use the supplied Rainbow brand asset",
+);
 assert.match(portfolioPage, /withdrawingRef\.current/);
 assert.match(portfolioPage, /withdrawalTokenRef/);
 assert.match(portfolioPage, /closingActionTokensRef/);

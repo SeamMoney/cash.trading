@@ -39,6 +39,15 @@ export function baseWalletName(name: string) {
   return name.replace(/\s*\((?:Solana|Ethereum|EVM|Arbitrum|Base)\)\s*$/i, "").trim();
 }
 
+export function isRainbowWallet(name: string) {
+  return /^rainbow(?:\s|$)/i.test(baseWalletName(name));
+}
+
+/** Keep Rainbow's supplied brand asset consistent across adapter implementations. */
+export function getPreferredWalletIcon(name: string, adapterIcon?: string | null) {
+  return isRainbowWallet(name) ? "/wallet-logos/rainbow-logo.png" : adapterIcon;
+}
+
 /** Format EVM-derived Aptos wallets using the provider's real active EIP-155 chain. */
 export function formatWalletConnectionName(
   name: string,

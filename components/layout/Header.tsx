@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
-import { getChainFromWallet } from "@/lib/wallet-utils";
+import { getChainFromWallet, getPreferredWalletIcon } from "@/lib/wallet-utils";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events";
 import { Menu, X } from "lucide-react";
@@ -43,6 +43,9 @@ export function Header() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const walletIcon = wallet?.name
+    ? getPreferredWalletIcon(wallet.name, wallet.icon)
+    : wallet?.icon;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const balanceRequestIdRef = useRef(0);
 
@@ -234,8 +237,8 @@ export function Header() {
                 onClick={handleWalletClick}
                 className="flex items-center gap-2 px-4 py-2 rounded-[10px] text-[14px] font-medium bg-white/[0.06] text-white border border-white/[0.08] hover:bg-white/[0.1] transition-colors"
               >
-                {wallet?.icon && (
-                  <img src={wallet.icon} alt="" className="w-4 h-4 rounded-[4px]" />
+                {walletIcon && (
+                  <img src={walletIcon} alt="" className="w-4 h-4 rounded-[4px]" />
                 )}
                 {shortAddress}
                 {isXChain && (

@@ -1107,22 +1107,10 @@ export function BTCChart({
       </div>
 
       {/* Market stats bar */}
-      <div className="relative border-b border-white/5">
-        <div className="px-4 py-2 flex items-center gap-4 sm:gap-6 overflow-x-auto no-scrollbar text-[11px] font-mono tabular-nums pr-10">
-          <div className="flex flex-col shrink-0 min-w-[72px]">
-            <span className="text-zinc-600 text-[9px]">Mark Price</span>
-            <NumberTicker
-              value={displayPrice > 0 ? displayPrice : null}
-              fallback="—"
-              format={{
-                minimumFractionDigits: displayStatDecimals,
-                maximumFractionDigits: displayStatDecimals,
-              }}
-              className="font-semibold text-white"
-            />
-          </div>
-          <div className="flex flex-col shrink-0 min-w-[64px]">
-            <span className="text-zinc-600 text-[9px]">Oracle</span>
+      <div className="border-b border-white/5">
+        <div className="grid grid-cols-[1.15fr_0.8fr_1fr_1fr_0.85fr] gap-2 px-4 py-2 font-mono text-[10px] tabular-nums sm:gap-4 sm:text-[11px]">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[8px] text-zinc-600 sm:text-[9px]">Oracle</span>
             <NumberTicker
               value={displayOracle > 0 ? displayOracle : null}
               fallback="—"
@@ -1130,32 +1118,39 @@ export function BTCChart({
                 minimumFractionDigits: displayStatDecimals,
                 maximumFractionDigits: displayStatDecimals,
               }}
-              className="font-semibold text-white"
+              className="truncate font-semibold text-white"
             />
           </div>
-          <div className="flex flex-col shrink-0 min-w-[64px]">
-            <span className="text-zinc-600 text-[9px]">24h Change</span>
-            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
+              <span className="sm:hidden">24h</span>
+              <span className="hidden sm:inline">24h Change</span>
+            </span>
+            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-green-400"} truncate font-semibold`}>
               {displayChange}
             </span>
           </div>
-          <div className="flex flex-col shrink-0 min-w-[64px]">
-            <span className="text-zinc-600 text-[9px]">24h Volume</span>
-            <span className="text-white font-semibold">{displayVolume}</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
+              <span className="sm:hidden">Volume</span>
+              <span className="hidden sm:inline">24h Volume</span>
+            </span>
+            <span className="truncate font-semibold text-white">{displayVolume}</span>
           </div>
-          <div className="flex flex-col shrink-0 min-w-[72px]">
-            <span className="text-zinc-600 text-[9px]">Open Interest</span>
-            <span className="text-white font-semibold">{displayOpenInterest}</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
+              <span className="sm:hidden">OI</span>
+              <span className="hidden sm:inline">Open Interest</span>
+            </span>
+            <span className="truncate font-semibold text-white">{displayOpenInterest}</span>
           </div>
-          <div className="flex flex-col shrink-0 min-w-[56px]">
-            <span className="text-zinc-600 text-[9px]">Funding</span>
-            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-green-400"} font-semibold`}>
+          <div className="flex min-w-0 flex-col text-right">
+            <span className="text-[8px] text-zinc-600 sm:text-[9px]">Funding</span>
+            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-green-400"} truncate font-semibold`}>
               {displayFunding}
             </span>
           </div>
         </div>
-        {/* Right fade to hint horizontal scroll */}
-        <div className="absolute inset-y-0 right-0 w-10 pointer-events-none bg-gradient-to-l from-[#141414] to-transparent" />
       </div>
 
       {/* Chart + subtle overlay controls */}

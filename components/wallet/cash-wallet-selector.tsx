@@ -20,6 +20,7 @@ import {
   type EvmCctpSourceChain,
 } from "@/lib/evm-cctp";
 import { cn } from "@/lib/utils";
+import { getPreferredWalletIcon, isRainbowWallet } from "@/lib/wallet-utils";
 
 type AnyWallet = AdapterWallet | AdapterNotDetectedWallet;
 type WalletChain = "Aptos" | "Solana" | "EVM";
@@ -97,10 +98,13 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
         return !isInstallRequired(wallet)
           || popular.has(baseWalletName(wallet.name).toLowerCase());
       });
-      result[chain] = dedupeWallets([
+      const deduped = dedupeWallets([
         ...matching.filter((wallet) => !isInstallRequired(wallet)),
         ...matching.filter((wallet) => isInstallRequired(wallet)),
       ]);
+      result[chain] = chain === "EVM"
+        ? deduped.sort((a, b) => Number(isRainbowWallet(b.name)) - Number(isRainbowWallet(a.name)))
+        : deduped;
     }
     return result;
   }, [allWallets, socialNames]);
@@ -178,12 +182,13 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
   const walletRow = (wallet: AnyWallet) => {
     const needsInstall = isInstallRequired(wallet);
     const displayName = baseWalletName(wallet.name);
+    const walletIcon = getPreferredWalletIcon(wallet.name, wallet.icon);
     const rowClass = "flex min-h-12 w-full items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.035] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.07]";
     const identity = (
       <span className="flex min-w-0 items-center gap-3">
-        {wallet.icon ? (
+        {walletIcon ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={wallet.icon} alt="" className="size-7 shrink-0 rounded-md object-contain" />
+          <img src={walletIcon} alt="" className="size-7 shrink-0 rounded-md object-contain" />
         ) : (
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-xs font-bold text-zinc-400">
             {displayName.charAt(0)}

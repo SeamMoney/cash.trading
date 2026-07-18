@@ -9,7 +9,7 @@ import { DecibelAccountManager } from "@/components/trade/DecibelAccountManager"
 import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
-import { formatWalletConnectionName, getChainFromWallet } from "@/lib/wallet-utils";
+import { formatWalletConnectionName, getChainFromWallet, getPreferredWalletIcon } from "@/lib/wallet-utils";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -42,6 +42,9 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   const walletDisplayName = wallet?.name
     ? formatWalletConnectionName(wallet.name, activeEvmSourceChain)
     : "Wallet";
+  const walletIcon = wallet?.name
+    ? getPreferredWalletIcon(wallet.name, wallet.icon)
+    : wallet?.icon;
 
   // The app's Decibel network and the wallet's own network are independent; a
   // mismatch makes testnet-only calls (e.g. the USDC faucet) fail in the wallet
@@ -92,8 +95,8 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
     <div className="space-y-5 py-4 sm:pb-0 sm:pt-5">
           <div className="flex items-center gap-3">
             <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-white/[0.04]">
-              {wallet?.icon ? (
-                <img src={wallet.icon} alt="" className="size-10" />
+              {walletIcon ? (
+                <img src={walletIcon} alt="" className="size-10" />
               ) : (
                 <div className="flex size-10 items-center justify-center bg-accent/10">
                   <span className="text-accent font-bold text-[16px]">

@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { useWallet } from '@aptos-labs/wallet-adapter-react'
 import { useMockData } from './mock-data-context'
 import { MOCK_LEADERBOARD, MOCK_POINTS_DATA } from '@/lib/mock-data'
+import { useDecibelWalletIdentity } from '@/hooks/useDecibelWalletIdentity'
 
 export interface GlobalStats {
   total_points: number
@@ -83,7 +84,7 @@ const PointsDataContext = createContext<PointsDataContextType>({
 })
 
 // localStorage cache helpers
-const CACHE_KEY = 'cash_trading_points_cache_v2'
+const CACHE_KEY = 'cash_trading_points_cache_v3'
 
 interface CachedData {
   globalStats: GlobalStats | null
@@ -124,9 +125,13 @@ function writeCache(data: Omit<CachedData, 'timestamp'>) {
 }
 
 export function PointsDataProvider({ children }: { children: ReactNode }) {
-  const { account } = useWallet()
+  const { connected } = useWallet()
+  const { ownerAddress } = useDecibelWalletIdentity()
   const { isMockMode } = useMockData()
-  const addr = account?.address?.toString() || null
+  // Rainbow and other x-chain wallets expose an adapter address that is not
+  // the Decibel owner account. Points, ranks, vault shares, and subaccounts
+  // are all keyed by the derived owner address.
+  const addr = connected && ownerAddress ? ownerAddress : null
 
   // Cache hydration happens AFTER mount: reading localStorage in useState
   // initializers made the client's first render differ from the server's
@@ -193,7 +198,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
 
     // Parse each response into a JSON promise — each resolves independently
     const userJsonP = addr
-      ? fetchJson(`/api/predeposit/user?account=${addr}`)
+      ? fetchJson(`/api/predeposit/points?account=${addr}`)
       : Promise.resolve(null)
     const totalJsonP = fetchJson('/api/predeposit/total')
     const lbJsonP = fetchJson('/api/predeposit/leaderboard?limit=100')

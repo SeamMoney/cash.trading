@@ -2,11 +2,11 @@
 
 import { useState } from "react"
 import { Trophy, Medal, Award, Search, RefreshCw, Loader2, ExternalLink } from "lucide-react"
-import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { usePointsData } from "@/contexts/points-data-context"
+import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity"
 
 export function Leaderboard() {
-  const { account } = useWallet()
+  const { ownerAddress } = useDecibelWalletIdentity()
   const { leaderboardEntries, userRank, leaderboardLoading, refresh } = usePointsData()
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -114,8 +114,8 @@ export function Leaderboard() {
               ) : (
                 filteredEntries.map((entry) => {
                   const isCurrentUser =
-                    account?.address &&
-                    entry.account?.toLowerCase() === account.address.toString().toLowerCase()
+                    ownerAddress &&
+                    entry.account?.toLowerCase() === ownerAddress.toLowerCase()
 
                   return (
                     <tr

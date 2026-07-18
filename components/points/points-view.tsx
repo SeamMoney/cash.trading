@@ -6,17 +6,21 @@ import { PointsStats } from "@/components/points/points-stats"
 import { Leaderboard } from "@/components/points/leaderboard"
 import { PointsCalculator } from "@/components/points/points-calculator"
 import { FarmingTips } from "@/components/points/farming-tips"
+import { UserAnalytics } from "@/components/points/user-analytics"
 import { ChevronDown, ChevronUp, TrendingUp, Calculator } from "lucide-react"
 
 export function PointsView() {
   const [showLeaderboard, setShowLeaderboard] = useState(true)
   const [showCalculator, setShowCalculator] = useState(false)
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
 
   return (
     <PointsDataProvider>
       <div className="space-y-3">
         {/* Main Stats */}
         <PointsStats />
+
+        <UserAnalytics account={selectedAccount} />
 
         {/* Collapsible Leaderboard */}
         <div>
@@ -37,7 +41,12 @@ export function PointsView() {
           </button>
           {showLeaderboard && (
             <div className="border border-white/10 border-t-0 p-2 sm:p-3">
-              <Leaderboard />
+              <Leaderboard
+                onSelectAccount={(account) => {
+                  setSelectedAccount(account)
+                  document.getElementById('account-intelligence')?.scrollIntoView({ block: 'start' })
+                }}
+              />
             </div>
           )}
         </div>

@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       referral_points: points.referralAmps,
       streak_points: points.streakAmps,
       bonus_points: points.bonusAmps,
+      realized_pnl: points.realizedPnl,
       season: 1,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {

@@ -16,6 +16,10 @@ export function PointsStats() {
     if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`
     return `$${n.toFixed(2)}`
   }
+  const formatAmps = (num: number) =>
+    num < 1
+      ? num.toFixed(4)
+      : num.toLocaleString(undefined, { maximumFractionDigits: 2 })
 
   const isLive = globalStats?.status === 'live'
   const dlpFillPct = globalStats?.dlp_cap
@@ -135,12 +139,33 @@ export function PointsStats() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+            <div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Total AMPs</div>
+              <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
+                {userData ? formatAmps(userData.points) : '—'}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Rank</div>
+              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
+                {userData?.rank ? `#${userData.rank.toLocaleString()}` : '—'}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Realized P&amp;L</div>
+              <div className={`text-base sm:text-lg font-mono font-bold tabular-nums leading-tight ${(userData?.realized_pnl ?? 0) < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                {userData ? formatNumber(userData.realized_pnl ?? 0) : '—'}
+              </div>
+            </div>
+
             <div>
               <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
-                {vaultUserData ? 'DLP Value' : 'DLP Contributed'}
+                {vaultUserData ? 'Vault Value' : 'Vault Contributed'}
               </div>
-              <div className="text-xl sm:text-2xl font-mono font-bold text-primary tabular-nums leading-tight">
+              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
                 {vaultUserData
                   ? formatNumber(vaultUserData.currentValue)
                   : userData
@@ -148,39 +173,25 @@ export function PointsStats() {
                     : '—'}
               </div>
             </div>
+          </div>
 
-            <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Deposited</div>
-              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {vaultUserData
-                  ? formatNumber(vaultUserData.totalDeposited)
-                  : userData
-                    ? formatNumber(userData.total_deposited)
-                    : '—'}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">Vault AMPs</div>
-              <div className="text-base sm:text-lg font-mono font-bold text-white tabular-nums leading-tight">
-                {userData
-                  ? (userData.vault_points ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                  : '—'}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[9px] sm:text-[10px] font-mono text-zinc-500 uppercase">
-                Total AMPs
-              </div>
-              <div className="text-base sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
-                {userData
-                  ? userData.points < 1
-                    ? userData.points.toFixed(4)
-                    : userData.points.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                  : '—'}
-              </div>
-            </div>
+          <div className="mt-3 grid grid-cols-2 gap-px border border-white/5 bg-white/5 sm:grid-cols-5">
+            {userData
+              ? [
+                  ['Trading', userData.trading_points ?? 0],
+                  ['Streak', userData.streak_points ?? 0],
+                  ['Vault', userData.vault_points ?? 0],
+                  ['Referral', userData.referral_points ?? 0],
+                  ['Bonus', userData.bonus_points ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label as string} className="flex items-center justify-between bg-black/70 px-2.5 py-2 sm:block">
+                    <div className="text-[9px] font-mono uppercase text-zinc-600">{label}</div>
+                    <div className="font-mono text-[11px] tabular-nums text-zinc-300 sm:mt-1">
+                      {formatAmps(value as number)}
+                    </div>
+                  </div>
+                ))
+              : null}
           </div>
         </div>
       ) : (

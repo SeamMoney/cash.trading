@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
           referral_points: entry.referralAmps,
           streak_points: entry.streakAmps,
           bonus_points: entry.bonusAmps,
+          realized_pnl: entry.realizedPnl,
           total_deposited: '0',
           dlp_balance: '0',
           ua_balance: '0',

@@ -5,7 +5,7 @@ import { Trophy, Medal, Award, Search, RefreshCw, Loader2, ExternalLink } from "
 import { usePointsData } from "@/contexts/points-data-context"
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity"
 
-export function Leaderboard() {
+export function Leaderboard({ onSelectAccount }: { onSelectAccount?: (account: string) => void }) {
   const { ownerAddress } = useDecibelWalletIdentity()
   const { leaderboardEntries, userRank, leaderboardLoading, refresh } = usePointsData()
   const [searchQuery, setSearchQuery] = useState('')
@@ -126,22 +126,32 @@ export function Leaderboard() {
                         {getRankIcon(entry.rank)}
                       </td>
                       <td className="px-2 py-1.5">
-                        <a
-                          href={`https://explorer.aptoslabs.com/account/${entry.account}?network=mainnet`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-primary"
-                        >
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onSelectAccount?.(entry.account)}
+                            className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-primary"
+                            aria-label={`Analyze ${entry.account}`}
+                          >
                           <span className="truncate max-w-[72px] sm:max-w-none">
                             {shortenAddress(entry.account)}
                           </span>
-                          <ExternalLink className="size-3 shrink-0 text-zinc-500" />
                           {isCurrentUser && (
                             <span className="text-[8px] font-mono uppercase bg-primary/10 text-primary px-1 py-px shrink-0">
                               You
                             </span>
                           )}
-                        </a>
+                          </button>
+                          <a
+                            href={`https://explorer.aptoslabs.com/account/${entry.account}?network=mainnet`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Open ${entry.account} in Aptos Explorer`}
+                            className="text-zinc-600 hover:text-primary"
+                          >
+                            <ExternalLink className="size-3" aria-hidden="true" />
+                          </a>
+                        </div>
                       </td>
                       <td className="px-2 py-1.5 text-right">
                         <span className="font-mono font-bold text-primary tabular-nums text-[11px] sm:text-xs">

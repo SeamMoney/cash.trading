@@ -31,6 +31,7 @@ export interface UserData {
   referral_points?: number
   streak_points?: number
   bonus_points?: number
+  realized_pnl?: number
 }
 
 export interface VaultUserData {
@@ -59,6 +60,7 @@ export interface LeaderboardEntry {
   referral_points?: number
   streak_points?: number
   bonus_points?: number
+  realized_pnl?: number
 }
 
 interface PointsDataContextType {
@@ -230,6 +232,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
             referral_points: json.referral_points || 0,
             streak_points: json.streak_points || 0,
             bonus_points: json.bonus_points || 0,
+            realized_pnl: json.realized_pnl ?? 0,
           }
           resolvedUser = ud
           setUserData(ud)
@@ -302,6 +305,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
         referral_points: userJson.referral_points || 0,
         streak_points: userJson.streak_points || 0,
         bonus_points: userJson.bonus_points || 0,
+        realized_pnl: userJson.realized_pnl ?? 0,
       } : null)
 
       // Merge vault DLP into user data so existing UI picks it up
@@ -328,6 +332,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
           referral_points: predepositData?.referral_points || 0,
           streak_points: predepositData?.streak_points || 0,
           bonus_points: predepositData?.bonus_points || 0,
+          realized_pnl: predepositData?.realized_pnl ?? 0,
         }
         setUserData(localUserData)
       }
@@ -358,6 +363,7 @@ export function PointsDataProvider({ children }: { children: ReactNode }) {
               referral_points: localUserData.referral_points || 0,
               streak_points: localUserData.streak_points || 0,
               bonus_points: localUserData.bonus_points || 0,
+              realized_pnl: localUserData.realized_pnl ?? 0,
             }
           } else if (totalDep > 0) {
             const userPts = localUserData.points || 0

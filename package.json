@@ -15,6 +15,7 @@
     "test:charts": "tsx scripts/chart-rendering-selftest.ts",
     "test:cash-rewards": "tsx scripts/cash-rewards-selftest.ts",
     "test:cash-rewards:testnet": "tsx scripts/cash-rewards-testnet-canary.ts",
+    "depth:storage": "node scripts/depth-storage-doctor.mjs",
     "test:reliability": "tsx scripts/app-reliability-selftest.ts",
     "start": "next start",
     "postinstall": "prisma generate"
@@ -89,6 +90,7 @@
     "motion": "^12.34.3",
     "next": "^16.2.10",
     "next-themes": "latest",
+    "pg": "^8.22.0",
     "pinets": "^0.9.16",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",

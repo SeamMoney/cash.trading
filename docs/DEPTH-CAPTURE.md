@@ -46,6 +46,15 @@ DRY_RUN=1 node scripts/depth-capture-worker.mjs
 
 # real run: creates the table/index if missing, then captures forever
 node scripts/depth-capture-worker.mjs
+
+# storage report only (the default is always read-only)
+pnpm depth:storage
+
+# explicitly audit the production env when local env files differ
+ENV_FILE=.env.production pnpm depth:storage
+
+# compact one bounded batch after reviewing the report
+APPLY=1 CONFIRM_DEPTH_COMPACTION=compact pnpm depth:storage
 ```
 
 Env (read from process env, falling back to `.env` at repo root):
@@ -54,15 +63,16 @@ Env (read from process env, falling back to `.env` at repo root):
 | -------------------- | ------- | ------------------------------------ |
 | `DATABASE_URL`       | —       | Postgres DSN (required unless dry)   |
 | `GEOMI_API_KEY`      | —       | Aptos Build key (required)           |
-| `CAPTURE_INTERVAL_S` | 5       | Seconds between capture cycles       |
+| `CAPTURE_INTERVAL_S` | 60      | Seconds between capture cycles       |
 | `DEPTH_LEVELS`       | 10      | Levels per side stored               |
-| `RETENTION_DAYS`     | 60      | Hourly delete of rows older than this|
+| `RAW_RETENTION_DAYS` | 3       | Full books kept before compaction     |
+| `SUMMARY_BUCKET_MINUTES` | 15  | Long-term rollup resolution           |
+| `SUMMARY_RETENTION_DAYS` | 365 | Long-term rollup retention            |
+| `COMPACTION_BATCH_HOURS` | 6   | Maximum raw time span per sweep       |
 | `DRY_RUN`            | unset   | `1` = one cycle, print, exit         |
 
-Dependency: `pg`. It currently resolves transitively in `node_modules`, but
-it is **not** a direct dependency — run `pnpm add pg` before relying on the
-worker in production. The script guards the import and exits with a clear
-message if `pg` is missing.
+Dependency: `pg` is a direct production dependency. The worker still guards
+the import and exits with a clear message if an incomplete install omits it.
 
 ## Schema
 
@@ -83,7 +93,15 @@ CREATE TABLE IF NOT EXISTS decibel_depth_snapshots (
 );
 CREATE INDEX IF NOT EXISTS decibel_depth_snapshots_market_ts_idx
   ON decibel_depth_snapshots (market_addr, ts);
+CREATE INDEX IF NOT EXISTS decibel_depth_snapshots_ts_idx
+  ON decibel_depth_snapshots (ts);
 ```
+
+Long-term data is written to `decibel_depth_summaries`. Each 15-minute row
+retains mid-price OHLC, spread min/average/max, sample count, the first/last
+timestamps, and the final full bid/ask ladder from the bucket. This preserves
+useful liquidity and slippage evidence without keeping every repeated JSONB
+book forever.
 
 ## Behavior
 
@@ -95,7 +113,12 @@ CREATE INDEX IF NOT EXISTS decibel_depth_snapshots_market_ts_idx
 - **Per-market failures** are logged and skipped — they never crash the loop.
 - **Backoff**: a cycle with zero successful inserts doubles the wait
   (capped at 5 min) until a healthy cycle resets it.
-- **Retention**: hourly `DELETE … WHERE ts < now() - RETENTION_DAYS days`.
+- **Compaction**: hourly, one bounded raw span is rolled up transactionally,
+  then those source rows are removed. A Postgres advisory lock prevents the
+  worker and storage doctor from compacting concurrently. Closed buckets only
+  are processed, so a bucket is never split between runs.
+- **Retention**: full books remain hot for `RAW_RETENTION_DAYS`; summaries
+  remain for `SUMMARY_RETENTION_DAYS`.
 - **Shutdown**: SIGINT/SIGTERM aborts in-flight fetches, closes the pool,
   exits 0.
 - Secrets (`GEOMI_API_KEY`, `DATABASE_URL`) are never printed.
@@ -103,24 +126,50 @@ CREATE INDEX IF NOT EXISTS decibel_depth_snapshots_market_ts_idx
 ## Storage math
 
 Measured on the first live cycle (2026-06-13, 39 open markets, 10
-levels/side): **~15.6 KB/cycle**.
+levels/side): **~15.6 KB/cycle**. The original 5-second/60-day defaults could
+grow toward 15.4 GB and caused the Neon free project to exhaust its 0.54 GB
+allowance. They are intentionally no longer the defaults.
 
-| Interval | Cycles/day | Est. ingest/day | At 60 d retention |
-| -------- | ---------- | --------------- | ----------------- |
-| 5 s      | 17,280     | ~257 MB         | ~15.4 GB          |
-| 15 s     | 5,760      | ~86 MB          | ~5.2 GB           |
-| 30 s     | 2,880      | ~43 MB          | ~2.6 GB           |
+| Interval | Cycles/day | Est. raw/day | At 3 d raw retention |
+| -------- | ---------- | ------------ | -------------------- |
+| 5 s      | 17,280     | ~257 MB      | ~771 MB              |
+| 30 s     | 2,880      | ~43 MB       | ~129 MB              |
+| 60 s     | 1,440      | ~21.5 MB     | ~64.5 MB             |
 
-The worker logs its own estimate from the first real cycle on every startup.
-If the VPS disk is small, start with `CAPTURE_INTERVAL_S=15` — 15 s depth is
-still far better than no depth, and the interval can be tightened later
-without any schema change. For long-horizon retention consider rolling old
-rows into 1-min downsamples before deletion (future work).
+The worker logs both its raw and summary estimates from the first real cycle
+on every startup. The 60-second default is deliberate: this dataset currently
+has no latency-sensitive production reader, while the live app uses Decibel's
+stream directly. Tighten capture only after measuring the resulting storage
+budget.
 
 Note the actual cycle takes ~6–11 s with 39 markets (stagger + upstream RTT),
-so at `CAPTURE_INTERVAL_S=5` the effective cadence is "back-to-back", roughly
-one snapshot per market every ~10 s. The math above is therefore an upper
-bound at 5 s.
+so at `CAPTURE_INTERVAL_S=5` the effective cadence is "back-to-back". The
+60-second default leaves upstream and database headroom.
+
+## Storage doctor and existing data
+
+`pnpm depth:storage` connects read-only and reports row counts, date ranges,
+relation sizes, and how many rows exceed raw retention. It does not even create
+the summary table in dry-run mode. When multiple env files have different
+databases, set `ENV_FILE=.env.production` (or the intended file) explicitly.
+Applying compaction requires both flags:
+
+```bash
+APPLY=1 CONFIRM_DEPTH_COMPACTION=compact pnpm depth:storage
+```
+
+One invocation processes one six-hour batch by default. Use `MAX_BATCHES=N`
+only after reviewing the first result. Compaction is transactional: summary
+rows and raw deletion commit together, or neither does. Deleted Postgres pages
+become reusable immediately; Neon may take a normal garbage-collection cycle
+to show lower physical storage. Do not run `VACUUM FULL` against production
+without a planned maintenance window because it rewrites and locks the table.
+
+Production also calls `/api/cron/depth-compact` hourly. Vercel authenticates
+the route with `Authorization: Bearer $CRON_SECRET`; it uses the same
+transactional compactor and advisory lock as the worker. This keeps storage
+bounded even if a stale worker process is still running. `DATABASE_URL` and
+`CRON_SECRET` must both be configured in the Vercel Production environment.
 
 ## VPS notes
 

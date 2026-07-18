@@ -18,9 +18,12 @@
  * Environment (read from process.env, falling back to .env at repo root):
  *   DATABASE_URL        Postgres connection string   (required unless DRY_RUN)
  *   GEOMI_API_KEY       Aptos Build / Geomi API key  (required)
- *   CAPTURE_INTERVAL_S  Seconds between cycles       (default 5)
+ *   CAPTURE_INTERVAL_S  Seconds between cycles       (default 60)
  *   DEPTH_LEVELS        Levels per side to store     (default 10)
- *   RETENTION_DAYS      Delete rows older than this  (default 60)
+ *   RAW_RETENTION_DAYS  Full books kept this long    (default 3)
+ *   SUMMARY_BUCKET_MINUTES  Long-term rollup size    (default 15)
+ *   SUMMARY_RETENTION_DAYS  Rollups kept this long   (default 365)
+ *   COMPACTION_BATCH_HOURS  Max raw span per sweep   (default 6)
  *   DRY_RUN             "1" = one cycle, print rows, no DB, exit
  *
  * Dependency: `pg` (node-postgres). It currently resolves transitively in
@@ -71,6 +74,11 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import {
+  compactDepthBatch,
+  ensureDepthStorageTables,
+} from "./lib/depth-storage.mjs";
+
 // ---------------------------------------------------------------------------
 // Minimal .env loader (no dependency, never prints values)
 // ---------------------------------------------------------------------------
@@ -108,9 +116,12 @@ loadDotEnv();
 
 const API_BASE = "https://api.mainnet.aptoslabs.com/decibel/api/v1";
 const DRY_RUN = process.env.DRY_RUN === "1";
-const CAPTURE_INTERVAL_S = positiveInt(process.env.CAPTURE_INTERVAL_S, 5);
+const CAPTURE_INTERVAL_S = positiveInt(process.env.CAPTURE_INTERVAL_S, 60);
 const DEPTH_LEVELS = positiveInt(process.env.DEPTH_LEVELS, 10);
-const RETENTION_DAYS = positiveInt(process.env.RETENTION_DAYS, 60);
+const RAW_RETENTION_DAYS = positiveInt(process.env.RAW_RETENTION_DAYS, 3);
+const SUMMARY_BUCKET_MINUTES = positiveInt(process.env.SUMMARY_BUCKET_MINUTES, 15);
+const SUMMARY_RETENTION_DAYS = positiveInt(process.env.SUMMARY_RETENTION_DAYS, 365);
+const COMPACTION_BATCH_HOURS = positiveInt(process.env.COMPACTION_BATCH_HOURS, 6);
 const STAGGER_MS = 100; // delay between per-market upstream calls
 const MARKETS_REFRESH_MS = 60 * 60 * 1000; // refresh market list hourly
 const RETENTION_SWEEP_MS = 60 * 60 * 1000; // retention delete hourly
@@ -173,7 +184,8 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS decibel_depth_snapshots_market_ts_idx
       ON decibel_depth_snapshots (market_addr, ts)
   `);
-  log("connected to Postgres; table + index ensured");
+  await ensureDepthStorageTables(pool);
+  log("connected to Postgres; raw + summary tables ensured");
 }
 
 // ---------------------------------------------------------------------------
@@ -270,12 +282,20 @@ async function insertSnapshots(rows) {
 }
 
 async function runRetentionSweep() {
-  const res = await pool.query(
-    `DELETE FROM decibel_depth_snapshots
-      WHERE ts < now() - make_interval(days => $1)`,
-    [RETENTION_DAYS]
+  const result = await compactDepthBatch(pool, {
+    rawRetentionDays: RAW_RETENTION_DAYS,
+    summaryBucketMinutes: SUMMARY_BUCKET_MINUTES,
+    summaryRetentionDays: SUMMARY_RETENTION_DAYS,
+    batchHours: COMPACTION_BATCH_HOURS,
+  });
+  if (result.skipped) {
+    log(`compaction sweep: ${result.skipped}`);
+    return;
+  }
+  log(
+    `compaction sweep: raw_deleted=${result.deleted} summaries=${result.summaries} ` +
+      `summary_expired=${result.expiredSummaries} through=${result.batchEnd}`
   );
-  log(`retention sweep: deleted ${res.rowCount} rows older than ${RETENTION_DAYS}d`);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,12 +317,16 @@ function logStorageEstimate(rows) {
   const perCycle = payloadBytes + rows.length * 120;
   const cyclesPerDay = Math.floor(86_400 / CAPTURE_INTERVAL_S);
   const perDay = perCycle * cyclesPerDay;
+  const summaryRowsPerDay = Math.ceil(86_400 / (SUMMARY_BUCKET_MINUTES * 60));
+  const summaryPerDay = perCycle * summaryRowsPerDay;
   const mb = (n) => (n / 1024 / 1024).toFixed(1);
   log(
     `storage estimate: ~${perCycle} bytes/cycle (${rows.length} markets, ` +
       `${DEPTH_LEVELS} levels/side) x ${cyclesPerDay} cycles/day ` +
-      `= ~${mb(perDay)} MB/day, ~${mb(perDay * RETENTION_DAYS)} MB at ` +
-      `${RETENTION_DAYS}d retention`
+      `= ~${mb(perDay)} MB/day; hot raw ~${mb(perDay * RAW_RETENTION_DAYS)} MB ` +
+      `at ${RAW_RETENTION_DAYS}d, long-term summaries up to ` +
+      `~${mb(summaryPerDay * SUMMARY_RETENTION_DAYS)} MB at ` +
+      `${SUMMARY_BUCKET_MINUTES}m/${SUMMARY_RETENTION_DAYS}d`
   );
 }
 
@@ -339,8 +363,13 @@ async function captureCycle(markets) {
 async function main() {
   log(
     `starting (interval=${CAPTURE_INTERVAL_S}s, levels=${DEPTH_LEVELS}, ` +
-      `retention=${RETENTION_DAYS}d, dryRun=${DRY_RUN})`
+      `rawRetention=${RAW_RETENTION_DAYS}d, summary=${SUMMARY_BUCKET_MINUTES}m/` +
+      `${SUMMARY_RETENTION_DAYS}d, dryRun=${DRY_RUN})`
   );
+
+  if (process.env.RETENTION_DAYS) {
+    log("RETENTION_DAYS is obsolete and ignored; use RAW_RETENTION_DAYS instead");
+  }
 
   if (!DRY_RUN) await initDb();
 
@@ -408,7 +437,8 @@ async function main() {
       log(`  failures: ${failures.slice(0, 5).join(" | ")}${failures.length > 5 ? " | …" : ""}`);
     }
 
-    // Hourly retention sweep (never crash the loop)
+    // Hourly bounded compaction sweep (never crash the loop). Raw books are
+    // summarized transactionally before their source rows are removed.
     if (Date.now() - lastRetentionAt >= RETENTION_SWEEP_MS) {
       lastRetentionAt = Date.now();
       try {

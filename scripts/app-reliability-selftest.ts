@@ -102,6 +102,11 @@ const botDashboard = readFileSync("components/launchpad/BotDashboard.tsx", "utf8
 const sharedHeader = readFileSync("components/layout/Header.tsx", "utf8");
 const automationPage = readFileSync("app/automation/page.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
+const depthCaptureWorker = readFileSync("scripts/depth-capture-worker.mjs", "utf8");
+const depthStorageDoctor = readFileSync("scripts/depth-storage-doctor.mjs", "utf8");
+const depthStorage = readFileSync("scripts/lib/depth-storage.mjs", "utf8");
+const depthCompactionCron = readFileSync("app/api/cron/depth-compact/route.ts", "utf8");
+const depthVercelConfig = JSON.parse(readFileSync("vercel.json", "utf8"));
 const sponsorSubmitRoute = readFileSync("app/api/decibel/sponsor-submit/route.ts", "utf8");
 const evmDerivedAptos = readFileSync("lib/evm-derived-aptos.ts", "utf8");
 const txUtils = readFileSync("lib/tx-utils.ts", "utf8");
@@ -160,6 +165,7 @@ const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
 };
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   dependencies: Record<string, string>;
+  scripts?: Record<string, string>;
   engines?: { node?: string };
   pnpm?: { overrides?: Record<string, string> };
   packageManager?: string;
@@ -593,6 +599,31 @@ assert.ok(!tradePage.includes("buildDemoStrategyCurve"), "strategy vault charts 
 assert.ok(!tradePage.includes("subscribers"), "strategy cards must not fabricate subscriber counts");
 assert.ok(!tradePage.includes("ScheduleTradeModal"), "the trade page must not expose disabled automation");
 assert.ok(!decibelDepthRoute.includes("generateSyntheticDepth"), "order-book depth must come from Decibel");
+assert.match(depthCaptureWorker, /CAPTURE_INTERVAL_S, 60/);
+assert.match(depthCaptureWorker, /RAW_RETENTION_DAYS, 3/);
+assert.match(depthCaptureWorker, /compactDepthBatch/);
+assert.ok(
+  !depthCaptureWorker.includes("DELETE FROM decibel_depth_snapshots"),
+  "the capture worker must summarize raw books before removing them",
+);
+assert.match(depthStorage, /CREATE TABLE IF NOT EXISTS \$\{SUMMARY_TABLE\}/);
+assert.match(depthStorage, /pg_try_advisory_xact_lock/);
+assert.ok(
+  depthStorage.indexOf("INSERT INTO ${SUMMARY_TABLE}") < depthStorage.indexOf("DELETE FROM ${RAW_TABLE}"),
+  "summary insertion must precede raw deletion",
+);
+assert.match(depthStorageDoctor, /const APPLY = process\.env\.APPLY === "1"/);
+assert.match(depthStorageDoctor, /CONFIRM_DEPTH_COMPACTION === "compact"/);
+assert.match(depthCompactionCron, /if \(!cronSecret\)/);
+assert.match(depthCompactionCron, /Authorization: Bearer \$CRON_SECRET/);
+assert.match(depthCompactionCron, /compactDepthBatch/);
+assert.ok(
+  depthVercelConfig.crons?.some(
+    (cron: { path?: string; schedule?: string }) =>
+      cron.path === "/api/cron/depth-compact" && cron.schedule === "17 * * * *",
+  ),
+  "Vercel must run the protected depth compactor hourly",
+);
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");
 assert.match(sponsorSubmitRoute, /checkApiRateLimit\(req, "sponsor-submit"/);
@@ -907,6 +938,8 @@ for (const removedDependency of [
 assert.equal(packageJson.dependencies.next, "^16.2.10");
 assert.equal(packageJson.dependencies.ws, "^8.21.0");
 assert.equal(packageJson.dependencies["@noble/hashes"], "1.8.0");
+assert.equal(packageJson.dependencies.pg, "^8.22.0");
+assert.equal(packageJson.scripts?.["depth:storage"], "node scripts/depth-storage-doctor.mjs");
 assert.equal(packageJson.pnpm?.overrides?.["uuid@<11.1.1"], "11.1.1");
 assert.equal(packageJson.packageManager, "pnpm@10.19.0");
 assert.equal(packageJson.engines?.node, "22.x");

@@ -9,6 +9,7 @@ import {
   buildCreateDecibelVaultPayload,
   buildDelegateDecibelVaultPayload,
   buildDepositDecibelVaultPayload,
+  buildWithdrawDecibelVaultPayload,
 } from "../lib/decibel-vaults";
 import {
   decodeMoveU8Vector,
@@ -322,6 +323,11 @@ assert.ok(
   !tradePage.includes(".filter((v) => v.vault_type === \"protocol\""),
   "the vault carousel must show every active vault returned by Decibel",
 );
+assert.match(tradePage, /vault-history\?vault=\$\{v\.address\}&range=all&type=pnl/);
+assert.match(tradePage, />\s*Deposit\s*</);
+assert.match(tradePage, />\s*Manage\s*</);
+assert.match(positionsComponent, /Vault Positions \(\{vaultHoldings\.length\}\)/);
+assert.match(positionsComponent, /\/api\/vault\/user\?account=/);
 
 assert.match(cronRoute, /if \(!cronSecret\)/);
 assert.match(keeperRoute, /if \(!cronSecret\)/);
@@ -681,6 +687,8 @@ assert.match(decibelMarketsRoute, /checkApiRateLimit\(req, "decibel-markets"/);
 assert.match(decibelVaultStatusRoute, /isValidAptosAddress/);
 assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);
 assert.match(vaultActionModal, /network: indicator\.network/);
+assert.match(vaultActionModal, /endpoint: "\/api\/decibel\/vaults\/withdraw"/);
+assert.match(vaultActionModal, /shares: mode === "withdraw"/);
 assert.match(decibelVaultExtractRoute, /checkApiRateLimit\(req, "decibel-vault-extract"/);
 assert.match(decibelVaultExtractRoute, /\^0x\[0-9a-fA-F\]\{64\}\$/);
 assert.match(decibelVaultExtractRoute, /expectedEventType/);
@@ -746,6 +754,15 @@ assert.throws(
     network: "mainnet",
   }),
   /amountRaw must fit in u64/,
+);
+assert.equal(
+  buildWithdrawDecibelVaultPayload({
+    subaccount: "0x1",
+    vaultAddress: "0x2",
+    sharesRaw: "2500000",
+    network: "mainnet",
+  }).sharesRaw,
+  "2500000",
 );
 assert.throws(
   () => buildDelegateDecibelVaultPayload({

@@ -1,4 +1,4 @@
-export type VaultActionMode = "create" | "deposit" | "delegate" | "status";
+export type VaultActionMode = "create" | "deposit" | "withdraw" | "delegate" | "status";
 
 export type VaultIndicatorInfo = {
   id?: string | number;

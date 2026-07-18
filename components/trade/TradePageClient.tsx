@@ -92,7 +92,7 @@ function useDecibelVaults(enabled = true) {
           void (async () => {
             try {
               const hr = await fetch(
-                `/api/decibel/vault-history?vault=${v.address}&range=30d&type=pnl`,
+                `/api/decibel/vault-history?vault=${v.address}&range=all&type=pnl`,
                 { cache: "no-store" },
               );
               if (!hr.ok) {
@@ -135,7 +135,13 @@ function useDecibelVaults(enabled = true) {
   return { vaults, loading, chartData: chartDataRef.current, chartKind };
 }
 
-function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
+function VaultsPanel({
+  enabled = true,
+  onAction,
+}: {
+  enabled?: boolean;
+  onAction: (mode: "deposit" | "withdraw", vault: DecibelVault) => void;
+}) {
   const { vaults, loading, chartData, chartKind } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -254,7 +260,7 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                     <div className="flex items-baseline justify-between">
                       <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
                       <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">
-                        {chartIsReal ? "30d on-chain history" : chartUnavailable ? "" : "Loading 30d history"}
+                        {chartIsReal ? "All-time on-chain history" : chartUnavailable ? "" : "Loading all-time history"}
                       </div>
                     </div>
                     <div
@@ -345,6 +351,23 @@ function VaultsPanel({ enabled = true }: { enabled?: boolean }) {
                       <span>Max Drawdown</span>
                       <span className={vault.max_drawdown == null ? "text-[#777]" : "text-red-400"}>{vault.max_drawdown == null ? "—" : `${vault.max_drawdown.toFixed(1)}%`}</span>
                     </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onAction("deposit", vault)}
+                      className="rounded-lg bg-accent px-3 py-2 text-[12px] font-bold text-black transition-colors hover:bg-[#5dff3f]"
+                    >
+                      Deposit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAction("withdraw", vault)}
+                      className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                    >
+                      Manage
+                    </button>
                   </div>
                 </div>
                 );
@@ -857,6 +880,10 @@ export function TradePageClient({
     strategyVault?: StrategyVaultSummary;
     vaultAddress?: string | null;
   } | null>(null);
+  const [listedVaultAction, setListedVaultAction] = useState<{
+    mode: "deposit" | "withdraw";
+    vault: DecibelVault;
+  } | null>(null);
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
   const { owner, selectedSubaccount } = useDecibelSubaccounts();
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
@@ -1017,7 +1044,10 @@ export function TradePageClient({
         </div>
 
         <div ref={vaultsSectionRef} id="vaults" className="mt-6 scroll-mt-20 animate-enter">
-          <VaultsPanel enabled={vaultsActive} />
+          <VaultsPanel
+            enabled={vaultsActive}
+            onAction={(mode, vault) => setListedVaultAction({ mode, vault })}
+          />
         </div>
 
         <div ref={signalsSectionRef} id="signals" className="mt-6 scroll-mt-20 animate-enter">
@@ -1068,6 +1098,27 @@ export function TradePageClient({
             void fetchStrategyVaults();
             setVaultAction(null);
           }}
+        />
+      )}
+
+      {listedVaultAction && (
+        <VaultActionModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setListedVaultAction(null);
+          }}
+          mode={listedVaultAction.mode}
+          indicator={{
+            id: listedVaultAction.vault.address,
+            name: listedVaultAction.vault.name,
+            description: listedVaultAction.vault.description ?? "Decibel mainnet vault",
+            network: "mainnet",
+          }}
+          vaultAddress={listedVaultAction.vault.address}
+          subaccount={selectedSubaccount}
+          ownerWallet={ownerWallet}
+          signAndSubmitTransaction={signVaultTransaction}
+          onComplete={() => setListedVaultAction(null)}
         />
       )}
 

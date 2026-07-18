@@ -620,9 +620,9 @@ assert.match(depthCompactionCron, /compactDepthBatch/);
 assert.ok(
   depthVercelConfig.crons?.some(
     (cron: { path?: string; schedule?: string }) =>
-      cron.path === "/api/cron/depth-compact" && cron.schedule === "17 * * * *",
+      cron.path === "/api/cron/depth-compact" && cron.schedule === "17 4 * * *",
   ),
-  "Vercel must run the protected depth compactor hourly",
+  "Vercel must run the protected depth compactor daily",
 );
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.ok(!launchpadSignalsRoute.includes('url.searchParams.get("bot")'), "paid signal feeds must not have a public bypass");

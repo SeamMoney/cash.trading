@@ -165,8 +165,10 @@ become reusable immediately; Neon may take a normal garbage-collection cycle
 to show lower physical storage. Do not run `VACUUM FULL` against production
 without a planned maintenance window because it rewrites and locks the table.
 
-Production also calls `/api/cron/depth-compact` hourly. Vercel authenticates
-the route with `Authorization: Bearer $CRON_SECRET`; it uses the same
+Production also calls `/api/cron/depth-compact` daily. The route processes up
+to six bounded six-hour batches, so it can compact up to 36 hours of raw data
+per run and stay ahead of one day of ingest on Vercel's Hobby cron limit.
+Vercel authenticates the route with `Authorization: Bearer $CRON_SECRET`; it uses the same
 transactional compactor and advisory lock as the worker. This keeps storage
 bounded even if a stale worker process is still running. `DATABASE_URL` and
 `CRON_SECRET` must both be configured in the Vercel Production environment.

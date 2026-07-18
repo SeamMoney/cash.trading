@@ -14,6 +14,7 @@ import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { walletNetworkMismatchMessage } from "@/lib/wallet-network";
 import {
+  EVM_SOURCE_CHAIN_STORAGE_KEY,
   fetchEvmUsdcBalance,
   startEvmCctpDeposit,
   type EvmCctpSourceChain,
@@ -275,6 +276,15 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     }
   };
 
+  const selectBridgeSourceChain = useCallback((chain: BridgeSourceChain) => {
+    setBridgeSourceChain(chain);
+    try {
+      window.localStorage.setItem(EVM_SOURCE_CHAIN_STORAGE_KEY, chain);
+    } catch {
+      // The visible selector remains authoritative when storage is unavailable.
+    }
+  }, []);
+
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
   const depositExceedsWallet =
@@ -295,6 +305,15 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setStatusMessage("");
     setStatusHash("");
   }, [accountActionContext]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(EVM_SOURCE_CHAIN_STORAGE_KEY) as BridgeSourceChain | null;
+      if (saved && BRIDGE_SOURCE_CHAINS.includes(saved)) setBridgeSourceChain(saved);
+    } catch {
+      // Keep the default source chain when storage is unavailable.
+    }
+  }, []);
   const canStartEvmBridge =
     connected &&
     account &&
@@ -1402,7 +1421,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               <button
                 key={chain}
                 type="button"
-                onClick={() => setBridgeSourceChain(chain)}
+                onClick={() => selectBridgeSourceChain(chain)}
                 className={cn(
                   "rounded px-2 py-1.5 text-[10px] font-display font-semibold transition-colors",
                   bridgeSourceChain === chain

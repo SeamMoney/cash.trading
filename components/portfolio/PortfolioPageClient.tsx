@@ -83,6 +83,12 @@ type PortfolioHistoryPoint = {
   value: number;
 };
 
+type FeeSummary = {
+  fills: number;
+  totalFeesPaidUsd: number;
+  truncated: boolean;
+};
+
 type DecibelWsPosition = {
   market: string;
   size: number;
@@ -375,6 +381,9 @@ export function PortfolioPageClient() {
   const [historyPoints, setHistoryPoints] = useState<PortfolioHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null);
+  const [feeSummaryLoading, setFeeSummaryLoading] = useState(false);
+  const [feeSummaryError, setFeeSummaryError] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
@@ -384,6 +393,7 @@ export function PortfolioPageClient() {
   const [cancelingOrderIds, setCancelingOrderIds] = useState<Set<string>>(() => new Set());
   const abortRef = useRef<AbortController | null>(null);
   const historyAbortRef = useRef<AbortController | null>(null);
+  const feeSummaryAbortRef = useRef<AbortController | null>(null);
   const withdrawingRef = useRef(false);
   const withdrawalTokenRef = useRef<symbol | null>(null);
   const closingActionTokensRef = useRef(new Map<string, symbol>());
@@ -402,7 +412,7 @@ export function PortfolioPageClient() {
   const chartColor =
     chartMetric === "pnl" && (historyPoints.at(-1)?.value ?? 0) < 0
       ? "#e8774f"
-      : "#75ff47";
+      : "var(--accent)";
   const chartData = useMemo(
     () => historyPoints as unknown as Record<string, unknown>[],
     [historyPoints],
@@ -491,6 +501,58 @@ export function PortfolioPageClient() {
     void loadHistory();
     return () => controller.abort();
   }, [chartMetric, chartRange, connected, decibelNetwork, selectedSubaccount]);
+
+  useEffect(() => {
+    feeSummaryAbortRef.current?.abort();
+    if (!connected || !selectedSubaccount) {
+      setFeeSummary(null);
+      setFeeSummaryLoading(false);
+      setFeeSummaryError("");
+      return;
+    }
+
+    let activeController: AbortController | null = null;
+    const requestContext = actionContextRef.current;
+    const loadFeeSummary = async () => {
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+      feeSummaryAbortRef.current = controller;
+      setFeeSummaryLoading(true);
+      setFeeSummaryError("");
+      try {
+        const params = new URLSearchParams({
+          address: selectedSubaccount,
+          network: decibelNetwork,
+        });
+        const response = await fetch(`/api/decibel/fees?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => null) as FeeSummary & { error?: string } | null;
+        if (!response.ok || !data || data.error) {
+          throw new Error(data?.error || "Failed to load fee history");
+        }
+        if (controller.signal.aborted || actionContextRef.current !== requestContext) return;
+        setFeeSummary(data);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (actionContextRef.current !== requestContext) return;
+        setFeeSummaryError(error instanceof Error ? error.message : "Fee history unavailable");
+      } finally {
+        if (!controller.signal.aborted && actionContextRef.current === requestContext) {
+          setFeeSummaryLoading(false);
+        }
+      }
+    };
+
+    void loadFeeSummary();
+    const interval = setInterval(() => void loadFeeSummary(), 60_000);
+    return () => {
+      clearInterval(interval);
+      activeController?.abort();
+    };
+  }, [connected, decibelNetwork, selectedSubaccount]);
 
   const fetchAccountState = useCallback(async () => {
     if (!connected || !selectedSubaccount) {
@@ -997,7 +1059,16 @@ export function PortfolioPageClient() {
               raw: overview?.volume30d,
               format: { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 },
             },
-            { label: "Fees (Taker / Maker)", value: "0.0340% / 0.0110%" },
+            {
+              label: "Total Fees Paid",
+              value: feeSummaryLoading
+                ? "..."
+                : feeSummaryError || !feeSummary
+                  ? "—"
+                  : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
+              raw: feeSummary && !feeSummary.truncated ? feeSummary.totalFeesPaidUsd : undefined,
+              format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
+            },
           ].map((item) => (
             <div key={item.label} className="bg-[#050505] px-6 py-5">
               <p className="text-[13px] text-zinc-500">{item.label}</p>
@@ -1029,6 +1100,16 @@ export function PortfolioPageClient() {
             <div className="mt-6">
               <OverviewRow label="Open Position Return" value={formatPct(openPositionReturn)} tone={openPositionReturn != null && openPositionReturn >= 0 ? "text-green-400" : "text-[#e8774f]"} />
               <OverviewRow label="30d Volume" value={formatVolume(overview?.volume30d)} />
+              <OverviewRow
+                label="Total Fees Paid"
+                value={
+                  feeSummaryLoading
+                    ? "..."
+                    : feeSummaryError || !feeSummary
+                      ? "—"
+                      : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
+                }
+              />
               <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={(overview?.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"} />
               <OverviewRow label="Trading Portfolio" value={formatUsd(overview?.equity)} tone="text-green-400" />
               <OverviewRow label="Vault Allocation" value="—" />

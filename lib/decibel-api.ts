@@ -181,6 +181,7 @@ export async function getDecibelTradeHistory(
     offset?: number
     market?: string
     orderId?: string
+    strict?: boolean
   } = {}
 ): Promise<DecibelTrade[]> {
   const {
@@ -188,7 +189,8 @@ export async function getDecibelTradeHistory(
     limit = 100,
     offset = 0,
     market,
-    orderId
+    orderId,
+    strict = false,
   } = options
 
   try {
@@ -211,6 +213,7 @@ export async function getDecibelTradeHistory(
     })
 
     if (!response.ok) {
+      if (strict) throw new Error(`Decibel trade history request failed (${response.status})`)
       console.error(`Decibel API error: ${response.status} ${response.statusText}`)
       return []
     }
@@ -219,6 +222,7 @@ export async function getDecibelTradeHistory(
     const data = await response.json()
     return normalizeArrayResponse<DecibelTrade>(data)
   } catch (error) {
+    if (strict) throw error
     console.error('Error fetching Decibel trade history:', error)
     return []
   }

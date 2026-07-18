@@ -269,6 +269,17 @@ assert.ok(
   "the chart must isolate live mark updates from trade history instead of interleaving price bases",
 );
 assert.ok(
+  !lineChartSource.includes("sampleLatestPointPerSecond(")
+    && lineChartSource.includes("tick.time > latestTradeTime")
+    && lineChartSource.includes("mergeChartPriceTicks(decibelTradeTicks, markTail)"),
+  "the live line must retain every observed fill and append only genuinely newer mark updates",
+);
+assert.ok(
+  lineChartSource.includes("setLineWindowSecs(MAX_LINE_WINDOW_SECS)")
+    && lineChartSource.includes('previousModeRef.current !== "line"'),
+  "switching to line mode must open on full HISTORY rather than the short LIVE window",
+);
+assert.ok(
   lineChartSource.includes("secondCandles={observedTradeSecondCandles}"),
   "the candle renderer must build OHLC from observed Decibel fills, not mark-price line ticks",
 );

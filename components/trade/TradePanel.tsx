@@ -627,7 +627,7 @@ export function TradePanel({
                     style={{
                       width: `calc(${leveragePct}% + 12px)`,
                       background: isLong
-                        ? "linear-gradient(90deg, #0DA726 0%, #4ade80 100%)"
+                        ? "var(--accent)"
                         : "linear-gradient(90deg, #b91c1c 0%, #F21A1A 100%)",
                     }}
                   />
@@ -636,10 +636,10 @@ export function TradePanel({
                   className="absolute top-[2px] w-[20px] h-[20px] rounded-full z-[2]"
                   style={{
                     left: `clamp(2px, calc(${leveragePct}% - 10px), calc(100% - 22px))`,
-                    background: isLong ? "#0DA726" : "#F21A1A",
+                    background: isLong ? "var(--accent)" : "#F21A1A",
                     filter: `brightness(${dragging ? 1.3 : 1.1})`,
                     boxShadow: dragging
-                      ? `0 0 12px ${isLong ? "rgba(13,167,38,0.6)" : "rgba(242,26,26,0.6)"}`
+                      ? `0 0 12px ${isLong ? "rgba(57,255,20,0.55)" : "rgba(242,26,26,0.6)"}`
                       : "none",
                   }}
                 />

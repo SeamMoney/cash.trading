@@ -119,7 +119,7 @@ function WalletListRow({
 }
 
 // Allowed wallets list
-const ALLOWED_WALLETS = ['rainbow', 'metamask', 'rabby', 'phantom', 'backpack', 'petra', 'nightly']
+const ALLOWED_WALLETS = ['rainbow', 'metamask', 'rabby', 'phantom', 'backpack', 'petra']
 
 export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
   const { wallets, notDetectedWallets = [], connected } = useWallet()

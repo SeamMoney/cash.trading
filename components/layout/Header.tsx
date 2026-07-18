@@ -247,7 +247,7 @@ export function Header() {
             ) : (
               <button
                 onClick={handleWalletClick}
-                className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black hover:bg-[#5dff3f] transition-colors"
+                className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black transition-[filter] hover:brightness-95"
               >
                 Sign In
               </button>

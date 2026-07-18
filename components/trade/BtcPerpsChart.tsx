@@ -19,7 +19,6 @@ import {
   candlesToCloseLinePoints,
   clipLineWindow,
   dedupeAndSort,
-  sampleLatestPointPerSecond,
   withLiveTail,
 } from "@/lib/trade/lineData";
 import {
@@ -309,10 +308,11 @@ function buildHybridVisibleLinePoints(
   startTime: number,
   endTime: number,
 ) {
-  const visibleTicks = sampleLatestPointPerSecond(
-    priceTicks.filter(
-      (tick) => tick.time >= startTime && tick.time <= endTime,
-    ),
+  // Keep every observed Decibel fill. Collapsing this stream to one sample per
+  // second erased legitimate intrasecond moves and made the live line look
+  // stepped even when the exchange supplied a denser sequence.
+  const visibleTicks = dedupeAndSort(
+    priceTicks.filter((tick) => tick.time >= startTime && tick.time <= endTime),
   );
   const recentStart = visibleTicks[0]?.time ?? endTime;
   const historicalPoints = candlesToCloseLinePoints(
@@ -405,7 +405,7 @@ function BtcPerpsChartComponent({
   const [coinbaseHistoryRefreshNonce, setCoinbaseHistoryRefreshNonce] = useState(0);
   const [hasInitialHistory, setHasInitialHistory] = useState(false);
   const [useBtcFallback, setUseBtcFallback] = useState(false);
-  const [lineWindowSecs, setLineWindowSecs] = useState(DEFAULT_LINE_WINDOW_SECS);
+  const [lineWindowSecs, setLineWindowSecs] = useState(MAX_LINE_WINDOW_SECS);
   const [lineEndTime, setLineEndTime] = useState<number | null>(null);
   const [manualLineVerticalPad, setManualLineVerticalPad] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -496,11 +496,14 @@ function BtcPerpsChartComponent({
     [coinbaseHistoryTicks, coinbaseTicks, useCoinbaseLineFeed],
   );
   const decibelChartTicks = useMemo(() => {
-    const firstMarkTime = decibelMarkTicks[0]?.time;
-    const historicalTrades = firstMarkTime == null
-      ? decibelTradeTicks
-      : decibelTradeTicks.filter((tick) => tick.time < firstMarkTime);
-    return mergeChartPriceTicks(historicalTrades, decibelMarkTicks);
+    const latestTradeTime = decibelTradeTicks.at(-1)?.time;
+    // Trades are the granular, executable price history. A mark update is used
+    // only when it is newer than the most recent fill so the endpoint stays
+    // current without replacing or backtracking through the real trade path.
+    const markTail = latestTradeTime == null
+      ? decibelMarkTicks
+      : decibelMarkTicks.filter((tick) => tick.time > latestTradeTime);
+    return mergeChartPriceTicks(decibelTradeTicks, markTail);
   }, [decibelMarkTicks, decibelTradeTicks]);
   const decibelLineSecondCandles = useMemo(
     () => chartPriceTicksToCandles(decibelChartTicks, 1).slice(-ONE_SECOND_WINDOW_SECS),
@@ -534,10 +537,20 @@ function BtcPerpsChartComponent({
     spanSecs: number;
   } | null>(null);
   const lineInteractionRef = useRef<HTMLDivElement | null>(null);
-  const [lineColor, setLineColor] = useState(market.color);
+  const [lineColor, setLineColor] = useState("#39ff14");
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
   const lineViewResetKeyRef = useRef<string | null>(null);
+  const previousModeRef = useRef(mode);
+
+  useEffect(() => {
+    if (mode === "line" && previousModeRef.current !== "line") {
+      setLineWindowSecs(MAX_LINE_WINDOW_SECS);
+      setLineEndTime(null);
+      setManualLineVerticalPad(0);
+    }
+    previousModeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     const interactionNode = lineInteractionRef.current;
@@ -1175,7 +1188,7 @@ function BtcPerpsChartComponent({
       setLoading(true);
       if (lineViewResetKeyRef.current !== marketKey) {
         lineViewResetKeyRef.current = marketKey;
-        setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+        setLineWindowSecs(MAX_LINE_WINDOW_SECS);
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }
@@ -1207,7 +1220,7 @@ function BtcPerpsChartComponent({
       // chosen window/pan.
       if (lineViewResetKeyRef.current !== marketKey) {
         lineViewResetKeyRef.current = marketKey;
-        setLineWindowSecs(DEFAULT_LINE_WINDOW_SECS);
+        setLineWindowSecs(MAX_LINE_WINDOW_SECS);
         setLineEndTime(null);
         setManualLineVerticalPad(0);
       }

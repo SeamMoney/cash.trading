@@ -386,7 +386,15 @@ assert.match(predepositTotalRoute, /getDecibelGlobalPoints/);
 assert.match(predepositLeaderboardRoute, /getDecibelPointsLeaderboard/);
 assert.match(predepositPointsRoute, /getDecibelOwnerPoints/);
 assert.match(predepositUserRoute, /getDecibelOwnerPoints/);
-assert.match(pointsDataContext, /cash_trading_points_cache_v2/);
+assert.match(pointsDataContext, /cash_trading_points_cache_v3/);
+assert.match(pointsDataContext, /useDecibelWalletIdentity/);
+assert.match(pointsDataContext, /predeposit\/points\?account=/);
+assert.doesNotMatch(
+  pointsDataContext,
+  /predeposit\/user\?account=/,
+  "the Points dashboard must not couple valid AMPs to the retired predeposit balance lookup",
+);
+assert.match(pointsLeaderboard, /useDecibelWalletIdentity/);
 assert.match(pointsDataContext, /vaultTotal\.protocolTvl/);
 assert.match(pointsStats, /Season 1/);
 assert.ok(!pointsStats.includes("userData?.points || 0"), "unavailable wallet AMPs must not render as a real zero");

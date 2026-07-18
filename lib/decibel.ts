@@ -228,9 +228,22 @@ export const MAINNET_CONFIG: DecibelConfig = {
   },
 };
 
-// Fee structure
-export const MAKER_REBATE = 0.00015; // -0.015%
-export const TAKER_FEE = 0.00045; // 0.045%
+// Current mainnet tier-0 fee structure. Keep the legacy negative rebate export
+// for older automation math, but new order surfaces should use MAKER_FEE.
+export const MAKER_FEE = 0.00011;
+export const MAKER_REBATE = -MAKER_FEE;
+export const TAKER_FEE = 0.00034;
+export const DECIBEL_BUILDER_CHAIN_UNITS_PER_BPS = 100;
+
+export function builderFeeBpsToChainUnits(feeBps: number): string {
+  if (!Number.isSafeInteger(feeBps) || feeBps <= 0) {
+    throw new Error("builderFeeBps must be a positive whole basis-point value");
+  }
+  return normalizePositiveU64(
+    feeBps * DECIBEL_BUILDER_CHAIN_UNITS_PER_BPS,
+    "builderFeeBps",
+  );
+}
 
 export const USDC_DECIMALS = 6;
 export const PRICE_DECIMALS = 6;
@@ -649,6 +662,8 @@ export function buildDecibelOrderPayload(args: {
   subaccount: string;
   clientOrderId?: string | null;
   maxSlippageBps?: number;
+  builderAddress?: string | null;
+  builderFeeBps?: number | null;
 }): {
   payload: DecibelEntryPayload;
   marketConfig: MarketConfig;
@@ -674,6 +689,17 @@ export function buildDecibelOrderPayload(args: {
   assertMinSize(sizeRaw, marketConfig.minSizeRaw, marketConfig.sizeDecimals);
   const reduceOnly = Boolean(args.reduceOnly);
   const clientOrderId = args.clientOrderId ?? none();
+  const hasBuilderAddress = args.builderAddress !== undefined && args.builderAddress !== null;
+  const hasBuilderFee = args.builderFeeBps !== undefined && args.builderFeeBps !== null;
+  if (hasBuilderAddress !== hasBuilderFee) {
+    throw new Error("builderAddress and builderFeeBps must be provided together");
+  }
+  const builderAddress = hasBuilderAddress
+    ? normalizeAptosAddress(args.builderAddress, "builderAddress")
+    : none();
+  const builderFee = hasBuilderFee
+    ? builderFeeBpsToChainUnits(args.builderFeeBps as number)
+    : none();
 
   if (args.orderType === "market") {
     const rawReferencePrice = toRawAmount(args.price, marketConfig.priceDecimals);
@@ -705,8 +731,8 @@ export function buildDecibelOrderPayload(args: {
           none(), // take-profit limit price
           none(), // stop-loss trigger price
           none(), // stop-loss limit price
-          none(), // builder address
-          none(), // builder fee
+          builderAddress,
+          builderFee,
         ],
       },
       marketConfig,
@@ -740,8 +766,8 @@ export function buildDecibelOrderPayload(args: {
         none(), // take-profit limit price
         none(), // stop-loss trigger price
         none(), // stop-loss limit price
-        none(), // builder address
-        none(), // builder fee
+        builderAddress,
+        builderFee,
       ],
     },
     marketConfig,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { TAKER_FEE, MAKER_REBATE } from "@/lib/decibel";
+import { TAKER_FEE, MAKER_FEE } from "@/lib/decibel";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import {
   emitDecibelPositionsRefresh,
@@ -466,7 +466,7 @@ export function TradeForm({
   const fee =
     orderType === "market"
       ? notional * TAKER_FEE
-      : notional * -MAKER_REBATE;
+      : notional * MAKER_FEE;
   const isPending = status.type === "pending";
   const hasSelectedSubaccount = Boolean(
     selectedSubaccount &&

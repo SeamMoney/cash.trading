@@ -32,9 +32,10 @@ export const MAINNET_PREDEPOSIT_OBJECT = '0xbd0c23dbc2e9ac041f5829f79b4c4c1361dd
 // This wallet is controlled by the backend and executes trades on behalf of users
 export const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3374a9b8ac1426da';
 
-// Fee structure (testnet — mainnet fees TBD, may differ)
-export const MAKER_REBATE = 0.00015; // -0.015%
-export const TAKER_FEE = 0.00045; // 0.045%
+// Current Decibel tier-0 protocol fees.
+export const MAKER_FEE = 0.00011;
+export const MAKER_REBATE = -MAKER_FEE; // legacy automation compatibility
+export const TAKER_FEE = 0.00034; // tier-0 taker fee: 0.0340%
 export const BUILDER_FEE = 0.0002; // 0.02%
 
 // ============================================================

@@ -12,7 +12,7 @@
   "crons": [
     {
       "path": "/api/cron/depth-compact",
-      "schedule": "17 * * * *"
+      "schedule": "17 4 * * *"
     }
   ]
 }

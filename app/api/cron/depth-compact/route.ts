@@ -14,9 +14,11 @@ const RAW_RETENTION_DAYS = 3
 const SUMMARY_BUCKET_MINUTES = 15
 const SUMMARY_RETENTION_DAYS = 365
 const COMPACTION_BATCH_HOURS = 6
+const MAX_BATCHES_PER_RUN = 6
+const SOFT_DEADLINE_MS = 50_000
 
 /**
- * Hourly safety net for the always-on depth worker.
+ * Daily safety net for the always-on depth worker.
  *
  * The worker also compacts its own data, but this protected Vercel job keeps
  * Neon bounded if an older worker process remains alive or is restarted from
@@ -44,12 +46,19 @@ export async function GET(request: NextRequest) {
 
   try {
     await ensureDepthStorageTables(pool)
-    const result = await compactDepthBatch(pool, {
-      rawRetentionDays: RAW_RETENTION_DAYS,
-      summaryBucketMinutes: SUMMARY_BUCKET_MINUTES,
-      summaryRetentionDays: SUMMARY_RETENTION_DAYS,
-      batchHours: COMPACTION_BATCH_HOURS,
-    })
+    const startedAt = Date.now()
+    const results: Array<Awaited<ReturnType<typeof compactDepthBatch>>> = []
+    for (let index = 0; index < MAX_BATCHES_PER_RUN; index += 1) {
+      if (Date.now() - startedAt >= SOFT_DEADLINE_MS) break
+      const result = await compactDepthBatch(pool, {
+        rawRetentionDays: RAW_RETENTION_DAYS,
+        summaryBucketMinutes: SUMMARY_BUCKET_MINUTES,
+        summaryRetentionDays: SUMMARY_RETENTION_DAYS,
+        batchHours: COMPACTION_BATCH_HOURS,
+      })
+      results.push(result)
+      if (result.skipped || result.deleted === 0) break
+    }
 
     return NextResponse.json({
       ok: true,
@@ -58,7 +67,8 @@ export async function GET(request: NextRequest) {
         summaryBucketMinutes: SUMMARY_BUCKET_MINUTES,
         summaryRetentionDays: SUMMARY_RETENTION_DAYS,
       },
-      result,
+      batches: results,
+      elapsedMs: Date.now() - startedAt,
     })
   } catch (error) {
     console.error(

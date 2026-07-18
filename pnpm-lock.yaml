@@ -19,7 +19,7 @@ overrides:
 
 patchedDependencies:
   liveline@0.0.6:
-    hash: 714d65a7ef7c014c4a7cbb8f495c93657ddee62e7a99862e18f16c23a3932470
+    hash: 4529c47ef575570e429c82f33d2220e2a48567eb00460d7c15781e5b9d67f7f6
     path: patches/liveline@0.0.6.patch
 
 importers:
@@ -220,7 +220,7 @@ importers:
         version: 1.4.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       liveline:
         specifier: ^0.0.6
-        version: 0.0.6(patch_hash=714d65a7ef7c014c4a7cbb8f495c93657ddee62e7a99862e18f16c23a3932470)(react@19.2.7)
+        version: 0.0.6(patch_hash=4529c47ef575570e429c82f33d2220e2a48567eb00460d7c15781e5b9d67f7f6)(react@19.2.7)
       lucide-react:
         specifier: ^0.454.0
         version: 0.454.0(react@19.2.7)
@@ -8614,7 +8614,7 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.30.2
       lightningcss-win32-x64-msvc: 1.30.2
 
-  liveline@0.0.6(patch_hash=714d65a7ef7c014c4a7cbb8f495c93657ddee62e7a99862e18f16c23a3932470)(react@19.2.7):
+  liveline@0.0.6(patch_hash=4529c47ef575570e429c82f33d2220e2a48567eb00460d7c15781e5b9d67f7f6)(react@19.2.7):
     dependencies:
       react: 19.2.7
 

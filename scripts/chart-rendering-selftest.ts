@@ -153,6 +153,11 @@ const packageSource = readFileSync("package.json", "utf8");
 const livelinePatchSource = readFileSync("patches/liveline@0.0.6.patch", "utf8");
 const fallbackCandleSource = readFileSync("hooks/useBtcCandles.ts", "utf8");
 const candleSeriesSource = readFileSync("lib/trade/candleSeries.ts", "utf8");
+assert.ok(
+  livelinePatchSource.includes("+    const y = morphY(clampY(toY(p.value)), x);")
+    && !livelinePatchSource.includes("+    const y = i === visible.length - 1 ? morphY(clampY(toY(smoothValue))"),
+  "the live chart must never rewrite its newest observed point with the animated endpoint value",
+);
 assert.ok(!proChartSource.includes("lightweight-charts"), "the active candle chart must not use TradingView");
 assert.ok(
   plotSource.includes("@/components/charts/bklit/candlestick"),

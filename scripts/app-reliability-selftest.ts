@@ -23,6 +23,7 @@ import { decibelSubaccountStorageKey } from "../lib/decibel-selection";
 import { resolveDecibelWalletIdentity } from "../lib/decibel-wallet-identity";
 import { parseCctpMessage } from "../lib/decibel-cctp";
 import { summarizeDecibelFees } from "../lib/decibel-fees";
+import { getEvmSourceChainFromChainId } from "../lib/evm-cctp";
 import type { DecibelTrade } from "../lib/decibel-api";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
@@ -196,6 +197,28 @@ assert.ok(
 
 assert.ok(!tradePage.includes("GUILD_OVERRIDES"), "real vault identities must not be replaced with demo guilds");
 assert.ok(!tradePage.includes("buildPnlCurve"), "vault charts must not fabricate PnL history");
+assert.ok(
+  tradePage.includes('className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"'),
+  "vault carousels must remain swipeable without exposing horizontal scrollbars",
+);
+assert.ok(
+  tradePage.includes("{ind.name} indicator") && tradePage.includes("Vault Manager"),
+  "the demo strategy vault must identify its indicator as the vault manager",
+);
+assert.ok(
+  !tradePage.includes("<DecibelMark") && !tradePage.includes("<CashMark"),
+  "real Decibel vault cards must not display fabricated manager profile pictures",
+);
+assert.ok(
+  vaultActionModal.includes("Available")
+    && vaultActionModal.includes("MAX")
+    && vaultActionModal.includes('rounded-[14px]'),
+  "vault deposits must expose a real available balance and the same MAX input geometry as trading",
+);
+assert.ok(
+  tradePanel.includes("availableUsdc") && tradePanel.includes("MAX"),
+  "the trade collateral input must show withdrawable USDC and support MAX",
+);
 assert.notEqual(
   decibelSubaccountStorageKey("0xABC", "mainnet"),
   decibelSubaccountStorageKey("0xABC", "testnet"),
@@ -218,6 +241,13 @@ assert.equal(
   "0x1563fc7477e3a8a3f6ea843c7fb31034720bcd6889550e321efdc7939c6c183e",
   "Rainbow must resolve to the same app.decibel.trade owner that owns its Primary account",
 );
+assert.equal(getEvmSourceChainFromChainId("0x2105"), "Base");
+assert.equal(getEvmSourceChainFromChainId(8453), "Base");
+assert.equal(getEvmSourceChainFromChainId("0xa4b1"), "Arbitrum");
+assert.equal(getEvmSourceChainFromChainId("0x1"), "Ethereum");
+assert.equal(getEvmSourceChainFromChainId("0x999999"), null);
+assert.match(walletAccountModal, /formatWalletConnectionName\(wallet\.name, activeEvmSourceChain\)/);
+assert.match(accountManager, /if \(activeEvmSourceChain\) selectBridgeSourceChain\(activeEvmSourceChain\)/);
 assert.equal(
   rainbowDecibelIdentity.originAddress,
   "0x572eea9a745707217F19D3Bb730Dd627851dE6b4",

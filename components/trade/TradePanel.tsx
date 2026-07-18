@@ -73,6 +73,7 @@ export function TradePanel({
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const [side, setSide] = useState<"long" | "short">("long");
   const [amount, setAmount] = useState("");
+  const [availableUsdc, setAvailableUsdc] = useState<number | null>(null);
   const [collateralToken, setCollateralToken] = useState<CollateralToken>("USDC");
   const [collateralOpen, setCollateralOpen] = useState(false);
   const [leverage, setLeverage] = useState(1.1);
@@ -141,6 +142,39 @@ export function TradePanel({
   }, []);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
+
+  useEffect(() => {
+    if (!selectedSubaccount) {
+      setAvailableUsdc(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadAvailableUsdc = async () => {
+      try {
+        const response = await fetch(
+          `/api/decibel/positions?address=${encodeURIComponent(selectedSubaccount)}&openOrders=false&network=${decibelNetwork}`,
+          { cache: "no-store" },
+        );
+        const data = await response.json().catch(() => null) as {
+          overview?: { crossWithdrawable?: number };
+        } | null;
+        const next = Number(data?.overview?.crossWithdrawable);
+        if (!cancelled && response.ok) {
+          setAvailableUsdc(Number.isFinite(next) ? Math.max(0, next) : null);
+        }
+      } catch {
+        if (!cancelled) setAvailableUsdc(null);
+      }
+    };
+
+    void loadAvailableUsdc();
+    const interval = window.setInterval(() => void loadAvailableUsdc(), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [decibelNetwork, selectedSubaccount]);
 
   useEffect(() => {
     submissionTokenRef.current = null;
@@ -504,6 +538,26 @@ export function TradePanel({
 
       {/* Amount input card */}
       <div className="overflow-hidden rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
+        <div className="flex items-center justify-between px-4 pt-3 font-mono text-[10px] tabular-nums text-zinc-500 sm:px-5">
+          <span>
+            Available {availableUsdc == null
+              ? "—"
+              : availableUsdc.toLocaleString(undefined, { maximumFractionDigits: 6 })} USDC
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (availableUsdc == null) return;
+              setAmount(availableUsdc.toFixed(6).replace(/\.?0+$/, ""));
+              setTradeStatus("idle");
+              setOrderLifecycle("idle");
+            }}
+            disabled={availableUsdc == null || availableUsdc <= 0}
+            className="rounded px-2 py-1 text-[10px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
+          >
+            MAX
+          </button>
+        </div>
         {/* Input row */}
         <div className="relative z-[1] flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3 sm:px-5 sm:py-4">
           <input

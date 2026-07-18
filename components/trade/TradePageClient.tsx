@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
-import Image from "next/image";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
@@ -142,19 +141,19 @@ function VaultsPanel({
 }: {
   enabled?: boolean;
   holdingsRefreshNonce?: number;
-  onAction: (mode: "deposit" | "withdraw", vault: DecibelVault) => void;
+  onAction: (mode: "deposit" | "withdraw", vault: DecibelVault, maxAmount?: number) => void;
   ownerAddress?: string | null;
 }) {
   const { vaults, loading, chartData, chartKind } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [managedVaultAddresses, setManagedVaultAddresses] = useState<Set<string>>(
-    () => new Set(),
+  const [managedVaultHoldings, setManagedVaultHoldings] = useState<Map<string, { shares: number; currentValue: number }>>(
+    () => new Map(),
   );
 
   const fetchVaultHoldings = useCallback(async () => {
     if (!enabled || !ownerAddress) {
-      setManagedVaultAddresses(new Set());
+      setManagedVaultHoldings(new Map());
       return;
     }
 
@@ -173,14 +172,15 @@ function VaultsPanel({
       } | null;
       if (!response.ok || !data || data.unavailable || !Array.isArray(data.vaults)) return;
 
-      setManagedVaultAddresses(new Set(
-        data.vaults
-          .filter((holding) =>
-            Boolean(holding.address)
-            && ((holding.shares ?? 0) > 0 || (holding.currentValue ?? 0) > 0),
-          )
-          .map((holding) => String(holding.address).toLowerCase()),
-      ));
+      const next = new Map<string, { shares: number; currentValue: number }>();
+      for (const holding of data.vaults) {
+        if (!holding.address) continue;
+        const shares = Number(holding.shares ?? 0);
+        const currentValue = Number(holding.currentValue ?? 0);
+        if (shares <= 0 && currentValue <= 0) continue;
+        next.set(String(holding.address).toLowerCase(), { shares, currentValue });
+      }
+      setManagedVaultHoldings(next);
     } catch {
       // Preserve the last verified holding state through a transient indexer miss.
     }
@@ -249,7 +249,7 @@ function VaultsPanel({
           <>
           <div
             ref={scrollRef}
-            className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+            className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
               {displayVaults.map((vault) => {
@@ -263,7 +263,8 @@ function VaultsPanel({
                 const chartPoints = chartData[vault.address] ?? [];
                 const chartIsReal = chartKind[vault.address] === "real";
                 const chartUnavailable = chartKind[vault.address] === "unavailable";
-                const hasHolding = managedVaultAddresses.has(vault.address.toLowerCase());
+                const holding = managedVaultHoldings.get(vault.address.toLowerCase());
+                const hasHolding = Boolean(holding);
 
                 return (
                 <div
@@ -281,13 +282,7 @@ function VaultsPanel({
                     </span>
                   </div>
 
-                  <div className="mt-3 flex items-center gap-[10px] py-1.5">
-                    <span className="flex size-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#252525] bg-[#1a1a1a]">
-                      {vault.vault_type === "protocol"
-                        ? <DecibelMark className="h-[14px] w-auto" />
-                        : <CashMark className="h-[14px] w-auto text-accent" />
-                      }
-                    </span>
+                  <div className="mt-3 py-1.5">
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[9px] font-bold uppercase text-[#4a4a4a]">Vault Manager</span>
                       <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
@@ -324,7 +319,7 @@ function VaultsPanel({
                     </div>
                   </div>
 
-                  <div className="mt-2 h-[140px] touch-pan-x">
+                  <div className="mt-2 h-[190px] touch-pan-x">
                     {chartPoints.length >= 2 ? (
                       <AreaChart
                         data={chartPoints as unknown as Record<string, unknown>[]}
@@ -407,8 +402,8 @@ function VaultsPanel({
                   <div className="mt-3">
                     <button
                       type="button"
-                      onClick={() => onAction(hasHolding ? "withdraw" : "deposit", vault)}
-                      className="w-full rounded-lg bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[filter] hover:brightness-95"
+                      onClick={() => onAction(hasHolding ? "withdraw" : "deposit", vault, holding?.shares)}
+                      className="w-full rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[filter] hover:brightness-95"
                     >
                       {hasHolding ? "Manage" : "Deposit"}
                     </button>
@@ -452,27 +447,6 @@ function VaultsPanel({
           )}
         </div>
     </div>
-  );
-}
-
-function CashMark({ className = "" }: { className?: string }) {
-  return (
-    <span className={cn("inline-flex items-center font-mono text-[10px] font-black leading-none", className)}>
-      CASH
-    </span>
-  );
-}
-
-/* ─── Decibel logo mark (actual image) ─── */
-function DecibelMark({ className = "" }: { className?: string }) {
-  return (
-    <Image
-      src="/decibel-logo.jpg"
-      alt="Decibel"
-      width={32}
-      height={32}
-      className={cn("rounded-full object-cover", className)}
-    />
   );
 }
 
@@ -654,7 +628,7 @@ function SignalProductsPanel({
       <div className="bg-[#111] font-mono text-sm font-medium text-[#888]">
         <div
           ref={scrollRef}
-          className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+          className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {sorted.map((ind) => {
@@ -727,6 +701,11 @@ function SignalProductsPanel({
                   {typeLabel ? ` · ${typeLabel} ${paramsLabel}` : ""}
                 </p>
 
+                <div className="mt-3 flex items-center justify-between border-y border-[#1a1a1a] py-2 text-[11px]">
+                  <span className="text-[#444]">Vault Manager</span>
+                  <span className="truncate pl-3 text-right text-[#888]">{ind.name} indicator</span>
+                </div>
+
                 {/* Signal + position */}
                 <div className="mt-3 flex items-center gap-2">
                   <span className={cn(
@@ -764,7 +743,7 @@ function SignalProductsPanel({
 
                 {/* Chart */}
                 {frozenFlatChart ? (
-                  <div className="mt-3 flex h-[120px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#4a3d5c] bg-[#160e1a]/40">
+                  <div className="mt-3 flex h-[180px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#4a3d5c] bg-[#160e1a]/40">
                     <span className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
                       frozen {engineAgeLabel}
                     </span>
@@ -773,7 +752,7 @@ function SignalProductsPanel({
                     </span>
                   </div>
                 ) : (
-                <div className="relative mt-3 h-[120px] touch-pan-x">
+                <div className="relative mt-3 h-[180px] touch-pan-x">
                   {engineStale && liveChart && (
                     <span className="absolute right-1 top-0 z-10 rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
                       frozen {engineAgeLabel}
@@ -847,7 +826,7 @@ function SignalProductsPanel({
                     type="button"
                     onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
                     className={cn(
-                      "flex-1 rounded-lg px-3 py-2 text-[12px] font-bold transition-[filter,background-color,color]",
+                      "flex-1 rounded-[8px] px-3 py-2 text-[12px] font-bold transition-[filter,background-color,color]",
                       vaultAddress
                         ? "bg-accent text-black hover:brightness-95"
                         : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
@@ -859,7 +838,7 @@ function SignalProductsPanel({
                     type="button"
                     disabled
                     title="Persistent, wallet-authorized automation is not deployed"
-                    className="flex-1 cursor-not-allowed rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12px] font-bold text-zinc-600"
+                    className="flex-1 cursor-not-allowed rounded-[8px] border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12px] font-bold text-zinc-600"
                   >
                     Automation unavailable
                   </button>
@@ -927,6 +906,7 @@ export function TradePageClient({
   const [listedVaultAction, setListedVaultAction] = useState<{
     mode: "deposit" | "withdraw";
     vault: DecibelVault;
+    maxAmount?: number;
   } | null>(null);
   const [vaultHoldingsRefreshNonce, setVaultHoldingsRefreshNonce] = useState(0);
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
@@ -1092,7 +1072,7 @@ export function TradePageClient({
           <VaultsPanel
             enabled={vaultsActive}
             holdingsRefreshNonce={vaultHoldingsRefreshNonce}
-            onAction={(mode, vault) => setListedVaultAction({ mode, vault })}
+            onAction={(mode, vault, maxAmount) => setListedVaultAction({ mode, vault, maxAmount })}
             ownerAddress={ownerWallet}
           />
         </div>
@@ -1164,6 +1144,7 @@ export function TradePageClient({
           vaultAddress={listedVaultAction.vault.address}
           subaccount={selectedSubaccount}
           ownerWallet={ownerWallet}
+          maxAmount={listedVaultAction.maxAmount}
           signAndSubmitTransaction={signVaultTransaction}
           onComplete={() => {
             setListedVaultAction(null);

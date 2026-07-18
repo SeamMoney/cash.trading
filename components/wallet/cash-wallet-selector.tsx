@@ -16,6 +16,7 @@ import { ChevronDown, X } from "lucide-react";
 import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import {
   EVM_SOURCE_CHAIN_STORAGE_KEY,
+  storeEvmSourceChain,
   type EvmCctpSourceChain,
 } from "@/lib/evm-cctp";
 import { cn } from "@/lib/utils";
@@ -164,11 +165,7 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
 
   const selectEvmSourceChain = useCallback((chain: EvmCctpSourceChain) => {
     setEvmSourceChain(chain);
-    try {
-      window.localStorage.setItem(EVM_SOURCE_CHAIN_STORAGE_KEY, chain);
-    } catch {
-      // Storage is optional.
-    }
+    storeEvmSourceChain(chain);
   }, []);
 
   if (!open || !mounted) return null;

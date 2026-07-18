@@ -1753,6 +1753,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
           vaultAddress={vaultAction.holding.address}
           subaccount={selectedSubaccount}
           ownerWallet={ownerAddress}
+          maxAmount={vaultAction.mode === "withdraw" ? vaultAction.holding.shares : overview?.crossWithdrawable}
           signAndSubmitTransaction={signVaultTransaction}
           onComplete={() => {
             setVaultAction(null);

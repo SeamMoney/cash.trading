@@ -8,5 +8,11 @@
   "env": {
     "DECIBEL_NETWORK": "mainnet",
     "NEXT_PUBLIC_DECIBEL_NETWORK": "mainnet"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/depth-compact",
+      "schedule": "17 * * * *"
+    }
+  ]
 }

@@ -498,7 +498,7 @@ export function TradePanel({
           </button>
         </div>
         <span className="rounded-md bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
-          0.045% Fee
+          0.034% Fee
         </span>
       </div>
 

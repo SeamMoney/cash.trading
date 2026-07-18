@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
+  builderFeeBpsToChainUnits,
+  buildDecibelOrderPayload,
   normalizeAptosAddress,
   normalizePositiveU64,
   normalizeU128,
@@ -70,6 +72,8 @@ const farmingTips = readFileSync("components/points/farming-tips.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
 const cashRewardsPanel = readFileSync("components/portfolio/CashRewardsPanel.tsx", "utf8");
 const cashRewardsLib = readFileSync("lib/cash-rewards.ts", "utf8");
+const decibelBuilderLib = readFileSync("lib/decibel-builder.ts", "utf8");
+const decibelBuilderRoute = readFileSync("app/api/decibel/builder/route.ts", "utf8");
 const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "utf8")) as {
   formulaVersion: number;
   formulaEffectiveEpoch: number;
@@ -444,6 +448,19 @@ assert.match(cashRewardsPanel, /STREAM_PREVIEW_SECONDS = 15/);
 assert.match(cashRewardsPanel, /Server-verified · resets in/);
 assert.match(cashRewardsPanel, /Preview only — no CASH has been issued/);
 assert.match(cashRewardsPanel, /do not carry into a new reward week/);
+assert.match(cashRewardsPanel, /Optional \$\{builderStatus\.feeBps\} bp/);
+assert.match(cashRewardsPanel, /Available after rewards funding/);
+assert.match(cashRewardsPanel, /Disable routing/);
+assert.match(decibelBuilderRoute, /checkApiRateLimit\(request, 'decibel-builder-read'/);
+assert.match(decibelBuilderRoute, /buildDecibelBuilderApprovalPayload/);
+assert.match(decibelBuilderLib, /get_approved_max_fee/);
+assert.match(decibelBuilderLib, /BUILDER_APPROVAL_READ_TIMEOUT_MS = 2_000/);
+assert.match(decibelBuilderLib, /rewardConfig\.status === 'live'/);
+assert.match(decibelBuilderLib, /CASH rewards enrollment is not live yet/);
+assert.match(decibelOrderRoute, /builderStatus\.approval\.readable/);
+assert.match(decibelOrderRoute, /builderStatus\.enrollmentOpen/);
+assert.match(decibelOrderRoute, /estimatedBuilderFee/);
+assert.match(decibelOrderRoute, /builderApplied \? builderStatus\.builderAddress : null/);
 assert.match(cashRewardsLib, /currentCapitalBasisUsd/);
 assert.ok(
   !cashRewardsLib.includes("getDecibelAccountOverview"),
@@ -903,6 +920,58 @@ assert.equal(parsedMovePairs[0].exitTrade?.tradeId, 12);
 assert.equal(
   normalizeAptosAddress("0x1"),
   `0x${"0".repeat(63)}1`,
+);
+assert.equal(builderFeeBpsToChainUnits(1), "100");
+assert.equal(builderFeeBpsToChainUnits(10), "1000");
+assert.throws(() => builderFeeBpsToChainUnits(0), /positive whole basis-point/);
+const builderOrderConfig = {
+  address: "0x2",
+  maxLeverage: 10,
+  minSizeRaw: 1,
+  sizeDecimals: 2,
+  priceDecimals: 2,
+  tickSize: 1,
+  lotSize: 1,
+};
+const builderFreeOrder = buildDecibelOrderPayload({
+  marketName: "TEST/USD",
+  marketConfig: builderOrderConfig,
+  price: 10,
+  size: 1,
+  isBuy: true,
+  orderType: "limit",
+  subaccount: "0x1",
+});
+assert.equal(builderFreeOrder.payload.functionArguments[13], null);
+assert.equal(builderFreeOrder.payload.functionArguments[14], null);
+const routedBuilderOrder = buildDecibelOrderPayload({
+  marketName: "TEST/USD",
+  marketConfig: builderOrderConfig,
+  price: 10,
+  size: 1,
+  isBuy: true,
+  orderType: "limit",
+  subaccount: "0x1",
+  builderAddress: "0x3",
+  builderFeeBps: 1,
+});
+assert.equal(
+  routedBuilderOrder.payload.functionArguments[13],
+  normalizeAptosAddress("0x3"),
+);
+assert.equal(routedBuilderOrder.payload.functionArguments[14], "100");
+assert.throws(
+  () => buildDecibelOrderPayload({
+    marketName: "TEST/USD",
+    marketConfig: builderOrderConfig,
+    price: 10,
+    size: 1,
+    isBuy: true,
+    orderType: "limit",
+    subaccount: "0x1",
+    builderAddress: "0x3",
+  }),
+  /must be provided together/,
 );
 assert.match(decibelCore, /normalizePositiveU64\(args\.amount, "amount"\)/);
 assert.match(decibelOrderRoute, /checkApiRateLimit\(req, "decibel-order-build"/);

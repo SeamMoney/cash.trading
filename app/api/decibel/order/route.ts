@@ -9,10 +9,11 @@ import {
   PRICE_DECIMALS,
   resolveDecibelNetwork,
   TAKER_FEE,
-  MAKER_REBATE,
+  MAKER_FEE,
   type DecibelNetwork,
   type MarketConfig,
 } from "@/lib/decibel";
+import { getDecibelBuilderStatus } from "@/lib/decibel-builder";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 
 export const runtime = "nodejs";
@@ -360,13 +361,21 @@ export async function POST(req: NextRequest) {
       ? normalizeAptosAddress(marketAddress, "marketAddress")
       : undefined;
 
-    const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
-      await resolveMarketConfig(
+    const [resolvedMarket, builderStatus] = await Promise.all([
+      resolveMarketConfig(
         normalizedMarketAddress || marketName,
         network,
         req.signal,
         marketName,
-      );
+      ),
+      getDecibelBuilderStatus({
+        network,
+        subaccount: normalizedSubaccount,
+        signal: req.signal,
+      }),
+    ]);
+    const { marketName: resolvedMarketName, config: resolvedMarketConfig } =
+      resolvedMarket;
     const marketState = await readMarketState(resolvedMarketConfig, network);
     if (!marketState.isOpen && !reduceOnly) {
       const code = classifyMarketDenial(marketState.mode);
@@ -390,6 +399,11 @@ export async function POST(req: NextRequest) {
     }
 
     let builtOrder: ReturnType<typeof buildDecibelOrderPayload>;
+    const builderApplied =
+      builderStatus.enabled &&
+      builderStatus.enrollmentOpen &&
+      builderStatus.approval.readable &&
+      builderStatus.approval.approved;
     try {
       builtOrder = buildDecibelOrderPayload({
         marketName: resolvedMarketName,
@@ -401,6 +415,8 @@ export async function POST(req: NextRequest) {
         reduceOnly,
         subaccount: normalizedSubaccount,
         network,
+        builderAddress: builderApplied ? builderStatus.builderAddress : null,
+        builderFeeBps: builderApplied ? builderStatus.feeBps : null,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Order fields are invalid";
@@ -421,7 +437,10 @@ export async function POST(req: NextRequest) {
     const estimatedFee =
       orderType === "market"
         ? notional * TAKER_FEE
-        : notional * -MAKER_REBATE; // Makers get a rebate
+        : notional * MAKER_FEE;
+    const estimatedBuilderFee = builderApplied
+      ? notional * (builderStatus.feeBps / 10_000)
+      : 0;
 
     return NextResponse.json({
       payload,
@@ -447,7 +466,14 @@ export async function POST(req: NextRequest) {
           markPrice: marketState.markPrice,
         },
         estimatedFee: estimatedFee.toFixed(4),
-        feeType: orderType === "market" ? "taker" : "maker (rebate)",
+        estimatedBuilderFee: estimatedBuilderFee.toFixed(4),
+        estimatedTotalFee: (estimatedFee + estimatedBuilderFee).toFixed(4),
+        feeType: orderType === "market" ? "taker" : "maker",
+        builder: {
+          applied: builderApplied,
+          feeBps: builderApplied ? builderStatus.feeBps : 0,
+          feePercent: builderApplied ? builderStatus.feePercent : 0,
+        },
         maxLeverage: marketConfig.maxLeverage,
       },
     }, { headers: NO_STORE_HEADERS });

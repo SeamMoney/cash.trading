@@ -64,6 +64,26 @@ type ClaimStatus = {
   hash?: string;
 };
 
+type BuilderStatus = {
+  enabled: boolean;
+  enrollmentOpen: boolean;
+  builderAddress: string;
+  feeBps: number;
+  feePercent: number;
+  approval: {
+    readable: boolean;
+    approved: boolean;
+    maxFeeBps: number | null;
+    maxFeeChainUnits: number | null;
+  };
+};
+
+type BuilderPayload = {
+  function: string;
+  typeArguments: string[];
+  functionArguments: Array<string | number | boolean | null>;
+};
+
 type Props = {
   connected: boolean;
   network: DecibelPublicNetwork;
@@ -109,8 +129,13 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimStatus, setClaimStatus] = useState<ClaimStatus | null>(null);
+  const [builderStatus, setBuilderStatus] = useState<BuilderStatus | null>(null);
+  const [builderLoading, setBuilderLoading] = useState(false);
+  const [builderAction, setBuilderAction] = useState<"approve" | "revoke" | null>(null);
+  const [builderActionStatus, setBuilderActionStatus] = useState<ClaimStatus | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const requestRef = useRef<AbortController | null>(null);
+  const builderRequestRef = useRef<AbortController | null>(null);
   const claimTokenRef = useRef<symbol | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
@@ -151,6 +176,45 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     }
   }, [connected, network, owner, subaccount]);
 
+  const refreshBuilder = useCallback(async (quiet = false) => {
+    builderRequestRef.current?.abort();
+    if (!connected || !subaccount) {
+      setBuilderStatus(null);
+      setBuilderLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    builderRequestRef.current = controller;
+    if (!quiet) setBuilderLoading(true);
+    try {
+      const params = new URLSearchParams({ subaccount, network });
+      const response = await fetch(`/api/decibel/builder?${params}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const data = (await response.json().catch(() => null)) as
+        | (BuilderStatus & { error?: string })
+        | null;
+      if (!response.ok || !data) {
+        throw new Error(data?.error || `Builder status lookup failed (${response.status}).`);
+      }
+      setBuilderStatus(data);
+    } catch (reason) {
+      if (controller.signal.aborted) return;
+      setBuilderStatus(null);
+      setBuilderActionStatus({
+        tone: "error",
+        message: reason instanceof Error ? reason.message : "Builder routing is temporarily unavailable.",
+      });
+    } finally {
+      if (builderRequestRef.current === controller) {
+        builderRequestRef.current = null;
+        setBuilderLoading(false);
+      }
+    }
+  }, [connected, network, subaccount]);
+
   useEffect(() => {
     refresh().catch(() => undefined);
     const interval = window.setInterval(() => refresh(true).catch(() => undefined), 15_000);
@@ -159,6 +223,18 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
       requestRef.current?.abort();
     };
   }, [refresh]);
+
+  useEffect(() => {
+    refreshBuilder().catch(() => undefined);
+    const interval = window.setInterval(
+      () => refreshBuilder(true).catch(() => undefined),
+      60_000,
+    );
+    return () => {
+      window.clearInterval(interval);
+      builderRequestRef.current?.abort();
+    };
+  }, [refreshBuilder]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -173,6 +249,8 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     claimTokenRef.current = null;
     setClaiming(false);
     setClaimStatus(null);
+    setBuilderAction(null);
+    setBuilderActionStatus(null);
   }, [network, owner, subaccount]);
 
   const estimatedEarned = useMemo(() => {
@@ -193,6 +271,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     const token = Symbol("cash-claim");
     claimTokenRef.current = token;
     setClaiming(true);
+    setBuilderActionStatus(null);
     setClaimStatus({ tone: "pending", message: "Confirm the CASH claim in your wallet..." });
     try {
       const voucher = snapshot.voucher;
@@ -235,6 +314,70 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     }
   }, [claiming, refresh, signAndSubmitDecibelTransaction, snapshot]);
 
+  const updateBuilderRouting = useCallback(async (action: "approve" | "revoke") => {
+    if (builderAction || !builderStatus?.enabled) return;
+    if (action === "approve" && snapshot?.contract.status !== "live") return;
+    setBuilderAction(action);
+    setClaimStatus(null);
+    setBuilderActionStatus({
+      tone: "pending",
+      message:
+        action === "approve"
+          ? "Confirm the optional CASH rewards routing approval in your wallet..."
+          : "Confirm that you want to disable CASH rewards routing...",
+    });
+    try {
+      const response = await fetch("/api/decibel/builder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, network, subaccount }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { payload?: BuilderPayload; error?: string }
+        | null;
+      if (!response.ok || !data?.payload) {
+        throw new Error(data?.error || `Builder transaction is unavailable (${response.status}).`);
+      }
+      const submitted = await signAndSubmitDecibelTransaction({
+        data: {
+          function: data.payload.function as `${string}::${string}::${string}`,
+          typeArguments: data.payload.typeArguments,
+          functionArguments: data.payload.functionArguments,
+        },
+      });
+      setBuilderActionStatus({
+        tone: "pending",
+        message: "Builder preference submitted. Waiting for Aptos confirmation...",
+        hash: submitted.hash,
+      });
+      await waitForTransactionConfirmation(submitted.hash);
+      setBuilderActionStatus({
+        tone: "success",
+        message:
+          action === "approve"
+            ? `CASH rewards routing is on. A ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) Builder fee will be added to orders placed through cash.trading.`
+            : "CASH rewards routing is off. New cash.trading orders will not include a Builder fee.",
+        hash: submitted.hash,
+      });
+      await refreshBuilder(true);
+    } catch (reason) {
+      setBuilderActionStatus({
+        tone: "error",
+        message: reason instanceof Error ? reason.message : "The Builder preference update failed.",
+      });
+    } finally {
+      setBuilderAction(null);
+    }
+  }, [
+    builderAction,
+    builderStatus,
+    network,
+    refreshBuilder,
+    signAndSubmitDecibelTransaction,
+    snapshot?.contract.status,
+    subaccount,
+  ]);
+
   const progress = snapshot
     ? Math.min(100, (snapshot.totals.earnedCash / snapshot.config.walletEpochCapCash) * 100)
     : 0;
@@ -245,6 +388,14 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
       : snapshot?.contract.status === "live"
         ? "Nothing new to claim"
         : "Claims unlock after canary funding";
+  const builderApproved = Boolean(builderStatus?.approval.approved);
+  const builderRoutingActive = Boolean(
+    builderApproved && builderStatus?.enrollmentOpen,
+  );
+  const builderCanEnable = Boolean(
+    builderStatus?.enrollmentOpen && snapshot?.contract.status === "live",
+  );
+  const visibleStatus = builderActionStatus ?? claimStatus;
 
   return (
     <section className="mt-8 overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#050505]">
@@ -402,6 +553,56 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                   </a>
                 )}
               </div>
+              <div className="mt-4 border-t border-[#1a1a1a] pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-medium text-zinc-300">CASH rewards routing</span>
+                  <span className={cn(
+                    "rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide",
+                    builderRoutingActive
+                      ? "bg-green-500/10 text-green-400"
+                      : builderApproved
+                        ? "bg-yellow-500/10 text-yellow-300"
+                      : "bg-zinc-800 text-zinc-500",
+                  )}>
+                    {builderLoading
+                      ? "Checking"
+                      : builderRoutingActive
+                        ? "On"
+                        : builderApproved
+                          ? "Paused"
+                          : "Off"}
+                  </span>
+                </div>
+                <p className="mt-2 text-pretty text-[10px] leading-4 text-zinc-600">
+                  {builderStatus?.enabled
+                    ? `Optional ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) Builder fee per order. Decibel protocol fees still apply. This approval is on-chain and revocable any time.`
+                    : "Builder routing is available on mainnet only. No cash.trading Builder fee is being added."}
+                </p>
+                {builderStatus?.enabled && !builderStatus.approval.readable && (
+                  <p className="mt-2 text-[10px] leading-4 text-yellow-300">
+                    Approval could not be verified, so orders remain fee-free from cash.trading.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => updateBuilderRouting(builderApproved ? "revoke" : "approve")}
+                  disabled={
+                    builderLoading ||
+                    Boolean(builderAction) ||
+                    !builderStatus?.enabled ||
+                    (!builderApproved && !builderCanEnable)
+                  }
+                  className="mt-3 w-full rounded-[4px] border border-[#252525] bg-[#111] px-3 py-2 text-[11px] font-medium text-zinc-300 hover:bg-[#171717] disabled:cursor-not-allowed disabled:text-zinc-700"
+                >
+                  {builderAction
+                    ? "Confirming..."
+                    : builderApproved
+                      ? "Disable routing"
+                      : builderCanEnable
+                        ? "Enable CASH rewards routing"
+                        : "Available after rewards funding"}
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={claim}
@@ -415,22 +616,22 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
         </>
       )}
 
-      {(error || claimStatus) && (
+      {(error || visibleStatus) && (
         <div
-          role={error || claimStatus?.tone === "error" ? "alert" : "status"}
+          role={error || visibleStatus?.tone === "error" ? "alert" : "status"}
           className={cn(
             "border-t border-[#1a1a1a] px-5 py-3 text-[12px] sm:px-6",
-            error || claimStatus?.tone === "error"
+            error || visibleStatus?.tone === "error"
               ? "text-red-300"
-              : claimStatus?.tone === "success"
+              : visibleStatus?.tone === "success"
                 ? "text-green-300"
                 : "text-zinc-400",
           )}
         >
-          {error || claimStatus?.message}
-          {claimStatus?.hash && (
+          {error || visibleStatus?.message}
+          {visibleStatus?.hash && (
             <a
-              href={explorerTxUrl(claimStatus.hash, network)}
+              href={explorerTxUrl(visibleStatus.hash, network)}
               target="_blank"
               rel="noreferrer"
               className="ml-2 inline-flex items-center gap-1 underline underline-offset-4 hover:text-zinc-200"

@@ -8,6 +8,8 @@ import { explorerAccountUrl } from "@/lib/constants";
 import { DecibelAccountManager } from "@/components/trade/DecibelAccountManager";
 import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
+import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
+import { formatWalletConnectionName, getChainFromWallet } from "@/lib/wallet-utils";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -32,6 +34,14 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [decibelNetwork, setDecibelNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
+  const isEvmWallet = wallet ? getChainFromWallet(wallet) === "ethereum" : false;
+  const activeEvmSourceChain = useEvmSourceChain({
+    enabled: connected && isEvmWallet,
+    preferredWalletName: wallet?.name,
+  });
+  const walletDisplayName = wallet?.name
+    ? formatWalletConnectionName(wallet.name, activeEvmSourceChain)
+    : "Wallet";
 
   // The app's Decibel network and the wallet's own network are independent; a
   // mismatch makes testnet-only calls (e.g. the USDC faucet) fail in the wallet
@@ -87,13 +97,13 @@ export function WalletAccountModal({ open, onClose }: WalletAccountModalProps) {
               ) : (
                 <div className="flex size-10 items-center justify-center bg-accent/10">
                   <span className="text-accent font-bold text-[16px]">
-                    {wallet?.name?.charAt(0) ?? "?"}
+                    {walletDisplayName.charAt(0) || "?"}
                   </span>
                 </div>
               )}
             </div>
             <div>
-              <p className="text-[14px] font-medium text-white">{wallet?.name}</p>
+              <p className="text-[14px] font-medium text-white">{walletDisplayName}</p>
               <p className="text-[12px] text-zinc-500 mt-0.5">Connected</p>
             </div>
           </div>

@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Wallet, ChevronDown, Copy, LogOut } from "lucide-react"
 import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { WalletSelector, getWalletIcon } from "./wallet-selector"
+import { useEvmSourceChain } from "@/hooks/useEvmSourceChain"
+import { baseWalletName, formatWalletConnectionName, getChainFromWallet } from "@/lib/wallet-utils"
 
 // Aptos logo with ring for keyless wallets
 function AptosKeylessIcon() {
@@ -36,6 +38,11 @@ export function WalletButton() {
   const [showWalletSelector, setShowWalletSelector] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  const isEvmWallet = wallet ? getChainFromWallet(wallet) === "ethereum" : false
+  const activeEvmSourceChain = useEvmSourceChain({
+    enabled: connected && isEvmWallet,
+    preferredWalletName: wallet?.name,
+  })
 
   const copyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr)
@@ -63,7 +70,11 @@ export function WalletButton() {
 
   const walletDisplayName = isKeylessWallet
     ? 'Aptos'
-    : wallet?.name?.replace(' (Solana)', '').replace(' (Ethereum)', '') || 'Wallet'
+    : wallet?.name
+      ? isEvmWallet
+        ? formatWalletConnectionName(wallet.name, activeEvmSourceChain)
+        : baseWalletName(wallet.name)
+      : 'Wallet'
 
   const walletIcon = getWalletIcon(wallet?.name || '', wallet?.icon)
 

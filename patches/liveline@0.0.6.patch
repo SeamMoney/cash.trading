@@ -47,6 +47,18 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
    const { h, pad, toX, toY, chartW, chartH } = layout;
    const incomingAlpha = ctx.globalAlpha;
    const yMin = pad.top;
+@@ -431,9 +440,9 @@ function drawLine(ctx, layout, palette, visible, smoothValue, now, showFill, scr
+     const baseY = loadingY(t, centerY, amplitude, scroll);
+     return baseY + (rawY - baseY) * localReveal;
+   } : (rawY, _x) => rawY;
+-  const pts = visible.map((p, i) => {
++  const pts = visible.map((p) => {
+     const x = toX(p.time);
+-    const y = i === visible.length - 1 ? morphY(clampY(toY(smoothValue)), x) : morphY(clampY(toY(p.value)), x);
++    const y = morphY(clampY(toY(p.value)), x);
+     return [x, y];
+   });
+   const liveTipX = toX(now);
 @@ -460,17 +469,17 @@ function drawLine(ctx, layout, palette, visible, smoothValue, now, showFill, scr
      ctx.beginPath();
      ctx.rect(0, 0, scrubX, h);
@@ -295,6 +307,18 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
    const { h, pad, toX, toY, chartW, chartH } = layout;
    const incomingAlpha = ctx.globalAlpha;
    const yMin = pad.top;
+@@ -404,9 +413,9 @@ function drawLine(ctx, layout, palette, visible, smoothValue, now, showFill, scr
+     const baseY = loadingY(t, centerY, amplitude, scroll);
+     return baseY + (rawY - baseY) * localReveal;
+   } : (rawY, _x) => rawY;
+-  const pts = visible.map((p, i) => {
++  const pts = visible.map((p) => {
+     const x = toX(p.time);
+-    const y = i === visible.length - 1 ? morphY(clampY(toY(smoothValue)), x) : morphY(clampY(toY(p.value)), x);
++    const y = morphY(clampY(toY(p.value)), x);
+     return [x, y];
+   });
+   const liveTipX = toX(now);
 @@ -433,17 +442,17 @@ function drawLine(ctx, layout, palette, visible, smoothValue, now, showFill, scr
      ctx.beginPath();
      ctx.rect(0, 0, scrubX, h);

@@ -35,6 +35,19 @@ export function getChainFromWallet(
   return "aptos";
 }
 
+export function baseWalletName(name: string) {
+  return name.replace(/\s*\((?:Solana|Ethereum|EVM|Arbitrum|Base)\)\s*$/i, "").trim();
+}
+
+/** Format EVM-derived Aptos wallets using the provider's real active EIP-155 chain. */
+export function formatWalletConnectionName(
+  name: string,
+  activeEvmChain?: "Ethereum" | "Arbitrum" | "Base" | null,
+) {
+  if (getChainFromWallet({ name }) !== "ethereum") return name;
+  return `${baseWalletName(name)} (${activeEvmChain ?? "EVM"})`;
+}
+
 /** Split wallets into chain-specific groups for the tab UI. */
 export function groupWalletsByChain(wallets: ReadonlyArray<AnyWallet>) {
   const aptos: AnyWallet[] = [];

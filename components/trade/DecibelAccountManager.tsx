@@ -17,6 +17,7 @@ import {
   EVM_SOURCE_CHAIN_STORAGE_KEY,
   fetchEvmUsdcBalance,
   startEvmCctpDeposit,
+  storeEvmSourceChain,
   type EvmCctpSourceChain,
 } from "@/lib/evm-cctp";
 import {
@@ -33,6 +34,8 @@ import {
 } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
+import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
+import { formatWalletConnectionName } from "@/lib/wallet-utils";
 
 interface AccountOverview {
   equity: number;
@@ -238,6 +241,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const isMainnet = decibelNetwork === "mainnet";
   const walletOrigin = wallet ? getChainFromWallet(wallet) : "aptos";
   const isEvmWallet = walletOrigin === "ethereum";
+  const activeEvmSourceChain = useEvmSourceChain({
+    enabled: connected && isEvmWallet,
+    preferredWalletName: wallet?.name,
+  });
   const connectedAptosAddress = normalizeAptosAddress(account?.address.toString());
   const bridgeMintRecipient = normalizeAptosAddress(bridgeTransfer?.mintRecipient);
   const bridgeMintRecipientMismatch =
@@ -278,12 +285,12 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   const selectBridgeSourceChain = useCallback((chain: BridgeSourceChain) => {
     setBridgeSourceChain(chain);
-    try {
-      window.localStorage.setItem(EVM_SOURCE_CHAIN_STORAGE_KEY, chain);
-    } catch {
-      // The visible selector remains authoritative when storage is unavailable.
-    }
+    storeEvmSourceChain(chain);
   }, []);
+
+  useEffect(() => {
+    if (activeEvmSourceChain) selectBridgeSourceChain(activeEvmSourceChain);
+  }, [activeEvmSourceChain, selectBridgeSourceChain]);
 
   const depositValue = Number(depositAmount);
   const hasDepositAmount = Number.isFinite(depositValue) && depositValue > 0;
@@ -1412,7 +1419,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   : "bg-white/[0.04] text-zinc-500"
               )}
             >
-              {isEvmWallet ? `${wallet?.name ?? "EVM"} detected` : "Optional"}
+              {isEvmWallet
+                ? `${formatWalletConnectionName(wallet?.name ?? "EVM", activeEvmSourceChain)} detected`
+                : "Optional"}
             </span>
           </div>
 

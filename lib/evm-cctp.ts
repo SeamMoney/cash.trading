@@ -5,6 +5,8 @@ export type EvmCctpSourceChain = "Ethereum" | "Arbitrum" | "Base";
 export const EVM_SOURCE_CHAIN_STORAGE_KEY = "cash:evm-cctp-source-chain:v1";
 
 export type Eip1193Provider = {
+  on?(event: "chainChanged", listener: (chainId: unknown) => void): void;
+  removeListener?(event: "chainChanged", listener: (chainId: unknown) => void): void;
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>;
 };
 
@@ -120,6 +122,42 @@ const EVM_CCTP_CHAINS: Record<
     },
   },
 };
+
+const EVM_SOURCE_CHAIN_BY_ID = new Map<string, EvmCctpSourceChain>(
+  Object.values(EVM_CCTP_CHAINS).flatMap((network) =>
+    Object.values(network).map((config) => [config.chainId.toLowerCase(), config.sourceChain])
+  )
+);
+
+function normalizeEvmChainId(chainId: unknown) {
+  try {
+    if (typeof chainId === "bigint") return `0x${chainId.toString(16)}`;
+    if (typeof chainId === "number" && Number.isSafeInteger(chainId)) {
+      return `0x${BigInt(chainId).toString(16)}`;
+    }
+    if (typeof chainId === "string" && chainId.trim()) {
+      return `0x${BigInt(chainId.trim()).toString(16)}`;
+    }
+  } catch {
+    // Unknown wallets occasionally return a network name instead of an EIP-155 id.
+  }
+  return "";
+}
+
+/** Resolve an EIP-155 chain id to one of the EVM source chains cash.trading supports. */
+export function getEvmSourceChainFromChainId(chainId: unknown) {
+  return EVM_SOURCE_CHAIN_BY_ID.get(normalizeEvmChainId(chainId)) ?? null;
+}
+
+/** Persist the user's source-chain choice without treating the adapter's generic Ethereum suffix as authoritative. */
+export function storeEvmSourceChain(sourceChain: EvmCctpSourceChain) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(EVM_SOURCE_CHAIN_STORAGE_KEY, sourceChain);
+  } catch {
+    // Storage is optional; the live provider chain remains authoritative.
+  }
+}
 
 function stripHexPrefix(value: string) {
   return value.startsWith("0x") ? value.slice(2) : value;

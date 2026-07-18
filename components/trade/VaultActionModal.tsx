@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, Loader2, Send, WalletCards } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import { useIsMobile } from "@/components/ui/use-mobile";
+import { TokenLogo } from "@/components/trade/StablecoinLogo";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -41,6 +40,7 @@ type VaultActionModalProps = {
   strategyVaultId?: string | null;
   allocationPct?: number;
   defaultAmount?: string;
+  maxAmount?: number | null;
   className?: string;
 };
 
@@ -96,6 +96,11 @@ function shortAddress(address?: string | null) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function formatInputAmount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return value.toFixed(6).replace(/\.?0+$/, "");
+}
+
 export function VaultActionModal({
   open,
   mode,
@@ -107,6 +112,7 @@ export function VaultActionModal({
   strategyVaultId,
   allocationPct = 5,
   defaultAmount = "",
+  maxAmount = null,
   signAndSubmitTransaction,
   onOpenChange,
   onComplete,
@@ -119,6 +125,8 @@ export function VaultActionModal({
   const [txHash, setTxHash] = useState("");
   const [extractedVaultAddress, setExtractedVaultAddress] = useState("");
   const [statusResponse, setStatusResponse] = useState<unknown>(null);
+  const [availableAmount, setAvailableAmount] = useState<number | null>(maxAmount);
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const isMobile = useIsMobile();
 
   const copy = ACTION_COPY[mode];
@@ -129,11 +137,63 @@ export function VaultActionModal({
     if (requiresVault && !vaultAddress) return "Vault address is required.";
     if (requiresSubaccount && !subaccount) return "Subaccount is required.";
     if (requiresAmount && !amount.trim()) return "Amount is required.";
+    if (requiresAmount && (!Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
+      return "Enter a valid amount.";
+    }
+    if (requiresAmount && availableAmount != null && Number(amount) > availableAmount) {
+      return `Amount exceeds available ${mode === "withdraw" ? "shares" : "USDC"}.`;
+    }
     return "";
-  }, [amount, requiresAmount, requiresSubaccount, requiresVault, subaccount, vaultAddress]);
+  }, [amount, availableAmount, mode, requiresAmount, requiresSubaccount, requiresVault, subaccount, vaultAddress]);
 
   const isWorking = state === "building" || state === "signing" || state === "extracting";
   const canSubmit = !isWorking && !disabledReason;
+
+  useEffect(() => {
+    if (!open) return;
+    setAmount(defaultAmount);
+  }, [defaultAmount, open, mode, vaultAddress]);
+
+  useEffect(() => {
+    if (!open || !requiresAmount) return;
+    if (mode === "withdraw") {
+      setBalanceLoading(false);
+      setAvailableAmount(maxAmount);
+      return;
+    }
+    if (!subaccount) {
+      setBalanceLoading(false);
+      setAvailableAmount(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAvailableAmount(null);
+    setBalanceLoading(true);
+    fetch(
+      `/api/decibel/positions?address=${encodeURIComponent(subaccount)}&openOrders=false&network=${indicator.network ?? "mainnet"}`,
+      { cache: "no-store" },
+    )
+      .then(async (response) => {
+        const data = await response.json().catch(() => null) as {
+          overview?: { crossWithdrawable?: number };
+        } | null;
+        const value = Number(data?.overview?.crossWithdrawable);
+        if (!cancelled && response.ok) {
+          setAvailableAmount(Number.isFinite(value) ? Math.max(0, value) : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableAmount(null);
+      })
+      .finally(() => {
+        if (!cancelled) setBalanceLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [indicator.network, maxAmount, mode, open, requiresAmount, subaccount]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -275,20 +335,48 @@ export function VaultActionModal({
             </div>
 
             {requiresAmount ? (
-              <div className="space-y-2">
-                <Label htmlFor="vault-action-amount" className="text-xs text-zinc-300">
-                  {mode === "withdraw" ? "Vault shares" : "USDC amount"}
-                </Label>
-                <Input
-                  id="vault-action-amount"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  placeholder={mode === "withdraw" ? "0.00 shares" : "0.00 USDC"}
-                  className="border-zinc-800 bg-zinc-950 font-mono tabular-nums text-zinc-100"
-                  aria-invalid={Boolean(error && requiresAmount)}
-                />
+              <div className="overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0e0e0e]">
+                <div className="flex items-center justify-between px-4 pt-3 font-mono text-[10px] tabular-nums text-zinc-500">
+                  <label htmlFor="vault-action-amount">
+                    {mode === "withdraw" ? "Vault shares" : "USDC amount"}
+                  </label>
+                  <span className="flex items-center gap-2">
+                    Available {balanceLoading
+                      ? "…"
+                      : availableAmount == null
+                        ? "—"
+                        : availableAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                    <button
+                      type="button"
+                      onClick={() => setAmount(formatInputAmount(availableAmount ?? 0))}
+                      disabled={availableAmount == null || availableAmount <= 0}
+                      className="rounded px-2 py-1 text-[10px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
+                    >
+                      MAX
+                    </button>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3">
+                  <input
+                    id="vault-action-amount"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={amount}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/[^0-9.]/g, "");
+                      if (value.split(".").length <= 2) setAmount(value);
+                    }}
+                    placeholder="0.00"
+                    className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-bold tabular-nums text-white outline-none placeholder:text-zinc-600"
+                    aria-invalid={Boolean(error && requiresAmount)}
+                  />
+                  <div className="ml-4 flex shrink-0 items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2">
+                    {mode === "deposit" ? <TokenLogo token="USDC" size={22} /> : null}
+                    <span className="text-sm font-semibold text-white">
+                      {mode === "withdraw" ? "Shares" : "USDC"}
+                    </span>
+                  </div>
+                </div>
               </div>
             ) : null}
 

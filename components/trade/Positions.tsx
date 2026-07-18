@@ -20,6 +20,7 @@ import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
+import { VaultActionModal } from "@/components/trade/VaultActionModal";
 
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
@@ -113,6 +114,16 @@ interface Overview {
   collateral: number;
   crossWithdrawable: number;
   volume30d: number | null;
+}
+
+interface VaultHolding {
+  name: string;
+  address: string;
+  deposited: number;
+  currentValue: number;
+  pnl: number;
+  shares: number;
+  vaultType: string | null;
 }
 
 interface Subaccount {
@@ -448,9 +459,19 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   const { connected } = useWallet();
   const { ownerAddress } = useDecibelWalletIdentity();
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
+  const signVaultTransaction = useCallback(
+    (payload: unknown) => signAndSubmitDecibelTransaction({ data: payload as any }),
+    [signAndSubmitDecibelTransaction],
+  );
   const [positions, setPositions] = useState<Position[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [vaultHoldings, setVaultHoldings] = useState<VaultHolding[]>([]);
+  const [vaultHoldingsLoading, setVaultHoldingsLoading] = useState(false);
+  const [vaultAction, setVaultAction] = useState<{
+    mode: "deposit" | "withdraw";
+    holding: VaultHolding;
+  } | null>(null);
   const [selectedSubaccount, setSelectedSubaccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -473,7 +494,37 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
   const actionContextRef = useRef(actionContext);
   actionContextRef.current = actionContext;
 
+  const fetchVaultHoldings = useCallback(async () => {
+    if (!connected || !ownerAddress || decibelNetwork !== "mainnet") {
+      setVaultHoldings([]);
+      setVaultHoldingsLoading(false);
+      return;
+    }
+    setVaultHoldingsLoading(true);
+    try {
+      const response = await fetch(
+        `/api/vault/user?account=${encodeURIComponent(ownerAddress)}`,
+        { cache: "no-store" },
+      );
+      const data = await response.json().catch(() => null) as {
+        unavailable?: boolean;
+        vaults?: VaultHolding[];
+      } | null;
+      if (response.ok && data && !data.unavailable && Array.isArray(data.vaults)) {
+        setVaultHoldings(data.vaults.filter((holding) => holding.address));
+      }
+    } finally {
+      setVaultHoldingsLoading(false);
+    }
+  }, [connected, decibelNetwork, ownerAddress]);
+
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
+
+  useEffect(() => {
+    void fetchVaultHoldings();
+    const interval = setInterval(() => void fetchVaultHoldings(), 30_000);
+    return () => clearInterval(interval);
+  }, [fetchVaultHoldings]);
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -1453,6 +1504,95 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         )}
       </div>
 
+      {/* Decibel vault positions are part of the same account portfolio. */}
+      <div id="vault-positions" className="surface-1 rounded-[16px] overflow-hidden">
+        <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+          <h3 className="text-[13px] font-display font-semibold">
+            Vault Positions ({vaultHoldings.length})
+          </h3>
+          {vaultHoldingsLoading ? (
+            <span className="text-[11px] text-zinc-500">updating...</span>
+          ) : null}
+        </div>
+
+        {vaultHoldings.length === 0 ? (
+          <div className="p-6 text-center text-[13px] text-zinc-500">
+            {vaultHoldingsLoading ? "Loading vault positions..." : "No vault positions"}
+          </div>
+        ) : (
+          <div className="grid gap-px bg-white/5 md:grid-cols-2 xl:grid-cols-3">
+            {vaultHoldings.map((holding) => {
+              const pnlColor = holding.pnl > 0
+                ? "text-success"
+                : holding.pnl < 0
+                  ? "text-danger"
+                  : "text-zinc-400";
+              return (
+                <div key={holding.address} className="bg-[#111] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold text-zinc-100">
+                        {holding.name}
+                      </div>
+                      <div className="mt-1 font-mono text-[10px] tabular-nums text-zinc-600">
+                        {holding.address.slice(0, 8)}...{holding.address.slice(-6)}
+                      </div>
+                    </div>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-zinc-500">
+                      {holding.vaultType === "protocol" ? "Protocol" : "Vault"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[11px]">
+                    <div>
+                      <div className="text-zinc-600">Current value</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-zinc-100">
+                        {formatUsd(holding.currentValue)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-zinc-600">All-time P&amp;L</div>
+                      <div className={`mt-0.5 font-mono tabular-nums ${pnlColor}`}>
+                        {formatUsd(holding.pnl, { signed: true })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-zinc-600">Deposited</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-zinc-300">
+                        {formatUsd(holding.deposited)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-zinc-600">Shares</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-zinc-300">
+                        {holding.shares.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVaultAction({ mode: "deposit", holding })}
+                      className="rounded-[8px] bg-accent px-3 py-2 text-[11px] font-semibold text-black transition-colors hover:bg-[#5dff3f]"
+                    >
+                      Deposit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVaultAction({ mode: "withdraw", holding })}
+                      className="rounded-[8px] border border-white/10 px-3 py-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5"
+                    >
+                      Manage
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Open Orders */}
       {openOrders.length > 0 && (
         <div className="surface-1 rounded-[16px] overflow-hidden">
@@ -1596,6 +1736,30 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
           </div>
         </div>
       )}
+
+      {vaultAction ? (
+        <VaultActionModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setVaultAction(null);
+          }}
+          mode={vaultAction.mode}
+          indicator={{
+            id: vaultAction.holding.address,
+            name: vaultAction.holding.name,
+            description: "Decibel mainnet vault position",
+            network: "mainnet",
+          }}
+          vaultAddress={vaultAction.holding.address}
+          subaccount={selectedSubaccount}
+          ownerWallet={ownerAddress}
+          signAndSubmitTransaction={signVaultTransaction}
+          onComplete={() => {
+            setVaultAction(null);
+            setTimeout(() => void fetchVaultHoldings(), 1_500);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

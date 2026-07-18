@@ -60,6 +60,12 @@ const ACTION_COPY: Record<
     submit: "Deposit",
     endpoint: "/api/decibel/vaults/deposit",
   },
+  withdraw: {
+    title: "Manage vault",
+    description: "Redeem Decibel vault shares back into your trading subaccount.",
+    submit: "Withdraw",
+    endpoint: "/api/decibel/vaults/withdraw",
+  },
   delegate: {
     title: "Delegate",
     description: "Delegate vault trading to the bot operator.",
@@ -113,9 +119,9 @@ export function VaultActionModal({
   const [statusResponse, setStatusResponse] = useState<unknown>(null);
 
   const copy = ACTION_COPY[mode];
-  const requiresAmount = mode === "deposit";
-  const requiresVault = mode === "deposit" || mode === "delegate" || mode === "status";
-  const requiresSubaccount = mode === "create" || mode === "deposit";
+  const requiresAmount = mode === "deposit" || mode === "withdraw";
+  const requiresVault = mode === "deposit" || mode === "withdraw" || mode === "delegate" || mode === "status";
+  const requiresSubaccount = mode === "create" || mode === "deposit" || mode === "withdraw";
   const disabledReason = useMemo(() => {
     if (requiresVault && !vaultAddress) return "Vault address is required.";
     if (requiresSubaccount && !subaccount) return "Subaccount is required.";
@@ -155,7 +161,8 @@ export function VaultActionModal({
           : {
               vaultAddress,
               subaccount,
-              amount: requiresAmount ? amount.trim() : undefined,
+              amount: mode === "deposit" ? amount.trim() : undefined,
+              shares: mode === "withdraw" ? amount.trim() : undefined,
               network: indicator.network,
             };
 
@@ -284,7 +291,7 @@ export function VaultActionModal({
             {requiresAmount ? (
               <div className="space-y-2">
                 <Label htmlFor="vault-action-amount" className="text-xs text-zinc-300">
-                  Amount
+                  {mode === "withdraw" ? "Vault shares" : "USDC amount"}
                 </Label>
                 <Input
                   id="vault-action-amount"
@@ -292,7 +299,7 @@ export function VaultActionModal({
                   autoComplete="off"
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
-                  placeholder="0.00"
+                  placeholder={mode === "withdraw" ? "0.00 shares" : "0.00 USDC"}
                   className="border-zinc-800 bg-zinc-950 font-mono tabular-nums text-zinc-100"
                   aria-invalid={Boolean(error && requiresAmount)}
                 />

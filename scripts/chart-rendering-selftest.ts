@@ -71,6 +71,27 @@ assert.deepEqual(stableTradeIdentity, [
   { time: 101.2, value: 100, volume: 2, sequence: 4, identity: "fill-1" },
 ], "a repeated maker/taker fill must retain one stable trade and must not double-count volume");
 
+const deterministicSameMillisecondOrder = mergeChartPriceTicks(
+  [
+    { time: 205.5, value: 101, sequence: 0, identity: "9002" },
+    { time: 205.5, value: 100, sequence: 1, identity: "9001" },
+  ],
+  [
+    { time: 205.5, value: 102, sequence: 0, identity: "9003" },
+    { time: 205.5, value: 100, sequence: 2, identity: "9001" },
+  ],
+);
+assert.deepEqual(
+  deterministicSameMillisecondOrder.map((tick) => tick.identity),
+  ["9001", "9002", "9003"],
+  "overlapping refreshes must not reorder same-millisecond fills by response order",
+);
+assert.equal(
+  chartPriceTicksToCandles(deterministicSameMillisecondOrder, 1)[0].close,
+  102,
+  "a refresh must preserve the deterministic latest fill for an already-plotted candle",
+);
+
 const observedCandles = chartPriceTicksToCandles([
   { time: 100.1, value: 100, volume: 1 },
   { time: 100.4, value: 102, volume: 2 },
@@ -335,6 +356,13 @@ assert.ok(
 assert.ok(
   lineChartSource.includes('addEventListener("wheel", preventPageScroll, { passive: false })'),
   "line zoom must lock page scrolling with a non-passive wheel listener",
+);
+assert.ok(
+  lineChartSource.includes('touchAction: "pan-y"')
+    && !lineChartSource.includes('touchAction: "none"')
+    && lineChartSource.includes('WebkitTouchCallout: "none"')
+    && lineChartSource.includes('Math.abs(deltaY) > Math.abs(deltaX) * 1.15'),
+  "the mobile live line must yield vertical gestures to page scrolling and suppress iOS text callouts",
 );
 
 console.log("chart rendering self-test: passed");

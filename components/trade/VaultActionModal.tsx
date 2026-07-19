@@ -46,6 +46,9 @@ type VaultActionModalProps = {
 
 type ActionState = "idle" | "building" | "signing" | "extracting" | "submitted" | "error";
 
+const AVAILABLE_BALANCE_CACHE_MS = 15_000;
+const availableBalanceCache = new Map<string, { fetchedAt: number; value: number }>();
+
 const ACTION_COPY: Record<
   VaultActionMode,
   { title: string; description: string; submit: string; endpoint: string }
@@ -180,12 +183,22 @@ export function VaultActionModal({
       return;
     }
 
+    const network = indicator.network ?? "mainnet";
+    const cacheKey = `${network}:${subaccount.toLowerCase()}`;
+    const cached = availableBalanceCache.get(cacheKey);
+    const cachedIsFresh = Boolean(
+      cached && Date.now() - cached.fetchedAt < AVAILABLE_BALANCE_CACHE_MS,
+    );
+    const providedAmount =
+      maxAmount != null && Number.isFinite(maxAmount) ? Math.max(0, maxAmount) : null;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
     let cancelled = false;
-    setAvailableAmount(null);
+    setAvailableAmount(cachedIsFresh ? cached!.value : providedAmount);
     setBalanceLoading(true);
     fetch(
-      `/api/decibel/positions?address=${encodeURIComponent(subaccount)}&openOrders=false&network=${indicator.network ?? "mainnet"}`,
-      { cache: "no-store" },
+      `/api/decibel/positions?address=${encodeURIComponent(subaccount)}&chainOnly=true&overviewOnly=true&network=${network}`,
+      { cache: "no-store", signal: controller.signal },
     )
       .then(async (response) => {
         const data = await response.json().catch(() => null) as {
@@ -193,18 +206,30 @@ export function VaultActionModal({
         } | null;
         const value = Number(data?.overview?.crossWithdrawable);
         if (!cancelled && response.ok) {
-          setAvailableAmount(Number.isFinite(value) ? Math.max(0, value) : null);
+          const nextValue = Number.isFinite(value) ? Math.max(0, value) : null;
+          setAvailableAmount(nextValue);
+          if (nextValue != null) {
+            availableBalanceCache.set(cacheKey, {
+              fetchedAt: Date.now(),
+              value: nextValue,
+            });
+          }
         }
       })
       .catch(() => {
-        if (!cancelled) setAvailableAmount(null);
+        if (!cancelled && !cachedIsFresh && providedAmount == null) {
+          setAvailableAmount(null);
+        }
       })
       .finally(() => {
+        window.clearTimeout(timeout);
         if (!cancelled) setBalanceLoading(false);
       });
 
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeout);
     };
   }, [indicator.network, maxAmount, mode, open, requiresAmount, subaccount]);
 
@@ -377,9 +402,7 @@ export function VaultActionModal({
                     {mode === "withdraw" ? "Vault shares" : "USDC amount"}
                   </label>
                   <span className="flex items-center gap-2">
-                    Available {balanceLoading
-                      ? "…"
-                      : availableAmount == null
+                    Available {availableAmount == null
                         ? "—"
                         : availableAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                     <button
@@ -395,8 +418,11 @@ export function VaultActionModal({
                 <div className="flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3">
                   <input
                     id="vault-action-amount"
+                    type="text"
                     inputMode="decimal"
                     autoComplete="off"
+                    enterKeyHint="done"
+                    data-mobile-sheet-no-drag="true"
                     value={amount}
                     onChange={(event) => {
                       const value = event.target.value.replace(/[^0-9.]/g, "");
@@ -404,7 +430,9 @@ export function VaultActionModal({
                     }}
                     placeholder="0.00"
                     className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-bold tabular-nums text-white outline-none placeholder:text-zinc-600"
+                    style={{ WebkitUserSelect: "text", userSelect: "text" }}
                     aria-invalid={Boolean(error && requiresAmount)}
+                    aria-busy={balanceLoading}
                   />
                   <div className="ml-4 flex shrink-0 items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2">
                     {mode === "deposit" ? <TokenLogo token="USDC" size={22} /> : null}
@@ -482,6 +510,7 @@ export function VaultActionModal({
       <MobileModalSheet
         open={open}
         onClose={() => onOpenChange(false)}
+        initialSnap={isContributionMode ? "compact" : "mid"}
         title={copy.title}
         description={isContributionMode ? undefined : copy.description}
         titleId="vault-action-title"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  getFastCrossWithdrawable,
   getFastOverview,
   getFastPositions,
   getIndexedPositions,
@@ -192,13 +193,14 @@ export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");
   const network = getRequestNetwork(req);
   const chainOnly = req.nextUrl.searchParams.get("chainOnly") === "true";
+  const overviewOnly = req.nextUrl.searchParams.get("overviewOnly") === "true";
   const includeOpenOrders =
-    req.nextUrl.searchParams.get("openOrders") !== "false" && !chainOnly;
+    req.nextUrl.searchParams.get("openOrders") !== "false" && !chainOnly && !overviewOnly;
 
   const rate = checkApiRateLimit(
     req,
-    chainOnly ? "decibel-positions-hot" : "decibel-positions",
-    chainOnly ? 180 : 60,
+    chainOnly || overviewOnly ? "decibel-positions-hot" : "decibel-positions",
+    chainOnly || overviewOnly ? 180 : 60,
     60_000,
   );
   if (!rate.allowed) {
@@ -221,6 +223,29 @@ export async function GET(req: NextRequest) {
   const startedAt = Date.now();
 
   try {
+    if (overviewOnly) {
+      const crossWithdrawable = await getFastCrossWithdrawable(address, network);
+      return NextResponse.json(
+        {
+          network,
+          positions: [],
+          openOrders: [],
+          overview: { crossWithdrawable },
+          latencyMs: Date.now() - startedAt,
+          sources: {
+            positions: "skipped",
+            overview: "chain",
+            openOrders: "skipped",
+            mark: "skipped",
+            marketName: "skipped",
+            indexed: "skipped",
+          },
+          warnings: [],
+        },
+        { headers: NO_STORE_HEADERS },
+      );
+    }
+
     const [chainPositions, overview, openOrders, indexedResult] =
       await Promise.all([
         getFastPositions(address, network),
@@ -232,7 +257,7 @@ export async function GET(req: NextRequest) {
               orders: [],
               error: undefined,
             }),
-        chainOnly
+        chainOnly || overviewOnly
           ? Promise.resolve({ positions: null as null, error: undefined })
           : tryIndexedPositions(address, network),
       ]);
@@ -262,7 +287,7 @@ export async function GET(req: NextRequest) {
           : "indexed"
         : "chain";
 
-    if (!chainOnly && rawPositions.length > 0) {
+    if (!chainOnly && !overviewOnly && rawPositions.length > 0) {
       const addresses = rawPositions
         .map((p) => p.marketAddress)
         .filter((a): a is string => typeof a === "string");

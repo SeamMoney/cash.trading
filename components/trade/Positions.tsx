@@ -1504,7 +1504,8 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         )}
       </div>
 
-      {/* Decibel vault positions are part of the same account portfolio. */}
+      {/* Omit this surface entirely when the account has no vault holdings. */}
+      {vaultHoldings.length > 0 ? (
       <div id="vault-positions" className="surface-1 rounded-[16px] overflow-hidden">
         <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
           <h3 className="text-[13px] font-display font-semibold">
@@ -1515,11 +1516,6 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
           ) : null}
         </div>
 
-        {vaultHoldings.length === 0 ? (
-          <div className="p-6 text-center text-[13px] text-zinc-500">
-            {vaultHoldingsLoading ? "Loading vault positions..." : "No vault positions"}
-          </div>
-        ) : (
           <div className="grid gap-px bg-white/5 md:grid-cols-2 xl:grid-cols-3">
             {vaultHoldings.map((holding) => {
               const pnlColor = holding.pnl > 0
@@ -1590,8 +1586,8 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
               );
             })}
           </div>
-        )}
       </div>
+      ) : null}
 
       {/* Open Orders */}
       {openOrders.length > 0 && (

@@ -391,7 +391,7 @@ function VaultsPanel({
                     </div>
                   </div>
 
-                  <div className="mt-2 h-[190px] touch-pan-x">
+                  <div className="mt-2 h-[170px] touch-pan-x">
                     {chartPoints.length >= 2 ? (
                       <AreaChart
                         data={chartPoints as unknown as Record<string, unknown>[]}

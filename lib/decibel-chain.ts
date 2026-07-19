@@ -896,6 +896,29 @@ export async function getFastOverview(
   };
 }
 
+/**
+ * Read only the amount a cross-margin account can deposit elsewhere. Vault
+ * sheets do not need the other three overview views, so this keeps their MAX
+ * balance request to one fullnode call.
+ */
+export async function getFastCrossWithdrawable(
+  subaccount: string,
+  network?: DecibelNetwork
+): Promise<number> {
+  const withdrawable = await safeView<string | number>(
+    {
+      function: `${getDecibelPackage(network)}::perp_engine::max_allowed_withdraw_from_cross`,
+      functionArguments: [subaccount, getDecibelCollateralMetadata(network)],
+    },
+    network
+  );
+
+  if (withdrawable === null) {
+    throw new Error("Decibel withdrawable balance unavailable");
+  }
+  return Math.max(0, rawUsd(withdrawable));
+}
+
 async function getFastMarket(
   market: string,
   network?: DecibelNetwork

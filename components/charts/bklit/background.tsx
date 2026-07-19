@@ -6,6 +6,8 @@ import { useChartStable } from "./chart-context";
 
 interface BackgroundProps {
   color?: string;
+  /** Extend the pattern into the chart's reserved top margin. */
+  extendTop?: number;
   opacity?: number;
   pattern?: "dots";
   radius?: number;
@@ -15,6 +17,7 @@ interface BackgroundProps {
 /** A lightweight bklit plot background. Only the dotted treatment used here is exposed. */
 export function Background({
   color = "var(--chart-grid)",
+  extendTop = 0,
   opacity = 1,
   pattern = "dots",
   radius = 1.5,
@@ -26,6 +29,7 @@ export function Background({
   if (pattern !== "dots" || innerWidth <= 0 || innerHeight <= 0) return null;
 
   const tileSize = 10 * scale;
+  const safeExtendTop = Number.isFinite(extendTop) ? Math.max(0, extendTop) : 0;
 
   return (
     <g aria-hidden="true" className="chart-background" opacity={opacity}>
@@ -39,7 +43,13 @@ export function Background({
           <circle cx={tileSize / 2} cy={tileSize / 2} fill={color} r={radius * scale} />
         </pattern>
       </defs>
-      <rect fill={`url(#${patternId})`} height={innerHeight} width={innerWidth} x={0} y={0} />
+      <rect
+        fill={`url(#${patternId})`}
+        height={innerHeight + safeExtendTop}
+        width={innerWidth}
+        x={0}
+        y={-safeExtendTop}
+      />
     </g>
   );
 }

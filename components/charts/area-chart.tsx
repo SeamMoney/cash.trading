@@ -57,6 +57,10 @@ export interface AreaChartProps {
   className?: string;
   /** Native touch behavior for the chart surface. Default: "none" */
   touchAction?: CSSProperties["touchAction"];
+  /** Fractional vertical domain padding. Default: 0.1. */
+  yPaddingRatio?: number;
+  /** Round the Y domain to human-friendly boundaries. Default: true. */
+  yNice?: boolean;
   /** Child components (Area, Grid, ChartTooltip, etc.) */
   children: ReactNode;
 }
@@ -108,6 +112,8 @@ interface ChartInnerProps {
   xDataKey: string;
   margin: Margin;
   animationDuration: number;
+  yPaddingRatio: number;
+  yNice: boolean;
   children: ReactNode;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -119,6 +125,8 @@ function ChartInner({
   xDataKey,
   margin,
   animationDuration,
+  yPaddingRatio,
+  yNice,
   children,
   containerRef,
 }: ChartInnerProps) {
@@ -184,16 +192,20 @@ function ChartInner({
       maxValue = 100;
     }
 
-    // Add 10% padding above and below the data range
+    // Keep the default breathing room, while allowing compact financial
+    // charts to use a tighter explicit domain.
     const range = maxValue - minValue || 1;
-    const pad = range * 0.1;
+    const safePaddingRatio = Number.isFinite(yPaddingRatio)
+      ? Math.min(0.5, Math.max(0, yPaddingRatio))
+      : 0.1;
+    const pad = range * safePaddingRatio;
 
     return scaleLinear({
       range: [innerHeight, 0],
       domain: [minValue - pad, maxValue + pad],
-      nice: true,
+      nice: yNice,
     });
-  }, [innerHeight, data, lines]);
+  }, [innerHeight, data, lines, yNice, yPaddingRatio]);
 
   // Pre-compute date labels for ticker animation
   const dateLabels = useMemo(
@@ -328,6 +340,8 @@ export function AreaChart({
   aspectRatio = "2 / 1",
   className = "",
   touchAction = "none",
+  yPaddingRatio = 0.1,
+  yNice = true,
   children,
 }: AreaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -349,6 +363,8 @@ export function AreaChart({
             margin={margin}
             width={width}
             xDataKey={xDataKey}
+            yNice={yNice}
+            yPaddingRatio={yPaddingRatio}
           >
             {children}
           </ChartInner>

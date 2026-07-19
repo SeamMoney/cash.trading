@@ -219,7 +219,7 @@ for (const emptyVault of [
 assert.ok(!tradePage.includes("GUILD_OVERRIDES"), "real vault identities must not be replaced with demo guilds");
 assert.ok(!tradePage.includes("buildPnlCurve"), "vault charts must not fabricate PnL history");
 assert.ok(
-  tradePage.includes('className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"'),
+  tradePage.includes('className="no-scrollbar flex items-start snap-x snap-mandatory overflow-x-auto overscroll-x-contain"'),
   "vault carousels must remain swipeable without exposing horizontal scrollbars",
 );
 assert.ok(
@@ -242,9 +242,9 @@ assert.ok(
 );
 assert.ok(
   !btcChart.includes(">Mark Price<")
-    && btcChart.includes("grid-cols-[1.15fr_0.8fr_1fr_1fr_0.85fr]")
+    && btcChart.includes("grid-cols-5")
     && !btcChart.includes("Right fade to hint horizontal scroll"),
-  "the market stats row must start at Oracle and fit Funding without horizontal scrolling",
+  "the market stats row must use equal columns from Oracle through Funding without horizontal scrolling",
 );
 assert.notEqual(
   decibelSubaccountStorageKey("0xABC", "mainnet"),
@@ -458,12 +458,23 @@ assert.match(decibelVaultPositionsRoute, /get_vault_portfolio_subaccounts/);
 assert.match(decibelVaultPositionsRoute, /getIndexedPositions/);
 assert.match(decibelVaultPositionsRoute, /marketPrices\.getAll/);
 assert.match(decibelVaultPositionsRoute, /limit: 1_000/);
+assert.ok(
+  !decibelVaultPositionsRoute.includes("s-maxage")
+    && decibelVaultPositionsRoute.includes("headers: NO_STORE_HEADERS"),
+  "live vault PnL must never be held behind a CDN cache",
+);
 assert.match(vaultPositionsTable, /<table/);
 assert.match(vaultPositionsTable, /Open positions/);
 assert.match(vaultPositionsTable, /canScrollDown/);
+assert.match(vaultPositionsTable, /LIVE_REFRESH_MS = 2_500/);
 assert.ok(
   !vaultPositionsTable.includes("overflow-x-auto"),
   "the compact vault positions table must never need a horizontal scrollbar",
+);
+assert.ok(
+  !vaultPositionsTable.includes("rounded-lg border")
+    && !vaultPositionsTable.includes("h-[510px]"),
+  "the vault trades view must sit directly in the card without a nested framed box",
 );
 assert.match(positionsComponent, /Vault Positions \(\{vaultHoldings\.length\}\)/);
 assert.match(positionsComponent, /\/api\/vault\/user\?account=/);
@@ -878,6 +889,13 @@ assert.match(decibelVaultStatusRoute, /resolveDecibelNetwork\(body\.network\)/);
 assert.match(vaultActionModal, /network: indicator\.network/);
 assert.match(vaultActionModal, /endpoint: "\/api\/decibel\/vaults\/withdraw"/);
 assert.match(vaultActionModal, /shares: mode === "withdraw"/);
+assert.match(vaultActionModal, /owner: ownerWallet/);
+assert.match(vaultActionModal, /explorer\.aptoslabs\.com\/account/);
+assert.ok(
+  !vaultActionModal.includes("Subaccount is required.")
+    && vaultActionModal.includes("isContributionMode ?"),
+  "vault contributions must resolve the primary account automatically and use the simplified contribution sheet",
+);
 assert.match(decibelVaultExtractRoute, /checkApiRateLimit\(req, "decibel-vault-extract"/);
 assert.match(decibelVaultExtractRoute, /\^0x\[0-9a-fA-F\]\{64\}\$/);
 assert.match(decibelVaultExtractRoute, /expectedEventType/);
@@ -934,6 +952,17 @@ assert.equal(
     network: "mainnet",
   }).amountRaw,
   "18446744073709551615",
+);
+const ownerResolvedVaultDeposit = buildDepositDecibelVaultPayload({
+  owner: "0x1",
+  vaultAddress: "0x2",
+  amountRaw: "1000000",
+  network: "mainnet",
+});
+assert.match(
+  String(ownerResolvedVaultDeposit.payload.functionArguments[0]),
+  /^0x[0-9a-f]{64}$/,
+  "vault deposits must derive the primary Decibel subaccount from the connected owner",
 );
 assert.throws(
   () => buildDepositDecibelVaultPayload({

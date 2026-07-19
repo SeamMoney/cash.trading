@@ -200,8 +200,9 @@ assert.ok(
   "mobile candle inspection must clear its retained hover anchor on touch release or cancellation",
 );
 assert.ok(
-  plotSource.includes('<Background pattern="dots" opacity={0.85} />')
+  plotSource.includes('<Background pattern="dots" opacity={0.85} extendTop={40} />')
     && backgroundSource.includes('<pattern')
+    && backgroundSource.includes('y={-safeExtendTop}')
     && !plotSource.includes("GridRows")
     && !plotSource.includes("GridColumns"),
   "trade charts must use the requested bklit-style dot background instead of line grids",

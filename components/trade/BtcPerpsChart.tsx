@@ -536,8 +536,10 @@ function BtcPerpsChartComponent({
   const dragStateRef = useRef<{
     pointerId: number;
     startX: number;
+    startY: number;
     startEndTime: number;
     spanSecs: number;
+    intent: "pending" | "horizontal";
   } | null>(null);
   const lineInteractionRef = useRef<HTMLDivElement | null>(null);
   const [lineColor, setLineColor] = useState("#39ff14");
@@ -780,19 +782,21 @@ function BtcPerpsChartComponent({
     if (lineResolvedEndTime == null) return;
 
     if (event.pointerType === "touch") {
-      event.preventDefault();
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      event.currentTarget.setPointerCapture(event.pointerId);
 
       if (touchPointersRef.current.size === 1) {
         dragStateRef.current = {
           pointerId: event.pointerId,
           startX: event.clientX,
+          startY: event.clientY,
           startEndTime: lineResolvedEndTime,
           spanSecs: lineWindowSecs,
+          intent: "pending",
         };
         touchGestureRef.current = null;
       } else if (touchPointersRef.current.size === 2) {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
         const rect = event.currentTarget.getBoundingClientRect();
         const [first, second] = Array.from(touchPointersRef.current.values());
         const centerX = (first.x + second.x) / 2;
@@ -813,15 +817,16 @@ function BtcPerpsChartComponent({
     dragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      startY: event.clientY,
       startEndTime: lineResolvedEndTime,
       spanSecs: lineWindowSecs,
+      intent: "horizontal",
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handleLinePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
-      event.preventDefault();
       if (!touchPointersRef.current.has(event.pointerId)) return;
       touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -829,6 +834,7 @@ function BtcPerpsChartComponent({
       if (rect.width <= 0) return;
 
       if (touchPointersRef.current.size >= 2 && touchGestureRef.current) {
+        event.preventDefault();
         const [first, second] = Array.from(touchPointersRef.current.values());
         const centerX = (first.x + second.x) / 2;
         const distance = Math.hypot(first.x - second.x, first.y - second.y);
@@ -853,6 +859,24 @@ function BtcPerpsChartComponent({
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
 
+    if (event.pointerType === "touch" && dragState.intent === "pending") {
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 7) return;
+
+      // A vertical gesture belongs to the page. Relinquish the chart before
+      // iOS turns a normal scroll into a captured chart drag.
+      if (Math.abs(deltaY) > Math.abs(deltaX) * 1.15) {
+        dragStateRef.current = null;
+        return;
+      }
+
+      dragState.intent = "horizontal";
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    if (event.pointerType === "touch") event.preventDefault();
+
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
 
@@ -862,7 +886,6 @@ function BtcPerpsChartComponent({
 
   const handleLinePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
-      event.preventDefault();
       touchPointersRef.current.delete(event.pointerId);
       touchGestureRef.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -874,8 +897,10 @@ function BtcPerpsChartComponent({
         dragStateRef.current = {
           pointerId: remainingId,
           startX: remainingPoint.x,
+          startY: remainingPoint.y,
           startEndTime: lineResolvedEndTime,
           spanSecs: lineWindowSecs,
+          intent: "pending",
         };
         return;
       }
@@ -1605,13 +1630,19 @@ function BtcPerpsChartComponent({
       {/* Liveline receives only real line ticks. Candle rendering is isolated above. */}
       <div
         ref={lineInteractionRef}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+        className="absolute inset-0 cursor-grab select-none active:cursor-grabbing"
+        onContextMenu={(event) => event.preventDefault()}
         onPointerDown={handleLinePointerDown}
         onPointerMove={handleLinePointerMove}
         onPointerUp={handleLinePointerUp}
         onPointerCancel={handleLinePointerUp}
         onWheel={handleLineWheel}
-        style={{ touchAction: "none", overscrollBehavior: "contain" }}
+        style={{
+          touchAction: "pan-y",
+          overscrollBehavior: "contain",
+          WebkitTouchCallout: "none",
+          WebkitUserSelect: "none",
+        }}
       >
         <ChartDotBackground padding={linePadding} />
         <Liveline

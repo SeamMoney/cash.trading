@@ -17,6 +17,16 @@ export type ChartPriceTick = {
   identity?: string;
 };
 
+const DIGITS_ONLY = /^\d+$/;
+
+function compareStableIdentity(left: string, right: string) {
+  if (left === right) return 0;
+  if (DIGITS_ONLY.test(left) && DIGITS_ONLY.test(right) && left.length !== right.length) {
+    return left.length - right.length;
+  }
+  return left < right ? -1 : 1;
+}
+
 function validCandle(candle: ChartCandle) {
   return (
     Number.isFinite(candle.time)
@@ -59,9 +69,20 @@ export function mergeChartPriceTicks(
       volume: Math.max(prior?.volume ?? 0, tick.volume ?? 0),
     });
   }
-  const ordered = Array.from(byTime.values()).sort((a, b) => (
-    a.time - b.time || (a.sequence ?? 0) - (b.sequence ?? 0)
-  ));
+  const ordered = Array.from(byTime.values()).sort((a, b) => {
+    const timeDifference = a.time - b.time;
+    if (timeDifference !== 0) return timeDifference;
+
+    // REST refreshes do not guarantee a stable order for fills that landed in
+    // the same transaction millisecond. Trade ids do. Sorting identified
+    // fills by that stable key keeps the already-plotted close from changing
+    // when an overlapping refresh returns the same fills in another order.
+    if (a.identity && b.identity && a.identity !== b.identity) {
+      return compareStableIdentity(a.identity, b.identity);
+    }
+
+    return (a.sequence ?? 0) - (b.sequence ?? 0);
+  });
   const safeLimit = Number.isFinite(maxPoints)
     ? Math.max(1, Math.floor(maxPoints))
     : ordered.length;

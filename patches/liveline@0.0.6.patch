@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e4f5616a3 100644
+index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..b9c0d3eb45ae5133fbb6aff05054b299fa1fff9d 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -387,7 +387,16 @@ function blendColor(c1, c2, t) {
@@ -114,7 +114,58 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
    badge.container.style.transform = `translate3d(${badgeLeft}px, ${badgeTop}px, 0)`;
    if (cfg.badgeVariant === "minimal") {
      badge.path.setAttribute("fill", cfg.palette.badgeOuterBg);
-@@ -2526,7 +2540,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2433,6 +2447,8 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+   (0, import_react.useEffect)(() => {
+     const container = containerRef.current;
+     if (!container) return;
++    let touchStart = null;
++    let touchIntent = "pending";
+     const onMove = (e) => {
+       if (!configRef.current.scrub) return;
+       const rect = container.getBoundingClientRect();
+@@ -2445,17 +2461,39 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+     const onTouchStart = (e) => {
+       if (!configRef.current.scrub) return;
+       if (e.touches.length !== 1) return;
++      touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
++      touchIntent = "pending";
+       const rect = container.getBoundingClientRect();
+       hoverXRef.current = e.touches[0].clientX - rect.left;
+     };
+     const onTouchMove = (e) => {
+       if (!configRef.current.scrub) return;
+       if (e.touches.length !== 1) return;
+-      e.preventDefault();
++      const touch = e.touches[0];
++      if (!touchStart) {
++        touchStart = { x: touch.clientX, y: touch.clientY };
++      }
++      if (touchIntent === "pending") {
++        const deltaX = touch.clientX - touchStart.x;
++        const deltaY = touch.clientY - touchStart.y;
++        if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 7) {
++          touchIntent = Math.abs(deltaY) > Math.abs(deltaX) * 1.15
++            ? "vertical"
++            : "horizontal";
++        }
++      }
++      if (touchIntent === "vertical") {
++        hoverXRef.current = null;
++        configRef.current.onHover?.(null);
++        return;
++      }
++      if (touchIntent === "horizontal") e.preventDefault();
+       const rect = container.getBoundingClientRect();
+-      hoverXRef.current = e.touches[0].clientX - rect.left;
++      hoverXRef.current = touch.clientX - rect.left;
+     };
+     const onTouchEnd = () => {
++      touchStart = null;
++      touchIntent = "pending";
+       hoverXRef.current = null;
+       configRef.current.onHover?.(null);
+     };
+@@ -2526,7 +2564,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
        return;
      }
      applyDpr(ctx, dpr, w, h);
@@ -123,7 +174,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
      const isCandle = cfg.mode === "candle";
      if (isCandle) {
        if (cfg.paused && pausedCandlesRef.current === null && (cfg.candles?.length ?? 0) > 0) {
-@@ -2585,12 +2599,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2585,12 +2623,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
      if (loadingAlphaRef.current > 0.99) loadingAlphaRef.current = 1;
      const loadingAlpha = loadingAlphaRef.current;
      const revealTarget = !cfg.loading && hasData ? 1 : 0;
@@ -144,7 +195,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
      if (Math.abs(chartRevealRef.current - revealTarget) < 5e-3) {
        chartRevealRef.current = revealTarget;
      }
-@@ -3530,6 +3546,8 @@ function Liveline({
+@@ -3530,6 +3570,8 @@ function Liveline({
    degen: degenProp,
    badgeTail = true,
    badgeVariant = "default",
@@ -153,7 +204,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
    showValue = false,
    valueMomentumColor = false,
    windows,
-@@ -3556,6 +3574,9 @@ function Liveline({
+@@ -3556,6 +3598,9 @@ function Liveline({
    onModeChange,
    onSeriesToggle,
    seriesToggleCompact = false,
@@ -163,7 +214,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
    className,
    style
  }) {
-@@ -3669,6 +3690,8 @@ function Liveline({
+@@ -3669,6 +3714,8 @@ function Liveline({
      degenOptions: isMultiSeries ? void 0 : degenOptions,
      badgeTail,
      badgeVariant,
@@ -172,7 +223,7 @@ index 5adaa70579752ec6735cb9bedf3fdcc3c1fc8244..135e297dcf8cbeacfa443bbfdb18e37e
      tooltipY,
      tooltipOutline,
      valueMomentumColor,
-@@ -3686,7 +3709,10 @@ function Liveline({
+@@ -3686,7 +3733,10 @@ function Liveline({
      lineValue,
      multiSeries,
      isMultiSeries,
@@ -259,7 +310,7 @@ index c5c3f609f858b875c5564d616ddf61e99ee9c5fa..000c13debaea50788c0a65a3b9419932
  interface LivelineTransitionProps {
      /** Key of the active child to display. Must match a child's `key` prop. */
 diff --git a/dist/index.js b/dist/index.js
-index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69a76f21d2 100644
+index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..361c36a7e76af13aff1bd908298dd801e5dfa907 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -360,7 +360,16 @@ function blendColor(c1, c2, t) {
@@ -374,7 +425,58 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
    badge.container.style.transform = `translate3d(${badgeLeft}px, ${badgeTop}px, 0)`;
    if (cfg.badgeVariant === "minimal") {
      badge.path.setAttribute("fill", cfg.palette.badgeOuterBg);
-@@ -2499,7 +2513,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2406,6 +2420,8 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+   useEffect(() => {
+     const container = containerRef.current;
+     if (!container) return;
++    let touchStart = null;
++    let touchIntent = "pending";
+     const onMove = (e) => {
+       if (!configRef.current.scrub) return;
+       const rect = container.getBoundingClientRect();
+@@ -2418,17 +2434,39 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+     const onTouchStart = (e) => {
+       if (!configRef.current.scrub) return;
+       if (e.touches.length !== 1) return;
++      touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
++      touchIntent = "pending";
+       const rect = container.getBoundingClientRect();
+       hoverXRef.current = e.touches[0].clientX - rect.left;
+     };
+     const onTouchMove = (e) => {
+       if (!configRef.current.scrub) return;
+       if (e.touches.length !== 1) return;
+-      e.preventDefault();
++      const touch = e.touches[0];
++      if (!touchStart) {
++        touchStart = { x: touch.clientX, y: touch.clientY };
++      }
++      if (touchIntent === "pending") {
++        const deltaX = touch.clientX - touchStart.x;
++        const deltaY = touch.clientY - touchStart.y;
++        if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 7) {
++          touchIntent = Math.abs(deltaY) > Math.abs(deltaX) * 1.15
++            ? "vertical"
++            : "horizontal";
++        }
++      }
++      if (touchIntent === "vertical") {
++        hoverXRef.current = null;
++        configRef.current.onHover?.(null);
++        return;
++      }
++      if (touchIntent === "horizontal") e.preventDefault();
+       const rect = container.getBoundingClientRect();
+-      hoverXRef.current = e.touches[0].clientX - rect.left;
++      hoverXRef.current = touch.clientX - rect.left;
+     };
+     const onTouchEnd = () => {
++      touchStart = null;
++      touchIntent = "pending";
+       hoverXRef.current = null;
+       configRef.current.onHover?.(null);
+     };
+@@ -2499,7 +2537,7 @@ function useLivelineEngine(canvasRef, containerRef, config) {
        return;
      }
      applyDpr(ctx, dpr, w, h);
@@ -383,7 +485,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
      const isCandle = cfg.mode === "candle";
      if (isCandle) {
        if (cfg.paused && pausedCandlesRef.current === null && (cfg.candles?.length ?? 0) > 0) {
-@@ -2558,12 +2572,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
+@@ -2558,12 +2596,14 @@ function useLivelineEngine(canvasRef, containerRef, config) {
      if (loadingAlphaRef.current > 0.99) loadingAlphaRef.current = 1;
      const loadingAlpha = loadingAlphaRef.current;
      const revealTarget = !cfg.loading && hasData ? 1 : 0;
@@ -404,7 +506,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
      if (Math.abs(chartRevealRef.current - revealTarget) < 5e-3) {
        chartRevealRef.current = revealTarget;
      }
-@@ -3503,6 +3519,8 @@ function Liveline({
+@@ -3503,6 +3543,8 @@ function Liveline({
    degen: degenProp,
    badgeTail = true,
    badgeVariant = "default",
@@ -413,7 +515,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
    showValue = false,
    valueMomentumColor = false,
    windows,
-@@ -3529,6 +3547,9 @@ function Liveline({
+@@ -3529,6 +3571,9 @@ function Liveline({
    onModeChange,
    onSeriesToggle,
    seriesToggleCompact = false,
@@ -423,7 +525,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
    className,
    style
  }) {
-@@ -3642,6 +3663,8 @@ function Liveline({
+@@ -3642,6 +3687,8 @@ function Liveline({
      degenOptions: isMultiSeries ? void 0 : degenOptions,
      badgeTail,
      badgeVariant,
@@ -432,7 +534,7 @@ index 78ec748aeb09db24ee2a5a09030d55a410b8b1b1..df2eed0f0e860180d3a278e0d6acde69
      tooltipY,
      tooltipOutline,
      valueMomentumColor,
-@@ -3659,7 +3682,10 @@ function Liveline({
+@@ -3659,7 +3706,10 @@ function Liveline({
      lineValue,
      multiSeries,
      isMultiSeries,

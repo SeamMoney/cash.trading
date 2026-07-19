@@ -55,6 +55,11 @@ Historical PnL or account-value series for a Decibel vault.
 Ranges: 7d, 30d, all. Types: pnl, account_value.
 Returns: { vault, range, type, subaccounts, points: [{ t, v }], fetchedAt }
 
+### GET /api/decibel/vault-positions?vault=0x...
+Live open positions for every portfolio subaccount owned by a Decibel vault.
+Returns: { vault, subaccounts, positions: [{ market, size, isLong, leverage,
+entryPrice, markPrice, value, estimatedPnl, estimatedPnlPct }], fetchedAt }
+
 ### GET /api/decibel/vaults
 All active Decibel vaults with TVL, returns, and risk stats.
 Returns: { vaults: [{ address, name, manager, tvl, volume, all_time_pnl,

@@ -109,7 +109,10 @@ function ChartDotBackground({
         left: padding.left,
         opacity: 0.85,
         right: padding.right,
-        top: padding.top,
+        // The data path keeps its vertical padding, but the visual field
+        // continues behind the LIVE / HISTORY controls instead of leaving a
+        // blank strip above the plot.
+        top: 0,
       }}
     />
   );

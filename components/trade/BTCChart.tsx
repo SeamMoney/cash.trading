@@ -1108,9 +1108,9 @@ export function BTCChart({
 
       {/* Market stats bar */}
       <div className="border-b border-white/5">
-        <div className="grid grid-cols-[1.15fr_0.8fr_1fr_1fr_0.85fr] gap-2 px-4 py-2 font-mono text-[10px] tabular-nums sm:gap-4 sm:text-[11px]">
+        <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[10px] tabular-nums sm:gap-x-5 sm:text-[11px]">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] text-zinc-600 sm:text-[9px]">Oracle</span>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Oracle</span>
             <NumberTicker
               value={displayOracle > 0 ? displayOracle : null}
               fallback="—"
@@ -1118,35 +1118,26 @@ export function BTCChart({
                 minimumFractionDigits: displayStatDecimals,
                 maximumFractionDigits: displayStatDecimals,
               }}
-              className="truncate font-semibold text-white"
+              className="mt-0.5 truncate font-semibold leading-4 text-white"
             />
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
-              <span className="sm:hidden">24h</span>
-              <span className="hidden sm:inline">24h Change</span>
-            </span>
-            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-green-400"} truncate font-semibold`}>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">24h</span>
+            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayChange}
             </span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
-              <span className="sm:hidden">Volume</span>
-              <span className="hidden sm:inline">24h Volume</span>
-            </span>
-            <span className="truncate font-semibold text-white">{displayVolume}</span>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Volume</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayVolume}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] text-zinc-600 sm:text-[9px]">
-              <span className="sm:hidden">OI</span>
-              <span className="hidden sm:inline">Open Interest</span>
-            </span>
-            <span className="truncate font-semibold text-white">{displayOpenInterest}</span>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">OI</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayOpenInterest}</span>
           </div>
-          <div className="flex min-w-0 flex-col text-right">
-            <span className="text-[8px] text-zinc-600 sm:text-[9px]">Funding</span>
-            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-green-400"} truncate font-semibold`}>
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Funding</span>
+            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayFunding}
             </span>
           </div>

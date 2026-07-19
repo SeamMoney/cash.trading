@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Activity, CheckCircle2, Loader2, Send, WalletCards } from "lucide-react";
+import { Activity, CheckCircle2, ExternalLink, Loader2, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,12 +130,15 @@ export function VaultActionModal({
   const isMobile = useIsMobile();
 
   const copy = ACTION_COPY[mode];
+  const isContributionMode = mode === "deposit" || mode === "withdraw";
   const requiresAmount = mode === "deposit" || mode === "withdraw";
   const requiresVault = mode === "deposit" || mode === "withdraw" || mode === "delegate" || mode === "status";
   const requiresSubaccount = mode === "create" || mode === "deposit" || mode === "withdraw";
   const disabledReason = useMemo(() => {
     if (requiresVault && !vaultAddress) return "Vault address is required.";
-    if (requiresSubaccount && !subaccount) return "Subaccount is required.";
+    if (requiresSubaccount && !subaccount && !ownerWallet) {
+      return "Connect a Decibel trading account.";
+    }
     if (requiresAmount && !amount.trim()) return "Amount is required.";
     if (requiresAmount && (!Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
       return "Enter a valid amount.";
@@ -144,7 +147,17 @@ export function VaultActionModal({
       return `Amount exceeds available ${mode === "withdraw" ? "shares" : "USDC"}.`;
     }
     return "";
-  }, [amount, availableAmount, mode, requiresAmount, requiresSubaccount, requiresVault, subaccount, vaultAddress]);
+  }, [
+    amount,
+    availableAmount,
+    mode,
+    ownerWallet,
+    requiresAmount,
+    requiresSubaccount,
+    requiresVault,
+    subaccount,
+    vaultAddress,
+  ]);
 
   const isWorking = state === "building" || state === "signing" || state === "extracting";
   const canSubmit = !isWorking && !disabledReason;
@@ -207,6 +220,7 @@ export function VaultActionModal({
       const body =
         mode === "create"
           ? {
+              owner: ownerWallet,
               subaccount,
               vaultName: `${indicator.name} Vault`,
               vaultShareSymbol: (indicator.symbol || indicator.name)
@@ -222,6 +236,7 @@ export function VaultActionModal({
               network: indicator.network,
             }
           : {
+              owner: ownerWallet,
               vaultAddress,
               subaccount,
               amount: mode === "deposit" ? amount.trim() : undefined,
@@ -299,8 +314,27 @@ export function VaultActionModal({
     }
   }
 
+  const vaultExplorerHref = vaultAddress
+    ? `https://explorer.aptoslabs.com/account/${vaultAddress}?network=${indicator.network === "testnet" ? "testnet" : "mainnet"}`
+    : null;
+
   const formFields = (
     <>
+            {isContributionMode ? (
+              vaultExplorerHref ? (
+                <a
+                  href={vaultExplorerHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={vaultAddress ?? undefined}
+                  className="flex min-w-0 items-center justify-between gap-3 border-b border-white/[0.06] pb-3 font-mono text-xs tabular-nums text-zinc-400 transition-colors hover:text-white"
+                >
+                  <span className="truncate">Vault {shortAddress(vaultAddress)}</span>
+                  <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+                </a>
+              ) : null
+            ) : (
+              <>
             <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex items-center gap-2">
                 <Activity className="size-4 text-primary" aria-hidden="true" />
@@ -333,6 +367,8 @@ export function VaultActionModal({
                 <div className="mt-1 truncate font-mono tabular-nums text-zinc-200">{shortAddress(subaccount)}</div>
               </div>
             </div>
+              </>
+            )}
 
             {requiresAmount ? (
               <div className="overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0e0e0e]">
@@ -398,7 +434,26 @@ export function VaultActionModal({
     </>
   );
 
-  const formActions = (
+  const formActions = isContributionMode ? (
+    <button
+      type="submit"
+      disabled={!canSubmit}
+      className="flex w-full items-center justify-center gap-2 rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:brightness-100 disabled:active:scale-100"
+    >
+      {state === "building" || state === "signing" || state === "extracting" ? (
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      ) : state === "submitted" ? (
+        <CheckCircle2 className="size-4" aria-hidden="true" />
+      ) : null}
+      {state === "building"
+        ? "Building"
+        : state === "signing"
+          ? "Sign in wallet"
+          : state === "extracting"
+            ? "Saving vault"
+            : copy.submit}
+    </button>
+  ) : (
     <>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isWorking}>
               Cancel
@@ -408,8 +463,6 @@ export function VaultActionModal({
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               ) : state === "submitted" ? (
                 <CheckCircle2 className="size-4" aria-hidden="true" />
-              ) : mode === "deposit" ? (
-                <WalletCards className="size-4" aria-hidden="true" />
               ) : (
                 <Send className="size-4" aria-hidden="true" />
               )}
@@ -430,12 +483,12 @@ export function VaultActionModal({
         open={open}
         onClose={() => onOpenChange(false)}
         title={copy.title}
-        description={copy.description}
+        description={isContributionMode ? undefined : copy.description}
         titleId="vault-action-title"
       >
         <form onSubmit={submit} className="pt-3">
           <div className="space-y-4 px-2 pb-4">{formFields}</div>
-          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4">
+          <div className="sticky bottom-0 flex items-center gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4">
             {formActions}
           </div>
         </form>
@@ -450,13 +503,21 @@ export function VaultActionModal({
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="min-w-0">
               <DialogTitle className="text-balance text-base">{copy.title}</DialogTitle>
-              <DialogDescription className="mt-1 text-pretty text-xs text-zinc-400">
-                {copy.description}
-              </DialogDescription>
+              {isContributionMode ? (
+                <DialogDescription className="sr-only">
+                  {mode === "deposit" ? "Deposit USDC into" : "Withdraw shares from"} {indicator.name}.
+                </DialogDescription>
+              ) : (
+                <DialogDescription className="mt-1 text-pretty text-xs text-zinc-400">
+                  {copy.description}
+                </DialogDescription>
+              )}
             </div>
-            <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-              {mode}
-            </Badge>
+            {!isContributionMode ? (
+              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+                {mode}
+              </Badge>
+            ) : null}
           </div>
         </DialogHeader>
 

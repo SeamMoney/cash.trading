@@ -246,8 +246,8 @@ function VaultsPanel({
     <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
         <header className="border-b border-[#2a2a2a] text-[#888] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums">
           <span className="flex items-center gap-2">
-            <span className="relative h-2 w-2 shrink-0 rounded-full bg-green-500">
-              <span className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
+            <span className="relative h-2 w-2 shrink-0 rounded-full bg-accent">
+              <span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-75" />
             </span>
             <span>DECIBEL VAULTS [{loading || historyPending ? "..." : displayVaults.length}]</span>
           </span>
@@ -273,7 +273,7 @@ function VaultsPanel({
           <>
           <div
             ref={scrollRef}
-            className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+            className="no-scrollbar flex items-start snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
               {displayVaults.map((vault) => {
@@ -283,6 +283,9 @@ function VaultsPanel({
                 const pnlStr = pnlReturn == null
                   ? "—"
                   : `${pnlNeg ? "" : "+"}${pnlReturn.toFixed(2)}%`;
+                const pnlUsdStr = vault.all_time_pnl == null
+                  ? null
+                  : `${vault.all_time_pnl > 0 ? "+" : ""}${formatVaultUsd(vault.all_time_pnl)}`;
                 const chartColor = pnlNeg ? "#ef4444" : "var(--accent)";
                 const chartPoints = chartData[vault.address] ?? [];
                 const chartIsReal = chartKind[vault.address] === "real";
@@ -310,7 +313,7 @@ function VaultsPanel({
                     {tradesVaultAddress === vault.address ? (
                       <motion.div
                         key="trades"
-                        className="mt-3 min-h-[510px]"
+                        className="mt-3"
                         initial={{
                           opacity: 0,
                           transform: reduceMotion ? "none" : "translateY(4px)",
@@ -330,7 +333,6 @@ function VaultsPanel({
                     ) : (
                       <motion.div
                         key="overview"
-                        className="min-h-[510px]"
                         initial={{
                           opacity: 0,
                           transform: reduceMotion ? "none" : "translateY(-4px)",
@@ -376,11 +378,16 @@ function VaultsPanel({
                     </div>
                     <div
                       className={cn(
-                        "mt-0.5 text-[22px] font-bold tabular-nums",
-                        pnlReturn == null ? "text-[#777]" : pnlNeg ? "text-red-400" : "text-green-400",
+                        "mt-0.5 flex items-baseline gap-2 tabular-nums",
+                        pnlReturn == null ? "text-[#777]" : pnlNeg ? "text-red-400" : "text-accent",
                       )}
                     >
-                      {pnlStr}
+                      <span className="text-[22px] font-bold">{pnlStr}</span>
+                      {pnlUsdStr ? (
+                        <span className="font-sans text-[12px] font-semibold opacity-75">
+                          {pnlUsdStr}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -393,6 +400,8 @@ function VaultsPanel({
                         className="!h-full"
                         margin={{ top: 4, right: 4, bottom: 20, left: 0 }}
                         animationDuration={600}
+                        yNice={false}
+                        yPaddingRatio={0.025}
                       >
                         <Grid horizontal fadeHorizontal numTicksRows={2} stroke="rgba(255,255,255,0.04)" strokeDasharray="4,4" />
                         <Area
@@ -425,16 +434,12 @@ function VaultsPanel({
 
                   <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>All-time volume</span>
-                      <span className="text-[#777]">{formatVaultUsd(displayVolume)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>TVL</span>
                       <span className="text-[#777]">{formatVaultUsd(vault.tvl)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>All-time PnL</span>
-                      <span className={cn(vault.all_time_pnl == null ? "text-[#777]" : vault.all_time_pnl < 0 ? "text-red-400" : "text-green-400")}>
+                      <span className={cn(vault.all_time_pnl == null ? "text-[#777]" : vault.all_time_pnl < 0 ? "text-red-400" : "text-accent")}>
                         {formatVaultUsd(vault.all_time_pnl)}
                       </span>
                     </div>
@@ -445,10 +450,6 @@ function VaultsPanel({
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Win Rate (12w)</span>
                       <span className="text-[#777]">{vault.weekly_win_rate_12w == null ? "—" : `${(vault.weekly_win_rate_12w * 100).toFixed(0)}%`}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>Depositors</span>
-                      <span className="text-[#777]">{vault.depositors == null ? "—" : vault.depositors.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Profit Share</span>

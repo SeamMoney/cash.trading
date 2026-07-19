@@ -14,9 +14,6 @@ export const revalidate = 0;
 
 const FULLNODE_VIEW = "https://api.mainnet.aptoslabs.com/v1/view";
 const REQUEST_TIMEOUT_MS = 8_000;
-const RESPONSE_HEADERS = {
-  "Cache-Control": "public, max-age=0, s-maxage=5, stale-while-revalidate=15",
-};
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
@@ -120,7 +117,7 @@ export async function GET(request: NextRequest) {
     if (subaccounts.length === 0) {
       return NextResponse.json(
         { vault: vaultAddress, positions: [], subaccounts: 0, fetchedAt: Date.now() },
-        { headers: RESPONSE_HEADERS },
+        { headers: NO_STORE_HEADERS },
       );
     }
 
@@ -161,7 +158,7 @@ export async function GET(request: NextRequest) {
         fetchedAt: Date.now(),
         source: "decibel-indexer+market-prices",
       },
-      { headers: RESPONSE_HEADERS },
+      { headers: NO_STORE_HEADERS },
     );
   } catch (error) {
     const reason =

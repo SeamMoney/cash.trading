@@ -385,7 +385,7 @@ function BklitCandlePlotComponent({
         yDomain={yDomain}
         yPaddingRatio={0.08}
       >
-        <Background pattern="dots" opacity={0.85} />
+        <Background pattern="dots" opacity={0.85} extendTop={40} />
         <PlotVolume />
         <PlotFills fills={fills} />
         <Candlestick

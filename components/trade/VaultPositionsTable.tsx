@@ -28,6 +28,9 @@ interface VaultPositionsResponse {
   error?: string;
 }
 
+const LIVE_REFRESH_MS = 2_500;
+const TABLE_HEIGHT_CLASS = "h-[436px]";
+
 function marketSymbol(market: string): string {
   return market.replace(/\/USD$/i, "");
 }
@@ -63,7 +66,7 @@ function formatPercent(value: number | null): string {
 function VaultPositionsSkeleton() {
   return (
     <div className="space-y-px" aria-label="Loading vault positions">
-      {Array.from({ length: 9 }, (_, index) => (
+      {Array.from({ length: 8 }, (_, index) => (
         <div
           key={index}
           className="grid grid-cols-[1.35fr_0.8fr_1fr] items-center gap-2 border-b border-white/[0.04] px-3 py-3"
@@ -130,7 +133,9 @@ export function VaultPositionsTable({
 
   useEffect(() => {
     void loadPositions(true);
-    const interval = window.setInterval(() => void loadPositions(false), 15_000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadPositions(false);
+    }, LIVE_REFRESH_MS);
     return () => {
       window.clearInterval(interval);
       requestRef.current?.abort();
@@ -153,8 +158,8 @@ export function VaultPositionsTable({
   }, [positions, status, updateScrollEdges]);
 
   return (
-    <section className="relative h-[510px] overflow-hidden rounded-lg border border-white/[0.06] bg-[#111]">
-      <header className="flex h-[52px] items-center justify-between border-b border-white/[0.06] px-3">
+    <section className="relative h-[480px] overflow-hidden">
+      <header className="flex h-[44px] items-center justify-between border-y border-white/[0.06] px-3">
         <div className="min-w-0">
           <div className="truncate font-sans text-[12px] font-semibold text-zinc-200">
             Open positions
@@ -164,14 +169,18 @@ export function VaultPositionsTable({
           </div>
         </div>
         {updatedAt != null && (
-          <span className="shrink-0 text-[9px] tabular-nums text-zinc-600">
-            {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          <span aria-live="polite" className="shrink-0 text-[9px] tabular-nums text-zinc-600">
+            {new Date(updatedAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
           </span>
         )}
       </header>
 
       {status === "error" ? (
-        <div className="flex h-[456px] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className={cn(TABLE_HEIGHT_CLASS, "flex flex-col items-center justify-center gap-3 px-6 text-center")}>
           <div>
             <div className="text-[12px] font-semibold text-zinc-300">Positions unavailable</div>
             <p className="mt-1 text-pretty text-[10px] leading-4 text-zinc-600">
@@ -189,7 +198,7 @@ export function VaultPositionsTable({
       ) : status === "loading" ? (
         <VaultPositionsSkeleton />
       ) : positions.length === 0 ? (
-        <div className="flex h-[456px] flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className={cn(TABLE_HEIGHT_CLASS, "flex flex-col items-center justify-center gap-3 px-6 text-center")}>
           <div>
             <div className="text-[12px] font-semibold text-zinc-300">No open positions</div>
             <p className="mt-1 text-pretty text-[10px] leading-4 text-zinc-600">
@@ -207,7 +216,7 @@ export function VaultPositionsTable({
       ) : (
         <>
           <ScrollArea
-            className="h-[456px] touch-pan-y overscroll-contain"
+            className={cn(TABLE_HEIGHT_CLASS, "touch-pan-y overscroll-contain")}
             viewportRef={viewportRef}
             viewportProps={{
               tabIndex: 0,
@@ -280,7 +289,7 @@ export function VaultPositionsTable({
           {canScrollUp && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-[52px] z-20 flex h-5 items-center justify-center border-b border-white/[0.04] bg-[#111]/95 text-[9px] text-zinc-600"
+              className="pointer-events-none absolute inset-x-0 top-[44px] z-20 flex h-5 items-center justify-center border-b border-white/[0.04] bg-[#111]/95 text-[9px] text-zinc-600"
             >
               ↑
             </div>

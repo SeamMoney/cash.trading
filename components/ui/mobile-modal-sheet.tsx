@@ -19,6 +19,7 @@ import {
 interface MobileModalSheetProps {
   children: ReactNode;
   description?: string;
+  initialSnap?: "compact" | "mid";
   onClose: () => void;
   open: boolean;
   title: string;
@@ -33,6 +34,7 @@ interface MobileModalSheetProps {
 export function MobileModalSheet({
   children,
   description,
+  initialSnap = "mid",
   onClose,
   open,
   title,
@@ -50,6 +52,7 @@ export function MobileModalSheet({
   const suppressClickUntil = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const initialVisibleRatio = initialSnap === "compact" ? 0.42 : MOBILE_SHEET_MID_VH;
 
   const drag = useRef({
     active: false,
@@ -69,8 +72,8 @@ export function MobileModalSheet({
 
   const getSnaps = useCallback(() => {
     const vh = stableVh.current || window.innerHeight;
-    return [vh, vh * (1 - MOBILE_SHEET_MID_VH), safeInsetTop.current];
-  }, []);
+    return [vh, vh * (1 - initialVisibleRatio), safeInsetTop.current];
+  }, [initialVisibleRatio]);
 
   const applyPosition = useCallback((top: number) => {
     const sheet = sheetRef.current;
@@ -78,7 +81,7 @@ export function MobileModalSheet({
     sheet.style.transform = `translate3d(0, ${top}px, 0)`;
 
     const vh = stableVh.current || window.innerHeight;
-    const midTop = vh * (1 - MOBILE_SHEET_MID_VH);
+    const midTop = vh * (1 - initialVisibleRatio);
     const fullTop = safeInsetTop.current;
     const progress = Math.max(0, Math.min(1, (vh - top) / (vh - fullTop)));
     if (overlayRef.current) {
@@ -93,7 +96,7 @@ export function MobileModalSheet({
     if (contentRef.current) {
       contentRef.current.style.opacity = `${Math.max(0, Math.min(1, progress / 0.2))}`;
     }
-  }, []);
+  }, [initialVisibleRatio]);
 
   const snapTo = useCallback((index: number, velocityPxMs = 0, closeWhenDone = false) => {
     const snaps = getSnaps();
@@ -186,6 +189,13 @@ export function MobileModalSheet({
 
   const handleDragStart = useCallback((clientY: number, target: HTMLElement) => {
     if (inputFocused.current) return false;
+    if (
+      target.closest(
+        "button, a, input, textarea, select, label, [contenteditable='true'], [data-mobile-sheet-no-drag='true']",
+      )
+    ) {
+      return false;
+    }
     const scrollArea = scrollAreaRef.current;
     const isInScrollArea = scrollArea?.contains(target);
     if (

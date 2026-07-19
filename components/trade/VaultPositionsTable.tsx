@@ -29,7 +29,7 @@ interface VaultPositionsResponse {
 }
 
 const LIVE_REFRESH_MS = 2_500;
-const TABLE_HEIGHT_CLASS = "h-[436px]";
+const TABLE_HEIGHT_CLASS = "h-[416px]";
 
 function marketSymbol(market: string): string {
   return market.replace(/\/USD$/i, "");
@@ -158,7 +158,7 @@ export function VaultPositionsTable({
   }, [positions, status, updateScrollEdges]);
 
   return (
-    <section className="relative h-[480px] overflow-hidden">
+    <section className="relative h-[460px] overflow-hidden">
       <header className="flex h-[44px] items-center justify-between border-y border-white/[0.06] px-3">
         <div className="min-w-0">
           <div className="truncate font-sans text-[12px] font-semibold text-zinc-200">

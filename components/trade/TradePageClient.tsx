@@ -351,16 +351,21 @@ function VaultsPanel({
                     </span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-[#1a2e1a]">
-                    <div className="bg-[#0e1a0e] px-3 py-2.5">
-                      <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Trading Volume</div>
-                      <div className="mt-0.5 text-[14px] font-bold text-green-400">{formatVaultUsd(displayVolume)}</div>
+                  {/* Hallmark · pre-emit critique: P5 H5 E5 S4 R5 V4 */}
+                  <dl className="mt-3 grid grid-cols-2 border-y border-white/[0.07] py-3">
+                    <div className="flex min-w-0 flex-col pr-4">
+                      <dt className="order-2 mt-1 text-[10px] font-medium text-zinc-400">All-time volume</dt>
+                      <dd className="order-1 truncate font-sans text-[18px] font-semibold tabular-nums text-zinc-100">
+                        {formatVaultUsd(displayVolume)}
+                      </dd>
                     </div>
-                    <div className="border-l border-[#1a2e1a] bg-[#0e1a0e] px-3 py-2.5">
-                      <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Members</div>
-                      <div className="mt-0.5 text-[14px] font-bold text-white">{vault.depositors == null ? "—" : vault.depositors.toLocaleString()}</div>
+                    <div className="flex min-w-0 flex-col border-l border-white/[0.07] pl-4">
+                      <dt className="order-2 mt-1 text-[10px] font-medium text-zinc-400">Depositors</dt>
+                      <dd className="order-1 truncate font-sans text-[18px] font-semibold tabular-nums text-zinc-100">
+                        {vault.depositors == null ? "—" : vault.depositors.toLocaleString()}
+                      </dd>
                     </div>
-                  </div>
+                  </dl>
 
                   <div className="mt-3">
                     <div className="flex items-baseline justify-between">
@@ -420,7 +425,7 @@ function VaultsPanel({
 
                   <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>Trading Volume</span>
+                      <span>All-time volume</span>
                       <span className="text-[#777]">{formatVaultUsd(displayVolume)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
@@ -442,7 +447,7 @@ function VaultsPanel({
                       <span className="text-[#777]">{vault.weekly_win_rate_12w == null ? "—" : `${(vault.weekly_win_rate_12w * 100).toFixed(0)}%`}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
-                      <span>Members</span>
+                      <span>Depositors</span>
                       <span className="text-[#777]">{vault.depositors == null ? "—" : vault.depositors.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">

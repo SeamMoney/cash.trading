@@ -8,6 +8,7 @@ import { Positions as DecibelPositions } from "@/components/trade/Positions";
 import { TradePanel } from "@/components/trade/TradePanel";
 import { VaultActionModal } from "@/components/trade/VaultActionModal";
 import { MobilePortfolioSheet } from "@/components/trade/MobilePortfolioSheet";
+import { VaultPositionsTable } from "@/components/trade/VaultPositionsTable";
 import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
@@ -20,6 +21,8 @@ import { curveLinear } from "@visx/curve";
 import { Grid } from "@/components/charts/grid";
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { useInViewport } from "@/hooks/useInViewport";
+import { formatVaultUsd, hasMeaningfulVaultActivity } from "@/lib/decibel-vault-display";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 interface DecibelVault {
   address: string;
@@ -47,13 +50,6 @@ interface DecibelVault {
 }
 
 const PRICE_UI_COMMIT_MS = 250;
-
-function formatUsd(n: number | null): string {
-  if (n == null) return "—";
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-  return `$${n.toFixed(0)}`;
-}
 
 function shortenAddr(addr: string): string {
   if (addr.length <= 12) return addr;
@@ -85,6 +81,10 @@ function useDecibelVaults(enabled = true) {
       if (fetched.length === 0) return;
 
       for (const v of fetched) {
+        // Do not spend history requests on empty/inactive vault cards. A vault
+        // is listed only after both its headline metrics and real chart series
+        // prove that it has capital, trading activity, and PnL.
+        if (!hasMeaningfulVaultActivity(v)) continue;
         if (!historyRequestedRef.current.has(v.address)) {
           historyRequestedRef.current.add(v.address);
           void (async () => {
@@ -130,7 +130,13 @@ function useDecibelVaults(enabled = true) {
     return () => clearInterval(interval);
   }, [enabled, fetchVaults]);
 
-  return { vaults, loading, chartData: chartDataRef.current, chartKind };
+  return {
+    vaults,
+    loading,
+    chartData: chartDataRef.current,
+    chartKind,
+    refreshVaults: fetchVaults,
+  };
 }
 
 function VaultsPanel({
@@ -144,9 +150,11 @@ function VaultsPanel({
   onAction: (mode: "deposit" | "withdraw", vault: DecibelVault, maxAmount?: number) => void;
   ownerAddress?: string | null;
 }) {
-  const { vaults, loading, chartData, chartKind } = useDecibelVaults(enabled);
+  const { vaults, loading, chartData, chartKind, refreshVaults } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [tradesVaultAddress, setTradesVaultAddress] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
   const [managedVaultHoldings, setManagedVaultHoldings] = useState<Map<string, { shares: number; currentValue: number }>>(
     () => new Map(),
   );
@@ -196,8 +204,17 @@ function VaultsPanel({
     };
   }, [fetchVaultHoldings, holdingsRefreshNonce, enabled, ownerAddress]);
 
-  // Show every active Decibel vault; keep the protocol vault first.
-  const displayVaults = [...vaults]
+  const activityVaults = vaults.filter(hasMeaningfulVaultActivity);
+  const historyPending = activityVaults.some((vault) => chartKind[vault.address] == null);
+
+  // A card is eligible only when its non-zero metrics are backed by a real
+  // on-chain PnL series. This intentionally excludes empty and dead vaults.
+  const displayVaults = activityVaults
+    .filter(
+      (vault) =>
+        chartKind[vault.address] === "real" &&
+        (chartData[vault.address]?.length ?? 0) >= 2,
+    )
     .sort((a, b) => {
       if (a.vault_type === "protocol") return -1;
       if (b.vault_type === "protocol") return 1;
@@ -232,18 +249,25 @@ function VaultsPanel({
             <span className="relative h-2 w-2 shrink-0 rounded-full bg-green-500">
               <span className="absolute inset-0 animate-ping rounded-full bg-green-500 opacity-75" />
             </span>
-            <span>DECIBEL VAULTS [{loading ? "..." : displayVaults.length}]</span>
+            <span>DECIBEL VAULTS [{loading || historyPending ? "..." : displayVaults.length}]</span>
           </span>
         </header>
 
         <div className="text-[#888] bg-[#111] font-mono text-sm font-medium">
-          {loading && displayVaults.length === 0 ? (
+          {(loading || historyPending) && displayVaults.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-[#555]">
-              <span className="animate-pulse">Loading vault data from Decibel...</span>
+              <span className="animate-pulse">Verifying vault performance from Decibel...</span>
             </div>
           ) : displayVaults.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-[#555]">
-              Vault data is temporarily unavailable.
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-[#555]">
+              <span>No vault currently meets the verified performance criteria.</span>
+              <button
+                type="button"
+                onClick={() => void refreshVaults()}
+                className="rounded-[8px] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-zinc-300 transition-[transform,background-color] duration-150 hover:bg-white/[0.08] active:scale-[0.97]"
+              >
+                Retry
+              </button>
             </div>
           ) : (
           <>
@@ -254,7 +278,7 @@ function VaultsPanel({
           >
               {displayVaults.map((vault) => {
                 const pnlReturn = vault.all_time_return;
-                const displayVolume = vault.volume_30d ?? vault.volume;
+                const displayVolume = vault.volume ?? vault.volume_30d;
                 const pnlNeg = pnlReturn != null && pnlReturn < 0;
                 const pnlStr = pnlReturn == null
                   ? "—"
@@ -282,6 +306,42 @@ function VaultsPanel({
                     </span>
                   </div>
 
+                  <AnimatePresence initial={false} mode="wait">
+                    {tradesVaultAddress === vault.address ? (
+                      <motion.div
+                        key="trades"
+                        className="mt-3 min-h-[510px]"
+                        initial={{
+                          opacity: 0,
+                          transform: reduceMotion ? "none" : "translateY(4px)",
+                        }}
+                        animate={{ opacity: 1, transform: "translateY(0px)" }}
+                        exit={{
+                          opacity: 0,
+                          transform: reduceMotion ? "none" : "translateY(-4px)",
+                        }}
+                        transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: "easeOut" }}
+                      >
+                        <VaultPositionsTable
+                          vaultAddress={vault.address}
+                          vaultName={vault.name}
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="overview"
+                        className="min-h-[510px]"
+                        initial={{
+                          opacity: 0,
+                          transform: reduceMotion ? "none" : "translateY(-4px)",
+                        }}
+                        animate={{ opacity: 1, transform: "translateY(0px)" }}
+                        exit={{
+                          opacity: 0,
+                          transform: reduceMotion ? "none" : "translateY(4px)",
+                        }}
+                        transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: "easeOut" }}
+                      >
                   <div className="mt-3 py-1.5">
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[9px] font-bold uppercase text-[#4a4a4a]">Vault Manager</span>
@@ -294,7 +354,7 @@ function VaultsPanel({
                   <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-[#1a2e1a]">
                     <div className="bg-[#0e1a0e] px-3 py-2.5">
                       <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Trading Volume</div>
-                      <div className="mt-0.5 text-[14px] font-bold text-green-400">{formatUsd(displayVolume)}</div>
+                      <div className="mt-0.5 text-[14px] font-bold text-green-400">{formatVaultUsd(displayVolume)}</div>
                     </div>
                     <div className="border-l border-[#1a2e1a] bg-[#0e1a0e] px-3 py-2.5">
                       <div className="text-[9px] font-bold uppercase text-[#2d6b2d]">Members</div>
@@ -346,7 +406,7 @@ function VaultsPanel({
                             {
                               color: chartColor,
                               label: "PnL",
-                              value: formatUsd(point.pnl as number),
+                              value: formatVaultUsd(point.pnl as number),
                             },
                           ]}
                         />
@@ -361,16 +421,16 @@ function VaultsPanel({
                   <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>Trading Volume</span>
-                      <span className="text-[#777]">{formatUsd(displayVolume)}</span>
+                      <span className="text-[#777]">{formatVaultUsd(displayVolume)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>TVL</span>
-                      <span className="text-[#777]">{formatUsd(vault.tvl)}</span>
+                      <span className="text-[#777]">{formatVaultUsd(vault.tvl)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
                       <span>All-time PnL</span>
                       <span className={cn(vault.all_time_pnl == null ? "text-[#777]" : vault.all_time_pnl < 0 ? "text-red-400" : "text-green-400")}>
-                        {formatUsd(vault.all_time_pnl)}
+                        {formatVaultUsd(vault.all_time_pnl)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[#444]">
@@ -398,14 +458,34 @@ function VaultsPanel({
                       <span className={vault.max_drawdown == null ? "text-[#777]" : "text-red-400"}>{vault.max_drawdown == null ? "—" : `${vault.max_drawdown.toFixed(1)}%`}</span>
                     </div>
                   </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
-                  <div className="mt-3">
+                  <div className="mt-3 flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => onAction(hasHolding ? "withdraw" : "deposit", vault, holding?.shares)}
-                      className="w-full rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[filter] hover:brightness-95"
+                      className="flex-1 rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.97]"
                     >
                       {hasHolding ? "Manage" : "Deposit"}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={tradesVaultAddress === vault.address}
+                      onClick={() =>
+                        setTradesVaultAddress((current) =>
+                          current === vault.address ? null : vault.address,
+                        )
+                      }
+                      className={cn(
+                        "flex-1 rounded-[8px] border px-3 py-2 text-[12px] font-bold transition-[transform,background-color,color,border-color] duration-150 active:scale-[0.97]",
+                        tradesVaultAddress === vault.address
+                          ? "border-accent/30 bg-accent/10 text-accent"
+                          : "border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
+                      )}
+                    >
+                      {tradesVaultAddress === vault.address ? "Overview" : "Trades"}
                     </button>
                   </div>
                 </div>

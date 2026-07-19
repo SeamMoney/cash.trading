@@ -24,6 +24,10 @@ import { resolveDecibelWalletIdentity } from "../lib/decibel-wallet-identity";
 import { parseCctpMessage } from "../lib/decibel-cctp";
 import { summarizeDecibelFees } from "../lib/decibel-fees";
 import { getEvmSourceChainFromChainId } from "../lib/evm-cctp";
+import {
+  formatVaultUsd,
+  hasMeaningfulVaultActivity,
+} from "../lib/decibel-vault-display";
 import type { DecibelTrade } from "../lib/decibel-api";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
@@ -140,6 +144,8 @@ const sdkTestRoute = readFileSync("app/api/sdk-test/route.ts", "utf8");
 const botDebugRoute = readFileSync("app/api/bot/debug/route.ts", "utf8");
 const dlpBenchmarkRoute = readFileSync("app/api/dlp/benchmark/route.ts", "utf8");
 const decibelPositionsRoute = readFileSync("app/api/decibel/positions/route.ts", "utf8");
+const decibelVaultPositionsRoute = readFileSync("app/api/decibel/vault-positions/route.ts", "utf8");
+const vaultPositionsTable = readFileSync("components/trade/VaultPositionsTable.tsx", "utf8");
 const decibelPortfolioChartRoute = readFileSync("app/api/decibel/portfolio-chart/route.ts", "utf8");
 const decibelSubaccountRoute = readFileSync("app/api/decibel/subaccount/route.ts", "utf8");
 const decibelWalletBalanceRoute = readFileSync("app/api/decibel/wallet-balance/route.ts", "utf8");
@@ -190,10 +196,25 @@ assert.match(vaultRoute, /status: 502, headers: VAULT_UNAVAILABLE_HEADERS/);
 assert.match(vaultRoute, /function validatePage/);
 assert.match(vaultRoute, /uniqueVaults\.size !== firstPage\.total_count/);
 assert.ok(!vaultRoute.includes("/vaults?limit=50"), "vault discovery must not stop at 50");
-assert.ok(
-  !vaultRoute.includes("v.status === \"active\" && (v.tvl ?? 0) > 0"),
-  "zero-TVL active vaults must not be hidden after Decibel returns them",
+
+assert.equal(formatVaultUsd(312_980.887387), "$312.98K");
+assert.equal(formatVaultUsd(3_603_310_466), "$3.6B");
+assert.equal(formatVaultUsd(-12_450), "-$12.45K");
+assert.equal(
+  hasMeaningfulVaultActivity({
+    tvl: 23_714_356,
+    volume: 3_603_310_466,
+    all_time_pnl: 312_980,
+  }),
+  true,
 );
+for (const emptyVault of [
+  { tvl: 0, volume: 1, all_time_pnl: 1 },
+  { tvl: 1, volume: 0, all_time_pnl: 1 },
+  { tvl: 1, volume: 1, all_time_pnl: 0 },
+] as const) {
+  assert.equal(hasMeaningfulVaultActivity(emptyVault), false);
+}
 
 assert.ok(!tradePage.includes("GUILD_OVERRIDES"), "real vault identities must not be replaced with demo guilds");
 assert.ok(!tradePage.includes("buildPnlCurve"), "vault charts must not fabricate PnL history");
@@ -413,17 +434,30 @@ assert.ok(!accountManager.includes("setAutoDiscoverKey"), "bridge discovery must
 assert.match(accountManager, /disabled=\{status === "submitting"\}/);
 assert.match(accountManager, /hydratedBridgeStorageKey !== bridgeStorageKey/);
 assert.match(accountManager, /accountActionContextRef\.current !== lookupContext/);
-assert.match(tradePage, /const displayVaults = \[\.\.\.vaults\]/);
+assert.match(tradePage, /const activityVaults = vaults\.filter\(hasMeaningfulVaultActivity\)/);
+assert.match(tradePage, /chartKind\[vault\.address\] === "real"/);
+assert.match(tradePage, /\(chartData\[vault\.address\]\?\.length \?\? 0\) >= 2/);
 assert.ok(!tradePage.includes('if (n == null) return "$0"'), "missing vault metrics must not render as real zero dollars");
 assert.ok(!tradePage.includes("vault.depositors ?? 0"), "missing vault depositor counts must remain unavailable");
 assert.ok(!tradePage.includes("vault.sharpe_ratio ?? 0"), "missing vault risk metrics must remain unavailable");
 assert.ok(
-  !tradePage.includes(".filter((v) => v.vault_type === \"protocol\""),
-  "the vault carousel must show every active vault returned by Decibel",
+  tradePage.includes('tradesVaultAddress === vault.address ? "Overview" : "Trades"'),
+  "every eligible vault card must switch between its overview and live positions",
 );
 assert.match(tradePage, /vault-history\?vault=\$\{v\.address\}&range=all&type=pnl/);
 assert.match(tradePage, /hasHolding \? "Manage" : "Deposit"/);
 assert.match(tradePage, /hasHolding \? "withdraw" : "deposit"/);
+assert.match(decibelVaultPositionsRoute, /get_vault_portfolio_subaccounts/);
+assert.match(decibelVaultPositionsRoute, /getIndexedPositions/);
+assert.match(decibelVaultPositionsRoute, /marketPrices\.getAll/);
+assert.match(decibelVaultPositionsRoute, /limit: 1_000/);
+assert.match(vaultPositionsTable, /<table/);
+assert.match(vaultPositionsTable, /Open positions/);
+assert.match(vaultPositionsTable, /canScrollDown/);
+assert.ok(
+  !vaultPositionsTable.includes("overflow-x-auto"),
+  "the compact vault positions table must never need a horizontal scrollbar",
+);
 assert.match(positionsComponent, /Vault Positions \(\{vaultHoldings\.length\}\)/);
 assert.match(positionsComponent, /\/api\/vault\/user\?account=/);
 

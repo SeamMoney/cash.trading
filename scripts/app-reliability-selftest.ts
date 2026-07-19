@@ -440,6 +440,13 @@ assert.match(tradePage, /\(chartData\[vault\.address\]\?\.length \?\? 0\) >= 2/)
 assert.ok(!tradePage.includes('if (n == null) return "$0"'), "missing vault metrics must not render as real zero dollars");
 assert.ok(!tradePage.includes("vault.depositors ?? 0"), "missing vault depositor counts must remain unavailable");
 assert.ok(!tradePage.includes("vault.sharpe_ratio ?? 0"), "missing vault risk metrics must remain unavailable");
+assert.match(tradePage, /<dl className="mt-3 grid grid-cols-2 border-y/);
+assert.match(tradePage, /All-time volume/);
+assert.match(tradePage, /Depositors/);
+assert.ok(
+  !tradePage.includes('bg-[#0e1a0e]') && !tradePage.includes('border-[#1a2e1a]'),
+  "vault metadata must stay a quiet ledger strip instead of a tinted card inside the vault card",
+);
 assert.ok(
   tradePage.includes('tradesVaultAddress === vault.address ? "Overview" : "Trades"'),
   "every eligible vault card must switch between its overview and live positions",

@@ -7,6 +7,10 @@ import {
   type DecibelPublicNetwork,
 } from "@/lib/decibel-public";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
+import {
+  onDecibelTradeConfirmed,
+  type DecibelTradeConfirmedDetail,
+} from "@/lib/decibel-trade-events";
 import { cn } from "@/lib/utils";
 
 interface OrderBookProps {
@@ -52,6 +56,9 @@ const POSITIVE_ALPHA = "rgba(0, 210, 12, 0.18)";
 const NEGATIVE_ALPHA = "rgba(255, 80, 0, 0.20)";
 const CENTER_BG = "#1f1f22";
 const MAX_TRADES = 80;
+const RECENT_TRADES_TIMEOUT_MS = 8_000;
+const recentTradesCache = new Map<string, TradePrint[]>();
+const recentTradesRequests = new Map<string, Promise<TradePrint[]>>();
 
 function priceDecimals(price: number) {
   if (price >= 10_000) return 2;
@@ -78,6 +85,15 @@ function formatSize(size: number) {
   if (size >= 100) return size.toFixed(0);
   if (size >= 1) return size.toFixed(2).replace(/\.00$/, "");
   return size.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatUsdNotional(price: number, size: number) {
+  const value = price * size;
+  if (!Number.isFinite(value) || value < 0) return "";
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  if (value >= 100) return `$${value.toFixed(0)}`;
+  return `$${value.toFixed(2)}`;
 }
 
 function snapStep(price: number, step: number) {
@@ -183,9 +199,17 @@ function normalizeTrade(value: unknown): TradePrint | null {
     recordValue(record, ["side", "action", "direction", "taker_side", "is_buy"]) ?? ""
   ).toLowerCase();
   const side =
-    rawSide.includes("buy") || rawSide.includes("long") || rawSide === "true"
+    rawSide.includes("buy")
+    || rawSide === "long"
+    || rawSide.includes("openlong")
+    || rawSide.includes("closeshort")
+    || rawSide === "true"
       ? "buy"
-      : rawSide.includes("sell") || rawSide.includes("short") || rawSide === "false"
+      : rawSide.includes("sell")
+        || rawSide === "short"
+        || rawSide.includes("openshort")
+        || rawSide.includes("closelong")
+        || rawSide === "false"
         ? "sell"
         : "unknown";
   const timestamp = normalizeTimestamp(
@@ -236,6 +260,51 @@ function mergeTrades(current: TradePrint[], incoming: TradePrint[]) {
   return Array.from(byKey.values())
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_TRADES);
+}
+
+function tradesCacheKey(network: DecibelPublicNetwork, marketAddress: string) {
+  return `${network}:${marketAddress.toLowerCase()}`;
+}
+
+function storeRecentTrades(key: string, trades: TradePrint[]) {
+  recentTradesCache.set(key, trades);
+  if (recentTradesCache.size > 80) {
+    const oldestKey = recentTradesCache.keys().next().value;
+    if (oldestKey) recentTradesCache.delete(oldestKey);
+  }
+}
+
+function loadRecentTrades(
+  network: DecibelPublicNetwork,
+  marketAddress: string,
+): Promise<TradePrint[]> {
+  const key = tradesCacheKey(network, marketAddress);
+  const inFlight = recentTradesRequests.get(key);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const params = new URLSearchParams({
+      resource: "trades",
+      network,
+      marketAddr: marketAddress,
+      limit: String(MAX_TRADES),
+      timeoutMs: String(RECENT_TRADES_TIMEOUT_MS),
+    });
+    const response = await fetch(`/api/decibel/public?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Could not load trades");
+    const nextTrades = collectTrades(await response.json())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, MAX_TRADES);
+    storeRecentTrades(key, nextTrades);
+    return nextTrades;
+  })().finally(() => {
+    recentTradesRequests.delete(key);
+  });
+
+  recentTradesRequests.set(key, request);
+  return request;
 }
 
 function explorerTxnUrl(txRef: string, network: DecibelPublicNetwork) {
@@ -352,7 +421,7 @@ function TradesTable({
       <div className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
         <span>Time</span>
         <span className="text-right">Price</span>
-        <span className="text-right">Size</span>
+        <span className="text-right">USD</span>
         <span className="text-right">Tx</span>
       </div>
       {trades.length > 0 ? (
@@ -373,7 +442,9 @@ function TradesTable({
                 >
                   {formatPrice(trade.price)}
                 </span>
-                <span className="truncate text-right text-zinc-400">{formatSize(trade.size)}</span>
+                <span className="truncate text-right text-zinc-400">
+                  {formatUsdNotional(trade.price, trade.size)}
+                </span>
                 {trade.txRef ? (
                   <a
                     href={explorerTxnUrl(trade.txRef, network)}
@@ -423,6 +494,9 @@ export function OrderBook({
     marketAddress ??
     Object.values(PERP_MARKET_DATA).find((market) => market.marketName === marketName)
       ?.marketAddr;
+  const cacheKey = resolvedMarketAddress
+    ? tradesCacheKey(network, resolvedMarketAddress)
+    : "";
 
   useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
 
@@ -444,10 +518,31 @@ export function OrderBook({
   const ingestTrades = useCallback((message: unknown) => {
     const nextTrades = collectTrades(message);
     if (nextTrades.length === 0) return false;
-    setTrades((current) => mergeTrades(current, nextTrades));
+    setTrades((current) => {
+      const merged = mergeTrades(current, nextTrades);
+      if (cacheKey) storeRecentTrades(cacheKey, merged);
+      return merged;
+    });
     setTradesStatus("live");
     return true;
-  }, []);
+  }, [cacheKey]);
+
+  useEffect(() => onDecibelTradeConfirmed((detail: DecibelTradeConfirmedDetail) => {
+    const addressMatches = Boolean(
+      detail.marketAddress
+      && resolvedMarketAddress
+      && detail.marketAddress.toLowerCase() === resolvedMarketAddress.toLowerCase()
+    );
+    if (!addressMatches && detail.marketName !== marketName) return;
+    ingestTrades({
+      id: `confirmed:${detail.txRef}`,
+      price: detail.price,
+      size: detail.size,
+      side: detail.side,
+      timestamp: detail.timestamp,
+      tx_hash: detail.txRef,
+    });
+  }), [ingestTrades, marketName, resolvedMarketAddress]);
 
   useEffect(() => {
     if (!resolvedMarketAddress) {
@@ -456,26 +551,19 @@ export function OrderBook({
       return;
     }
     let cancelled = false;
-    setTrades([]);
-    setTradesStatus("loading");
+    const cached = recentTradesCache.get(cacheKey) ?? [];
+    setTrades(cached);
+    setTradesStatus(cached.length > 0 ? "live" : "loading");
 
     const loadTrades = async () => {
       try {
-        const params = new URLSearchParams({
-          resource: "trades",
-          network,
-          marketAddr: resolvedMarketAddress,
-          limit: "80",
-          timeoutMs: "3500",
-        });
-        const response = await fetch(`/api/decibel/public?${params.toString()}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("Could not load trades");
-        const json = await response.json();
+        const nextTrades = await loadRecentTrades(network, resolvedMarketAddress);
         if (cancelled) return;
-        const nextTrades = collectTrades(json);
-        setTrades(nextTrades.sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_TRADES));
+        setTrades((current) => {
+          const merged = mergeTrades(current, nextTrades);
+          storeRecentTrades(cacheKey, merged);
+          return merged;
+        });
         setTradesStatus(nextTrades.length > 0 ? "live" : "waiting");
       } catch {
         if (!cancelled) setTradesStatus("waiting");
@@ -486,7 +574,7 @@ export function OrderBook({
     return () => {
       cancelled = true;
     };
-  }, [network, resolvedMarketAddress]);
+  }, [cacheKey, network, resolvedMarketAddress]);
 
   useEffect(() => {
     if (!resolvedMarketAddress) {

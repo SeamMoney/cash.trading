@@ -29,6 +29,7 @@ import {
   hasMeaningfulVaultActivity,
 } from "../lib/decibel-vault-display";
 import type { DecibelTrade } from "../lib/decibel-api";
+import { extractConfirmedDecibelFill } from "../lib/decibel-trade-fill";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -174,6 +175,8 @@ const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/rou
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
 const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const orderBook = readFileSync("components/trade/OrderBook.tsx", "utf8");
+const decibelTradeEvents = readFileSync("lib/decibel-trade-events.ts", "utf8");
+const decibelTradeFill = readFileSync("lib/decibel-trade-fill.ts", "utf8");
 const explainerPage = readFileSync("app/explainer/page.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
@@ -388,6 +391,41 @@ assert.match(walletAccountModal, /max-w-\[900px\]/);
 assert.match(walletAccountModal, /bg-\[#171717\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(28px, 1fr\)\)`/);
+assert.match(orderBook, /RECENT_TRADES_TIMEOUT_MS = 8_000/);
+assert.match(orderBook, /recentTradesCache/);
+assert.match(orderBook, /recentTradesRequests/);
+assert.match(orderBook, /formatUsdNotional\(trade\.price, trade\.size\)/);
+assert.match(orderBook, /onDecibelTradeConfirmed/);
+assert.match(tradePanel, /emitDecibelTradeConfirmed/);
+assert.match(tradePanel, /extractConfirmedDecibelFill/);
+assert.match(decibelTradeEvents, /cash:decibel-trade-confirmed/);
+assert.match(decibelTradeFill, /OrderEvent/);
+assert.match(decibelTradeFill, /FILLED/);
+assert.deepEqual(
+  extractConfirmedDecibelFill({
+    transaction: {
+      events: [{
+        type: "0x1::market_types::OrderEvent",
+        data: {
+          is_taker: true,
+          market: "0x731b",
+          orig_size: "40000",
+          parent: "0x1234",
+          price: "85229000",
+          remaining_size: "0",
+          status: { __variant__: "FILLED" },
+        },
+      }],
+    },
+    subaccount: "0x1234",
+    marketAddress: "0x731b",
+    requestedSize: 0.04,
+    requestedSizeRaw: 40_000,
+    requestedPrice: 85.229,
+    requestedPriceRaw: 85_229_000,
+  }),
+  { price: 85.229, size: 0.04 },
+);
 assert.ok(!orderBook.includes("flex-col justify-center"), "book rows must fill the pane instead of floating in the middle");
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);

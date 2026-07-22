@@ -9,6 +9,8 @@ import { getEstimatedLiquidationPrice } from "@/lib/trade-utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
+import { emitDecibelTradeConfirmed } from "@/lib/decibel-trade-events";
+import { extractConfirmedDecibelFill } from "@/lib/decibel-trade-fill";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -387,9 +389,29 @@ export function TradePanel({
         setStatusMessage("Order submitted. Waiting for on-chain confirmation...");
       }
       emitDecibelPositionsRefresh();
-      await waitForTransactionConfirmation(result.hash);
+      const confirmedTransaction = await waitForTransactionConfirmation(result.hash);
       emitDecibelPositionsRefresh();
       if (!isCurrentSubmission()) return;
+      const confirmedFill = extractConfirmedDecibelFill({
+        transaction: confirmedTransaction,
+        subaccount: selectedSubaccount,
+        marketAddress: json.meta?.marketAddress ?? marketAddress,
+        requestedSize: json.meta?.size,
+        requestedSizeRaw: json.meta?.sizeRaw,
+        requestedPrice: json.meta?.price,
+        requestedPriceRaw: json.meta?.priceRaw,
+      });
+      if (confirmedFill) {
+        emitDecibelTradeConfirmed({
+          marketAddress: json.meta?.marketAddress ?? marketAddress,
+          marketName: decibelMarketName,
+          price: confirmedFill.price,
+          size: confirmedFill.size,
+          side: side === "long" ? "buy" : "sell",
+          timestamp: Date.now(),
+          txRef: result.hash,
+        });
+      }
       setStatusMessage("Order confirmed. Checking Decibel position state...");
 
       const positionsRes = await fetch(

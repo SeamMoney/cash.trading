@@ -170,7 +170,9 @@ export async function submitEvmDerivedAptosPayload(args: {
       | { hash?: string; error?: string; reason?: string; vmStatus?: string }
       | null;
     if (!res.ok || !data?.hash) {
-      const reason = data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
+      const reason = data?.reason === "sponsor_not_configured"
+        ? "Trading gas sponsor is temporarily unavailable. Please try again shortly."
+        : data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
       throw new Error(
         data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason,
       );

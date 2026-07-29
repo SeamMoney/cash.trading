@@ -58,14 +58,25 @@ interface MathBackend {
 }
 
 /** Exact mirrors of the emitted Move algorithms (move-ta-lib.ts), in bigint. */
+function assertPeriod(fn: string, period: number): void {
+  if (!Number.isFinite(period) || period <= 0) {
+    throw new Error(
+      `${fn}: period resolved to ${period}. An input default is missing from the IR, ` +
+        `or a period references a name the evaluator can't resolve.`,
+    );
+  }
+}
+
 const moveBackend: MathBackend = {
   sma(prices, period) {
+    assertPeriod("sma", period);
     const len = prices.length;
     let total = 0n;
     for (let i = len - period; i < len; i++) total += BigInt(Math.round(prices[i] * SCALE));
     return Number(total / BigInt(period)) / SCALE;
   },
   ema(prices, period) {
+    assertPeriod("ema", period);
     const len = prices.length;
     let seed = 0n;
     for (let i = 0; i < period; i++) seed += BigInt(Math.round(prices[i] * SCALE));
@@ -78,6 +89,7 @@ const moveBackend: MathBackend = {
     return Number(ema) / SCALE;
   },
   rsi(prices, period) {
+    assertPeriod("rsi", period);
     const len = prices.length;
     if (len <= period) return 50;
     let avgGain = 0n;
@@ -122,6 +134,7 @@ const pineBackend: MathBackend = {
     return ema;
   },
   rsi(prices, period) {
+    assertPeriod("rsi", period);
     const len = prices.length;
     if (len <= period) return 50;
     let avgGain = 0;
@@ -167,6 +180,14 @@ class StrategyEvaluator {
   ) {
     for (const f of ir.stateFields) {
       this.env.set(f.name, f.moveType === "bool" ? false : 0);
+    }
+    // Seed declared inputs with their defaults. Without this every
+    // `input.int`-driven period resolved to 0 through irValue(), so ema/sma/rsi
+    // divided by zero — i.e. the gate crashed on most real strategies. It went
+    // unnoticed because the gate was never reached on the live publish path
+    // (the client omitted sourceHash, so the gate was skipped entirely).
+    for (const input of ir.inputs ?? []) {
+      this.env.set(input.name, input.default);
     }
   }
 
@@ -343,6 +364,32 @@ class StrategyEvaluator {
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * A single-backend runner over a live price series — this is the *committed
+ * program executor* the sealed-vault attestor uses (docs/SEALED-INDICATOR.md).
+ *
+ * Uses `moveBackend` with a capped buffer deliberately: the sealed vault's
+ * on-chain trace is a bounded ring, so the attestor must see exactly the series
+ * the chain committed to, with the same integer math. Any other choice would
+ * make the delayed-reveal replay diverge from what actually traded.
+ *
+ * `unsupported` is non-empty when the IR contains ops this evaluator can't
+ * execute — the attestor MUST refuse to sign in that case rather than emit a
+ * signal it can't stand behind.
+ */
+export function createStrategyRunner(ir: IndicatorIR): {
+  pushBar: (close: number) => Signal;
+  unsupported: Set<string>;
+  warmupBars: number;
+} {
+  const evaluator = new StrategyEvaluator(ir, moveBackend, true);
+  return {
+    pushBar: (close: number) => evaluator.pushBar(close),
+    unsupported: evaluator.unsupported,
+    warmupBars: ir.warmupMinBars,
+  };
+}
 
 /**
  * Run the strategy over historical closes with both backends and diff the

@@ -413,6 +413,15 @@ module cash_strategy::sealed_vault {
         price: u64,
         bar_ts: u64,
     ): bool {
+        let want_long_check = signal == SIGNAL_BUY;
+        // Already positioned this way — do nothing. Without this, a signal
+        // sequence like sell → neutral → sell re-enters an open short every
+        // time, pyramiding the position past max_leverage_x100 (the cap is
+        // per-order, so repeated entries would compound past it).
+        if (sv.in_position && sv.is_long == want_long_check) {
+            return false
+        };
+
         let size = resolve_size(sv, price);
         if (size == 0) {
             event::emit(TradeSkipped {

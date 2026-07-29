@@ -188,29 +188,57 @@ export async function POST(req: Request) {
   }
 
   if (body.step === "publish") {
-    const moveSource = typeof body.moveSource === "string" ? body.moveSource : "";
     const moduleName = typeof body.moduleName === "string" ? body.moduleName : "";
     const sourceHash = typeof body.sourceHash === "string" ? body.sourceHash : "";
-    if (!moveSource || !moduleName) {
-      return NextResponse.json({ ok: false, error: "moveSource and moduleName required" }, { status: 400 });
+    if (!moduleName) {
+      return NextResponse.json({ ok: false, error: "moduleName required" }, { status: 400 });
     }
+    // `sourceHash` is REQUIRED. It was optional, and the only client never sent
+    // it (DeployForm's publish body), so the gate below was dead code on the
+    // live path — every publish bypassed it.
+    if (!sourceHash) {
+      return NextResponse.json(
+        { ok: false, error: "sourceHash required — publish must reference the artifact produced by the compile step." },
+        { status: 400 },
+      );
+    }
+
+    // The Move we publish comes from the STORED artifact, never from the client.
+    // Previously `body.moveSource` was passed straight to publishPineVault, so a
+    // caller could publish arbitrary Move — sidestepping the transpiler, this
+    // gate, and the whole WS3 verifiability chain, and leaving a registry row
+    // whose moveSource could never match what was on chain.
+    let artifact: Awaited<ReturnType<typeof getArtifact>> = null;
+    try {
+      artifact = await getArtifact({ sourceHash });
+    } catch (err) {
+      console.error("[deploy-vault] getArtifact failed:", err instanceof Error ? err.message : err);
+      return NextResponse.json(
+        { ok: false, error: "Artifact registry unavailable — cannot verify what would be published." },
+        { status: 503 },
+      );
+    }
+    if (!artifact?.moveSource) {
+      return NextResponse.json(
+        { ok: false, error: `No compiled artifact for sourceHash ${sourceHash}. Run the compile step first.` },
+        { status: 404 },
+      );
+    }
+    const moveSource = artifact.moveSource;
 
     // Hard equivalence gate: refuse to publish a strategy that provably diverges
     // from its backtest. Unknown/absent reports do not block (candle-API hiccup).
-    if (sourceHash) {
+    if (artifact.equivalenceReport) {
       try {
-        const artifact = await getArtifact({ sourceHash });
-        if (artifact?.equivalenceReport) {
-          const report = JSON.parse(artifact.equivalenceReport) as { equivalent: boolean; divergences?: unknown[] };
-          if (report.equivalent === false) {
-            return NextResponse.json(
-              { ok: false, error: "Strategy failed the equivalence gate — the on-chain module would trade differently than the backtest. Not publishing.", divergences: report.divergences?.slice(0, 5) },
-              { status: 422 },
-            );
-          }
+        const report = JSON.parse(artifact.equivalenceReport) as { equivalent: boolean; divergences?: unknown[] };
+        if (report.equivalent === false) {
+          return NextResponse.json(
+            { ok: false, error: "Strategy failed the equivalence gate — the on-chain module would trade differently than the backtest. Not publishing.", divergences: report.divergences?.slice(0, 5) },
+            { status: 422 },
+          );
         }
       } catch {
-        // No artifact / unparseable report → proceed (gate is best-effort).
+        // Unparseable report → treat as unknown, proceed.
       }
     }
 

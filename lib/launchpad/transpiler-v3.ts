@@ -10,7 +10,7 @@
 
 import { parsePine, exprToString } from "./pine-parser";
 import type { Expr, ParsedPine, Stmt, TACallInfo } from "./pine-parser";
-import { astToIndicatorIR, type IndicatorIR, type IRFuncDef } from "./pine-ir";
+import { astToIndicatorIR, TA_SILENT_SUBSTITUTIONS, TA_REQUIRES_OHLC, type IndicatorIR, type IRFuncDef } from "./pine-ir";
 import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
 /** Pinned emitter version recorded in StrategyArtifact rows; bump on any codegen change. */
@@ -179,12 +179,28 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
   // same name, these would silently become undeclared state fields.
   const COMPOSITE_SOURCES = new Set(["hlc3", "hl2", "ohlc4", "hlcc4", "volume"]);
 
+  /** Bare OHLC components. These used to silently alias `close`
+   *  (pine-ir.ts convertExpr), which made `ta.highest(high, 20)` compute the
+   *  highest CLOSE while the derived `hlc3` was a hard reject — the composite
+   *  blocked, its raw components faked. Now both are rejected. */
+  const OHLC_COMPONENTS = new Set(["open", "high", "low"]);
+
   function walkExpr(expr: Expr | undefined): void {
     if (!expr) return;
     switch (expr.k) {
       case "id":
         if (COMPOSITE_SOURCES.has(expr.name) && ast.assignments[expr.name] === undefined) {
           add(`Unsupported source \`${expr.name}\`: the on-chain price feed is close-only, so OHLC/volume composites can't be computed. Rewrite the expression in terms of \`close\`.`);
+        }
+        if (OHLC_COMPONENTS.has(expr.name) && ast.assignments[expr.name] === undefined) {
+          add(`Unsupported source \`${expr.name}\`: the on-chain price trace records one mark price per bar, so open/high/low don't exist. Rewrite in terms of \`close\`.`);
+        }
+        break;
+      case "hist":
+        if (OHLC_COMPONENTS.has(expr.name) && ast.assignments[expr.name] === undefined) {
+          add(`Unsupported source \`${expr.name}[${expr.offset}]\`: the on-chain price trace records one mark price per bar, so open/high/low don't exist. Rewrite in terms of \`close\`.`);
+        } else if (expr.name !== "close" && expr.offset >= 2) {
+          add(`\`${expr.name}[${expr.offset}]\` needs a per-series history buffer, which isn't implemented — only one-deep history (\`${expr.name}[1]\`) is available for named series. Offsets ≥ 2 are supported on \`close\` only.`);
         }
         break;
       case "binop":
@@ -202,10 +218,19 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
         walkExpr(expr.yes);
         walkExpr(expr.no);
         break;
-      case "call":
+      case "call": {
+        const sub = expr.ns === "ta" ? TA_SILENT_SUBSTITUTIONS[expr.fn] : undefined;
+        if (sub) {
+          add(`\`ta.${expr.fn}\` is not implemented on-chain. It used to compile silently to \`ta.${sub.was}\` — a different indicator — so a published vault would have traded a strategy you never wrote. Rejected instead (${sub.why}). Rewrite using a supported ta.* function.`);
+        }
+        const ohlc = expr.ns === "ta" ? TA_REQUIRES_OHLC[expr.fn] : undefined;
+        if (ohlc) {
+          add(`\`ta.${expr.fn}\` can't be computed from the on-chain price trace, which records one mark price per bar. ${ohlc}. Rejected rather than emitting a fabricated stand-in.`);
+        }
         expr.args.forEach(walkExpr);
         Object.values(expr.kw).forEach(walkExpr);
         break;
+      }
     }
   }
 

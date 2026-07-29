@@ -1066,7 +1066,14 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
       const res = await fetch("/api/launchpad/deploy-vault", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step: "publish", moveSource: compileJson.moveSource, moduleName: compileJson.moduleName }),
+        // sourceHash is required: the server republishes the STORED artifact for
+        // this hash rather than trusting client-supplied Move, and it's what
+        // arms the equivalence gate. Omitting it used to silently bypass both.
+        body: JSON.stringify({
+          step: "publish",
+          moduleName: compileJson.moduleName,
+          sourceHash: compileJson.sourceHash,
+        }),
       });
       const pub = await res.json();
       if (!res.ok || !pub.ok) {

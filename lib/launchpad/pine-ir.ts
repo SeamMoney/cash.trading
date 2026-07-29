@@ -193,15 +193,47 @@ const TA_FN_MAP: Record<string, string> = {
   atr: "compute_atr",
   crossover: "compute_crossover",
   crossunder: "compute_crossunder",
-  wma: "compute_sma",     // approximate
-  hma: "compute_sma",     // approximate
-  dema: "compute_ema",    // approximate
-  tema: "compute_ema",    // approximate
-  cci: "compute_rsi",     // approximate
-  williams_r: "compute_rsi", // approximate
-  mfi: "compute_rsi",     // approximate
-  vwap: "compute_sma",    // approximate
-  obv: "compute_sma",     // approximate
+};
+
+/** TA functions we used to silently lower to a *different* indicator.
+ *
+ *  This was the single most dangerous behaviour in the transpiler: `ta.vwap(...)`
+ *  compiled to a plain SMA of closes with no warning, so a user could publish a
+ *  "verified", equivalence-passing vault that traded a strategy they never wrote.
+ *  The equivalence gate is structurally blind to it — both backends read the same
+ *  IR, so the substitution diverges in neither.
+ *
+ *  These are now hard transpile errors (see collectSubstitutedTAErrors in
+ *  transpiler-v3.ts). The map is retained so the error can name exactly what the
+ *  old behaviour would have done. Entries move OUT of here as real
+ *  implementations land in move-ta-lib.ts.
+ */
+export const TA_SILENT_SUBSTITUTIONS: Record<string, { was: string; why: string }> = {
+  wma:        { was: "sma", why: "linear weighting is not implemented" },
+  hma:        { was: "sma", why: "Hull's nested weighted MAs are not implemented" },
+  dema:       { was: "ema", why: "double smoothing is not implemented" },
+  tema:       { was: "ema", why: "triple smoothing is not implemented" },
+  cci:        { was: "rsi", why: "CCI needs a typical-price mean deviation, not RSI" },
+  williams_r: { was: "rsi", why: "Williams %R needs the high/low range" },
+  mfi:        { was: "rsi", why: "MFI needs volume, which the price trace does not carry" },
+  vwap:       { was: "sma", why: "VWAP needs volume, which the price trace does not carry" },
+  obv:        { was: "sma", why: "OBV needs volume, which the price trace does not carry" },
+};
+
+/** TA functions whose definition needs high/low, which a close-only trace does
+ *  not have. The codegen emitted *fabricated* stand-ins for these — ATR's true
+ *  range was `|close - prev_close| * 2` (move-ta-lib.ts compute_atr), SuperTrend
+ *  used an SMA of closes as its ATR (move-codegen.ts:521), and Stochastic used
+ *  the highest/lowest CLOSE (move-codegen.ts:503). Each produces a number that
+ *  looks like the indicator and isn't one.
+ *
+ *  Rejected for the same reason bare `high`/`low` are: better no strategy than a
+ *  strategy that silently trades a different signal. They become available once
+ *  the trace carries real OHLC bars (MASTER-PLAN WS1.2). */
+export const TA_REQUIRES_OHLC: Record<string, string> = {
+  atr: "ATR's true range needs the bar high/low; the emitted stand-in used |close - prev_close| * 2",
+  supertrend: "SuperTrend is built on ATR; the emitted stand-in used an SMA of closes as the ATR",
+  stoch: "Stochastic %K needs the high/low of the window; the emitted stand-in used the highest/lowest close",
 };
 
 /** Map a parser TA function name to an IRTAOp kind */
@@ -211,10 +243,9 @@ function taFnToKind(fn: string): IRTAOp["kind"] | null {
     bb: "bb", bbands: "bb", stoch: "stoch", supertrend: "supertrend",
     highest: "highest", lowest: "lowest", atr: "atr",
     crossover: "crossover", crossunder: "crossunder",
-    // Approximations for less common indicators
-    wma: "sma", hma: "sma", dema: "ema", tema: "ema",
-    cci: "rsi", williams_r: "rsi", mfi: "rsi",
-    vwap: "sma", obv: "sma",
+    // NOTE: wma/hma/dema/tema/cci/williams_r/mfi/vwap/obv used to map onto
+    // sma/ema/rsi here. That silently traded a different indicator than the one
+    // written. They are rejected up front now — see TA_SILENT_SUBSTITUTIONS.
   };
   return map[fn] ?? null;
 }
@@ -276,13 +307,24 @@ function convertExpr(e: Expr, ctx: ConvertCtx): IRExpr {
     }
 
     case "hist": {
-      // Historical access: close[1] → prev_field for last_price
-      // someVar[1] → prev_field for that variable
+      // Historical access on the price series indexes the on-chain trace directly.
+      //
+      // This used to discard `e.offset` entirely, so `close[5]` and `close[1]`
+      // lowered to the SAME node — silently wrong for every offset ≥ 2, and
+      // invisible to the equivalence gate because both backends made the
+      // identical mistake. `series_index` (with a working codegen and
+      // equivalence case) already existed but nothing ever constructed it.
       if (e.name === "close" || e.name === "open" || e.name === "high" || e.name === "low") {
-        const field = "last_price";
-        ctx.referencedFields.add(field);
-        return { kind: "prev_field", field };
+        if (e.offset <= 0) return { kind: "price" };
+        if (e.offset === 1) {
+          ctx.referencedFields.add("last_price");
+          return { kind: "prev_field", field: "last_price" };
+        }
+        return { kind: "series_index", name: "close", offset: e.offset };
       }
+      // Named series keep a single-deep history (one mirrored `prev_*` field).
+      // Offsets ≥ 2 need per-series ring buffers (MASTER-PLAN WS1.4) and are
+      // rejected up front in transpiler-v3 rather than silently flattened.
       const snaked = toSnakeCase(e.name);
       ctx.referencedFields.add(snaked);
       return { kind: "prev_field", field: snaked };
@@ -466,6 +508,23 @@ function toPrevExpr(expr: IRExpr, ctx: ConvertCtx): IRExpr {
  *   6. Build signal logic (explicit or pattern-based fallback)
  *   7. Generate module name
  */
+/** Deepest literal history offset anywhere in the tree (`close[3]` → 3).
+ *  Used to size the price trace so `series_index` can never underflow. */
+function deepestHistoryOffset(root: unknown): number {
+  let deepest = 0;
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== "object") return;
+    const n = node as Record<string, unknown>;
+    if (n.k === "hist" && typeof n.offset === "number" && Number.isFinite(n.offset)) {
+      if (n.offset > deepest) deepest = n.offset;
+    }
+    Object.values(n).forEach(walk);
+  };
+  walk(root);
+  return deepest;
+}
+
 export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): IndicatorIR {
   const stateFields: IRStateField[] = [];
   const taOps: IRTAOp[] = [];
@@ -793,8 +852,15 @@ export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): Indic
   // Recursive indicators (EMA/RSI/MACD) seed on the oldest window and fold
   // forward, so they need history well beyond one period to converge to
   // Pine's full-history values — 3x leaves residual seed weight at ~2%.
+  // Explicit history offsets (`close[N]`) read the trace at `len - 1 - N`, which
+  // underflows if the buffer hasn't filled. Fold the deepest offset into the
+  // period budget so capacity AND warmup cover it — otherwise a strategy mixing
+  // ema(9) with close[50] would abort on-chain.
+  const maxHistoryOffset = deepestHistoryOffset(parsed);
+  if (maxHistoryOffset > maxPeriod) maxPeriod = maxHistoryOffset;
+
   const bufferCapacity = Math.max(maxPeriod * 3, maxPeriod + BUFFER_PADDING, 30);
-  const warmupMinBars = Math.max(maxPeriod, 10);
+  const warmupMinBars = Math.max(maxPeriod + 1, 10);
 
   // ── Step 5b: Statement-level conversion (V3) ────────────────────────────
   // Walk ALL parsed statements and convert to IR nodes, not just TA calls.

@@ -14,6 +14,8 @@
     "lint": "next lint",
     "test:charts": "tsx scripts/chart-rendering-selftest.ts",
     "test:cash-rewards": "tsx scripts/cash-rewards-selftest.ts",
+    "test:transpiler": "tsx scripts/transpiler-honesty-selftest.ts",
+    "test:sealed": "tsx scripts/sealed-attestor-selftest.ts",
     "test:cash-rewards:testnet": "tsx scripts/cash-rewards-testnet-canary.ts",
     "depth:storage": "node scripts/depth-storage-doctor.mjs",
     "test:reliability": "tsx scripts/app-reliability-selftest.ts",

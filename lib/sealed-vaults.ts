@@ -26,20 +26,46 @@ export interface SealedMarket {
 }
 
 /**
- * Testnet perp markets a sealed vault can bind to, with the real engine params.
- * These replace the hardcoded BTC/USD constants in strategy_vault.move — the
- * sealed module takes them as creation args so a vault on any market sizes and
- * lots correctly.
+ * Perp markets a sealed vault can bind to, with the real engine params, per
+ * network. These replace the hardcoded BTC/USD constants in strategy_vault.move
+ * — the sealed module takes them as creation args so a vault on any market
+ * sizes and lots correctly.
+ *
+ * Values are AUTHORITATIVE, read from perp_engine views on 2026-07-30
+ * (market_lot_size / market_min_size / market_sz_decimals on each network's
+ * current Decibel package). The previous entry carried the OLD testnet
+ * package's market (lot=10, min=100000, szDecimals=8) — on the current package
+ * BTC/USD is lot=10000, min=20000, szDecimals=9, so every order built from the
+ * stale numbers would have aborted on lot mismatch or mis-sized by 10x.
+ * Re-verify with `pnpm sealed:e2e verify-markets` after any Decibel redeploy.
  */
-export const SEALED_MARKETS: SealedMarket[] = [
-  {
-    name: "BTC/USD",
-    addr: "0x89394320d351ec94dd47a14e3a60865242b504ed6001e5836f8d0fba0f95ec6e",
-    sizeDecimalsPow: "100000000",
-    lotSize: "10",
-    minSize: "100000",
-  },
-];
+export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMarket[]> = {
+  testnet: [
+    {
+      name: "BTC/USD",
+      addr: "0x161b7b3f58327d057ee5824de0c1a4fc4fa3d121b847c138e921a255768a0dca",
+      sizeDecimalsPow: "1000000000", // 10^9
+      lotSize: "10000",
+      minSize: "20000",
+    },
+  ],
+  mainnet: [
+    {
+      name: "BTC/USD",
+      addr: "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+      sizeDecimalsPow: "100000000", // 10^8
+      lotSize: "1000",
+      minSize: "2000",
+    },
+  ],
+};
+
+export const SEALED_MARKETS: SealedMarket[] =
+  SEALED_MARKETS_BY_NETWORK[
+    (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
+      ? "mainnet"
+      : "testnet"
+  ];
 
 export function findSealedMarket(nameOrAddr: string): SealedMarket | null {
   const q = nameOrAddr.toLowerCase();
@@ -350,6 +376,18 @@ export async function getSealedVault(addr: string): Promise<PublicSealedVault | 
 export const SEALED_PACKAGE =
   process.env.SEALED_VAULT_PACKAGE ?? process.env.NEXT_PUBLIC_SEALED_VAULT_PACKAGE ?? "";
 
+/** Current Decibel package per network — verified against live PackageRegistry
+ *  2026-07-30. All five functions the sealed module calls have identical public
+ *  visibility on both, and order_book_types resolves at 0x5 on both. */
+export const DECIBEL_PACKAGE_BY_NETWORK: Record<"testnet" | "mainnet", string> = {
+  testnet: "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f",
+  mainnet: "0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06",
+};
+
 export const DECIBEL_VAULT_PACKAGE =
   process.env.DECIBEL_VAULT_PACKAGE ??
-  "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f";
+  DECIBEL_PACKAGE_BY_NETWORK[
+    (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
+      ? "mainnet"
+      : "testnet"
+  ];

@@ -1294,8 +1294,18 @@ const decibelAccountsToml = readFileSync(
   "utf8",
 );
 assert.ok(
-  decibelAccountsToml.includes("0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f"),
-  "strategy-vault deps must bind the current Decibel package, not 0x952535…be9f",
+  /decibel = "_"/.test(decibelAccountsToml),
+  "the decibel named address must stay parameterized ('_') so one source publishes to both networks",
+);
+assert.ok(
+  !decibelAccountsToml.includes("0x952535c3049e52f195f26798c2f1340d7dd5100edbe0f464e520a974d16fbe9f"),
+  "the old Decibel package (no delegation revocation) must never come back",
+);
+const e2eScript = readFileSync("scripts/sealed-e2e-deploy.ts", "utf8");
+assert.ok(
+  e2eScript.includes("0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f") &&
+    e2eScript.includes("0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06"),
+  "the e2e pipeline must pin the current Decibel package for BOTH networks",
 );
 
 assert.equal(packageJson.scripts?.["test:sealed"], "tsx scripts/sealed-attestor-selftest.ts");

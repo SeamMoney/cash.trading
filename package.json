@@ -23,7 +23,8 @@
     "depth:storage": "node scripts/depth-storage-doctor.mjs",
     "test:reliability": "tsx scripts/app-reliability-selftest.ts",
     "start": "next start",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "sealed:e2e": "tsx scripts/sealed-e2e-deploy.ts"
   },
   "dependencies": {
     "@aptos-labs/derived-wallet-ethereum": "^0.9.2",

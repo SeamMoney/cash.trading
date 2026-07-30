@@ -95,3 +95,6 @@ dev.db
 --annotate
 *.csv
 .plan.md
+
+# sealed e2e deploy state (holds private keys)
+.sealed-e2e-*/

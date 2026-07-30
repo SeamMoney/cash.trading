@@ -225,7 +225,21 @@ async function run() {
   if (!state.packageAddress) {
     console.log(`[publish] compiling + publishing to ${network}…`);
     const aptosBin = process.env.APTOS_BIN ?? "aptos";
-    const pkgDir = resolve(__dirname, "../contracts/strategy-vaults");
+    let pkgDir = resolve(__dirname, "../contracts/strategy-vaults");
+    // Mainnet publishes are IMMUTABLE: without this the rules stay upgradeable
+    // by the publisher key, which voids the whole "sealed" claim
+    // (docs/SEALED-INDICATOR.md §5). Testnet stays compatible for iteration.
+    if (network === "mainnet") {
+      const tmp = join(stateDir, "pkg-immutable");
+      execFileSync("cp", ["-r", pkgDir, tmp]);
+      const tomlPath = join(tmp, "Move.toml");
+      const toml = readFileSync(tomlPath, "utf8");
+      if (!toml.includes("upgrade_policy")) {
+        writeFileSync(tomlPath, toml.replace('version = "0.1.0"', 'version = "0.1.0"\nupgrade_policy = "immutable"'));
+      }
+      pkgDir = tmp;
+      console.log(`  mainnet: publishing with upgrade_policy = "immutable"`);
+    }
     const named = `cash_strategy=${state.deployerAddr},decibel=${cfg.decibel},order_book=0x5`;
     const runCli = (args: string[]) => {
       const out = execFileSync(aptosBin, args, { cwd: pkgDir, encoding: "utf8" });

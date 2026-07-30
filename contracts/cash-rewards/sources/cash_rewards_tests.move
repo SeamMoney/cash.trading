@@ -19,19 +19,24 @@ module cash_rewards::cash_rewards_tests {
         ]
     }
 
-    /// Produced by the TypeScript BCS serializer for:
-    /// chain=4, the configured manager, TestCoin, recipient=0xa11ce,
-    /// epoch=0, cumulative=100, expiry=1000.
+    /// Produced by the TypeScript BCS serializer (priv key 0x11×32) for:
+    /// chain=4, manager=@0xca54, asset "0xca54::cash_rewards_tests::TestCoin",
+    /// recipient=0xa11ce, epoch=0, cumulative=100, expiry=1000.
+    ///
+    /// NOTE: the signed message embeds the named address, so this test is only
+    /// valid under `--named-addresses cash_rewards=0xCA54` — which is what CI
+    /// pins. The original fixture was generated for a different address and
+    /// could never verify (the suite predates having a CLI to run it).
     fun voucher_signature(): vector<u8> {
         vector[
-            180, 128, 47, 64, 161, 175, 104, 225,
-            128, 94, 47, 163, 237, 37, 138, 11,
-            241, 53, 201, 224, 79, 59, 197, 67,
-            70, 25, 46, 180, 160, 138, 80, 79,
-            137, 6, 62, 28, 165, 60, 96, 157,
-            1, 87, 135, 57, 209, 40, 97, 101,
-            220, 17, 249, 19, 36, 93, 27, 49,
-            146, 148, 170, 30, 31, 48, 183, 1,
+            220, 231, 192, 11, 102, 199, 105, 25,
+            221, 19, 211, 134, 90, 28, 250, 154,
+            7, 189, 200, 98, 95, 214, 117, 5,
+            207, 202, 207, 72, 10, 242, 162, 63,
+            212, 172, 41, 179, 105, 155, 241, 70,
+            124, 183, 74, 177, 172, 147, 255, 0,
+            222, 159, 40, 70, 91, 236, 41, 189,
+            218, 33, 90, 64, 88, 123, 164, 11,
         ]
     }
 

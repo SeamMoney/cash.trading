@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Typecheck + selftests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec prisma generate
+      - run: pnpm exec tsc --noEmit -p tsconfig.json
+      - name: Transpiler honesty selftest
+        run: pnpm test:transpiler
+      - name: Sealed attestor selftest (BCS layout, digest chain, tamper)
+        run: pnpm test:sealed
+      - name: CASH rewards selftest
+        run: pnpm test:cash-rewards
+      - name: Strategy artifacts selftest
+        run: pnpm exec tsx scripts/strategy-artifacts-selftest.ts
+      - name: App reliability selftest
+        run: pnpm test:reliability
+
+  move:
+    name: Move compile + tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install aptos CLI (pinned)
+        run: ./scripts/install-aptos-cli.sh .aptos-cli
+      - name: Compile (network-parameterized addresses)
+        working-directory: contracts/strategy-vaults
+        run: |
+          ../../.aptos-cli/aptos move compile \
+            --named-addresses cash_strategy=0xCA54,decibel=0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f,order_book=0x5
+      - name: Move tests (includes TS<->Move BCS cross-verification)
+        working-directory: contracts/strategy-vaults
+        run: |
+          ../../.aptos-cli/aptos move test \
+            --named-addresses cash_strategy=0xCA54,decibel=0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f,order_book=0x5
+      - name: Cash rewards Move tests
+        working-directory: contracts/cash-rewards
+        run: ../../.aptos-cli/aptos move test --named-addresses cash_rewards=0xCA54

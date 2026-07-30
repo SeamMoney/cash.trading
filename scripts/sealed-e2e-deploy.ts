@@ -395,6 +395,41 @@ async function run() {
     console.log(`  SEALED. ${explorer(committed.hash)}`);
   }
 
+  // ── register in the app feed (best-effort) ──
+  const appUrl = process.env.SEALED_APP_URL ?? flags["app-url"];
+  if (appUrl) {
+    try {
+      const res = await fetch(`${appUrl.replace(/\/$/, "")}/api/sealed/vaults`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          strategyVaultAddr: state.strategyVaultAddr,
+          packageAddress: pkg,
+          network,
+          creatorAddr: state.deployerAddr,
+          decibelVaultAddr: state.decibelVaultAddr,
+          programCommitment: state.commitment,
+          attestorPubkey: state.attestorPub,
+          manifestJson: state.manifestJson,
+          market: cfg.market.name,
+          name: "Sealed Alpha (e2e)",
+          description: "Deployed by scripts/sealed-e2e-deploy.ts",
+          pctBps: 1000,
+          maxLeverageX100: 200,
+          minBarIntervalS: 30,
+          sealed: true,
+          createTxHash: state.createTx,
+          sealTxHash: state.sealTx,
+        }),
+      });
+      console.log(`[register] ${appUrl} -> ${res.status}`);
+    } catch (err) {
+      console.log(`[register] skipped (${err instanceof Error ? err.message : "unreachable"})`);
+    }
+  } else {
+    console.log(`[register] no SEALED_APP_URL/--app-url — register later via POST /api/sealed/vaults`);
+  }
+
   // ── attest a few live bars ──
   await attestTicks(state, deployer, attestorKey, runner, Number(flags.ticks ?? 3));
 

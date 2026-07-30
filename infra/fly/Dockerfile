@@ -8,7 +8,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # aptos CLI (pinned)
-ARG APTOS_CLI_VERSION=8.0.0
+ARG APTOS_CLI_VERSION=8.1.0
 RUN curl -fsSL -o /tmp/aptos.zip \
   "https://github.com/aptos-labs/aptos-core/releases/download/aptos-cli-v${APTOS_CLI_VERSION}/aptos-cli-${APTOS_CLI_VERSION}-Linux-x86_64.zip" \
   && unzip /tmp/aptos.zip -d /usr/local/bin \
@@ -21,6 +21,14 @@ COPY infra/fly/package.json ./package.json
 RUN npm install --omit=dev
 
 COPY scripts/depth-capture-worker.mjs scripts/crank-loop.mjs ./scripts/
+
+# ── Sealed-vault attestor (docs/SEALED-INDICATOR.md) ─────────────────────────
+# Needs the transpiler chain (lib/launchpad) + SDK + tsx; installed in its own
+# tree so the lean .mjs workers above stay dependency-free.
+RUN npm install --prefix /app/sealed --no-audit --no-fund tsx@4 @aptos-labs/ts-sdk@5
+COPY lib/ ./lib/
+COPY scripts/sealed-attestor-runner.ts scripts/sealed-e2e-deploy.ts ./scripts/
+COPY tsconfig.json ./
 
 # Process selected per fly.toml [processes]; default to the crank loop.
 CMD ["node", "scripts/crank-loop.mjs"]

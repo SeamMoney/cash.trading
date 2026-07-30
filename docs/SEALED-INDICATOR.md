@@ -183,8 +183,14 @@ Fixed in the same change-set as this module; see the commit that adds this file.
 
 ## 8. Deployment runbook (testnet → mainnet)
 
-Everything below is blocked on signing keys we do not hold in CI; this is the sequence a human
-runs.
+**Preferred path: `pnpm sealed:e2e run`** — one resumable command from empty account to live
+attested ticks (publish → testnet USDC mint → subaccount → Decibel vault → create → delegate →
+seal → attest). Mainnet: `pnpm sealed:e2e run --network mainnet` with a funded
+`SEALED_DEPLOYER_PRIVATE_KEY`; identical pipeline, skips the USDC mint. `verify-markets`
+re-reads lot/min/szDecimals from both chains and fails on drift. The aptos CLI installs
+anywhere (including the CCR sandbox) via `scripts/install-aptos-cli.sh`; CI compiles the
+package and runs the Move tests on every push. The manual sequence below remains for
+reference.
 
 ### 8.1 Publish the sealed module
 

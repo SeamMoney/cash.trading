@@ -13,6 +13,12 @@ primary_region = "sjc"
 [processes]
   crank = "node scripts/crank-loop.mjs"
   depth = "node scripts/depth-capture-worker.mjs"
+  # Sealed-vault attestor: signs one signal per bar and submits tick_attested.
+  # Requires secrets: SEALED_ATTESTOR_PRIVATE_KEY, SEALED_CRANK_PRIVATE_KEY,
+  # and env SEALED_VAULT_PACKAGE + SEALED_STRATEGY_VAULT (+ SEALED_PINE_PRESET
+  # or a mounted pine file). Starts at count 0; enable after the e2e deploy:
+  #   fly scale count attestor=1 -a cash-trading-jdma7a
+  attestor = "node --import /app/sealed/node_modules/tsx/dist/loader.mjs scripts/sealed-attestor-runner.ts live --package $SEALED_VAULT_PACKAGE --vault $SEALED_STRATEGY_VAULT --preset $SEALED_PINE_PRESET"
 
 [env]
   CRANK_INTERVAL_S = "60"
@@ -24,6 +30,11 @@ primary_region = "sjc"
   size = "shared-cpu-1x"
   memory = "512mb"
   processes = ["crank", "depth"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"          # transpiler + SDK need headroom over the .mjs workers
+  processes = ["attestor"]
 
 # Workers must never be auto-stopped.
 [machine]

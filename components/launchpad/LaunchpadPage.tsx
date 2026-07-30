@@ -7,6 +7,8 @@ import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
+import { SealedVaultLaunch } from "@/components/sealed/SealedVaultLaunch";
+import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
 
@@ -38,7 +40,7 @@ interface Indicator {
   creatorEarningsUsdt?: number;
 }
 
-type Tab    = "explore" | "deploy" | "bots" | "creator";
+type Tab    = "explore" | "deploy" | "sealed" | "vaults" | "bots" | "creator";
 type Sort   = "robustness" | "sharpe" | "raised";
 type Filter = "all" | "live" | "testing";
 
@@ -578,7 +580,7 @@ export function LaunchpadPage() {
 
           {/* ── Tab bar ── */}
           <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
-            {(["explore", "deploy", "bots", "creator"] as Tab[]).map((t) => (
+            {(["explore", "deploy", "sealed", "vaults", "bots", "creator"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)}
                 className={cn(
                   "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
@@ -586,7 +588,17 @@ export function LaunchpadPage() {
                     ? "border-white text-white"
                     : "border-transparent text-[#888] hover:text-zinc-300",
                 )}>
-                {t === "explore" ? "Explore" : t === "deploy" ? "Deploy" : t === "bots" ? "My Bots" : "Creator"}
+                {t === "explore"
+                  ? "Explore"
+                  : t === "deploy"
+                    ? "Deploy"
+                    : t === "sealed"
+                      ? "Seal a Strategy"
+                      : t === "vaults"
+                        ? "Sealed Vaults"
+                        : t === "bots"
+                          ? "My Bots"
+                          : "Creator"}
               </button>
             ))}
           </div>
@@ -716,6 +728,45 @@ export function LaunchpadPage() {
                   <DeployForm onDeployed={handleDeployed} />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Seal a Strategy (creator) ── */}
+          {tab === "sealed" && (
+            <div className="animate-enter-delay-1">
+              <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
+                <header className="border-b border-[#2a2a2a] bg-[#202020] px-5 py-4 sm:px-8 sm:py-5">
+                  <h2 className="font-mono text-sm font-semibold tabular-nums text-[#888]">
+                    Seal a Private Strategy
+                  </h2>
+                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                    Your PineScript stays private — only its hash goes on chain. The module enforces
+                    the market, size, leverage and cadence, and every trade carries a signed,
+                    sequenced attestation bound to on-chain prices.
+                  </p>
+                </header>
+                <div className="bg-[#111] px-4 py-4 sm:px-6">
+                  <SealedVaultLaunch onLaunched={() => setTab("vaults")} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Sealed Vaults (trader) ── */}
+          {tab === "vaults" && (
+            <div className="animate-enter-delay-1 space-y-4">
+              <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] px-5 py-4">
+                <h2 className="font-display text-sm font-semibold text-white">
+                  Invest in a private strategy
+                </h2>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                  You can&apos;t see the algorithm. You can verify what it is unable to do: one
+                  market, a fixed percent of NAV per order, a hard leverage cap, a minimum interval
+                  between trades, and no authority to move your funds. Deposits sit in a Decibel
+                  vault; withdrawals follow Decibel&apos;s redemption queue.
+                </p>
+              </div>
+              <SealedVaultFeed />
             </div>
           )}
 

@@ -30,7 +30,9 @@ module cash_strategy::sealed_vault {
     use aptos_std::ed25519;
 
     use decibel::dex_accounts::{Self, Subaccount};
-    use decibel::perp_engine;
+    // Mark price and NAV come from public_read_api, NOT perp_engine: on the current Decibel
+    // package (0xe7da27…b7f) perp_engine's accessors are friend-visible and uncallable from here.
+    use decibel::public_read_api;
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
     use order_book::order_book_types;
@@ -331,7 +333,7 @@ module cash_strategy::sealed_vault {
         verify_attestation(sv, sv_addr, prev_digest, signal, signature);
 
         // 2. Read the price on-chain. The attestor never supplies it and cannot influence it.
-        let mark_px = perp_engine::get_mark_price(sv.market);
+        let mark_px = public_read_api::get_mark_price(sv.market);
         let price = mark_px * PRICE_SCALE_PX_TO_1E8;
 
         // 3. Fold the bar into the committed trace.
@@ -436,7 +438,7 @@ module cash_strategy::sealed_vault {
 
         let want_long = signal == SIGNAL_BUY;
         let trader = object::generate_signer_for_extending(&sv.extend_ref);
-        let subaccount = dex_accounts::primary_subaccount_object(sv.decibel_vault_addr);
+        let subaccount = dex_accounts::primary_subaccount_object_public(sv.decibel_vault_addr);
 
         if (sv.in_position && sv.is_long != want_long) {
             place(&trader, subaccount, sv.market, !sv.is_long, size, price, true);
@@ -476,8 +478,8 @@ module cash_strategy::sealed_vault {
     /// Returns 0 (skip the trade) when the result is below the market minimum — never clamps
     /// up, because clamping up breaches the NAV cap on small vaults.
     fun resolve_size(sv: &SealedVault, price_1e8: u64): u64 {
-        let nav = perp_engine::get_account_net_asset_value(
-            dex_accounts::primary_subaccount(sv.decibel_vault_addr)
+        let nav = public_read_api::get_account_net_asset_value(
+            dex_accounts::primary_subaccount_public(sv.decibel_vault_addr)
         );
         assert!(nav > 0, E_NO_NAV);
 

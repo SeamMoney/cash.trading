@@ -1209,4 +1209,96 @@ assert.equal(packageJson.engines?.node, "22.x");
 assert.equal(vercelConfig.build?.env?.NODE_VERSION, "22");
 assert.ok(!existsSync("package-lock.json"), "the pnpm project must not ship a competing npm lockfile");
 
+
+// ─── Sealed strategy vaults (docs/SEALED-INDICATOR.md) ───────────────────────
+// The privacy invariant is the whole product: a sealed vault's PineScript must
+// never be persisted or echoed. These assertions exist so a future refactor
+// can't quietly start leaking it.
+
+const sealedCommitRoute = readFileSync("app/api/sealed/commit/route.ts", "utf8");
+assert.ok(
+  !/pineScript\s*[,:]/.test(sealedCommitRoute.split("return NextResponse.json")[1] ?? ""),
+  "the commit route must never echo the PineScript back in its response",
+);
+assert.ok(
+  sealedCommitRoute.includes("commitProgram"),
+  "the commit route must hash through commitProgram, not roll its own",
+);
+
+const sealedVaultsRoute = readFileSync("app/api/sealed/vaults/route.ts", "utf8");
+assert.ok(
+  !sealedVaultsRoute.includes("pineScript"),
+  "the sealed registry must not accept or store a PineScript",
+);
+
+const sealedLib = readFileSync("lib/sealed-vaults.ts", "utf8");
+assert.ok(
+  !/pineScript:/.test(sealedLib.split("export interface PublicSealedVault")[1]?.split("}")[0] ?? ""),
+  "PublicSealedVault must not expose the strategy source",
+);
+assert.ok(
+  sealedLib.includes("revealedPine"),
+  "the registry must keep reveals in a dedicated field so unrevealed vaults stay private",
+);
+
+// The attestation layout is a cross-language contract with sealed_vault.move.
+// Drift here breaks every signature, so pin the domain and the field order.
+const attestorLib = readFileSync("lib/sealed-attestor.ts", "utf8");
+const sealedVaultMove = readFileSync("contracts/strategy-vaults/sources/sealed_vault.move", "utf8");
+assert.ok(
+  attestorLib.includes('"cash.trading/sealed-vault/v1"'),
+  "the attestation domain separator must be pinned in the TypeScript signer",
+);
+assert.ok(
+  sealedVaultMove.includes('b"cash.trading/sealed-vault/v1"'),
+  "the attestation domain separator must match in Move",
+);
+const bcsOrder = ["domain", "chain_id", "strategy_vault", "program_commitment", "seq", "input_digest", "signal"];
+let cursor = 0;
+for (const field of bcsOrder) {
+  const at = attestorLib.indexOf(`// ${field}`, cursor);
+  assert.ok(at > 0, `serializeAttestation must serialize ${field} in the documented order`);
+  cursor = at;
+}
+
+// Rules the module must keep enforcing. Each of these is a depositor guarantee.
+assert.ok(
+  sealedVaultMove.includes("assert!(sv.sealed, E_NOT_SEALED)"),
+  "an unsealed vault must never be able to trade",
+);
+assert.ok(
+  sealedVaultMove.includes("public_read_api::get_mark_price"),
+  "the price must be read on-chain; perp_engine's reader is friend-visible on the current package",
+);
+assert.ok(
+  !sealedVaultMove.includes("perp_engine::"),
+  "sealed_vault must not call perp_engine directly — those accessors are friend-visible",
+);
+assert.ok(
+  sealedVaultMove.includes("if (size < sv.min_size) return 0"),
+  "sub-minimum orders must be SKIPPED, not clamped up past the NAV cap",
+);
+assert.ok(
+  sealedVaultMove.includes("if (sv.in_position && sv.is_long == want_long_check)"),
+  "a repeated same-direction signal must not pyramid the position past the leverage cap",
+);
+assert.ok(
+  sealedVaultMove.includes("E_BAR_TOO_SOON"),
+  "min_bar_interval_s must bound how often the attestor can act",
+);
+
+// Deps must target the CURRENT Decibel package. The old one has no delegation
+// revocation at all (docs/CURATOR-RULES.md §2).
+const decibelAccountsToml = readFileSync(
+  "contracts/strategy-vaults/deps/decibel_accounts/Move.toml",
+  "utf8",
+);
+assert.ok(
+  decibelAccountsToml.includes("0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f"),
+  "strategy-vault deps must bind the current Decibel package, not 0x952535…be9f",
+);
+
+assert.equal(packageJson.scripts?.["test:sealed"], "tsx scripts/sealed-attestor-selftest.ts");
+assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-honesty-selftest.ts");
+
 console.log("app reliability self-test: passed");

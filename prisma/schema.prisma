@@ -193,6 +193,50 @@ model StrategyArtifact {
   @@index([indicatorAddr])
 }
 
+// Sealed strategy vault registry (docs/SEALED-INDICATOR.md).
+//
+// The Pine source is deliberately NOT stored: a sealed vault's whole point is
+// that the strategy stays private. Only the commitment, the public metadata a
+// depositor needs, and the optional revealed source (set when the creator
+// chooses delayed disclosure) live here.
+model SealedVault {
+  id                 String    @id @default(cuid())
+  /// SealedVault Move object address — the delegated trader.
+  strategyVaultAddr  String    @unique
+  packageAddress     String
+  network            String    @default("testnet")
+  creatorAddr        String
+  decibelVaultAddr   String
+  marketAddr         String
+  marketName         String?
+  /// sha3_256(pine || 0x00 || move || 0x00 || manifest). The public identity.
+  programCommitment  String
+  attestorPubkey     String
+  /// TEE measurement bound in at seal time. Empty on tier-1 (bare attestation).
+  enclaveMeasurement String?
+  /// Creator-facing display name. Never derived from the strategy internals.
+  name               String
+  description        String?
+  pctBps             Int
+  maxLeverageX100    Int
+  minBarIntervalS    Int
+  /// Hash manifest, so a later reveal can be checked against the commitment.
+  manifestJson       String
+  createTxHash       String?
+  sealTxHash         String?
+  sealedAt           DateTime?
+  /// Set only if/when the creator reveals. Enables full retroactive replay.
+  revealedPine       String?
+  revealedAt         DateTime?
+  paused             Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([network, sealedAt])
+  @@index([creatorAddr])
+  @@index([programCommitment])
+}
+
 model DecibelIndexerCheckpoint {
   id                     String   @id @default(cuid())
   network                String

@@ -24,7 +24,9 @@ module cash_strategy::strategy_vault {
 
     use cash_strategy::indicator;
     use decibel::dex_accounts::{Self, Subaccount};
-    use decibel::perp_engine;
+    // See sealed_vault.move: perp_engine's mark-price/NAV reads are friend-visible on the
+    // current Decibel package, so both must go through public_read_api.
+    use decibel::public_read_api;
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
     use order_book::order_book_types;
@@ -132,7 +134,7 @@ module cash_strategy::strategy_vault {
         acquires StrategyVault, SizingConfig
     {
         let market = borrow_global<StrategyVault>(sv_addr).market;
-        let mark_px = perp_engine::get_mark_price(market);
+        let mark_px = public_read_api::get_mark_price(market);
         // Mark price is in px decimals (1e6); the indicator buffer is 1e8-scaled.
         tick_internal(keeper, sv_addr, mark_px * PRICE_SCALE_PX_TO_1E8, ts);
     }
@@ -168,7 +170,7 @@ module cash_strategy::strategy_vault {
         //    SELL → close any long, open short.
         let want_long = sig == SIGNAL_BUY;
         let trader = object::generate_signer_for_extending(&sv.extend_ref);
-        let subaccount = dex_accounts::primary_subaccount_object(sv.decibel_vault_addr);
+        let subaccount = dex_accounts::primary_subaccount_object_public(sv.decibel_vault_addr);
 
         // If flipping from an open opposite position, first reduce-only close it.
         if (sv.in_position && sv.is_long != want_long) {
@@ -195,8 +197,8 @@ module cash_strategy::strategy_vault {
     {
         if (!exists<SizingConfig>(sv_addr)) return fixed_size;
         let pct_bps = borrow_global<SizingConfig>(sv_addr).pct_bps;
-        let nav = perp_engine::get_account_net_asset_value(
-            dex_accounts::primary_subaccount(vault_addr)
+        let nav = public_read_api::get_account_net_asset_value(
+            dex_accounts::primary_subaccount_public(vault_addr)
         );
         assert!(nav > 0, E_NO_NAV);
         let nav_u = (nav as u128);

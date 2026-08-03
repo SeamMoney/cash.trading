@@ -8,6 +8,7 @@
  * identity. See docs/SEALED-INDICATOR.md.
  */
 import { AccountAddress, MoveString, createObjectAddress } from "@aptos-labs/ts-sdk";
+import { PLATFORM_LAUNCH } from "./vault-economics";
 
 import { prisma } from "@/lib/prisma";
 import { transpileV3, TRANSPILER_VERSION } from "@/lib/launchpad/transpiler-v3";
@@ -311,6 +312,102 @@ export function buildCreateSealedVaultPayload(args: {
       // Sealed at birth — there is no separate seal() call. See sealed_vault.move.
       hexToBytes(args.enclaveMeasurement ?? "0x"),
     ],
+  };
+}
+
+/**
+ * Live platform terms, straight from the contract.
+ *
+ * The launch fee and builder fee are admin-settable on chain, so quoting them from a constant
+ * would let the UI display a price that is no longer the price. Falls back to the deployment
+ * defaults only when the module is unpublished or unconfigured.
+ */
+export async function readPlatformTerms(network?: "testnet" | "mainnet"): Promise<{
+  launchFeeUsdc: number;
+  treasury: string | null;
+  builderAddr: string | null;
+  builderFeeBps: number;
+  onChain: boolean;
+}> {
+  const net = network ?? sealedNetwork();
+  const fallback = {
+    launchFeeUsdc: PLATFORM_LAUNCH.launchFeeUsdc,
+    treasury: null,
+    builderAddr: null,
+    builderFeeBps: PLATFORM_LAUNCH.builderFeeBps,
+    onChain: false,
+  };
+  if (!SEALED_PACKAGE) return fallback;
+  try {
+    const url =
+      net === "mainnet"
+        ? "https://api.mainnet.aptoslabs.com/v1/view"
+        : "https://api.testnet.aptoslabs.com/v1/view";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        function: `${SEALED_PACKAGE}::sealed_vault::platform_terms`,
+        type_arguments: [],
+        arguments: [],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return fallback;
+    const [feeUnits, treasury, builderAddr, builderFeeBps] = (await res.json()) as [
+      string, string, string, string,
+    ];
+    return {
+      launchFeeUsdc: Number(feeUnits) / 1e6,
+      treasury,
+      builderAddr,
+      builderFeeBps: Number(builderFeeBps),
+      onChain: true,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+/** Is this Decibel vault already licensed — i.e. is swapping its algo free? */
+export async function isVaultLicensed(
+  decibelVaultAddr: string,
+  network?: "testnet" | "mainnet",
+): Promise<boolean> {
+  if (!SEALED_PACKAGE) return false;
+  const net = network ?? sealedNetwork();
+  try {
+    const url =
+      net === "mainnet"
+        ? "https://api.mainnet.aptoslabs.com/v1/view"
+        : "https://api.testnet.aptoslabs.com/v1/view";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        function: `${SEALED_PACKAGE}::sealed_vault::is_licensed`,
+        type_arguments: [],
+        arguments: [decibelVaultAddr],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    return ((await res.json()) as [boolean])[0] === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Revoke a strategy's trading rights. Step one of a swap. */
+export function buildRevokeDelegationPayload(args: {
+  decibelPackage: string;
+  decibelVaultAddr: string;
+  strategyVaultAddrs: string[];
+}) {
+  return {
+    function: `${args.decibelPackage}::vault_admin_api::revoke_dex_actions_delegation`,
+    typeArguments: [] as string[],
+    functionArguments: [args.decibelVaultAddr, args.strategyVaultAddrs],
   };
 }
 

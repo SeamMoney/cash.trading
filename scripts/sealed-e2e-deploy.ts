@@ -91,6 +91,8 @@ const MIN_GAS_OCTAS = 40_000_000n; // 0.4 APT — publish + ~20 setup txs
 const USDC_MINT_UNITS = 500_000_000n; // 500 USDC — covers the 100 USDC creation fee
                                       // + 100 USDC activation minimum with headroom
 const VAULT_FUND_UNITS = 100_000_000n; // 100 USDC into the Decibel vault
+const LAUNCH_FEE_UNITS = 50_000_000n;  // 50 USDC — our fee, on top of Decibel's 100
+const BUILDER_FEE_BPS = 2;             // 0.02% of notional on every fill the vault makes
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,22 @@ async function submit(
     throw new Error(`tx failed: ${fn} — ${committed.vm_status} (${explorer(pending.hash)})`);
   }
   return committed as CommittedTransactionResponse;
+}
+
+/** USDC in an account's PRIMARY fungible store — the wallet pot, not the Decibel subaccount. */
+async function usdcBalance(addr: string): Promise<bigint> {
+  try {
+    const [raw] = (await aptos.view({
+      payload: {
+        function: "0x1::primary_fungible_store::balance",
+        typeArguments: ["0x1::fungible_asset::Metadata"],
+        functionArguments: [addr, cfg.usdcMetadata],
+      },
+    })) as [string];
+    return BigInt(raw);
+  } catch {
+    return 0n;
+  }
 }
 
 async function balanceOctas(addr: string): Promise<bigint> {
@@ -299,15 +317,68 @@ async function run() {
   }
   const pkg = state.packageAddress;
 
+  // ── platform economics ──
+  // init_platform is idempotent-by-abort: publishing a new version keeps the resource, so we
+  // only call it when it is genuinely absent.
+  {
+    let hasConfig = false;
+    try {
+      await aptos.view({ payload: { function: `${pkg}::sealed_vault::platform_terms`, functionArguments: [] } });
+      hasConfig = true;
+    } catch { /* not initialized yet */ }
+    if (!hasConfig) {
+      console.log(`[platform] init_platform (launch fee ${Number(LAUNCH_FEE_UNITS) / 1e6} USDC, builder ${BUILDER_FEE_BPS}bps)…`);
+      const committed = await submit(deployer, `${pkg}::sealed_vault::init_platform`, [
+        state.deployerAddr,          // treasury
+        LAUNCH_FEE_UNITS.toString(), // one-time launch fee
+        cfg.usdcMetadata,            // fee asset
+        state.deployerAddr,          // builder code recipient
+        BUILDER_FEE_BPS.toString(),  // builder fee, bps of notional
+      ]);
+      console.log(`  ${explorer(committed.hash)}`);
+    } else {
+      const terms = await aptos.view({ payload: { function: `${pkg}::sealed_vault::platform_terms`, functionArguments: [] } });
+      console.log(`[platform] fee=${Number(terms[0]) / 1e6} USDC treasury=${String(terms[1]).slice(0, 10)}… builder=${String(terms[2]).slice(0, 10)}… ${terms[3]}bps`);
+    }
+  }
+
   // ── testnet USDC ──
   if (cfg.canMintUsdc && !state.usdcMintTx) {
     console.log(`[usdc] minting ${Number(USDC_MINT_UNITS) / 1e6} testnet USDC…`);
-    const committed = await submit(deployer, `${cfg.decibel}::usdc::restricted_mint`, [
-      USDC_MINT_UNITS.toString(),
-    ]);
-    state.usdcMintTx = committed.hash;
-    saveState(state);
-    console.log(`  ${explorer(committed.hash)}`);
+    try {
+      const committed = await submit(deployer, `${cfg.decibel}::usdc::restricted_mint`, [
+        USDC_MINT_UNITS.toString(),
+      ]);
+      state.usdcMintTx = committed.hash;
+      saveState(state);
+      console.log(`  ${explorer(committed.hash)}`);
+    } catch (err) {
+      // The faucet is per-account lifetime-capped. Already-minted is not a failure — the
+      // funds are still there, possibly sitting in the subaccount.
+      if (!String(err).includes("E_MINT_ACCOUNT_LIMIT_EXCEEDED")) throw err;
+      console.log(`  already minted for this account — continuing with the existing balance`);
+      state.usdcMintTx = "already-minted";
+      saveState(state);
+    }
+  }
+
+  // ── wallet float for the platform launch fee ──
+  // Our fee is a primary-fungible-store transfer from the WALLET, while Decibel's creation fee
+  // and the vault funding come from the SUBACCOUNT. A run that put everything in the
+  // subaccount leaves create_sealed_vault aborting with EINSUFFICIENT_BALANCE, so top the
+  // wallet back up from the subaccount rather than failing.
+  {
+    const walletUsdc = await usdcBalance(state.deployerAddr!);
+    if (walletUsdc < LAUNCH_FEE_UNITS) {
+      const need = LAUNCH_FEE_UNITS - walletUsdc + 1_000_000n;
+      console.log(`[usdc] wallet has ${Number(walletUsdc) / 1e6}, need ${Number(LAUNCH_FEE_UNITS) / 1e6} for the launch fee — withdrawing ${Number(need) / 1e6} from the subaccount…`);
+      const committed = await submit(deployer, `${cfg.decibel}::dex_accounts_entry::withdraw_from_subaccount`, [
+        state.subaccountAddr,
+        cfg.usdcMetadata,
+        need.toString(),
+      ]);
+      console.log(`  ${explorer(committed.hash)}`);
+    }
   }
 
   // ── subaccount + deposit ──
@@ -322,9 +393,11 @@ async function run() {
     const committed = await submit(deployer, `${cfg.decibel}::dex_accounts_entry::deposit_to_subaccount_at`, [
       primary,
       cfg.usdcMetadata,
-      // Deposit nearly everything: Decibel charges a 100 USDC creation fee AND
-      // requires 100 USDC of initial funding to activate.
-      (USDC_MINT_UNITS - 10_000_000n).toString(),
+      // Two separate pots, and mixing them up is the easy mistake: Decibel's 100 USDC
+      // creation fee and the vault's initial funding come from the SUBACCOUNT, while our
+      // launch fee is a primary-fungible-store transfer from the WALLET. Leave the launch
+      // fee (plus headroom) behind, or create_sealed_vault aborts with EINSUFFICIENT_BALANCE.
+      (USDC_MINT_UNITS - LAUNCH_FEE_UNITS - 10_000_000n).toString(),
     ]);
     // Confirm against the chain rather than trusting the derivation. Note this is the plain
     // `primary_subaccount` view — the `_public` variant exists for Move callers and is NOT

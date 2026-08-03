@@ -10,12 +10,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
-import { SEALED_MARKETS, SEALED_PACKAGE } from "@/lib/sealed-vaults";
+import { SEALED_MARKETS, SEALED_PACKAGE, readPlatformTerms } from "@/lib/sealed-vaults";
 import { SEALED_PRESETS } from "@/lib/sealed-presets";
 import {
   DECIBEL_VAULT_LIMITS,
   computeFeeBreakdown,
-  launchCostUsdc,
+  launchFunding,
 } from "@/lib/vault-economics";
 
 export const runtime = "nodejs";
@@ -41,6 +41,10 @@ export async function GET(request: NextRequest) {
       { status: 429, headers: NO_STORE },
     );
   }
+
+  // Quoted from the contract, not from a constant: the launch and builder fees are
+  // admin-settable on chain, and a stale constant would show a price that is no longer real.
+  const terms = await readPlatformTerms();
 
   const attestorPubkey =
     process.env.SEALED_ATTESTOR_PUBLIC_KEY ??
@@ -73,8 +77,14 @@ export async function GET(request: NextRequest) {
       economics: {
         creationFeeUsdc: DECIBEL_VAULT_LIMITS.creationFeeUsdc,
         minFundingUsdc: DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc,
-        totalLaunchUsdc: launchCostUsdc(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc),
         feeIntervalDays: DECIBEL_VAULT_LIMITS.minFeeIntervalS / 86_400,
+        /** Our one-time fee, per Decibel vault. Unlimited strategy swaps after this. */
+        launchFeeUsdc: terms.launchFeeUsdc,
+        /** Our per-fill fee on notional, in bps. */
+        builderFeeBps: terms.builderFeeBps,
+        /** False when the module is unpublished — the numbers are then defaults, not quotes. */
+        termsOnChain: terms.onChain,
+        ...launchFunding(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc, terms.launchFeeUsdc),
         ...computeFeeBreakdown(),
       },
     },

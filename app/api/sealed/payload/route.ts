@@ -4,7 +4,7 @@
  * Builds the wallet-signed entry-function payloads for the sealed-vault launch
  * rail. The server holds no user key and never submits these — the UI signs.
  *
- * kinds: decibel-vault | create | pause | delegate
+ * kinds: decibel-vault | create | delegate | revoke | pause
  *
  * Launch order is decibel-vault → create → delegate, three wallet signatures. It cannot be
  * fewer: Decibel declares both `create_and_fund_vault` and `delegate_dex_actions_to` as
@@ -20,6 +20,7 @@ import {
   SEALED_PACKAGE,
   USDC_METADATA_BY_NETWORK,
   buildCreateSealedVaultPayload,
+  buildRevokeDelegationPayload,
   buildSetPausedPayload,
   derivePrimarySubaccount,
   deriveShareSymbol,
@@ -226,6 +227,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Swapping the algo: revoke the old strategy's trading rights. Pair it with a fresh
+  // `create` (free on a licensed vault) and a `delegate` to the new strategy address.
+  if (kind === "revoke") {
+    const addrs = Array.isArray(body.strategyVaultAddrs) ? body.strategyVaultAddrs : [];
+    if (!isHexAddress(body.decibelVaultAddr) || addrs.length === 0 || !addrs.every(isHexAddress)) {
+      return NextResponse.json(
+        { error: "decibelVaultAddr and a non-empty strategyVaultAddrs[] are required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        payload: buildRevokeDelegationPayload({
+          decibelPackage:
+            typeof body.decibelPackage === "string"
+              ? body.decibelPackage
+              : DECIBEL_PACKAGE_BY_NETWORK[network],
+          decibelVaultAddr: body.decibelVaultAddr as string,
+          strategyVaultAddrs: addrs as string[],
+        }),
+      },
+      { status: 200, headers: NO_STORE },
+    );
+  }
+
   if (kind === "pause") {
     if (!isHexAddress(body.strategyVaultAddr)) {
       return NextResponse.json(
@@ -279,7 +306,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { error: 'kind must be one of "decibel-vault" | "create" | "pause" | "delegate"' },
+    { error: 'kind must be one of "decibel-vault" | "create" | "delegate" | "revoke" | "pause"' },
     { status: 400, headers: NO_STORE },
   );
 }

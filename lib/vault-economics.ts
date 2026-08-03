@@ -63,6 +63,29 @@ export const DECIBEL_VAULT_LIMITS = {
  * it would simply abort. Splitting a single 10% is the only structure the
  * protocol permits, and it keeps the depositor's headline number honest.
  */
+/**
+ * Our own economics — the part Decibel does not set.
+ *
+ * Two revenue lines, and only one of them is a wall in front of the user:
+ *
+ *  - `launchFeeUsdc` — one-time, charged per DECIBEL VAULT, not per strategy. Once a vault is
+ *    licensed the creator can re-point it at as many sealed strategies as they like for gas
+ *    alone. That is what the fee actually buys: not one bot, but a vault that can run any
+ *    indicator, swapped whenever they want.
+ *  - `builderFeeBps` — charged on notional of every fill the vault makes, via Decibel's
+ *    builder-code mechanism. This is the recurring line; it accrues whether the vault is up or
+ *    down, and it does not depend on a creator ever launching another vault.
+ *
+ * Both are read from the CHAIN at runtime (`sealed_vault::platform_terms`) — these constants
+ * are the deployment default and the UI's fallback, not the source of truth.
+ */
+export const PLATFORM_LAUNCH = {
+  /** One-time, per Decibel vault, in whole USDC. Bounded at $500 by the contract. */
+  launchFeeUsdc: 50,
+  /** Builder fee on notional, in bps. Bounded at 10 bps by the contract. */
+  builderFeeBps: 2,
+} as const;
+
 export const PLATFORM_FEE = {
   /** Total profit share charged to depositors, in bps. Decibel's max. */
   totalFeeBps: 1000,
@@ -126,7 +149,26 @@ export function validateVaultConfig(cfg: {
   return errs;
 }
 
+/**
+ * Total USDC a creator needs on hand to launch — and WHERE each part must sit.
+ *
+ * These are two different pots and conflating them is the fastest way to a failed launch:
+ * Decibel's creation fee and the vault's seed are spent from the creator's Decibel
+ * SUBACCOUNT, while our launch fee is a primary-fungible-store transfer from their WALLET.
+ * A creator with 300 USDC all in the subaccount still cannot launch.
+ */
+export function launchFunding(
+  initialFundingUsdc: number,
+  launchFeeUsdc: number = PLATFORM_LAUNCH.launchFeeUsdc,
+): { subaccountUsdc: number; walletUsdc: number; totalUsdc: number } {
+  const subaccountUsdc = DECIBEL_VAULT_LIMITS.creationFeeUsdc + initialFundingUsdc;
+  return { subaccountUsdc, walletUsdc: launchFeeUsdc, totalUsdc: subaccountUsdc + launchFeeUsdc };
+}
+
 /** Total USDC a creator needs on hand to launch. */
-export function launchCostUsdc(initialFundingUsdc: number): number {
-  return DECIBEL_VAULT_LIMITS.creationFeeUsdc + initialFundingUsdc;
+export function launchCostUsdc(
+  initialFundingUsdc: number,
+  launchFeeUsdc: number = PLATFORM_LAUNCH.launchFeeUsdc,
+): number {
+  return launchFunding(initialFundingUsdc, launchFeeUsdc).totalUsdc;
 }

@@ -28,6 +28,10 @@ module cash_strategy::sealed_vault {
     use aptos_framework::object::{Self, Object, ExtendRef};
     use aptos_framework::timestamp;
     use aptos_std::ed25519;
+    use aptos_std::table::{Self, Table};
+
+    use aptos_framework::fungible_asset::Metadata;
+    use aptos_framework::primary_fungible_store;
 
     use decibel::dex_accounts::{Self, Subaccount};
     // Mark price and NAV come from public_read_api, NOT perp_engine: on the current Decibel
@@ -35,6 +39,10 @@ module cash_strategy::sealed_vault {
     use decibel::public_read_api;
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
+    // new_builder_code and approve_max_fee are the PUBLIC surface for builder codes;
+    // builder_code_registry's own constructors are friend-visible.
+    use decibel::perp_engine_api;
+    use decibel::builder_code_registry::BuilderCode;
     use order_book::order_book_types;
 
     // ─── Errors ──────────────────────────────────────────────────────
@@ -52,6 +60,9 @@ module cash_strategy::sealed_vault {
     const E_BAD_MARKET_PARAMS:  u64 = 13;
     const E_BAD_LEVERAGE:       u64 = 14;
     const E_BAD_SLIPPAGE:       u64 = 15;
+    const E_NOT_ADMIN:          u64 = 16;
+    const E_NO_PLATFORM_CONFIG: u64 = 17;
+    const E_BAD_FEE:            u64 = 18;
 
     /// Upper bound on the slippage rule — 5%. Bounded so a curator cannot
     /// configure effectively-unlimited price tolerance.
@@ -68,6 +79,14 @@ module cash_strategy::sealed_vault {
 
     /// Reject bars dated more than this far ahead of chain time.
     const MAX_CLOCK_SKEW_SECS: u64 = 60;
+
+    /// Decibel expresses builder fees in hundredths of a basis point.
+    const BUILDER_UNITS_PER_BPS: u64 = 100;
+    /// Hard ceiling on the builder fee this module will ever attach, in bps. Depositors pay
+    /// this on notional, so it is bounded in code and not merely in config.
+    const MAX_BUILDER_FEE_BPS: u64 = 10;
+    /// Hard ceiling on the one-time launch fee, in USDC micro-units (1e6). $500.
+    const MAX_LAUNCH_FEE_UNITS: u64 = 500_000_000;
 
     const SIGNAL_NEUTRAL: u8 = 0;
     const SIGNAL_BUY:     u8 = 1;
@@ -130,8 +149,49 @@ module cash_strategy::sealed_vault {
         sealed: bool,
         trades: u64,
 
+        // ── Builder code (frozen at creation) ──
+        /// Where the builder fee on this vault's fills is paid. Snapshotted at creation so a
+        /// later platform-config change can never redirect an existing vault's fees.
+        builder_addr: address,
+        /// Builder fee in bps of notional, bounded by MAX_BUILDER_FEE_BPS. 0 disables it.
+        builder_fee_bps: u64,
+
         /// Mints the delegated-trader signer. Private to this module — no human holds it.
         extend_ref: ExtendRef,
+    }
+
+    /// Platform economics, held at @cash_strategy and settable only by the admin.
+    ///
+    /// Both numbers are bounded in code, not just here: the launch fee cannot exceed
+    /// MAX_LAUNCH_FEE_UNITS and the builder fee cannot exceed MAX_BUILDER_FEE_BPS. An admin key
+    /// compromise therefore cannot turn this into an unbounded tax on depositors.
+    struct PlatformConfig has key {
+        admin: address,
+        /// Receives the one-time launch fee.
+        treasury: address,
+        /// One-time fee to turn a Decibel vault into a strategy bot, in USDC micro-units.
+        launch_fee_units: u64,
+        /// The fee asset (USDC on the active network).
+        fee_metadata: Object<Metadata>,
+        /// Builder-code recipient stamped into new vaults.
+        builder_addr: address,
+        /// Builder fee in bps stamped into new vaults.
+        builder_fee_bps: u64,
+    }
+
+    /// Marks a Decibel vault as already licensed, so the launch fee is charged ONCE per vault
+    /// rather than once per strategy. This is what makes swapping the algo free: the creator
+    /// pays to turn their vault into a bot, then re-points it at as many sealed strategies as
+    /// they like, forever.
+    struct LaunchLicense has store, drop {
+        paid_by: address,
+        paid_units: u64,
+        licensed_at: u64,
+    }
+
+    /// Decibel vault address -> licence. Lives beside the config at @cash_strategy.
+    struct LaunchLicenses has key {
+        by_vault: Table<address, LaunchLicense>,
     }
 
     /// Bounded on-chain price trace. This is the exact series the strategy is defined over,
@@ -164,6 +224,24 @@ module cash_strategy::sealed_vault {
         decibel_vault: address,
         program_commitment: vector<u8>,
         attestor_pubkey: vector<u8>,
+    }
+
+    #[event]
+    struct LaunchFeeCharged has drop, store {
+        decibel_vault: address,
+        payer: address,
+        treasury: address,
+        units: u64,
+    }
+
+    /// Emitted when a strategy is created against an ALREADY-licensed Decibel vault — i.e. the
+    /// creator swapped their algo and paid nothing. Makes the swap publicly auditable.
+    #[event]
+    struct StrategyRelaunched has drop, store {
+        decibel_vault: address,
+        strategy_vault: address,
+        creator: address,
+        program_commitment: vector<u8>,
     }
 
     #[event]
@@ -220,6 +298,104 @@ module cash_strategy::sealed_vault {
         min_size: u64,
     }
 
+    // ─── Platform economics ──────────────────────────────────────────
+
+    /// Publish-time setup. Callable once, by the module's own account.
+    public entry fun init_platform(
+        admin: &signer,
+        treasury: address,
+        launch_fee_units: u64,
+        fee_metadata: Object<Metadata>,
+        builder_addr: address,
+        builder_fee_bps: u64,
+    ) {
+        assert!(signer::address_of(admin) == @cash_strategy, E_NOT_ADMIN);
+        assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE);
+        assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE);
+        move_to(admin, PlatformConfig {
+            admin: signer::address_of(admin),
+            treasury,
+            launch_fee_units,
+            fee_metadata,
+            builder_addr,
+            builder_fee_bps,
+        });
+        move_to(admin, LaunchLicenses { by_vault: table::new<address, LaunchLicense>() });
+    }
+
+    /// Update platform economics. Existing vaults are unaffected: each one snapshots the
+    /// builder address and fee at creation, and its launch fee is already paid.
+    public entry fun set_platform_config(
+        admin: &signer,
+        treasury: address,
+        launch_fee_units: u64,
+        builder_addr: address,
+        builder_fee_bps: u64,
+    ) acquires PlatformConfig {
+        let cfg = borrow_global_mut<PlatformConfig>(@cash_strategy);
+        assert!(signer::address_of(admin) == cfg.admin, E_NOT_ADMIN);
+        assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE);
+        assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE);
+        cfg.treasury = treasury;
+        cfg.launch_fee_units = launch_fee_units;
+        cfg.builder_addr = builder_addr;
+        cfg.builder_fee_bps = builder_fee_bps;
+    }
+
+    public entry fun transfer_admin(admin: &signer, new_admin: address) acquires PlatformConfig {
+        let cfg = borrow_global_mut<PlatformConfig>(@cash_strategy);
+        assert!(signer::address_of(admin) == cfg.admin, E_NOT_ADMIN);
+        cfg.admin = new_admin;
+    }
+
+    #[view]
+    /// True when this Decibel vault has already paid — i.e. swapping its algo is free.
+    public fun is_licensed(decibel_vault: address): bool acquires LaunchLicenses {
+        exists<LaunchLicenses>(@cash_strategy)
+            && table::contains(&borrow_global<LaunchLicenses>(@cash_strategy).by_vault, decibel_vault)
+    }
+
+    #[view]
+    /// (launch_fee_units, treasury, builder_addr, builder_fee_bps). The UI quotes from this
+    /// rather than hardcoding, so a config change is reflected without a redeploy.
+    public fun platform_terms(): (u64, address, address, u64) acquires PlatformConfig {
+        let cfg = borrow_global<PlatformConfig>(@cash_strategy);
+        (cfg.launch_fee_units, cfg.treasury, cfg.builder_addr, cfg.builder_fee_bps)
+    }
+
+    /// Charge the one-time launch fee unless this Decibel vault is already licensed.
+    /// Returns the builder terms to stamp into the new vault.
+    fun collect_launch_fee(creator: &signer, decibel_vault: address): (address, u64)
+        acquires PlatformConfig, LaunchLicenses
+    {
+        assert!(exists<PlatformConfig>(@cash_strategy), E_NO_PLATFORM_CONFIG);
+        let cfg = borrow_global<PlatformConfig>(@cash_strategy);
+        let licenses = &mut borrow_global_mut<LaunchLicenses>(@cash_strategy).by_vault;
+
+        if (!table::contains(licenses, decibel_vault)) {
+            if (cfg.launch_fee_units > 0) {
+                primary_fungible_store::transfer(
+                    creator,
+                    cfg.fee_metadata,
+                    cfg.treasury,
+                    cfg.launch_fee_units,
+                );
+            };
+            table::add(licenses, decibel_vault, LaunchLicense {
+                paid_by: signer::address_of(creator),
+                paid_units: cfg.launch_fee_units,
+                licensed_at: timestamp::now_seconds(),
+            });
+            event::emit(LaunchFeeCharged {
+                decibel_vault,
+                payer: signer::address_of(creator),
+                treasury: cfg.treasury,
+                units: cfg.launch_fee_units,
+            });
+        };
+        (cfg.builder_addr, cfg.builder_fee_bps)
+    }
+
     // ─── Creation ────────────────────────────────────────────────────
 
     /// Create a vault. It is SEALED AT BIRTH: the commitment, the attestor key, the market
@@ -251,7 +427,7 @@ module cash_strategy::sealed_vault {
         slippage_bps: u64,
         trace_capacity: u64,
         enclave_measurement: vector<u8>,
-    ) {
+    ) acquires PlatformConfig, LaunchLicenses {
         assert!(vector::length(&program_commitment) == 32, E_BAD_COMMITMENT);
         assert!(vector::length(&attestor_pubkey) == 32, E_BAD_PUBKEY);
         assert!(pct_bps > 0 && pct_bps <= 10000, E_BAD_BPS);
@@ -262,6 +438,13 @@ module cash_strategy::sealed_vault {
         assert!(trace_capacity > 0, E_BAD_MARKET_PARAMS);
 
         let creator_addr = signer::address_of(creator);
+
+        // The one-time platform fee, charged per DECIBEL VAULT — not per strategy. A creator
+        // who already turned this vault into a bot pays nothing to point it at a new algo.
+        // Read the licence BEFORE collecting so the relaunch event is accurate.
+        let was_licensed = is_licensed(decibel_vault_addr);
+        let (builder_addr, builder_fee_bps) = collect_launch_fee(creator, decibel_vault_addr);
+
         let ctor = object::create_object(creator_addr);
         let obj_signer = object::generate_signer(&ctor);
         let extend_ref = object::generate_extend_ref(&ctor);
@@ -292,8 +475,23 @@ module cash_strategy::sealed_vault {
             paused: false,
             sealed: true,
             trades: 0,
+            builder_addr,
+            builder_fee_bps,
             extend_ref,
         });
+
+        // Pre-authorize the builder fee from the vault's own trading identity. Decibel
+        // validates a builder code against an approved maximum, and the approval must come
+        // from the account the orders are placed by — the vault admin cannot grant it on a
+        // vault subaccount's behalf (EBUILDER_SUBACCOUNT_NOT_FOUND). Doing it here means a
+        // launched vault is immediately able to trade with the code attached.
+        if (builder_fee_bps > 0) {
+            perp_engine_api::approve_max_fee(
+                &obj_signer,
+                builder_addr,
+                builder_fee_bps * BUILDER_UNITS_PER_BPS,
+            );
+        };
 
         move_to(&obj_signer, PriceTrace {
             prices: vector::empty<u64>(),
@@ -308,6 +506,17 @@ module cash_strategy::sealed_vault {
             program_commitment,
             attestor_pubkey,
         });
+
+        // A swap — this vault already had a strategy. Emitted so depositors can see, on chain,
+        // exactly when the algo behind their vault changed and to which commitment.
+        if (was_licensed) {
+            event::emit(StrategyRelaunched {
+                decibel_vault: decibel_vault_addr,
+                strategy_vault: sv_addr,
+                creator: creator_addr,
+                program_commitment,
+            });
+        };
 
         // Sealing is the same instant as creation, but it stays its own event so indexers,
         // the verifier and the docs keep one unambiguous "this is now immutable" marker.
@@ -481,7 +690,8 @@ module cash_strategy::sealed_vault {
         if (sv.in_position && sv.is_long != want_long) {
             // Closing side is opposite the position: a long closes with a sell.
             let close_px = if (sv.is_long) { sell_px } else { buy_px };
-            place(&trader, subaccount, sv.market, !sv.is_long, size, close_px, true);
+            place(&trader, subaccount, sv.market, !sv.is_long, size, close_px, true,
+                sv.builder_addr, sv.builder_fee_bps);
             event::emit(VaultTraded {
                 strategy_vault: sv_addr,
                 decibel_vault: sv.decibel_vault_addr,
@@ -497,7 +707,8 @@ module cash_strategy::sealed_vault {
         };
 
         let open_px = if (want_long) { buy_px } else { sell_px };
-        place(&trader, subaccount, sv.market, want_long, size, open_px, false);
+        place(&trader, subaccount, sv.market, want_long, size, open_px, false,
+            sv.builder_addr, sv.builder_fee_bps);
         event::emit(VaultTraded {
             strategy_vault: sv_addr,
             decibel_vault: sv.decibel_vault_addr,
@@ -559,6 +770,8 @@ module cash_strategy::sealed_vault {
         size: u64,
         price: u64,
         reduce_only: bool,
+        builder_addr: address,
+        builder_fee_bps: u64,
     ) {
         let tif = order_book_types::immediate_or_cancel();
         let common = perp_order::new_order_common_args(price, size, is_buy, tif, option::none());
@@ -571,8 +784,23 @@ module cash_strategy::sealed_vault {
             reduce_only,
             option::none(),
             tpsl,
-            option::none(),
+            builder_code(builder_addr, builder_fee_bps),
         );
+    }
+
+    /// The builder code attached to this vault's fills, or none when the fee is zero.
+    /// Decibel prices it in hundredths of a basis point.
+    fun builder_code(builder_addr: address, builder_fee_bps: u64): option::Option<BuilderCode> {
+        if (builder_fee_bps == 0) {
+            option::none<BuilderCode>()
+        } else {
+            option::some(
+                perp_engine_api::new_builder_code(
+                    builder_addr,
+                    builder_fee_bps * BUILDER_UNITS_PER_BPS,
+                ),
+            )
+        }
     }
 
     // ─── Admin ───────────────────────────────────────────────────────

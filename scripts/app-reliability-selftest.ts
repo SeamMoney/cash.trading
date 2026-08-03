@@ -1338,6 +1338,61 @@ assert.ok(
   "the seal payload kind must be gone — sealing happens inside create_sealed_vault",
 );
 
+// ── Revenue must reach the chain, not just the cost panel ──────────────────
+// Both lines are contract-enforced, and both were display-only at some point in this file's
+// history. The launch fee is charged inside create_sealed_vault, so it cannot be skipped by
+// calling the contract directly; the builder code is stamped into each vault at creation, so a
+// later config change cannot retroactively redirect an existing vault's fees.
+assert.ok(
+  sealedVaultMove.includes("collect_launch_fee(creator, decibel_vault_addr)"),
+  "create_sealed_vault must collect the platform launch fee — a fee the UI charges but the " +
+    "contract does not is bypassable by calling the contract directly",
+);
+assert.ok(
+  sealedVaultMove.includes("primary_fungible_store::transfer"),
+  "the launch fee must actually move USDC to the treasury",
+);
+assert.ok(
+  sealedVaultMove.includes("if (!table::contains(licenses, decibel_vault))"),
+  "the launch fee must be charged once per Decibel vault, not once per strategy — swapping " +
+    "the algo is the thing the fee buys",
+);
+assert.ok(
+  sealedVaultMove.includes("builder_code(builder_addr, builder_fee_bps)"),
+  "every order must carry the builder code; it is the only volume-based revenue line",
+);
+assert.ok(
+  sealedVaultMove.includes("builder_addr,\n            builder_fee_bps,"),
+  "builder terms must be snapshotted into the vault at creation, so a later platform-config " +
+    "change cannot redirect an existing vault's fees",
+);
+assert.ok(
+  sealedVaultMove.includes("perp_engine_api::approve_max_fee"),
+  "the vault must self-approve its builder fee — a vault admin cannot approve on a vault " +
+    "subaccount's behalf (EBUILDER_SUBACCOUNT_NOT_FOUND), so orders would abort without this",
+);
+assert.ok(
+  sealedVaultMove.includes("assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE)") &&
+    sealedVaultMove.includes("assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE)"),
+  "both platform fees must be bounded in code, so an admin key compromise cannot turn them " +
+    "into an unbounded tax on depositors",
+);
+assert.ok(
+  sealedVaultMove.includes("struct StrategyRelaunched"),
+  "an algo swap must emit an event — depositors need to see, on chain, when the strategy " +
+    "behind their vault changed",
+);
+
+// The launch fee is spent from the WALLET while Decibel's fee comes from the SUBACCOUNT.
+// Checking only one pot lets the UI green-light a launch that aborts on EINSUFFICIENT_BALANCE.
+const sealedPreflightRoute = readFileSync("app/api/sealed/decibel-vault/route.ts", "utf8");
+assert.ok(
+  sealedPreflightRoute.includes("primary_fungible_store::balance") &&
+    sealedPreflightRoute.includes("max_allowed_withdraw_from_cross"),
+  "preflight must check BOTH the wallet's USDC (our launch fee) and the subaccount's " +
+    "(Decibel's fee plus the seed)",
+);
+
 // The Public toggle must actually publish, and only a source that matches the commitment.
 assert.ok(
   sealedVaultsRoute.includes("verifyRevealedProgram"),

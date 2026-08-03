@@ -54,8 +54,13 @@ interface SealedConfig {
   economics: {
     creationFeeUsdc: number;
     minFundingUsdc: number;
-    totalLaunchUsdc: number;
     feeIntervalDays: number;
+    launchFeeUsdc: number;
+    builderFeeBps: number;
+    termsOnChain: boolean;
+    subaccountUsdc: number;
+    walletUsdc: number;
+    totalUsdc: number;
     depositorPaysPct: number;
     creatorKeepsPct: number;
     platformTakesPct: number;
@@ -73,10 +78,15 @@ interface CommitInfo {
 
 interface Preflight {
   subaccountAddr: string;
+  /** Deployable USDC in the Decibel subaccount — pays Decibel's fee and the seed. */
   usdc: number;
-  requiredUsdc: number;
+  /** USDC in the wallet's primary store — pays OUR launch fee. A different pot. */
+  walletUsdc: number;
+  requiredSubaccountUsdc: number;
+  requiredWalletUsdc: number;
   canLaunch: boolean;
-  shortfallUsdc: number;
+  shortfallSubaccountUsdc: number;
+  shortfallWalletUsdc: number;
 }
 
 /** Rules the creator may change. Segmented choices only — every value is inside the bounds the
@@ -657,7 +667,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             <FeeRow
               k="Decibel's vault-creation fee"
               v={`${config.economics.creationFeeUsdc} USDC`}
-              note="Charged once by the protocol. Not ours."
+              note="Charged once by the protocol, from your Decibel balance. Not ours."
+            />
+            <FeeRow
+              k="Our one-time launch fee"
+              v={`${config.economics.launchFeeUsdc} USDC`}
+              note="Paid from your wallet. Charged once per vault — swapping the algo later is free."
+              highlight
             />
             <FeeRow
               k="You seed the vault"
@@ -668,35 +684,40 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               k="Depositors pay on profits"
               v={`${config.economics.depositorPaysPct}%`}
               note={`You keep ${config.economics.creatorKeepsPct}% · platform takes ${config.economics.platformTakesPct}%. Only on gains.`}
-              highlight
+            />
+            <FeeRow
+              k="Trading fee"
+              v={`${config.economics.builderFeeBps / 100}%`}
+              note="Of notional, on each fill the bot makes. Built into the order."
             />
           </dl>
-          <div className="mt-3 border-t border-white/[0.06] pt-2.5">
-            <p className="text-[10px] leading-snug text-zinc-600">
-              Needed in your Decibel account to launch:{" "}
-              <span className="text-zinc-400">
-                {config.economics.creationFeeUsdc + seedUsdc} USDC
-              </span>
-              . Decibel caps profit share at {config.economics.depositorPaysPct}% — ours comes out
-              of that, never on top, so the number depositors see is the number they pay.
-            </p>
-            {preflight && (
-              <p
-                className={cn(
-                  "mt-1.5 text-[10px] leading-snug",
-                  preflight.usdc >= config.economics.creationFeeUsdc + seedUsdc
-                    ? "text-accent"
-                    : "text-amber-400",
-                )}
-              >
-                {preflight.usdc >= config.economics.creationFeeUsdc + seedUsdc
-                  ? `You have ${preflight.usdc.toFixed(2)} USDC available. Ready to launch.`
-                  : `You have ${preflight.usdc.toFixed(2)} USDC available — deposit ${(
-                      config.economics.creationFeeUsdc + seedUsdc - preflight.usdc
-                    ).toFixed(2)} more to your Decibel account first.`}
-              </p>
-            )}
+
+          {/* Two pots, and they are not interchangeable. */}
+          <div className="mt-3 space-y-1.5 border-t border-white/[0.06] pt-2.5">
+            <PotRow
+              label="In your Decibel balance"
+              need={config.economics.creationFeeUsdc + seedUsdc}
+              have={preflight?.usdc}
+            />
+            <PotRow
+              label="In your wallet"
+              need={config.economics.launchFeeUsdc}
+              have={preflight?.walletUsdc}
+            />
           </div>
+
+          <p className="mt-2.5 text-[10px] leading-snug text-zinc-600">
+            The {config.economics.launchFeeUsdc} USDC buys the vault, not the bot: once it&apos;s
+            paid you can swap in any other indicator for the cost of gas, as often as you like.
+            Decibel caps profit share at {config.economics.depositorPaysPct}% — ours comes out of
+            that, never on top.
+            {!config.economics.termsOnChain && (
+              <span className="mt-1 block text-amber-500/80">
+                Showing default pricing — the contract isn&apos;t published here, so these are
+                not live quotes.
+              </span>
+            )}
+          </p>
         </section>
       )}
 
@@ -1008,6 +1029,28 @@ function ExplorerLink({
       <span className="truncate font-mono">{addr}</span>
       <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
     </a>
+  );
+}
+
+/** One funding requirement, against what the connected wallet actually holds. Two separate
+ *  pots — Decibel spends from the subaccount, our fee comes from the wallet — and a creator
+ *  with plenty in the wrong one still cannot launch. */
+function PotRow({ label, need, have }: { label: string; need: number; have?: number }) {
+  const known = typeof have === "number";
+  const ok = known && have >= need;
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-[10px]">
+      <span className="text-zinc-500">{label}</span>
+      <span className="shrink-0 font-mono tabular-nums">
+        <span className={ok ? "text-accent" : known ? "text-amber-400" : "text-zinc-500"}>
+          {known ? have.toFixed(2) : "—"}
+        </span>
+        <span className="text-zinc-600"> / {need} USDC</span>
+        {known && !ok && (
+          <span className="ml-1.5 text-amber-400">add {(need - have).toFixed(2)}</span>
+        )}
+      </span>
+    </div>
   );
 }
 

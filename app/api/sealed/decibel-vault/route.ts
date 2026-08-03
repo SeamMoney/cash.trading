@@ -21,9 +21,10 @@ import {
   USDC_METADATA_BY_NETWORK,
   derivePrimarySubaccount,
   isHexAddress,
+  readPlatformTerms,
   sealedNetwork,
 } from "@/lib/sealed-vaults";
-import { DECIBEL_VAULT_LIMITS, launchCostUsdc } from "@/lib/vault-economics";
+import { DECIBEL_VAULT_LIMITS, launchFunding } from "@/lib/vault-economics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,7 +77,25 @@ export async function GET(request: NextRequest) {
       // No subaccount yet — the view aborts rather than returning zero. Treat as "not funded",
       // which is exactly what the UI needs to say.
     }
-    const requiredUsdc = launchCostUsdc(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc);
+    // Our launch fee comes from the WALLET's primary USDC store, not the subaccount. A
+    // creator with everything in the subaccount cannot pay it, and the transaction aborts
+    // with a bare EINSUFFICIENT_BALANCE — so both pots are checked and reported separately.
+    let walletUsdc = 0;
+    try {
+      const [raw] = (await aptos.view({
+        payload: {
+          function: "0x1::primary_fungible_store::balance",
+          typeArguments: ["0x1::fungible_asset::Metadata"],
+          functionArguments: [owner, USDC_METADATA_BY_NETWORK[network]],
+        },
+      })) as [string];
+      walletUsdc = Number(raw) / 1e6;
+    } catch {
+      // No store yet — zero.
+    }
+
+    const terms = await readPlatformTerms(network);
+    const need = launchFunding(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc, terms.launchFeeUsdc);
     return NextResponse.json(
       {
         ok: true,
@@ -84,10 +103,16 @@ export async function GET(request: NextRequest) {
         subaccountAddr,
         subaccountExists,
         usdc,
-        requiredUsdc,
+        walletUsdc,
+        requiredSubaccountUsdc: need.subaccountUsdc,
+        requiredWalletUsdc: need.walletUsdc,
+        requiredUsdc: need.totalUsdc,
+        launchFeeUsdc: terms.launchFeeUsdc,
+        builderFeeBps: terms.builderFeeBps,
         /** True when a launch would go through end-to-end without a funding step. */
-        canLaunch: usdc >= requiredUsdc,
-        shortfallUsdc: Math.max(0, requiredUsdc - usdc),
+        canLaunch: usdc >= need.subaccountUsdc && walletUsdc >= need.walletUsdc,
+        shortfallSubaccountUsdc: Math.max(0, need.subaccountUsdc - usdc),
+        shortfallWalletUsdc: Math.max(0, need.walletUsdc - walletUsdc),
       },
       { status: 200, headers: NO_STORE },
     );

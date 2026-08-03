@@ -1336,6 +1336,27 @@ assert.ok(
   launchUi.includes("/api/sealed/config"),
   "the launch flow must source the attestor key and defaults from the server",
 );
+// The shared UI kits must keep their accessibility and reduced-motion
+// contracts — interior.dev's whole point is that these get done badly by
+// default, and a refactor that drops them is silent.
+const agentKit = readFileSync("components/ui/agent/index.tsx", "utf8");
+const interactionKit = readFileSync("components/ui/interactions/index.tsx", "utf8");
+for (const [name, src] of [["agent", agentKit], ["interactions", interactionKit]] as const) {
+  assert.ok(src.includes("useReducedMotion"), `${name} kit must honour prefers-reduced-motion`);
+}
+assert.ok(agentKit.includes('aria-label="Copy code"'), "the code block's copy button must be labelled");
+assert.ok(interactionKit.includes('aria-modal="true"'), "the modal must set aria-modal");
+assert.ok(interactionKit.includes('aria-busy'), "the action button must expose a busy state");
+assert.ok(
+  interactionKit.includes("restoreTo.current?.focus?.()"),
+  "the modal must restore focus on close",
+);
+// One easing curve across both kits — mixed easing is the jank interior.dev warns about.
+assert.ok(
+  agentKit.includes("[0.16, 1, 0.3, 1]") && interactionKit.includes("[0.16, 1, 0.3, 1]"),
+  "both kits must share the same easing curve",
+);
+
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
 assert.ok(
   /type Tab\s*=\s*"launch" \| "vaults" \| "manage";/.test(launchPage),

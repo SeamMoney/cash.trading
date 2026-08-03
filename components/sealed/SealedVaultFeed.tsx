@@ -11,6 +11,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 import { cn } from "@/lib/utils";
+import { AnimatedNumber, Banner, ContentState, Pressable, Reveal, Skeleton, ActionButton } from "@/components/ui/interactions";
+import { DataTable } from "@/components/ui/agent";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { buildDepositDecibelVaultPayload } from "@/lib/decibel-vaults";
 
@@ -145,50 +147,47 @@ export function SealedVaultFeed() {
     }
   }, [active, connected, account, amount, signAndSubmitTransaction]);
 
-  if (loading) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-40 animate-pulse rounded-2xl border border-[#2a2a2a] bg-[#141414]" />
-        ))}
-      </div>
-    );
-  }
+  const emptyState = (
+    <div className="rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-14 text-center">
+      <h3 className="mb-1.5 font-display text-sm font-semibold text-white">No bots live yet</h3>
+      <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">
+        A sealed bot keeps its strategy private while the chain enforces what it can trade.
+        Launch one from the Launch a Bot tab.
+      </p>
+    </div>
+  );
 
-  if (error) {
+  if (loading || error || vaults.length === 0) {
     return (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-14 text-center">
-        <h3 className="mb-1.5 font-display text-sm font-semibold text-white">
-          Sealed vaults unavailable
-        </h3>
-        <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">{error}</p>
-      </div>
-    );
-  }
-
-  if (vaults.length === 0) {
-    return (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-14 text-center">
-        <h3 className="mb-1.5 font-display text-sm font-semibold text-white">No sealed vaults yet</h3>
-        <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">
-          A sealed vault keeps its strategy private while the chain enforces what it can trade.
-          Create one from the Sealed tab.
-        </p>
-      </div>
+      <ContentState
+        loading={loading}
+        error={error}
+        empty={vaults.length === 0}
+        emptyState={emptyState}
+        skeleton={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-40 w-full" />
+            ))}
+          </div>
+        }
+      >
+        {null}
+      </ContentState>
     );
   }
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
       <div className="grid gap-3 sm:grid-cols-2">
-        {vaults.map((v) => {
+        {vaults.map((v, vi) => {
           const live = Boolean(v.sealedAt) && !v.paused;
           return (
-            <button
-              key={v.strategyVaultAddr}
+            <Reveal key={v.strategyVaultAddr} index={vi}>
+            <Pressable
               onClick={() => setSelected(v.strategyVaultAddr)}
               className={cn(
-                "rounded-2xl border p-4 text-left transition-all",
+                "w-full rounded-2xl border p-4 text-left transition-all",
                 selected === v.strategyVaultAddr
                   ? "border-accent/50 bg-accent/[0.04]"
                   : "border-[#2a2a2a] bg-[#141414] hover:border-white/20",
@@ -231,7 +230,8 @@ export function SealedVaultFeed() {
                   </span>
                 )}
               </div>
-            </button>
+            </Pressable>
+            </Reveal>
           );
         })}
       </div>
@@ -279,15 +279,18 @@ export function SealedVaultFeed() {
             </div>
 
             {detail?.onChain && (
-              <dl className="grid grid-cols-2 gap-2 border-t border-[#2a2a2a] pt-3">
-                <Stat k="Bars" v={String(detail.onChain.seq)} />
-                <Stat k="Trades" v={String(detail.onChain.trades)} />
-                <Stat
-                  k="Position"
-                  v={detail.onChain.inPosition ? (detail.onChain.isLong ? "Long" : "Short") : "Flat"}
-                />
-                <Stat k="Sealed" v={detail.onChain.sealed ? "Yes" : "No"} />
-              </dl>
+              <DataTable
+                columns={["Live on-chain", ""]}
+                rows={[
+                  ["Bars processed", <AnimatedNumber key="b" value={detail.onChain.seq} />],
+                  ["Trades placed", <AnimatedNumber key="t" value={detail.onChain.trades} />],
+                  [
+                    "Position",
+                    detail.onChain.inPosition ? (detail.onChain.isLong ? "Long" : "Short") : "Flat",
+                  ],
+                  ["Rules frozen", detail.onChain.sealed ? "Yes" : "No"],
+                ]}
+              />
             )}
 
             {detail?.registryMatchesChain === false && (
@@ -315,13 +318,16 @@ export function SealedVaultFeed() {
                   placeholder="100"
                   className="w-full rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:outline-none"
                 />
-                <button
-                  onClick={doDeposit}
-                  disabled={depositBusy || !active.sealedAt}
-                  className="shrink-0 rounded-lg bg-accent px-4 py-2 font-display text-[12px] font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {depositBusy ? "…" : "Deposit"}
-                </button>
+                <div className="w-28 shrink-0">
+                  <ActionButton
+                    onClick={doDeposit}
+                    state={depositBusy ? "pending" : "idle"}
+                    disabled={!active.sealedAt}
+                    className="!px-3 !py-2 !text-[12px]"
+                  >
+                    Deposit
+                  </ActionButton>
+                </div>
               </div>
               {!active.sealedAt && (
                 <p className="mt-1.5 text-[10px] text-amber-500/80">

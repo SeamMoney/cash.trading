@@ -18,6 +18,8 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CodeBlock, ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
+import { ActionButton, Banner, Reveal, ValidatedField, AnimatedNumber } from "@/components/ui/interactions";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { DECIBEL_VAULT_LIMITS, computeFeeBreakdown, launchCostUsdc } from "@/lib/vault-economics";
@@ -79,6 +81,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [errorList, setErrorList] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [thinkSteps, setThinkSteps] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/sealed/config", { cache: "no-store" })
@@ -138,6 +141,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       // 1. Commit — the source is hashed server-side and never stored.
       setPhase("committing");
       setStatus("Hashing your strategy…");
+      setThinkSteps([
+        "Parsing PineScript",
+        "Lowering to intermediate representation",
+        "Checking every operation runs on-chain",
+        "Emitting Move and hashing the program",
+      ]);
       const commitRes = await fetch("/api/sealed/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,6 +250,21 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
   const busy = phase !== "idle" && phase !== "live";
 
+  const order: Phase[] = ["committing", "creating", "sealing", "live"];
+  const stateFor = (p: Phase): AgentTask["state"] => {
+    if (error && phase === "idle") return "pending";
+    const cur = order.indexOf(phase);
+    const mine = order.indexOf(p);
+    if (phase === "live") return "done";
+    if (cur < 0) return "pending";
+    return mine < cur ? "done" : mine === cur ? "active" : "pending";
+  };
+  const tasks: AgentTask[] = [
+    { id: "commit", label: "Hash the strategy", detail: commitInfo?.commitment, state: stateFor("committing") },
+    { id: "create", label: "Deploy the vault on-chain", detail: svAddr ?? undefined, state: stateFor("creating") },
+    { id: "seal", label: "Seal the rules permanently", state: stateFor("sealing") },
+  ];
+
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       {/* 1 — Strategy */}
@@ -325,6 +349,17 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           </AnimatePresence>
         </div>
 
+        {/* The actual source, in a proper code block */}
+        {!usingCustom && selected && (
+          <div className="mt-2">
+            <CodeBlock
+              code={selected.script}
+              filename={`${selected.id}.pine`}
+              maxHeight={200}
+            />
+          </div>
+        )}
+
         {/* Or bring your own */}
         <details className="group mt-2">
           <summary className="cursor-pointer list-none text-[11px] text-zinc-500 transition-colors hover:text-zinc-300">
@@ -368,12 +403,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       {/* 2 — Name */}
       <section>
         <Label n={2}>Name your bot</Label>
-        <input
+        <ValidatedField
+          label=""
           value={vaultName}
-          onChange={(e) => setVaultName(e.target.value)}
+          onChange={setVaultName}
           placeholder="Momentum Alpha"
           disabled={busy}
-          className={inputCls}
+          validate={(v) => (v.trim() ? null : "Depositors see this name — give your bot one.")}
         />
         <p className="mt-1.5 text-[11px] text-zinc-600">
           Deposits go into a vault under this name. Depositors see the name — never your strategy.
@@ -452,56 +488,95 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </p>
       </details>
 
-      {/* Result / errors */}
-      {error && (
-        <div role="alert" className="rounded-xl border border-red-500/40 bg-red-500/5 p-4">
-          <p className="text-[12px] font-semibold text-red-400">{error}</p>
-          {errorList.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {errorList.map((e) => (
-                <li key={e} className="text-[11px] leading-snug text-red-300/80">• {e}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {/* Live pipeline — visible only once the user commits to launching */}
+      <AnimatePresence>
+        {(busy || phase === "live") && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-3 overflow-hidden"
+          >
+            {phase === "committing" && (
+              <ThinkingState label="Compiling your strategy" steps={thinkSteps} />
+            )}
+            <TaskList tasks={tasks} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {phase === "live" && svAddr && (
-        <div className="rounded-xl border border-accent/40 bg-accent/5 p-4">
-          <p className="font-display text-[13px] font-bold text-accent">Your bot is live.</p>
-          <p className="mt-1 break-all font-mono text-[10px] text-zinc-400">{svAddr}</p>
-          {commitInfo && (
-            <p className="mt-2 break-all font-mono text-[10px] text-zinc-500">
-              commitment {commitInfo.commitment}
-            </p>
-          )}
-        </div>
-      )}
+      {/* Transpiler result — the code the chain will be bound to */}
+      <AnimatePresence>
+        {commitInfo && (
+          <Reveal>
+            <div className="space-y-2">
+              <DataTable
+                columns={["Compiled", "Value"]}
+                rows={[
+                  ["Program hash", <span key="h" className="text-accent">{commitInfo.commitment}</span>],
+                  ["Module", commitInfo.moduleName],
+                  ["Market", commitInfo.market.name],
+                  ["Warm-up", `${commitInfo.warmupBars} bars`],
+                ]}
+                caption="This hash is your strategy's on-chain identity. The source itself never leaves your browser session."
+              />
+              {commitInfo.warnings.length > 0 && (
+                <Banner tone="warn">
+                  {commitInfo.warnings.map((w) => (
+                    <span key={w} className="block">{w}</span>
+                  ))}
+                </Banner>
+              )}
+            </div>
+          </Reveal>
+        )}
+      </AnimatePresence>
 
-      {status && !error && phase !== "live" && (
-        <p className="text-[12px] text-zinc-400">{status}</p>
-      )}
+      {/* Errors */}
+      <AnimatePresence>
+        {error && (
+          <Banner tone="error" onDismiss={() => { setError(null); setErrorList([]); }}>
+            <span className="block font-semibold">{error}</span>
+            {errorList.length > 0 && (
+              <ul className="mt-1.5 space-y-1">
+                {errorList.map((e) => (
+                  <li key={e} className="text-[11px] leading-snug text-red-300/80">• {e}</li>
+                ))}
+              </ul>
+            )}
+          </Banner>
+        )}
+      </AnimatePresence>
 
-      {config && !config.ready && (
-        <p className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] leading-snug text-amber-400/90">
-          Sealed vaults aren&apos;t configured on this deployment yet — the contract address and
-          attestor key still need to be set. You can build and preview a bot, but not deploy one.
-        </p>
-      )}
+      <AnimatePresence>
+        {phase === "live" && svAddr && (
+          <Banner tone="success">
+            <span className="block font-semibold">Your bot is live.</span>
+            <span className="mt-1 block break-all font-mono text-[10px] text-zinc-400">{svAddr}</span>
+          </Banner>
+        )}
+      </AnimatePresence>
 
-      <button
+      <AnimatePresence>
+        {config && !config.ready && (
+          <Banner tone="warn">
+            Sealed vaults aren&apos;t configured on this deployment yet — the contract address and
+            attestor key still need to be set. You can build and preview a bot, but not deploy one.
+          </Banner>
+        )}
+      </AnimatePresence>
+
+      <ActionButton
         onClick={launch}
-        disabled={busy || phase === "live" || !config?.ready}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3.5 font-display text-[14px] font-bold text-accent-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        state={busy ? "pending" : phase === "live" ? "success" : error ? "error" : "idle"}
+        successLabel="Live"
+        errorLabel="Try again"
+        disabled={phase === "live" || !config?.ready}
       >
-        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-        {phase === "idle" && "Launch bot"}
-        {phase === "committing" && "Hashing strategy…"}
-        {phase === "creating" && "Deploying…"}
-        {phase === "delegating" && "Delegating…"}
-        {phase === "sealing" && "Sealing…"}
-        {phase === "live" && "Live"}
-      </button>
+        Launch bot
+      </ActionButton>
+
     </div>
   );
 }

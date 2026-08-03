@@ -7,7 +7,7 @@ import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
-import { SealedVaultLaunch } from "@/components/sealed/SealedVaultLaunch";
+import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
@@ -40,7 +40,8 @@ interface Indicator {
   creatorEarningsUsdt?: number;
 }
 
-type Tab    = "explore" | "deploy" | "sealed" | "vaults" | "bots" | "creator";
+// Three tabs, one job each: make a bot, invest in one, manage yours.
+type Tab    = "launch" | "vaults" | "manage";
 type Sort   = "robustness" | "sharpe" | "raised";
 type Filter = "all" | "live" | "testing";
 
@@ -482,7 +483,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function LaunchpadPage() {
-  const [tab,        setTab]        = useState<Tab>("explore");
+  const [tab,        setTab]        = useState<Tab>("launch");
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [selected,   setSelected]   = useState<Indicator | null>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -544,7 +545,7 @@ export function LaunchpadPage() {
   }, [indicators]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDeployed(addr: string) {
-    setTab("explore");
+    setTab("vaults");
     void (async () => {
       let latest = await fetchIndicators(true);
       let found = latest.find((indicator) => indicator.address === addr);
@@ -580,7 +581,7 @@ export function LaunchpadPage() {
 
           {/* ── Tab bar ── */}
           <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
-            {(["explore", "deploy", "sealed", "vaults", "bots", "creator"] as Tab[]).map((t) => (
+            {(["launch", "vaults", "manage"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)}
                 className={cn(
                   "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
@@ -588,23 +589,48 @@ export function LaunchpadPage() {
                     ? "border-white text-white"
                     : "border-transparent text-[#888] hover:text-zinc-300",
                 )}>
-                {t === "explore"
-                  ? "Explore"
-                  : t === "deploy"
-                    ? "Deploy"
-                    : t === "sealed"
-                      ? "Seal a Strategy"
-                      : t === "vaults"
-                        ? "Sealed Vaults"
-                        : t === "bots"
-                          ? "My Bots"
-                          : "Creator"}
+                {t === "launch" ? "Launch a Bot" : t === "vaults" ? "Invest" : "Manage"}
               </button>
             ))}
           </div>
 
-          {/* ── Explore ── */}
-          {tab === "explore" && (
+          {/* ── Launch: pick a strategy, name it, ship it ── */}
+          {tab === "launch" && (
+            <div className="animate-enter-delay-1">
+              <div className="mx-auto mb-5 max-w-2xl text-center">
+                <h2 className="font-display text-[22px] font-bold text-white">
+                  Turn any strategy into an automated bot
+                </h2>
+                <p className="mx-auto mt-1.5 max-w-lg text-[12px] leading-relaxed text-zinc-500">
+                  Pick a strategy or bring your own from TradingView. It deploys as a vault that
+                  trades on-chain under rules the contract enforces — and your source can stay
+                  private.
+                </p>
+              </div>
+              <SealedLaunch onLaunched={() => setTab("vaults")} />
+            </div>
+          )}
+
+          {/* ── Sealed Vaults (trader) ── */}
+          {tab === "vaults" && (
+            <div className="animate-enter-delay-1 space-y-4">
+              <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] px-5 py-4">
+                <h2 className="font-display text-sm font-semibold text-white">
+                  Invest in a private strategy
+                </h2>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                  You can&apos;t see the algorithm. You can verify what it is unable to do: one
+                  market, a fixed percent of NAV per order, a hard leverage cap, a minimum interval
+                  between trades, and no authority to move your funds. Deposits sit in a Decibel
+                  vault; withdrawals follow Decibel&apos;s redemption queue.
+                </p>
+              </div>
+              <SealedVaultFeed />
+            </div>
+          )}
+
+          {/* Public indicator feed — lives under Invest, below sealed vaults. */}
+          {tab === "vaults" && (
             <div className="animate-enter-delay-2">
               <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
 
@@ -678,7 +704,7 @@ export function LaunchpadPage() {
                       ) : indicators.length === 0 ? (
                         <div className="text-center py-8 px-4">
                           <p className="text-xs text-[#888]">No strategies found</p>
-                          <button onClick={() => setTab("deploy")}
+                          <button onClick={() => setTab("launch")}
                             className="mt-3 text-xs text-zinc-400 hover:text-white underline">
                             Deploy the first one →
                           </button>
@@ -705,10 +731,10 @@ export function LaunchpadPage() {
                       <IndicatorDetail
                         key={selected.address}
                         ind={selected}
-                        onDeployOwn={() => setTab("deploy")}
+                        onDeployOwn={() => setTab("launch")}
                       />
                     ) : (
-                      <EmptyState onDeploy={() => setTab("deploy")} />
+                      <EmptyState onDeploy={() => setTab("launch")} />
                     )}
                   </div>
                 </div>
@@ -717,71 +743,8 @@ export function LaunchpadPage() {
             </div>
           )}
 
-          {/* ── Deploy tab ── */}
-          {tab === "deploy" && (
-            <div className="animate-enter-delay-1">
-              <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-                <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
-                  Deploy a Strategy
-                </header>
-                <div className="bg-[#111] px-2 sm:px-4 py-3">
-                  <DeployForm onDeployed={handleDeployed} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Seal a Strategy (creator) ── */}
-          {tab === "sealed" && (
-            <div className="animate-enter-delay-1">
-              <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-                <header className="border-b border-[#2a2a2a] bg-[#202020] px-5 py-4 sm:px-8 sm:py-5">
-                  <h2 className="font-mono text-sm font-semibold tabular-nums text-[#888]">
-                    Seal a Private Strategy
-                  </h2>
-                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
-                    Your PineScript stays private — only its hash goes on chain. The module enforces
-                    the market, size, leverage and cadence, and every trade carries a signed,
-                    sequenced attestation bound to on-chain prices.
-                  </p>
-                </header>
-                <div className="bg-[#111] px-4 py-4 sm:px-6">
-                  <SealedVaultLaunch onLaunched={() => setTab("vaults")} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Sealed Vaults (trader) ── */}
-          {tab === "vaults" && (
-            <div className="animate-enter-delay-1 space-y-4">
-              <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] px-5 py-4">
-                <h2 className="font-display text-sm font-semibold text-white">
-                  Invest in a private strategy
-                </h2>
-                <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                  You can&apos;t see the algorithm. You can verify what it is unable to do: one
-                  market, a fixed percent of NAV per order, a hard leverage cap, a minimum interval
-                  between trades, and no authority to move your funds. Deposits sit in a Decibel
-                  vault; withdrawals follow Decibel&apos;s redemption queue.
-                </p>
-              </div>
-              <SealedVaultFeed />
-            </div>
-          )}
-
-          {/* ── Bots tab ── */}
-          {tab === "bots" && (
-            <div className="animate-enter-delay-1 rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-16 text-center">
-              <h3 className="text-sm font-display font-semibold text-white mb-1.5">Launchpad automation unavailable</h3>
-              <p className="text-[12px] text-zinc-500 max-w-md mx-auto leading-relaxed">
-                Persistent, wallet-authorized bot scheduling is not deployed. No background trades are running from this page.
-              </p>
-            </div>
-          )}
-
-          {/* ── Creator tab ── */}
-          {tab === "creator" && (
+          {/* ── Manage: your bots & earnings ── */}
+          {tab === "manage" && (
             <div className="animate-enter-delay-1">
               <CreatorDashboard creatorAddr={account?.address?.toString()} />
             </div>

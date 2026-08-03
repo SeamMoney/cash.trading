@@ -90,6 +90,8 @@ export async function POST(request: NextRequest) {
     const maxLeverageX100 = Number(body.maxLeverageX100 ?? 200);
     const minBarIntervalS = Number(body.minBarIntervalS ?? 60);
     const traceCapacity = Number(body.traceCapacity ?? 500);
+    // 0.30% default: comfortably crosses a normal BTC spread without chasing.
+    const slippageBps = Number(body.slippageBps ?? 30);
     if (!Number.isInteger(pctBps) || pctBps < 1 || pctBps > 10000) {
       return NextResponse.json(
         { error: "pctBps must be 1..10000 (bps of NAV per order)" },
@@ -114,6 +116,13 @@ export async function POST(request: NextRequest) {
         { status: 400, headers: NO_STORE },
       );
     }
+    // Mirrors MAX_SLIPPAGE_BPS in sealed_vault.move.
+    if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 500) {
+      return NextResponse.json(
+        { error: "slippageBps must be 0..500 (5% ceiling)" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
 
     return NextResponse.json(
       {
@@ -127,6 +136,7 @@ export async function POST(request: NextRequest) {
           pctBps,
           maxLeverageX100,
           minBarIntervalS,
+          slippageBps,
           traceCapacity,
         }),
       },

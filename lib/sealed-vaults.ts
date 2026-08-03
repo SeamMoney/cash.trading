@@ -23,6 +23,8 @@ export interface SealedMarket {
   sizeDecimalsPow: string;
   lotSize: string;
   minSize: string;
+  /** Engine price grid (px units, 1e6). Order prices must be multiples. */
+  tickerSize: string;
 }
 
 /**
@@ -47,6 +49,7 @@ export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMark
       sizeDecimalsPow: "1000000000", // 10^9
       lotSize: "10000",
       minSize: "20000",
+      tickerSize: "1000000",
     },
   ],
   mainnet: [
@@ -56,6 +59,7 @@ export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMark
       sizeDecimalsPow: "100000000", // 10^8
       lotSize: "1000",
       minSize: "2000",
+      tickerSize: "100000",
     },
   ],
 };
@@ -222,6 +226,7 @@ export function buildCreateSealedVaultPayload(args: {
   pctBps: number;
   maxLeverageX100: number;
   minBarIntervalS: number;
+  slippageBps: number;
   traceCapacity: number;
 }) {
   return {
@@ -235,9 +240,11 @@ export function buildCreateSealedVaultPayload(args: {
       args.market.sizeDecimalsPow,
       args.market.lotSize,
       args.market.minSize,
+      args.market.tickerSize,
       String(args.pctBps),
       String(args.maxLeverageX100),
       String(args.minBarIntervalS),
+      String(args.slippageBps),
       String(args.traceCapacity),
     ],
   };

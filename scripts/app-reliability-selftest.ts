@@ -1309,6 +1309,25 @@ assert.ok(
 );
 
 assert.equal(packageJson.scripts?.["test:sealed"], "tsx scripts/sealed-attestor-selftest.ts");
+assert.equal(packageJson.scripts?.["test:catalog"], "tsx scripts/sealed-catalog-selftest.ts");
+
+// The launch flow must stay minimal. These assertions exist because the first
+// version asked creators for a Decibel vault address and a raw ed25519 attestor
+// key — neither of which is theirs to decide.
+const launchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+assert.ok(
+  !/placeholder="0x…"/.test(launchUi),
+  "the launch flow must not ask the user to paste raw addresses or keys",
+);
+assert.ok(
+  launchUi.includes("/api/sealed/config"),
+  "the launch flow must source the attestor key and defaults from the server",
+);
+const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
+assert.ok(
+  /type Tab\s*=\s*"launch" \| "vaults" \| "manage";/.test(launchPage),
+  "the launchpad must stay at three tabs",
+);
 assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-honesty-selftest.ts");
 
 console.log("app reliability self-test: passed");

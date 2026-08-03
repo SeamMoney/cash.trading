@@ -60,6 +60,7 @@ const NET = {
       sizeDecimalsPow: 1_000_000_000n, // szDecimals = 9
       lotSize: 10_000n,
       minSize: 20_000n,
+      tickerSize: 1_000_000n,
     },
     explorerSuffix: "?network=testnet",
     canMintUsdc: true,
@@ -75,6 +76,7 @@ const NET = {
       sizeDecimalsPow: 100_000_000n, // szDecimals = 8
       lotSize: 1_000n,
       minSize: 2_000n,
+      tickerSize: 100_000n,
     },
     explorerSuffix: "?network=mainnet",
     canMintUsdc: false,
@@ -366,9 +368,11 @@ async function run() {
       cfg.market.sizeDecimalsPow.toString(),
       cfg.market.lotSize.toString(),
       cfg.market.minSize.toString(),
+      cfg.market.tickerSize.toString(),
       "1000", // 10% NAV per order
       "200", // 2x max leverage
       "30", // min bar interval
+      "30", // 0.30% slippage tolerance on IOC orders
       "500", // trace capacity
     ]);
     let sv: string | undefined;

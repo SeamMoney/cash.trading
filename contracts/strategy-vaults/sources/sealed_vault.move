@@ -52,6 +52,11 @@ module cash_strategy::sealed_vault {
     const E_BAR_IN_FUTURE:      u64 = 12;
     const E_BAD_MARKET_PARAMS:  u64 = 13;
     const E_BAD_LEVERAGE:       u64 = 14;
+    const E_BAD_SLIPPAGE:       u64 = 15;
+
+    /// Upper bound on the slippage rule — 5%. Bounded so a curator cannot
+    /// configure effectively-unlimited price tolerance.
+    const MAX_SLIPPAGE_BPS: u64 = 500;
 
     // ─── Constants ───────────────────────────────────────────────────
     /// Domain separator — prevents an attestation being replayed against any other protocol,
@@ -94,6 +99,9 @@ module cash_strategy::sealed_vault {
         lot_size: u128,
         /// Engine minimum order size for this market.
         min_size: u128,
+        /// Engine price grid for this market (px units, 1e6). Order prices must
+        /// be multiples of this.
+        ticker_size: u128,
 
         // ── Rules (frozen by seal()) ──
         /// Per-order notional as a percent of NAV, in bps. 1..=10000.
@@ -103,6 +111,10 @@ module cash_strategy::sealed_vault {
         max_leverage_x100: u64,
         /// Minimum seconds between accepted bars — bounds attestor discretion over timing.
         min_bar_interval_s: u64,
+        /// Price tolerance applied to IOC orders, in bps of mark. The order is
+        /// priced at mark±slippage (tick-rounded), so fills survive normal
+        /// spread but a moved market simply doesn't fill — never chased.
+        slippage_bps: u64,
 
         // ── Live state ──
         /// Rolling sha3_256 over every bar processed. Commits the full input history.
@@ -189,7 +201,10 @@ module cash_strategy::sealed_vault {
         is_buy: bool,
         reduce_only: bool,
         size: u64,
+        /// 1e8-scaled trace price (what the digest committed).
         price: u64,
+        /// Actual IOC limit price submitted, in engine px units (1e6).
+        order_px: u64,
         timestamp: u64,
     }
 
@@ -218,9 +233,11 @@ module cash_strategy::sealed_vault {
         size_decimals_pow: u128,
         lot_size: u128,
         min_size: u128,
+        ticker_size: u128,
         pct_bps: u64,
         max_leverage_x100: u64,
         min_bar_interval_s: u64,
+        slippage_bps: u64,
         trace_capacity: u64,
     ) {
         assert!(vector::length(&program_commitment) == 32, E_BAD_COMMITMENT);
@@ -228,6 +245,8 @@ module cash_strategy::sealed_vault {
         assert!(pct_bps > 0 && pct_bps <= 10000, E_BAD_BPS);
         assert!(max_leverage_x100 > 0, E_BAD_LEVERAGE);
         assert!(size_decimals_pow > 0 && lot_size > 0 && min_size > 0, E_BAD_MARKET_PARAMS);
+        assert!(ticker_size > 0, E_BAD_MARKET_PARAMS);
+        assert!(slippage_bps <= MAX_SLIPPAGE_BPS, E_BAD_SLIPPAGE);
         assert!(trace_capacity > 0, E_BAD_MARKET_PARAMS);
 
         let creator_addr = signer::address_of(creator);
@@ -246,9 +265,11 @@ module cash_strategy::sealed_vault {
             size_decimals_pow,
             lot_size,
             min_size,
+            ticker_size,
             pct_bps,
             max_leverage_x100,
             min_bar_interval_s,
+            slippage_bps,
             // Genesis digest: sha3_256 of the domain, so two vaults never share a starting state.
             input_digest: hash::sha3_256(ATTESTATION_DOMAIN),
             seq: 0,
@@ -333,6 +354,7 @@ module cash_strategy::sealed_vault {
         verify_attestation(sv, sv_addr, prev_digest, signal, signature);
 
         // 2. Read the price on-chain. The attestor never supplies it and cannot influence it.
+        // mark_px is in the engine's px units (1e6); the committed trace is 1e8-scaled.
         let mark_px = public_read_api::get_mark_price(sv.market);
         let price = mark_px * PRICE_SCALE_PX_TO_1E8;
 
@@ -346,7 +368,7 @@ module cash_strategy::sealed_vault {
         // 4. Act only on a flip to a directional signal.
         let traded = false;
         if (signal != SIGNAL_NEUTRAL && signal != sv.last_signal) {
-            traded = execute_flip(sv, sv_addr, signal, price, bar_ts);
+            traded = execute_flip(sv, sv_addr, signal, mark_px, price, bar_ts);
         };
         sv.last_signal = signal;
 
@@ -412,6 +434,7 @@ module cash_strategy::sealed_vault {
         sv: &mut SealedVault,
         sv_addr: address,
         signal: u8,
+        mark_px: u64,
         price: u64,
         bar_ts: u64,
     ): bool {
@@ -424,7 +447,7 @@ module cash_strategy::sealed_vault {
             return false
         };
 
-        let size = resolve_size(sv, price);
+        let size = resolve_size(sv, mark_px);
         if (size == 0) {
             event::emit(TradeSkipped {
                 strategy_vault: sv_addr,
@@ -440,8 +463,25 @@ module cash_strategy::sealed_vault {
         let trader = object::generate_signer_for_extending(&sv.extend_ref);
         let subaccount = dex_accounts::primary_subaccount_object_public(sv.decibel_vault_addr);
 
+        // Order prices are in the ENGINE'S px units (1e6) — NOT the 1e8 trace
+        // scale. The legacy strategy_vault passed the 1e8 price as the limit,
+        // so buys crossed the entire book (accidental market orders) and sells
+        // sat 100x above mark and could never fill. Priced at mark±slippage
+        // and rounded onto the market's tick grid (up for buys, down for
+        // sells) so the order stays marketable without chasing a moved market.
+        let buy_px = round_up_to_tick(
+            (mark_px as u128) * ((BPS_DENOM as u128) + (sv.slippage_bps as u128)) / (BPS_DENOM as u128),
+            sv.ticker_size,
+        );
+        let sell_px = round_down_to_tick(
+            (mark_px as u128) * ((BPS_DENOM as u128) - (sv.slippage_bps as u128)) / (BPS_DENOM as u128),
+            sv.ticker_size,
+        );
+
         if (sv.in_position && sv.is_long != want_long) {
-            place(&trader, subaccount, sv.market, !sv.is_long, size, price, true);
+            // Closing side is opposite the position: a long closes with a sell.
+            let close_px = if (sv.is_long) { sell_px } else { buy_px };
+            place(&trader, subaccount, sv.market, !sv.is_long, size, close_px, true);
             event::emit(VaultTraded {
                 strategy_vault: sv_addr,
                 decibel_vault: sv.decibel_vault_addr,
@@ -451,11 +491,13 @@ module cash_strategy::sealed_vault {
                 reduce_only: true,
                 size,
                 price,
+                order_px: close_px,
                 timestamp: bar_ts,
             });
         };
 
-        place(&trader, subaccount, sv.market, want_long, size, price, false);
+        let open_px = if (want_long) { buy_px } else { sell_px };
+        place(&trader, subaccount, sv.market, want_long, size, open_px, false);
         event::emit(VaultTraded {
             strategy_vault: sv_addr,
             decibel_vault: sv.decibel_vault_addr,
@@ -465,6 +507,7 @@ module cash_strategy::sealed_vault {
             reduce_only: false,
             size,
             price,
+            order_px: open_px,
             timestamp: bar_ts,
         });
 
@@ -474,16 +517,24 @@ module cash_strategy::sealed_vault {
         true
     }
 
+    fun round_up_to_tick(px: u128, tick: u128): u64 {
+        (((px + tick - 1) / tick * tick) as u64)
+    }
+
+    fun round_down_to_tick(px: u128, tick: u128): u64 {
+        ((px / tick * tick) as u64)
+    }
+
     /// Size = NAV × pct_bps, capped by max_leverage, floored to the lot.
     /// Returns 0 (skip the trade) when the result is below the market minimum — never clamps
     /// up, because clamping up breaches the NAV cap on small vaults.
-    fun resolve_size(sv: &SealedVault, price_1e8: u64): u64 {
+    fun resolve_size(sv: &SealedVault, mark_px_1e6: u64): u64 {
         let nav = public_read_api::get_account_net_asset_value(
             dex_accounts::primary_subaccount_public(sv.decibel_vault_addr)
         );
         assert!(nav > 0, E_NO_NAV);
 
-        let mark_px = ((price_1e8 / PRICE_SCALE_PX_TO_1E8) as u128);
+        let mark_px = (mark_px_1e6 as u128);
         if (mark_px == 0) return 0;
 
         let nav_u = (nav as u128);

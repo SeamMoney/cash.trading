@@ -162,7 +162,11 @@ export function buildTickAttestedPayload(args: {
       args.strategyVault,
       args.barTs.toString(),
       args.signal,
-      toHex(args.signature),
+      // A `vector<u8>` MUST be a byte array, not a hex string. The Aptos SDK encodes a JS
+      // string argument as its UTF-8 bytes, so "0x…" (66 chars) reaches Move as 66 bytes and
+      // every length assert fails. `number[]` is unambiguous and survives JSON, which a
+      // Uint8Array does not — these payloads cross an HTTP boundary to the browser.
+      Array.from(args.signature),
     ],
   };
 }

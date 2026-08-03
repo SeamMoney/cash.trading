@@ -19,6 +19,7 @@ import {
   listSealedVaults,
   sealedRegistryAvailable,
   toPublicSealedVault,
+  truncateDisplayName,
   verifyRevealedProgram,
 } from "@/lib/sealed-vaults";
 
@@ -97,7 +98,9 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: NO_STORE },
     );
   }
-  const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
+  // Same code-point-safe truncation the on-chain name uses, so the registry row and the
+  // vault's on-chain title cannot disagree on an emoji boundary.
+  const name = typeof body.name === "string" ? truncateDisplayName(body.name) : "";
   if (!name) {
     return NextResponse.json({ error: "name required" }, { status: 400, headers: NO_STORE });
   }
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
       typeof body.enclaveMeasurement === "string" ? body.enclaveMeasurement : null,
     name,
     description:
-      typeof body.description === "string" ? body.description.trim().slice(0, 500) : null,
+      typeof body.description === "string" ? truncateDisplayName(body.description, 500, 1500) : null,
     pctBps: Number(body.pctBps ?? 1000),
     maxLeverageX100: Number(body.maxLeverageX100 ?? 200),
     minBarIntervalS: Number(body.minBarIntervalS ?? 60),

@@ -26,6 +26,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { join, resolve } from "node:path";
 import {
   Account,
+  AccountAddress,
   Aptos,
   AptosConfig,
   Ed25519PrivateKey,
@@ -44,6 +45,7 @@ import {
   type Signal,
 } from "../lib/sealed-attestor";
 import { SEALED_PRESETS, buildManifest, canonicalizePine } from "../lib/sealed-presets";
+import { derivePrimarySubaccount } from "../lib/sealed-vaults";
 import { fetchPythCandles } from "../lib/launchpad/pyth";
 
 // ─── Network config (authoritative, verified on-chain 2026-07-30) ────────────
@@ -245,7 +247,19 @@ async function run() {
     }
     const named = `cash_strategy=${state.deployerAddr},decibel=${cfg.decibel},order_book=0x5`;
     const runCli = (args: string[]) => {
-      const out = execFileSync(aptosBin, args, { cwd: pkgDir, encoding: "utf8" });
+      let out: string;
+      try {
+        out = execFileSync(aptosBin, args, { cwd: pkgDir, encoding: "utf8" });
+      } catch (err) {
+        // execFileSync throws a bare "Command failed" whose actual cause is in the captured
+        // streams. Surfacing them is the difference between a diagnosable failure and a
+        // one-line dead end.
+        const e = err as { stdout?: string; stderr?: string; message?: string };
+        throw new Error(
+          `aptos ${args[0]} ${args[1]} failed\n` +
+            `${(e.stdout ?? "").slice(-3000)}\n${(e.stderr ?? "").slice(-3000)}\n${e.message ?? ""}`,
+        );
+      }
       if (out.includes('"Error"')) throw new Error(out.slice(-3000));
       return out;
     };
@@ -257,9 +271,24 @@ async function run() {
       "--url", cfg.nodeUrl,
       "--private-key", deployerKey.toString(),
       "--assume-yes",
-      "--max-gas", "200000",
+      // The package vendors the Decibel + order_book deps, so the publish writeset is large.
+      // 200k units ran out of gas on testnet; 2M is the protocol's per-transaction ceiling.
+      "--max-gas", "2000000",
     ]);
     const tx = out.match(/"transaction_hash":\s*"(0x[0-9a-f]+)"/)?.[1];
+    // The CLI exits 0 for a transaction that COMMITTED but reverted (e.g. "Out of gas"), and
+    // recording that as a successful publish makes every later step fail with a confusing
+    // "module not found". Confirm on chain before writing the state file.
+    if (tx) {
+      const landed = await aptos.getTransactionByHash({ transactionHash: tx });
+      const ok = (landed as { success?: boolean }).success;
+      if (!ok) {
+        throw new Error(
+          `publish transaction reverted: ${(landed as { vm_status?: string }).vm_status}\n` +
+            `  ${explorer(tx)}`,
+        );
+      }
+    }
     state.publishTx = tx;
     state.packageAddress = state.deployerAddr;
     saveState(state);
@@ -284,21 +313,33 @@ async function run() {
   // ── subaccount + deposit ──
   if (!state.subaccountAddr) {
     console.log(`[subaccount] creating primary subaccount + depositing USDC…`);
-    // deposit_to_subaccount_at auto-creates the primary subaccount for the owner.
+    // "…_at" means at a SUBACCOUNT address, not the owner's. Passing the owner aborts with
+    // ESUBACCOUNT_DOESNT_EXIST(0x2) — which reads like "create one first", but creating one
+    // via create_new_subaccount makes a *non-primary* subaccount at an unrelated address and
+    // changes nothing. The primary subaccount address is derived, and depositing to it is
+    // what brings it into existence.
+    const primary = derivePrimarySubaccount(state.deployerAddr!, network);
     const committed = await submit(deployer, `${cfg.decibel}::dex_accounts_entry::deposit_to_subaccount_at`, [
-      state.deployerAddr,
+      primary,
       cfg.usdcMetadata,
       // Deposit nearly everything: Decibel charges a 100 USDC creation fee AND
       // requires 100 USDC of initial funding to activate.
       (USDC_MINT_UNITS - 10_000_000n).toString(),
     ]);
+    // Confirm against the chain rather than trusting the derivation. Note this is the plain
+    // `primary_subaccount` view — the `_public` variant exists for Move callers and is NOT
+    // marked #[view], so the view API rejects it.
     const sub = (await aptos.view({
       payload: {
-        function: `${cfg.decibel}::dex_accounts::primary_subaccount_public`,
+        function: `${cfg.decibel}::dex_accounts::primary_subaccount`,
         functionArguments: [state.deployerAddr],
       },
     })) as [string];
-    state.subaccountAddr = sub[0];
+    const confirmed = AccountAddress.from(sub[0]).toStringLong();
+    if (confirmed !== AccountAddress.from(primary).toStringLong()) {
+      throw new Error(`derived primary subaccount ${primary} != on-chain ${confirmed}`);
+    }
+    state.subaccountAddr = confirmed;
     saveState(state);
     console.log(`  subaccount ${state.subaccountAddr}`);
     console.log(`  ${explorer(committed.hash)}`);
@@ -364,8 +405,9 @@ async function run() {
   if (!state.strategyVaultAddr) {
     console.log(`[sealed-vault] create_sealed_vault…`);
     const committed = await submit(deployer, `${pkg}::sealed_vault::create_sealed_vault`, [
-      state.commitment,
-      state.attestorPub,
+      // vector<u8> must be bytes; a hex string is encoded as its UTF-8 characters.
+      fromHex(state.commitment!),
+      fromHex(state.attestorPub!),
       state.decibelVaultAddr,
       cfg.market.addr,
       cfg.market.sizeDecimalsPow.toString(),
@@ -377,7 +419,7 @@ async function run() {
       "30", // min bar interval
       "30", // 0.30% slippage tolerance on IOC orders
       "500", // trace capacity
-      "0x", // enclave measurement — empty for tier-1 bare-key attestation
+      new Uint8Array(), // enclave measurement — empty for tier-1 bare-key attestation
     ]);
     let sv: string | undefined;
     for (const ev of (committed as { events?: Array<{ type: string; data: Record<string, string> }> }).events ?? []) {

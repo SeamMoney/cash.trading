@@ -5,7 +5,9 @@
  *
  *   pnpm test:economics
  */
+import assert from "node:assert/strict";
 import { DECIBEL_VAULT_LIMITS, computeFeeBreakdown, validateVaultConfig, launchCostUsdc } from "../lib/vault-economics";
+import { deriveShareSymbol, truncateDisplayName } from "../lib/sealed-vaults";
 
 const PKGS = {
   testnet: { url: "https://api.testnet.aptoslabs.com/v1", pkg: "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f" },
@@ -62,6 +64,38 @@ async function main() {
     validateVaultConfig({ feeBps: 1000, feeIntervalS: 2_592_000, initialFundingUsdc: 50, lockupS: 0 }).length > 0);
   check("accepts a valid config",
     validateVaultConfig({ feeBps: 1000, feeIntervalS: 2_592_000, initialFundingUsdc: 100, lockupS: 0 }).length === 0);
+
+
+  console.log("\nemoji-safe display names");
+  // ── Emoji-safe display names ────────────────────────────────────────────────
+  // Vault titles are Move `String`s — arbitrary UTF-8 — so emoji work end to end and a vault
+  // named "🚀 Moon Bot 📈" round-trips byte-for-byte on chain (verified on testnet). What does
+  // NOT work is truncating one with String.slice: it cuts on UTF-16 code units, splits the
+  // surrogate pair and stores a replacement character in a name that can never be edited.
+  {
+    const loneSurrogate = /[\uD800-\uDFFF]/;
+    const stripPairs = (s: string) => s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "");
+  
+    for (const name of ["🚀🚀🚀 Moon", "🚀".repeat(80), "日本語ボット", "Plain Ascii", "👨‍👩‍👧‍👦 Family"]) {
+      const out = truncateDisplayName(name, 8, 24);
+      assert.ok(!loneSurrogate.test(stripPairs(out)), `truncation split a character in ${name}`);
+      assert.ok(out.length <= 8, `truncation exceeded the unit budget for ${name}`);
+      assert.ok(
+        new TextEncoder().encode(out).length <= 24,
+        `truncation exceeded the byte budget for ${name}`,
+      );
+    }
+    assert.equal(truncateDisplayName("🚀 Moon Bot 📈"), "🚀 Moon Bot 📈", "short emoji names must pass through untouched");
+    assert.equal(truncateDisplayName("  spaced  "), "spaced");
+  
+    // Emoji-only names strip to nothing alphanumerically; they must not all collide on one symbol.
+    assert.notEqual(deriveShareSymbol("🚀"), deriveShareSymbol("📈"), "emoji-only names must not share a share symbol");
+    assert.equal(deriveShareSymbol("Momentum Alpha"), "sMOMENTUMALPH");
+    for (const n of ["🚀", "📈", "日本語", "Momentum Alpha", ""]) {
+      assert.ok(/^s[A-Z0-9]{1,15}$/.test(deriveShareSymbol(n)), `share symbol not alphanumeric for ${n}: ${deriveShareSymbol(n)}`);
+    }
+  }
+  check("emoji names truncate and derive symbols safely", true);
 
   console.log(failures === 0 ? "\nEconomics match both chains.\n" : `\n${failures} FAILED.\n`);
   process.exit(failures === 0 ? 0 : 1);

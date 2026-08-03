@@ -16,15 +16,18 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import {
+  DECIBEL_PACKAGE_BY_NETWORK,
   SEALED_PACKAGE,
   USDC_METADATA_BY_NETWORK,
   buildCreateSealedVaultPayload,
   buildSetPausedPayload,
   derivePrimarySubaccount,
+  deriveShareSymbol,
   findSealedMarket,
   isHex32,
   isHexAddress,
   sealedNetwork,
+  truncateDisplayName,
 } from "@/lib/sealed-vaults";
 import {
   buildCreateDecibelVaultPayload,
@@ -75,7 +78,8 @@ export async function POST(request: NextRequest) {
         { status: 400, headers: NO_STORE },
       );
     }
-    const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
+    // Code-point-safe: a plain .slice() would split an emoji and store a replacement char.
+    const name = typeof body.name === "string" ? truncateDisplayName(body.name) : "";
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400, headers: NO_STORE });
     }
@@ -93,17 +97,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Both the package and the subaccount are pinned to the sealed rail's own table rather
+    // than resolved from lib/decibel.ts, whose TESTNET package is the abandoned 0x952535c3….
+    const decibelPackage =
+      typeof body.decibelPackage === "string" ? body.decibelPackage : DECIBEL_PACKAGE_BY_NETWORK[network];
+    const subaccountAddr = derivePrimarySubaccount(body.creatorAddr as string, network);
     const built = buildCreateDecibelVaultPayload({
-      owner: body.creatorAddr,
+      packageAddress: decibelPackage,
+      subaccount: subaccountAddr,
       contributionAsset: USDC_METADATA_BY_NETWORK[network],
       name,
       description:
         typeof body.description === "string"
-          ? body.description.trim().slice(0, 500)
+          ? truncateDisplayName(body.description, 500, 1500)
           : "Private strategy enforced on-chain by cash_strategy::sealed_vault",
-      // Share symbol is derived, never asked for: alphanumerics from the vault name,
-      // "s"-prefixed, inside the 16 chars the builder allows.
-      shareSymbol: `s${name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "SEAL"}`,
+      // Derived, never asked for. Emoji-only names strip to nothing, so deriveShareSymbol
+      // falls back to a hash of the name rather than giving every such vault "sSEAL".
+      shareSymbol: deriveShareSymbol(name),
       // This is where the platform fee stops being a display number: 10% total profit
       // share, split per lib/vault-economics.ts. 30 days is Decibel's floor — a shorter
       // interval aborts the transaction.
@@ -120,7 +130,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        subaccountAddr: derivePrimarySubaccount(body.creatorAddr as string, network),
+        subaccountAddr,
         payload: built.payload,
       },
       { status: 200, headers: NO_STORE },
@@ -248,6 +258,10 @@ export async function POST(request: NextRequest) {
     const days = Number(body.expiryDays ?? 365);
     const expirySecs = Math.floor(Date.now() / 1000) + Math.max(1, days) * 86_400;
     const built = buildDelegateDecibelVaultPayload({
+      packageAddress:
+        typeof body.decibelPackage === "string"
+          ? body.decibelPackage
+          : DECIBEL_PACKAGE_BY_NETWORK[network],
       vaultAddress: body.decibelVaultAddr,
       delegate: body.strategyVaultAddr,
       expirationTimestampSecs: expirySecs,

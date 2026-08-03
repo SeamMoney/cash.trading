@@ -35,6 +35,8 @@ export interface DecibelVaultPayloadResult {
 }
 
 export interface CreateDecibelVaultArgs {
+  /** Override the Decibel package this payload targets. See resolvePackage(). */
+  packageAddress?: unknown;
   owner?: unknown;
   subaccount?: unknown;
   contributionAsset?: unknown;
@@ -85,6 +87,8 @@ export interface WithdrawDecibelVaultArgs extends VaultAddressArgs {
 }
 
 export interface DelegateDecibelVaultArgs extends VaultAddressArgs {
+  /** Override the Decibel package this payload targets. See resolvePackage(). */
+  packageAddress?: unknown;
   delegate?: unknown;
   accountToDelegateTo?: unknown;
   expirationTimestampSecs?: unknown;
@@ -92,11 +96,26 @@ export interface DelegateDecibelVaultArgs extends VaultAddressArgs {
 
 const MAX_U64 = 18_446_744_073_709_551_615n;
 
+/**
+ * Which Decibel package a payload targets.
+ *
+ * Defaults to `getDecibelPackage(network)` — the app-wide constant — but callers may override.
+ * The sealed-vault rail must: lib/decibel.ts still points TESTNET at the abandoned
+ * `0x952535c3…` package, and a payload built against it aborts with a bare
+ * `0x1::object::ERESOURCE_DOES_NOT_EXIST` that names no cause. Mainnet is unaffected.
+ */
+function resolvePackage(args: object, network: DecibelNetwork) {
+  const override = (args as { packageAddress?: unknown }).packageAddress;
+  return override === undefined || override === null || override === ""
+    ? getDecibelPackage(network)
+    : requireAddress(override, "packageAddress");
+}
+
 export function buildCreateDecibelVaultPayload(
   args: CreateDecibelVaultArgs
 ): DecibelVaultPayloadResult {
   const network = resolveVaultNetwork(args.network);
-  const packageAddress = getDecibelPackage(network);
+  const packageAddress = resolvePackage(args, network);
   const contributionAsset = args.contributionAsset === undefined
     ? getDecibelCollateralMetadata(network)
     : requireAddress(args.contributionAsset, "contributionAsset");
@@ -192,7 +211,7 @@ export function buildActivateDecibelVaultPayload(
   args: VaultAddressArgs
 ): DecibelVaultPayloadResult {
   const network = resolveVaultNetwork(args.network);
-  const packageAddress = getDecibelPackage(network);
+  const packageAddress = resolvePackage(args, network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
 
   return {
@@ -211,7 +230,7 @@ export function buildDepositDecibelVaultPayload(
   args: VaultSubaccountAmountArgs
 ): DecibelVaultPayloadResult {
   const network = resolveVaultNetwork(args.network);
-  const packageAddress = getDecibelPackage(network);
+  const packageAddress = resolvePackage(args, network);
   const contributionAsset = getDecibelCollateralMetadata(network);
   const subaccount = resolveSubaccount(args.subaccount, args.owner, network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
@@ -240,7 +259,7 @@ export function buildWithdrawDecibelVaultPayload(
   args: WithdrawDecibelVaultArgs
 ): DecibelVaultPayloadResult {
   const network = resolveVaultNetwork(args.network);
-  const packageAddress = getDecibelPackage(network);
+  const packageAddress = resolvePackage(args, network);
   const subaccount = resolveSubaccount(args.subaccount, args.owner, network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
   const sharesRaw = parseHumanOrRawAmount({
@@ -267,7 +286,7 @@ export function buildDelegateDecibelVaultPayload(
   args: DelegateDecibelVaultArgs
 ): DecibelVaultPayloadResult {
   const network = resolveVaultNetwork(args.network);
-  const packageAddress = getDecibelPackage(network);
+  const packageAddress = resolvePackage(args, network);
   const vaultAddress = requireAddress(args.vaultAddress ?? args.vault, "vaultAddress");
   const delegate = requireAddress(
     args.delegate ?? args.accountToDelegateTo,

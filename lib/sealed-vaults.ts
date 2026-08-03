@@ -217,6 +217,63 @@ export function verifyRevealedProgram(args: {
 
 // ── Payload builders (wallet-signed; the server never holds a user key) ──────
 
+/**
+ * Truncate a display name without splitting a character.
+ *
+ * `String.prototype.slice` cuts on UTF-16 code units, so slicing an emoji name mid-character
+ * leaves a lone surrogate — which `TextEncoder` then turns into U+FFFD, and the vault ends up
+ * named "🚀🚀�" on chain, permanently. Emoji names are otherwise fully supported: Move's
+ * `String` is just UTF-8 bytes, and a vault titled "🚀 Moon Bot 📈" round-trips byte-for-byte
+ * (verified on testnet).
+ *
+ * Truncation is by code point and also respects a byte budget, since Move length limits are
+ * in bytes and an emoji costs four of them.
+ */
+export function truncateDisplayName(raw: string, maxUnits = 64, maxBytes = 120): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= maxUnits && new TextEncoder().encode(trimmed).length <= maxBytes) {
+    return trimmed;
+  }
+  let out = "";
+  let bytes = 0;
+  for (const ch of trimmed) {
+    const chBytes = new TextEncoder().encode(ch).length;
+    if (out.length + ch.length > maxUnits || bytes + chBytes > maxBytes) break;
+    out += ch;
+    bytes += chBytes;
+  }
+  return out.trim();
+}
+
+/**
+ * A share symbol Decibel will accept, derived from the name so nobody has to invent one.
+ *
+ * Decibel's symbol field is alphanumeric in practice, so emoji and non-Latin names strip to
+ * nothing. Rather than give every such vault the same fallback, mix in a short hash of the
+ * full name so "🚀" and "📈" don't both become "sSEAL".
+ */
+export function deriveShareSymbol(name: string): string {
+  const alnum = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  if (alnum) return `s${alnum}`;
+  let h = 0;
+  for (const cp of name) h = (h * 31 + (cp.codePointAt(0) ?? 0)) >>> 0;
+  return `sV${h.toString(36).toUpperCase().slice(0, 6)}`;
+}
+
+/** Hex string -> plain number array, the only `vector<u8>` encoding that is unambiguous to
+ *  the Aptos SDK *and* JSON-serializable across the API boundary. Accepts "0x" as empty. */
+export function hexToBytes(hex: string): number[] {
+  const clean = hex.startsWith("0x") || hex.startsWith("0X") ? hex.slice(2) : hex;
+  if (clean.length % 2 !== 0) throw new Error(`odd-length hex: ${hex}`);
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) {
+    const b = Number.parseInt(clean.slice(i, i + 2), 16);
+    if (Number.isNaN(b)) throw new Error(`invalid hex: ${hex}`);
+    out.push(b);
+  }
+  return out;
+}
+
 export function buildCreateSealedVaultPayload(args: {
   packageAddress: string;
   programCommitment: string;
@@ -235,8 +292,11 @@ export function buildCreateSealedVaultPayload(args: {
     function: `${args.packageAddress}::sealed_vault::create_sealed_vault`,
     typeArguments: [] as string[],
     functionArguments: [
-      args.programCommitment,
-      args.attestorPubkey,
+      // `vector<u8>` args must be byte arrays. The SDK encodes a JS string as UTF-8, so a
+      // "0x…" hex string arrives as 66 bytes and trips E_BAD_COMMITMENT / E_BAD_PUBKEY.
+      // `number[]` is unambiguous and, unlike Uint8Array, survives the JSON hop to the client.
+      hexToBytes(args.programCommitment),
+      hexToBytes(args.attestorPubkey),
       args.decibelVaultAddr,
       args.market.addr,
       args.market.sizeDecimalsPow,
@@ -249,7 +309,7 @@ export function buildCreateSealedVaultPayload(args: {
       String(args.slippageBps),
       String(args.traceCapacity),
       // Sealed at birth — there is no separate seal() call. See sealed_vault.move.
-      args.enclaveMeasurement ?? "0x",
+      hexToBytes(args.enclaveMeasurement ?? "0x"),
     ],
   };
 }

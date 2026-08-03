@@ -109,7 +109,12 @@ function asTxData(payload: {
   return {
     function: payload.function as `${string}::${string}::${string}`,
     typeArguments: payload.typeArguments,
-    functionArguments: payload.functionArguments as (string | number | boolean)[],
+    // `vector<u8>` arguments arrive as number[] — the server encodes them that way because a
+    // hex string would be serialized as its UTF-8 bytes and a Uint8Array would not survive
+    // JSON. Do not narrow this to (string | number | boolean)[].
+    functionArguments: payload.functionArguments as Array<
+      string | number | boolean | number[]
+    >,
   };
 }
 

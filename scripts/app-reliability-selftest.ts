@@ -1310,6 +1310,19 @@ assert.ok(
 
 assert.equal(packageJson.scripts?.["test:sealed"], "tsx scripts/sealed-attestor-selftest.ts");
 assert.equal(packageJson.scripts?.["test:catalog"], "tsx scripts/sealed-catalog-selftest.ts");
+assert.equal(packageJson.scripts?.["test:economics"], "tsx scripts/vault-economics-selftest.ts");
+
+// Decibel's vault limits are consensus-enforced — a stale value aborts vault
+// creation in production. The 30-day fee-interval floor in particular bit us:
+// the e2e pipeline shipped 86400 (1 day), which Decibel rejects outright.
+const economics = readFileSync("lib/vault-economics.ts", "utf8");
+assert.ok(economics.includes("minFeeIntervalS: 2_592_000"), "fee-interval floor must stay pinned at 30 days");
+assert.ok(economics.includes("maxFeeBps: 1000"), "Decibel's 10% profit-share ceiling must stay pinned");
+const e2e = readFileSync("scripts/sealed-e2e-deploy.ts", "utf8");
+assert.ok(
+  !/"86400", \/\/ fee_interval_s/.test(e2e),
+  "the e2e pipeline must not pass a fee interval below Decibel's 30-day floor",
+);
 
 // The launch flow must stay minimal. These assertions exist because the first
 // version asked creators for a Decibel vault address and a raw ed25519 attestor

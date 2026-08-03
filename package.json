@@ -25,7 +25,8 @@
     "start": "next start",
     "postinstall": "prisma generate",
     "sealed:e2e": "tsx scripts/sealed-e2e-deploy.ts",
-    "test:catalog": "tsx scripts/sealed-catalog-selftest.ts"
+    "test:catalog": "tsx scripts/sealed-catalog-selftest.ts",
+    "test:economics": "tsx scripts/vault-economics-selftest.ts"
   },
   "dependencies": {
     "@aptos-labs/derived-wallet-ethereum": "^0.9.2",

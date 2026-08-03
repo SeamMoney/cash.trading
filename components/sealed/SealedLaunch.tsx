@@ -13,12 +13,14 @@
  * source stays private.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
+import { DECIBEL_VAULT_LIMITS, computeFeeBreakdown, launchCostUsdc } from "@/lib/vault-economics";
 
 interface SealedConfig {
   packageAddress: string | null;
@@ -89,6 +91,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     () => SEALED_CATALOG.find((s) => s.id === strategyId) ?? null,
     [strategyId],
   );
+  const fees = useMemo(() => computeFeeBreakdown(), []);
   const usingCustom = customPine.trim().length > 0;
   const effectivePine = usingCustom ? customPine : (selected?.script ?? "");
 
@@ -273,9 +276,14 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             />
           </button>
 
+          <AnimatePresence>
           {menuOpen && (
-            <ul
+            <motion.ul
               role="listbox"
+              initial={{ opacity: 0, y: -6, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.985 }}
+              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
               className="absolute z-30 mt-1.5 max-h-[320px] w-full overflow-y-auto rounded-xl border border-[#2a2a2a] bg-[#141414] p-1 shadow-2xl"
             >
               {SEALED_CATALOG.map((s) => (
@@ -312,8 +320,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   </button>
                 </li>
               ))}
-            </ul>
+            </motion.ul>
           )}
+          </AnimatePresence>
         </div>
 
         {/* Or bring your own */}
@@ -394,25 +403,52 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       </section>
 
-      {/* Advanced — collapsed by default; the chain bounds all of these anyway */}
+      {/* What it costs — the one thing every creator asks first */}
+      <section className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-4">
+        <h3 className="font-display text-[13px] font-semibold text-white">What it costs</h3>
+        <dl className="mt-3 space-y-2">
+          <FeeRow
+            k="You pay once, to Decibel"
+            v={`${DECIBEL_VAULT_LIMITS.creationFeeUsdc} USDC`}
+            note="Protocol vault-creation fee. Not ours."
+          />
+          <FeeRow
+            k="You seed the vault"
+            v={`${DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc} USDC min`}
+            note="Stays yours — it's the vault's starting capital."
+          />
+          <FeeRow
+            k="Depositors pay on profits"
+            v={`${fees.depositorPaysPct}%`}
+            note={`You keep ${fees.creatorKeepsPct}% · platform takes ${fees.platformTakesPct}%. Only on gains.`}
+            highlight
+          />
+        </dl>
+        <p className="mt-3 border-t border-[#2a2a2a] pt-2.5 text-[10px] leading-snug text-zinc-600">
+          Upfront to launch: <span className="text-zinc-400">{launchCostUsdc(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc)} USDC</span>.
+          Decibel caps profit share at {DECIBEL_VAULT_LIMITS.maxFeeBps / 100}% — ours comes out of that,
+          never on top, so the number depositors see is the number they pay.
+        </p>
+      </section>
+
+      {/* Advanced — collapsed; the chain bounds all of these anyway */}
       <details
         className="rounded-xl border border-[#2a2a2a] bg-[#141414]"
         onToggle={(e) => setShowAdvanced((e.currentTarget as HTMLDetailsElement).open)}
       >
         <summary className="cursor-pointer list-none px-4 py-3 font-display text-[12px] font-semibold text-zinc-400 transition-colors hover:text-white">
-          Advanced settings {showAdvanced ? "−" : "+"}
+          Trading rules {showAdvanced ? "−" : "+"}
         </summary>
         <dl className="grid grid-cols-2 gap-3 border-t border-[#2a2a2a] px-4 py-3 sm:grid-cols-3">
           <Setting k="Order size" v={`${(config?.defaults.pctBps ?? 1000) / 100}% of NAV`} />
           <Setting k="Max leverage" v={`${(config?.defaults.maxLeverageX100 ?? 200) / 100}x`} />
           <Setting k="Trade cadence" v={`≤1 per ${config?.defaults.minBarIntervalS ?? 60}s`} />
           <Setting k="Slippage cap" v={`${(config?.defaults.slippageBps ?? 30) / 100}%`} />
-          <Setting k="Performance fee" v={`${(config?.defaults.performanceFeeBps ?? 1000) / 100}%`} />
+          <Setting k="Fee interval" v={`${DECIBEL_VAULT_LIMITS.minFeeIntervalS / 86400} days`} />
           <Setting k="Market" v={config?.markets[0]?.name ?? "BTC/USD"} />
         </dl>
         <p className="px-4 pb-3 text-[10px] leading-snug text-zinc-600">
-          These are enforced by the contract and frozen when your bot goes live. Defaults are
-          conservative; contact us if you need them changed before launch.
+          Enforced by the contract and frozen when your bot goes live.
         </p>
       </details>
 
@@ -511,6 +547,27 @@ function VisibilityCard({
       </span>
       <span className="mt-1 block text-[10px] leading-snug text-zinc-500">{body}</span>
     </button>
+  );
+}
+
+function FeeRow({
+  k, v, note, highlight,
+}: { k: string; v: string; note: string; highlight?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <div>
+        <dt className={cn("text-[12px]", highlight ? "font-semibold text-white" : "text-zinc-300")}>{k}</dt>
+        <dd className="mt-0.5 text-[10px] leading-snug text-zinc-600">{note}</dd>
+      </div>
+      <span
+        className={cn(
+          "shrink-0 font-mono text-[13px] tabular-nums",
+          highlight ? "text-accent" : "text-zinc-300",
+        )}
+      >
+        {v}
+      </span>
+    </div>
   );
 }
 

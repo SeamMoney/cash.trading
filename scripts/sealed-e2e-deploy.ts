@@ -86,7 +86,8 @@ const NET = {
 type NetworkName = keyof typeof NET;
 
 const MIN_GAS_OCTAS = 40_000_000n; // 0.4 APT — publish + ~20 setup txs
-const USDC_MINT_UNITS = 500_000_000n; // 500 USDC (6 decimals) — under daily cap
+const USDC_MINT_UNITS = 500_000_000n; // 500 USDC — covers the 100 USDC creation fee
+                                      // + 100 USDC activation minimum with headroom
 const VAULT_FUND_UNITS = 100_000_000n; // 100 USDC into the Decibel vault
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -287,7 +288,9 @@ async function run() {
     const committed = await submit(deployer, `${cfg.decibel}::dex_accounts_entry::deposit_to_subaccount_at`, [
       state.deployerAddr,
       cfg.usdcMetadata,
-      (USDC_MINT_UNITS / 2n).toString(),
+      // Deposit nearly everything: Decibel charges a 100 USDC creation fee AND
+      // requires 100 USDC of initial funding to activate.
+      (USDC_MINT_UNITS - 10_000_000n).toString(),
     ]);
     const sub = (await aptos.view({
       payload: {
@@ -313,8 +316,8 @@ async function run() {
       "sSEAL", // share_symbol
       "", // share_icon_uri
       "", // share_project_uri
-      "1000", // fee_bps (10% profit share)
-      "86400", // fee_interval_s
+      "1000", // fee_bps — Decibel's MAX (10%); we split it, see lib/vault-economics.ts
+      "2592000", // fee_interval_s — 30 days is Decibel's FLOOR; 86400 aborts
       "0", // contribution lockup
       VAULT_FUND_UNITS.toString(), // initial funding
       true, // accepts_contributions

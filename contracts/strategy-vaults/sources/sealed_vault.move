@@ -42,7 +42,6 @@ module cash_strategy::sealed_vault {
     const E_PAUSED:             u64 = 2;
     const E_BAD_BPS:            u64 = 3;
     const E_NO_NAV:             u64 = 4;
-    const E_ALREADY_SEALED:     u64 = 5;
     const E_NOT_SEALED:         u64 = 6;
     const E_BAD_PUBKEY:         u64 = 7;
     const E_BAD_COMMITMENT:     u64 = 8;
@@ -81,16 +80,16 @@ module cash_strategy::sealed_vault {
     struct SealedVault has key {
         creator: address,
 
-        // ── Commitment (frozen by seal()) ──
+        // ── Commitment (frozen at creation) ──
         /// sha3_256(canonical_pine || 0x00 || emitted_move || 0x00 || manifest_json).
         /// See docs/SEALED-INDICATOR.md §3.1 — same formula as docs/SHELBY-PIN.md.
         program_commitment: vector<u8>,
         /// ed25519 public key of the attestor that runs the committed program.
         attestor_pubkey: vector<u8>,
-        /// Optional TEE measurement (PCR set) bound in at seal time. Empty in tier 1.
+        /// Optional TEE measurement (PCR set) bound in at creation. Empty in tier 1.
         enclave_measurement: vector<u8>,
 
-        // ── Bindings (frozen by seal()) ──
+        // ── Bindings (frozen at creation) ──
         decibel_vault_addr: address,
         market: Object<PerpMarket>,
         /// 10^size_decimals for this market — passed in, not hardcoded.
@@ -103,7 +102,7 @@ module cash_strategy::sealed_vault {
         /// be multiples of this.
         ticker_size: u128,
 
-        // ── Rules (frozen by seal()) ──
+        // ── Rules (frozen at creation) ──
         /// Per-order notional as a percent of NAV, in bps. 1..=10000.
         pct_bps: u64,
         /// Hard cap on notional / NAV, ×100 (250 = 2.5x). Independent of pct_bps because
@@ -126,7 +125,8 @@ module cash_strategy::sealed_vault {
         is_long: bool,
         in_position: bool,
         paused: bool,
-        /// One-way. Until sealed the vault cannot trade; after sealing, config is immutable.
+        /// Always true — set at creation, never written again. Kept as an explicit field so
+        /// `tick_attested` asserts it and readers can see immutability without inference.
         sealed: bool,
         trades: u64,
 
@@ -222,8 +222,19 @@ module cash_strategy::sealed_vault {
 
     // ─── Creation ────────────────────────────────────────────────────
 
-    /// Create an unsealed vault. Config stays mutable until `seal()`; trading is impossible
-    /// until then. The returned Object address is what the Decibel vault admin delegates to.
+    /// Create a vault. It is SEALED AT BIRTH: the commitment, the attestor key, the market
+    /// binding and every rule are frozen by this single call and can never change.
+    ///
+    /// This used to be two steps — create, then a separate one-way `seal()` — and that shape was
+    /// a footgun. Between them the vault was mutable and untradeable, and `seal()` would happily
+    /// freeze a vault whose Decibel delegation had failed, permanently bricking it. Freezing at
+    /// creation is strictly stronger (there is no mutable window at all) AND strictly safer: a
+    /// vault that is not yet delegated simply cannot trade until the delegation lands, which is
+    /// a recoverable state rather than a permanent one.
+    ///
+    /// The returned Object address is what the Decibel vault admin delegates dex actions to.
+    /// `enclave_measurement` is empty for tier-1 (bare key) attestation and carries the TEE
+    /// measurement for tier-2; see docs/SEALED-INDICATOR.md §4.
     public entry fun create_sealed_vault(
         creator: &signer,
         program_commitment: vector<u8>,
@@ -239,6 +250,7 @@ module cash_strategy::sealed_vault {
         min_bar_interval_s: u64,
         slippage_bps: u64,
         trace_capacity: u64,
+        enclave_measurement: vector<u8>,
     ) {
         assert!(vector::length(&program_commitment) == 32, E_BAD_COMMITMENT);
         assert!(vector::length(&attestor_pubkey) == 32, E_BAD_PUBKEY);
@@ -259,7 +271,7 @@ module cash_strategy::sealed_vault {
             creator: creator_addr,
             program_commitment,
             attestor_pubkey,
-            enclave_measurement: vector::empty<u8>(),
+            enclave_measurement,
             decibel_vault_addr,
             market,
             size_decimals_pow,
@@ -278,7 +290,7 @@ module cash_strategy::sealed_vault {
             is_long: false,
             in_position: false,
             paused: false,
-            sealed: false,
+            sealed: true,
             trades: 0,
             extend_ref,
         });
@@ -296,24 +308,12 @@ module cash_strategy::sealed_vault {
             program_commitment,
             attestor_pubkey,
         });
-    }
 
-    /// One-way seal. Freezes the commitment, the attestor key, the market binding and every
-    /// rule. After this the vault can trade and nothing about its configuration can change.
-    /// The deploy rail should call this as the final launch step, so "launched" == "sealed".
-    public entry fun seal(
-        creator: &signer,
-        sv_addr: address,
-        enclave_measurement: vector<u8>,
-    ) acquires SealedVault {
-        let sv = borrow_global_mut<SealedVault>(sv_addr);
-        assert!(signer::address_of(creator) == sv.creator, E_NOT_CREATOR);
-        assert!(!sv.sealed, E_ALREADY_SEALED);
-        sv.enclave_measurement = enclave_measurement;
-        sv.sealed = true;
+        // Sealing is the same instant as creation, but it stays its own event so indexers,
+        // the verifier and the docs keep one unambiguous "this is now immutable" marker.
         event::emit(StrategySealed {
             strategy_vault: sv_addr,
-            program_commitment: sv.program_commitment,
+            program_commitment,
             enclave_measurement,
             sealed_at: timestamp::now_seconds(),
         });
@@ -587,21 +587,9 @@ module cash_strategy::sealed_vault {
         sv.paused = paused;
     }
 
-    /// Pre-seal only. After sealing, sizing is immutable.
-    public entry fun set_sizing(
-        creator: &signer,
-        sv_addr: address,
-        pct_bps: u64,
-        max_leverage_x100: u64,
-    ) acquires SealedVault {
-        assert!(pct_bps > 0 && pct_bps <= 10000, E_BAD_BPS);
-        assert!(max_leverage_x100 > 0, E_BAD_LEVERAGE);
-        let sv = borrow_global_mut<SealedVault>(sv_addr);
-        assert!(signer::address_of(creator) == sv.creator, E_NOT_CREATOR);
-        assert!(!sv.sealed, E_ALREADY_SEALED);
-        sv.pct_bps = pct_bps;
-        sv.max_leverage_x100 = max_leverage_x100;
-    }
+    // There is deliberately no `set_sizing`. Sizing is part of the sealed rule set, chosen at
+    // creation and frozen there. `set_paused` above is the only post-creation write, and it can
+    // only stop the vault — never change what it does.
 
     // ─── Views ───────────────────────────────────────────────────────
 

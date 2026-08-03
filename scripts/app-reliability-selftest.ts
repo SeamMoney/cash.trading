@@ -1286,6 +1286,64 @@ assert.ok(
   sealedVaultMove.includes("E_BAR_TOO_SOON"),
   "min_bar_interval_s must bound how often the attestor can act",
 );
+assert.ok(
+  sealedVaultMove.includes("sealed: true,"),
+  "a vault must be sealed by create_sealed_vault itself — a two-phase seal leaves a window in " +
+    "which the rules are mutable, and lets a vault whose delegation failed be frozen forever",
+);
+assert.ok(
+  !/public entry fun seal\(/.test(sealedVaultMove),
+  "there must be no separate seal() entry — sealing is part of creation",
+);
+assert.ok(
+  !/public entry fun set_sizing\(/.test(sealedVaultMove),
+  "sizing is part of the sealed rule set and must have no post-creation setter",
+);
+
+// The launch sequence. This block exists because an earlier revision of SealedLaunch.tsx
+// shipped with steps 1 and 3 missing entirely: it passed the user's own wallet address where
+// the Decibel vault belonged and never delegated, so the vault it produced could not have
+// placed a single order. Nothing in the type system catches that — only this does.
+const sealedLaunchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+for (const kind of ['kind: "decibel-vault"', 'kind: "create"', 'kind: "delegate"']) {
+  assert.ok(
+    sealedLaunchUi.includes(kind),
+    `the launch flow must perform ${kind} — all three transactions are required for a vault ` +
+      `that can trade`,
+  );
+}
+assert.ok(
+  !/decibelVaultAddr:\s*(creator|account\.address)/.test(sealedLaunchUi),
+  "the Decibel vault address must come from the create transaction, never from the user's wallet",
+);
+assert.ok(
+  sealedLaunchUi.indexOf('kind: "delegate"') > sealedLaunchUi.indexOf('kind: "create"'),
+  "delegation must be the LAST step — no trading authority may be granted before the strategy " +
+    "is sealed and bound",
+);
+
+// The platform fee has to reach the chain. It previously lived only in the cost panel.
+const sealedPayloadRoute = readFileSync("app/api/sealed/payload/route.ts", "utf8");
+assert.ok(
+  sealedPayloadRoute.includes("feeBps: PLATFORM_FEE.totalFeeBps"),
+  "the vault must be created with the platform's fee_bps — a displayed fee that is never set " +
+    "on-chain is not a fee",
+);
+assert.ok(
+  sealedPayloadRoute.includes("feeIntervalS: DECIBEL_VAULT_LIMITS.minFeeIntervalS"),
+  "fee_interval_s must use Decibel's 30-day floor; anything shorter aborts vault creation",
+);
+assert.ok(
+  !sealedPayloadRoute.includes('kind === "seal"'),
+  "the seal payload kind must be gone — sealing happens inside create_sealed_vault",
+);
+
+// The Public toggle must actually publish, and only a source that matches the commitment.
+assert.ok(
+  sealedVaultsRoute.includes("verifyRevealedProgram"),
+  "a revealed PineScript must be re-hashed against the commitment before it is stored — " +
+    "otherwise a vault can display one strategy and execute another",
+);
 
 // Deps must target the CURRENT Decibel package. The old one has no delegation
 // revocation at all (docs/CURATOR-RULES.md §2).

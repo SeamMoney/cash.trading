@@ -7,7 +7,7 @@
  * value is that the strategy stays private; the commitment is its public
  * identity. See docs/SEALED-INDICATOR.md.
  */
-import { AccountAddress } from "@aptos-labs/ts-sdk";
+import { AccountAddress, MoveString, createObjectAddress } from "@aptos-labs/ts-sdk";
 
 import { prisma } from "@/lib/prisma";
 import { transpileV3, TRANSPILER_VERSION } from "@/lib/launchpad/transpiler-v3";
@@ -228,6 +228,8 @@ export function buildCreateSealedVaultPayload(args: {
   minBarIntervalS: number;
   slippageBps: number;
   traceCapacity: number;
+  /** Tier-2 TEE measurement, or "0x" for tier-1 bare-key attestation. */
+  enclaveMeasurement?: string;
 }) {
   return {
     function: `${args.packageAddress}::sealed_vault::create_sealed_vault`,
@@ -246,19 +248,9 @@ export function buildCreateSealedVaultPayload(args: {
       String(args.minBarIntervalS),
       String(args.slippageBps),
       String(args.traceCapacity),
+      // Sealed at birth — there is no separate seal() call. See sealed_vault.move.
+      args.enclaveMeasurement ?? "0x",
     ],
-  };
-}
-
-export function buildSealPayload(args: {
-  packageAddress: string;
-  strategyVaultAddr: string;
-  enclaveMeasurement?: string;
-}) {
-  return {
-    function: `${args.packageAddress}::sealed_vault::seal`,
-    typeArguments: [] as string[],
-    functionArguments: [args.strategyVaultAddr, args.enclaveMeasurement ?? "0x"],
   };
 }
 
@@ -274,23 +266,13 @@ export function buildSetPausedPayload(args: {
   };
 }
 
-/** The Decibel delegation the VAULT ADMIN must sign. Mirrors lib/decibel-vaults. */
-export function buildDelegateInstruction(args: {
-  decibelPackage: string;
-  decibelVaultAddr: string;
-  strategyVaultAddr: string;
-  expirySecs: number;
-}) {
-  return {
-    function: `${args.decibelPackage}::vault_admin_api::delegate_dex_actions_to`,
-    typeArguments: [] as string[],
-    functionArguments: [
-      args.decibelVaultAddr,
-      args.strategyVaultAddr,
-      String(args.expirySecs),
-    ],
-  };
-}
+/**
+ * Both Decibel-side payloads (vault creation and delegation) are built by the audited
+ * builders in lib/decibel-vaults.ts, not re-derived here. Those already validate addresses,
+ * bound every string, parse the funding amount and resolve the subaccount, and they are
+ * covered by `pnpm test:reliability`. A second implementation of the same two entry calls is
+ * exactly how the arg lists drift apart.
+ */
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
@@ -399,10 +381,36 @@ export const DECIBEL_PACKAGE_BY_NETWORK: Record<"testnet" | "mainnet", string> =
   mainnet: "0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06",
 };
 
+export function sealedNetwork(): "testnet" | "mainnet" {
+  return (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
+    ? "mainnet"
+    : "testnet";
+}
+
 export const DECIBEL_VAULT_PACKAGE =
-  process.env.DECIBEL_VAULT_PACKAGE ??
-  DECIBEL_PACKAGE_BY_NETWORK[
-    (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
-      ? "mainnet"
-      : "testnet"
-  ];
+  process.env.DECIBEL_VAULT_PACKAGE ?? DECIBEL_PACKAGE_BY_NETWORK[sealedNetwork()];
+
+/** USDC fungible-asset metadata object per network — the vault's contribution asset. */
+export const USDC_METADATA_BY_NETWORK: Record<"testnet" | "mainnet", string> = {
+  testnet: "0x5428acf5c112826d0c74ae1cd2de9030f53d1d01235e6c2621d967bf914ee1c8",
+  mainnet: "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b",
+};
+
+/**
+ * The caller's primary Decibel subaccount address, derived rather than queried.
+ *
+ * Decibel creates it as a named object under a `GlobalSubaccountManager` deriver, so the
+ * address is a pure function of (package, owner). Deriving means the launch flow needs no
+ * view call and works even before the subaccount exists on chain — we can show the user what
+ * their address *will* be and check its balance in one shot.
+ * Mirrors `derivePrimarySubaccountAddress` in lib/decibel-chain.ts.
+ */
+export function derivePrimarySubaccount(owner: string, network?: "testnet" | "mainnet"): string {
+  const pkg = AccountAddress.fromString(DECIBEL_PACKAGE_BY_NETWORK[network ?? sealedNetwork()]);
+  const deriver = createObjectAddress(pkg, new TextEncoder().encode("GlobalSubaccountManager"));
+  const seed = new Uint8Array([
+    ...AccountAddress.fromString(owner).toUint8Array(),
+    ...new MoveString("primary_subaccount").bcsToBytes(),
+  ]);
+  return createObjectAddress(deriver, seed).toString();
+}

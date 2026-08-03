@@ -12,6 +12,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { SEALED_MARKETS, SEALED_PACKAGE } from "@/lib/sealed-vaults";
 import { SEALED_PRESETS } from "@/lib/sealed-presets";
+import {
+  DECIBEL_VAULT_LIMITS,
+  computeFeeBreakdown,
+  launchCostUsdc,
+} from "@/lib/vault-economics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +68,15 @@ export async function GET(request: NextRequest) {
       markets: SEALED_MARKETS.map((m) => ({ name: m.name, addr: m.addr })),
       defaults: SEALED_DEFAULTS,
       presets: Object.keys(SEALED_PRESETS),
+      // Everything the cost panel shows, straight from the on-chain limits — so the UI never
+      // hardcodes a number that a Decibel config change could silently falsify.
+      economics: {
+        creationFeeUsdc: DECIBEL_VAULT_LIMITS.creationFeeUsdc,
+        minFundingUsdc: DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc,
+        totalLaunchUsdc: launchCostUsdc(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc),
+        feeIntervalDays: DECIBEL_VAULT_LIMITS.minFeeIntervalS / 86_400,
+        ...computeFeeBreakdown(),
+      },
     },
     { status: 200, headers: NO_STORE },
   );

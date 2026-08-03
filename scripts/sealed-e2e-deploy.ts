@@ -377,6 +377,7 @@ async function run() {
       "30", // min bar interval
       "30", // 0.30% slippage tolerance on IOC orders
       "500", // trace capacity
+      "0x", // enclave measurement — empty for tier-1 bare-key attestation
     ]);
     let sv: string | undefined;
     for (const ev of (committed as { events?: Array<{ type: string; data: Record<string, string> }> }).events ?? []) {
@@ -385,6 +386,8 @@ async function run() {
     if (!sv) throw new Error("SealedVaultCreated event missing");
     state.strategyVaultAddr = sv;
     state.createTx = committed.hash;
+    // Sealed at birth — create IS the seal, so there is no separate seal transaction.
+    state.sealTx = committed.hash;
     saveState(state);
     console.log(`  strategy vault ${sv}`);
     console.log(`  ${explorer(committed.hash)}`);
@@ -402,18 +405,6 @@ async function run() {
     state.delegateTx = committed.hash;
     saveState(state);
     console.log(`  ${explorer(committed.hash)}`);
-  }
-
-  // ── seal ──
-  if (!state.sealTx) {
-    console.log(`[seal] one-way seal…`);
-    const committed = await submit(deployer, `${pkg}::sealed_vault::seal`, [
-      state.strategyVaultAddr,
-      "0x", // no enclave measurement — tier 1
-    ]);
-    state.sealTx = committed.hash;
-    saveState(state);
-    console.log(`  SEALED. ${explorer(committed.hash)}`);
   }
 
   // ── register in the app feed (best-effort) ──

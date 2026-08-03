@@ -5,16 +5,17 @@
  *
  *   commit    Transpile the Pine and print the program commitment. No chain access.
  *   publish   aptos move compile + test + publish (needs the aptos CLI + a funded key).
- *   create    create_sealed_vault → prints the strategy-vault object address R.
- *   delegate  Prints the Decibel payload the VAULT ADMIN must sign to delegate to R.
- *   seal      seal() — one-way; freezes the commitment and every rule. Vault goes live.
+ *   create    create_sealed_vault → prints the strategy-vault object address R. The vault is
+ *             SEALED by this call: the commitment and every rule are frozen at birth, and
+ *             there is no second seal step to forget.
+ *   delegate  Prints the Decibel payload the VAULT ADMIN must sign to delegate to R. Until
+ *             this lands the vault cannot place an order.
  *   status    Reads the on-chain state back.
  *
  * Usage:
  *   pnpm exec tsx scripts/sealed-vault-launch.ts commit  --preset ema
  *   pnpm exec tsx scripts/sealed-vault-launch.ts publish --deployer 0x...
  *   pnpm exec tsx scripts/sealed-vault-launch.ts create  --package 0x... --decibel-vault 0x... --market 0x...
- *   pnpm exec tsx scripts/sealed-vault-launch.ts seal    --package 0x... --vault 0x...
  *   pnpm exec tsx scripts/sealed-vault-launch.ts status  --package 0x... --vault 0x...
  *
  * Env:
@@ -36,16 +37,28 @@ import { transpileV3, TRANSPILER_VERSION } from "../lib/launchpad/transpiler-v3"
 import { SEALED_PRESETS, SEALED_PRESET_NAMES, buildManifest, canonicalizePine } from "../lib/sealed-presets";
 import { createStrategyRunner } from "../lib/strategy-equivalence";
 import { computeProgramCommitment, toHex } from "../lib/sealed-attestor";
+import { SEALED_MARKETS_BY_NETWORK } from "../lib/sealed-vaults";
 
 const PKG_DIR = resolve(__dirname, "../contracts/strategy-vaults");
 
 
 /** Testnet BTC/USD engine params. Replace per market — these are NOT universal. */
-const DEFAULT_MARKET_PARAMS = {
-  sizeDecimalsPow: 100_000_000n, // 10^8
-  lotSize: 10n,
-  minSize: 100_000n, // 0.001 BTC
-};
+/**
+ * Market engine params come from the audited table in lib/sealed-vaults.ts, never from
+ * constants here. This file previously carried lot=10 / min=100000 / szDec=8 — the OLD
+ * testnet package's values. Every order built from them would have aborted on lot mismatch.
+ */
+function marketParams(flags: Record<string, string>) {
+  const network = flags.network === "mainnet" ? "mainnet" : "testnet";
+  const byName = flags.market
+    ? SEALED_MARKETS_BY_NETWORK[network].find(
+        (m) => m.addr.toLowerCase() === flags.market.toLowerCase() || m.name === flags.market,
+      )
+    : undefined;
+  const m = byName ?? SEALED_MARKETS_BY_NETWORK[network][0];
+  if (!m) throw new Error(`no sealed market configured for ${network}`);
+  return m;
+}
 
 function parseArgs(argv: string[]) {
   const step = argv[2];
@@ -170,6 +183,9 @@ async function stepCreate(flags: Record<string, string>) {
   const maxLev = Number(flags["max-leverage-x100"] ?? 200); // 2x
   const minBar = Number(flags["min-bar-interval"] ?? 30);
   const traceCap = Number(flags["trace-capacity"] ?? 500);
+  const slippageBps = Number(flags["slippage-bps"] ?? 30);
+  const measurement = flags["enclave-measurement"] ?? "0x";
+  const mp = marketParams(flags);
 
   const txn = await aptos.transaction.build.simple({
     sender: deployer.accountAddress,
@@ -180,13 +196,16 @@ async function stepCreate(flags: Record<string, string>) {
         attestorPub,
         decibelVault,
         market,
-        DEFAULT_MARKET_PARAMS.sizeDecimalsPow.toString(),
-        DEFAULT_MARKET_PARAMS.lotSize.toString(),
-        DEFAULT_MARKET_PARAMS.minSize.toString(),
+        mp.sizeDecimalsPow,
+        mp.lotSize,
+        mp.minSize,
+        mp.tickerSize,
         pctBps,
         maxLev,
         minBar,
+        slippageBps,
         traceCap,
+        measurement,
       ],
     },
   });
@@ -205,36 +224,11 @@ async function stepCreate(flags: Record<string, string>) {
 }
 
 function printDelegateInstructions(decibelVault: string, sv: string) {
-  console.log("NEXT — the Decibel vault ADMIN must sign this (not the deployer):");
+  console.log("The vault is SEALED already — create_sealed_vault freezes it at birth.");
+  console.log("It cannot trade until the Decibel vault ADMIN signs this (not the deployer):");
   console.log(`  function: <decibel_pkg>::vault_admin_api::delegate_dex_actions_to`);
   console.log(`  args:     vault=${decibelVault}, to=${sv}, expiry=<unix_secs>`);
-  console.log("  Always pass an expiry. Then run the `seal` step.\n");
-}
-
-async function stepSeal(flags: Record<string, string>) {
-  const pkg = flags.package;
-  const sv = flags.vault;
-  if (!pkg || !sv) {
-    console.error("seal needs --package and --vault");
-    process.exit(1);
-  }
-  const measurement = flags["enclave-measurement"] ?? "0x";
-  const aptos = aptosClient(flags);
-  const deployer = deployerAccount();
-
-  console.log("\nseal() is ONE-WAY. It freezes the commitment, attestor key, market and rules.");
-  const txn = await aptos.transaction.build.simple({
-    sender: deployer.accountAddress,
-    data: {
-      function: `${pkg}::sealed_vault::seal`,
-      functionArguments: [sv, measurement],
-    },
-  });
-  const res = await aptos.signAndSubmitTransaction({ signer: deployer, transaction: txn });
-  await aptos.waitForTransaction({ transactionHash: res.hash });
-  console.log(`sealed. tx ${res.hash}`);
-  console.log("\nThe vault is live. Start the attestor:");
-  console.log(`  pnpm exec tsx scripts/sealed-attestor-runner.ts live --package ${pkg} --vault ${sv}\n`);
+  console.log("  Always pass an expiry — an unbounded grant can never be revoked.\n");
 }
 
 async function stepStatus(flags: Record<string, string>) {
@@ -274,7 +268,6 @@ async function main() {
     case "commit": return stepCommit(flags);
     case "publish": return stepPublish(flags);
     case "create": return stepCreate(flags);
-    case "seal": return stepSeal(flags);
     case "status": return stepStatus(flags);
     case "delegate": {
       const dv = flags["decibel-vault"];
@@ -284,7 +277,7 @@ async function main() {
     }
     default:
       console.error(
-        "steps: commit | publish | create | delegate | seal | status\n" +
+        "steps: commit | publish | create | delegate | status\n" +
           "see the header of this file for full usage.",
       );
       process.exit(1);

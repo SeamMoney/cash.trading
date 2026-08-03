@@ -12,12 +12,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { prisma } from "@/lib/prisma";
 import {
+  MAX_PINE_BYTES,
   findSealedMarket,
   isHex32,
   isHexAddress,
   listSealedVaults,
   sealedRegistryAvailable,
   toPublicSealedVault,
+  verifyRevealedProgram,
 } from "@/lib/sealed-vaults";
 
 export const runtime = "nodejs";
@@ -110,6 +112,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // A creator who chose "Public" publishes the source at launch. We do NOT take their word
+  // for it: the Pine is re-hashed against the manifest and must reproduce the commitment that
+  // is about to be written on-chain. Storing an unverified reveal would let a vault display
+  // one strategy while executing another — the exact failure the commitment exists to prevent.
+  let revealedPine: string | null = null;
+  if (typeof body.revealedPine === "string" && body.revealedPine.trim()) {
+    if (body.revealedPine.length > MAX_PINE_BYTES) {
+      return NextResponse.json(
+        { error: `revealed source exceeds ${MAX_PINE_BYTES} bytes` },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const check = verifyRevealedProgram({
+      pine: body.revealedPine,
+      manifestJson: body.manifestJson,
+      expectedCommitment: body.programCommitment as string,
+      marketAddr: market.addr,
+    });
+    if (!check.matches) {
+      return NextResponse.json(
+        {
+          error:
+            "the revealed source does not hash to the vault's commitment — refusing to publish it",
+          expected: (body.programCommitment as string).toLowerCase(),
+          got: check.recomputed,
+        },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    revealedPine = body.revealedPine;
+  }
+
   const sealed = body.sealed === true;
   const data = {
     strategyVaultAddr: body.strategyVaultAddr as string,
@@ -133,6 +167,8 @@ export async function POST(request: NextRequest) {
     createTxHash: typeof body.createTxHash === "string" ? body.createTxHash : null,
     sealTxHash: typeof body.sealTxHash === "string" ? body.sealTxHash : null,
     sealedAt: sealed ? new Date() : null,
+    revealedPine,
+    revealedAt: revealedPine ? new Date() : null,
   };
 
   try {
@@ -147,6 +183,10 @@ export async function POST(request: NextRequest) {
         sealTxHash: data.sealTxHash ?? undefined,
         sealedAt: sealed ? new Date() : undefined,
         enclaveMeasurement: data.enclaveMeasurement ?? undefined,
+        // A reveal is one-way: once published the source stays published, and a later
+        // re-registration without it must not silently un-reveal the vault.
+        revealedPine: revealedPine ?? undefined,
+        revealedAt: revealedPine ? new Date() : undefined,
       },
     });
     return NextResponse.json(

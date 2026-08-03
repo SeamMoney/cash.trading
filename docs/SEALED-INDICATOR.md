@@ -46,7 +46,7 @@ edge stays private; the depositor's protection stays on-chain.
 
 ## 3. Architecture — commit → attest → verify → execute → trace
 
-### 3.1 Commit (once, at seal time)
+### 3.1 Commit (once, at creation)
 
 ```
 program_commitment = sha3_256(
@@ -56,8 +56,8 @@ program_commitment = sha3_256(
 
 `manifest_json` pins transpiler version + options (marketAddr, lot, min, szPow) so emission is
 reproducible byte-for-byte. Same formula as `docs/SHELBY-PIN.md` — reuse it, don't invent a
-second one. The commitment goes on-chain at creation; `seal()` makes it and the rule set
-one-way immutable.
+second one. The commitment and the entire rule set go on-chain at creation and are immutable
+from that instant — `create_sealed_vault` seals the vault itself. There is no second seal step.
 
 ### 3.2 Attest (every bar, off-chain)
 
@@ -151,7 +151,7 @@ change how step 3.3.5 is satisfied and nothing else.
 testnet and open beta. Weak, and must be labelled weak in the UI.
 
 **Tier 2 — TEE attestation (next).** Run the strategy inside an AWS Nitro enclave. Bind the
-enclave measurement (PCR set) into `program_commitment` at seal time, and publish the
+enclave measurement (PCR set) into `program_commitment` at creation, and publish the
 attestation document. The key becomes enclave-resident and non-exfiltratable, so "holder of the
 key" and "the committed program running unmodified" collapse into the same statement. This is
 weeks of work, not quarters, and it is the recommended production target.
@@ -216,12 +216,37 @@ Prerequisites and gotchas:
 
 ### 8.2 Per-vault launch (3 wallet signatures, no CLI)
 
-1. `vault_api::create_and_fund_vault(...)` — Decibel vault holding depositor funds.
-2. `sealed_vault::create_sealed_vault(creator, commitment, attestor_pubkey, vault, market, …)`
-   → returns object address `R`.
+1. `vault_api::create_and_fund_vault(...)` — Decibel vault holding depositor funds. Costs the
+   100 USDC protocol fee plus the initial funding, both drawn from the creator's Decibel
+   subaccount (not their wallet). `fee_bps = 1000`, `fee_interval_s = 2_592_000`;
+   `delegate_to_creator = false`, so no human is ever a delegate.
+2. `sealed_vault::create_sealed_vault(creator, commitment, attestor_pubkey, vault, market, …,
+   enclave_measurement)` → returns object address `R`. **This call seals the vault**: the
+   commitment, the attestor key, the market binding and every rule are immutable when it
+   returns.
 3. `vault_admin_api::delegate_dex_actions_to(vault, R, expiry)` — **always pass an expiry**.
-4. `sealed_vault::seal(creator, sv_addr)` — one-way; freezes commitment, attestor key, market,
-   and rule set. The UI should call this as the final launch step so "launched" means "sealed".
+   Until this lands the vault cannot place an order, which is why it is last: no step before it
+   grants any trading authority.
+
+**Why three signatures and not one.** Decibel declares both `create_and_fund_vault` and
+`delegate_dex_actions_to` as `private entry` (verified against the live mainnet ABI). A
+`private entry` function is unreachable from any other Move module *and* from a transaction
+script, so neither can be composed into one of our entry points or batched into a single
+script. On top of that, the vault object address is not derivable — it exists only in the
+writeset of step 1 — so steps 2 and 3 cannot be built until step 1 has landed. Three is the
+floor the protocol permits, not an implementation shortcut.
+
+**Why sealing happens at creation.** An earlier design had a separate one-way `seal()` as step
+4. That was a footgun in both directions: between create and seal the rule set was mutable and
+the vault was untradeable, and `seal()` would happily freeze a vault whose delegation had
+failed — permanently bricking it with no recovery. Sealing at birth is strictly stronger (no
+mutable window exists at all) and strictly safer: an undelegated vault simply cannot trade
+until the delegation lands, which is recoverable. `set_sizing` was removed with it; sizing is
+part of the sealed rule set and is chosen at creation.
+
+The UI drives all three from one button (`components/sealed/SealedLaunch.tsx`) and is
+resumable — each completed step's address is retained, so a rejected signature restarts from
+the first incomplete step rather than paying for a second Decibel vault.
 
 ### 8.3 Attestor service
 
@@ -242,7 +267,7 @@ SEALED_ATTESTOR_PUBLIC_KEY=0x...     # cross-checked against on-chain at boot
 
 The attestor key holds **no funds and no trading authority**. Losing it stops the vault
 trading; it does not put deposits at risk. Rotation requires a new sealed vault by design —
-`seal()` is one-way, and that is the point.
+the seal is set at creation and never writable again, and that is the point.
 
 ## 9. What this does not solve
 

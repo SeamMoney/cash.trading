@@ -1357,6 +1357,28 @@ assert.ok(
   "both kits must share the same easing curve",
 );
 
+// Surface consistency: the launchpad must use the trade page's radii and
+// borders. Tailwind's named scale does NOT match — with --radius: 0.75rem,
+// rounded-2xl is 20px against the trade page's 16px panels, which is exactly
+// the mismatch that made the new components look bolted on.
+for (const f of [
+  "components/ui/agent/index.tsx",
+  "components/ui/interactions/index.tsx",
+  "components/sealed/SealedLaunch.tsx",
+  "components/sealed/SealedVaultFeed.tsx",
+]) {
+  const src = readFileSync(f, "utf8");
+  const named = src.match(/(?<![\w-])rounded-(sm|md|lg|xl|2xl|3xl)(?![\w-])/g);
+  assert.ok(
+    !named,
+    `${f} must use explicit radii from lib/surface.ts, not Tailwind's named scale (found ${named?.join(", ")})`,
+  );
+  assert.ok(
+    !src.includes("border-[#2a2a2a]"),
+    `${f} must use border-white/[0.08] like the trade page, not the harder #2a2a2a`,
+  );
+}
+
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
 assert.ok(
   /type Tab\s*=\s*"launch" \| "vaults" \| "manage";/.test(launchPage),

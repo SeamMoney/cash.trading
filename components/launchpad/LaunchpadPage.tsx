@@ -285,7 +285,7 @@ function BacktestBar({ ind }: { ind: Indicator }) {
           type="button"
           disabled
           title="Persistent, wallet-authorized launchpad automation is not deployed"
-          className="px-4 py-2 rounded-[10px] text-[12px] font-display font-bold flex items-center gap-1.5 border border-[#2a2a2a] bg-[#181818] text-zinc-600 cursor-not-allowed"
+          className="px-4 py-2 rounded-[12px] text-[12px] font-display font-bold flex items-center gap-1.5 border border-[#2a2a2a] bg-[#181818] text-zinc-600 cursor-not-allowed"
         >
           Automation unavailable
         </button>
@@ -614,7 +614,7 @@ export function LaunchpadPage() {
           {/* ── Sealed Vaults (trader) ── */}
           {tab === "vaults" && (
             <div className="animate-enter-delay-1 space-y-4">
-              <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] px-5 py-4">
+              <div className="rounded-[16px] border border-white/[0.06] bg-[#141414] px-5 py-4">
                 <h2 className="font-display text-sm font-semibold text-white">
                   Invest in a private strategy
                 </h2>
@@ -636,7 +636,7 @@ export function LaunchpadPage() {
 
                 {/* Left: list panel — relative wrapper so the panel doesn't inflate the grid row height */}
                 <div className="relative min-h-[480px]">
-                  <div className="lg:absolute lg:inset-0 w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)] flex flex-col">
+                  <div className="lg:absolute lg:inset-0 w-full overflow-hidden rounded-[16px] border border-white/[0.06] shadow-[0px_0px_1px_rgba(0,0,0,0.50)] flex flex-col">
                     {/* Filters header */}
                     <header className="shrink-0 border-b border-[#2a2a2a] bg-[#202020] flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#888]">
                       Strategies
@@ -725,7 +725,7 @@ export function LaunchpadPage() {
                 </div>
 
                 {/* Right: detail panel */}
-                <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
+                <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-[16px] border border-white/[0.06] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
                   <div className="bg-[#111] min-h-[480px]">
                     {selected ? (
                       <IndicatorDetail

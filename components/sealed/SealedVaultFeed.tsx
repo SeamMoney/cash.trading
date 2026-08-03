@@ -148,7 +148,7 @@ export function SealedVaultFeed() {
   }, [active, connected, account, amount, signAndSubmitTransaction]);
 
   const emptyState = (
-    <div className="rounded-2xl border border-[#2a2a2a] bg-[#111] px-8 py-14 text-center">
+    <div className="rounded-[16px] border border-white/[0.06] bg-[#111] px-8 py-14 text-center">
       <h3 className="mb-1.5 font-display text-sm font-semibold text-white">No bots live yet</h3>
       <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">
         A sealed bot keeps its strategy private while the chain enforces what it can trade.
@@ -187,10 +187,10 @@ export function SealedVaultFeed() {
             <Pressable
               onClick={() => setSelected(v.strategyVaultAddr)}
               className={cn(
-                "w-full rounded-2xl border p-4 text-left transition-all",
+                "w-full rounded-[16px] border p-4 text-left transition-all",
                 selected === v.strategyVaultAddr
                   ? "border-accent/50 bg-accent/[0.04]"
-                  : "border-[#2a2a2a] bg-[#141414] hover:border-white/20",
+                  : "border-white/[0.06] bg-[#141414] hover:border-white/20",
               )}
             >
               <div className="mb-2 flex items-start justify-between gap-2">
@@ -237,7 +237,7 @@ export function SealedVaultFeed() {
       </div>
 
       {/* Detail / deposit */}
-      <aside className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
+      <aside className="rounded-[16px] border border-white/[0.06] bg-[#141414] p-4">
         {!active ? (
           <p className="text-[12px] leading-relaxed text-zinc-500">
             Select a vault to see what the chain enforces and to deposit.
@@ -294,7 +294,7 @@ export function SealedVaultFeed() {
             )}
 
             {detail?.registryMatchesChain === false && (
-              <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">
+              <p role="alert" className="rounded-[10px] border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">
                 On-chain state disagrees with the registry on: {detail.mismatches.join(", ")}. Treat
                 this listing as untrusted.
               </p>
@@ -306,7 +306,7 @@ export function SealedVaultFeed() {
             )}
 
             {/* Deposit */}
-            <div className="border-t border-[#2a2a2a] pt-3">
+            <div className="border-t border-white/[0.06] pt-3">
               <label className="mb-1.5 block font-display text-[11px] font-semibold text-zinc-300">
                 Deposit USDC
               </label>
@@ -316,7 +316,7 @@ export function SealedVaultFeed() {
                   onChange={(e) => setAmount(e.target.value)}
                   inputMode="decimal"
                   placeholder="100"
-                  className="w-full rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:outline-none"
+                  className="w-full rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:outline-none"
                 />
                 <div className="w-28 shrink-0">
                   <ActionButton

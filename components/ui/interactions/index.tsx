@@ -73,10 +73,10 @@ export function ActionButton({
       transition={{ duration: FAST, ease: EASE }}
       aria-busy={state === "pending"}
       className={cn(
-        "relative flex w-full items-center justify-center rounded-xl px-5 py-3.5 font-display text-[14px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "relative flex w-full items-center justify-center rounded-[16px] px-5 py-3.5 font-display text-[14px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
         variant === "primary"
           ? "bg-accent text-accent-foreground hover:opacity-90"
-          : "border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-accent/50",
+          : "border border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/50",
         state === "error" && "bg-red-500 text-white",
         className,
       )}
@@ -144,8 +144,8 @@ export function ValidatedField({
         animate={err && !reduced ? { x: [0, -3, 3, -2, 0] } : { x: 0 }}
         transition={{ duration: 0.24, ease: EASE }}
         className={cn(
-          "w-full rounded-lg border bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
-          err ? "border-red-500/60" : "border-[#2a2a2a] focus:border-accent/40",
+          "w-full rounded-[10px] border bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
+          err ? "border-red-500/60" : "border-white/[0.06] focus:border-accent/40",
         )}
       />
       <AnimatePresence>
@@ -174,7 +174,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={cn("animate-pulse rounded-lg border border-[#2a2a2a] bg-[#141414]", className)}
+      className={cn("animate-pulse rounded-[10px] border border-white/[0.06] bg-[#141414]", className)}
     />
   );
 }
@@ -211,7 +211,7 @@ export function ContentState({
             ? (
               <div
                 role="alert"
-                className="rounded-xl border border-red-500/40 bg-red-500/5 px-5 py-6 text-center"
+                className="rounded-[16px] border border-red-500/40 bg-red-500/5 px-5 py-6 text-center"
               >
                 <p className="text-[12px] text-red-400">{error}</p>
               </div>
@@ -244,8 +244,8 @@ export function Banner({
       transition={{ duration: MED, ease: EASE }}
       role={tone === "error" || tone === "warn" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-xl border p-3.5",
-        tone === "info" && "border-[#2a2a2a] bg-[#141414]",
+        "flex items-start gap-2.5 rounded-[16px] border p-3.5",
+        tone === "info" && "border-white/[0.06] bg-[#141414]",
         tone === "success" && "border-accent/40 bg-accent/5",
         tone === "warn" && "border-amber-500/30 bg-amber-500/5",
         tone === "error" && "border-red-500/40 bg-red-500/5",
@@ -333,9 +333,9 @@ export function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: MED, ease: EASE }}
-            className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[#2a2a2a] bg-[#111] shadow-2xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#111] shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-[#2a2a2a] px-4 py-3">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
               <h2 className="font-display text-[14px] font-bold text-white">{title}</h2>
               <button
                 type="button"

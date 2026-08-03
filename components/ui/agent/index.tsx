@@ -51,10 +51,10 @@ export function CodeBlock({
   const lines = code.replace(/\n$/, "").split("\n");
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#0d0d0d]">
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#141414] px-3 py-2">
+    <div className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0d0d0d]">
+      <div className="flex items-center justify-between border-b border-white/[0.06] bg-[#141414] px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="rounded bg-[#2a2a2a] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-400">
+          <span className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-400">
             {language}
           </span>
           {filename && (
@@ -132,7 +132,7 @@ export function ThinkingState({
 }) {
   const reduced = useReducedMotion();
   return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-3.5">
+    <div className="rounded-[16px] border border-white/[0.06] bg-[#141414] p-3.5">
       <div className="flex items-center gap-2">
         {done ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
@@ -159,7 +159,7 @@ export function ThinkingState({
         </span>
       </div>
       {steps.length > 0 && (
-        <ul className="mt-2.5 space-y-1 border-l border-[#2a2a2a] pl-3">
+        <ul className="mt-2.5 space-y-1 border-l border-white/[0.06] pl-3">
           {steps.map((s, i) => (
             <motion.li
               key={s}
@@ -198,11 +198,11 @@ export function TaskList({ tasks }: { tasks: AgentTask[] }) {
           layout
           transition={{ duration: DUR, ease: EASE }}
           className={cn(
-            "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
+            "flex items-start gap-2.5 rounded-[10px] border px-3 py-2.5 transition-colors",
             t.state === "done" && "border-accent/30 bg-accent/[0.04]",
             t.state === "active" && "border-white/20 bg-white/[0.03]",
             t.state === "failed" && "border-red-500/40 bg-red-500/[0.04]",
-            t.state === "pending" && "border-[#2a2a2a] bg-[#141414]",
+            t.state === "pending" && "border-white/[0.06] bg-[#141414]",
           )}
         >
           <span className="mt-0.5 shrink-0">
@@ -270,11 +270,11 @@ export function DataTable({
   caption?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#141414]">
+    <div className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#141414]">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-[#2a2a2a]">
+            <tr className="border-b border-white/[0.06]">
               {columns.map((c) => (
                 <th
                   key={c}
@@ -288,7 +288,7 @@ export function DataTable({
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className={i > 0 ? "border-t border-[#2a2a2a]/60" : undefined}>
+              <tr key={i} className={i > 0 ? "border-t border-white/[0.06]" : undefined}>
                 {r.map((cell, j) => (
                   <td
                     key={j}
@@ -306,7 +306,7 @@ export function DataTable({
         </table>
       </div>
       {caption && (
-        <p className="border-t border-[#2a2a2a] px-3 py-2 text-[10px] leading-snug text-zinc-600">
+        <p className="border-t border-white/[0.06] px-3 py-2 text-[10px] leading-snug text-zinc-600">
           {caption}
         </p>
       )}
@@ -356,7 +356,7 @@ export function RefChip({ children, title }: { children: React.ReactNode; title?
   return (
     <span
       title={title}
-      className="mx-0.5 inline-flex items-center rounded bg-[#2a2a2a] px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+      className="mx-0.5 inline-flex items-center rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
     >
       {children}
     </span>

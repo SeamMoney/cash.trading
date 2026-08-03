@@ -279,8 +279,8 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             className={cn(
-              "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors",
-              "border-[#2a2a2a] bg-[#141414] hover:border-accent/40 disabled:opacity-50",
+              "flex w-full items-center justify-between rounded-[16px] border px-4 py-3 text-left transition-colors",
+              "border-white/[0.06] bg-[#141414] hover:border-accent/40 disabled:opacity-50",
               menuOpen && "border-accent/60",
             )}
           >
@@ -308,7 +308,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.985 }}
               transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute z-30 mt-1.5 max-h-[320px] w-full overflow-y-auto rounded-xl border border-[#2a2a2a] bg-[#141414] p-1 shadow-2xl"
+              className="absolute z-30 mt-1.5 max-h-[320px] w-full overflow-y-auto rounded-[16px] border border-white/[0.06] bg-[#141414] p-1 shadow-2xl"
             >
               {SEALED_CATALOG.map((s) => (
                 <li key={s.id}>
@@ -322,7 +322,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                       setCommitInfo(null);
                     }}
                     className={cn(
-                      "flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      "flex w-full items-start gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition-colors",
                       s.id === strategyId ? "bg-accent/10" : "hover:bg-white/[0.04]",
                     )}
                   >
@@ -378,7 +378,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 type="button"
                 onClick={importTradingView}
                 disabled={busy || tvBusy || !tvUrl.trim()}
-                className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 font-display text-[12px] font-semibold text-white transition-colors hover:border-accent/50 disabled:opacity-40"
+                className="shrink-0 rounded-[10px] border border-white/[0.06] bg-[#1a1a1a] px-3 py-2 font-display text-[12px] font-semibold text-white transition-colors hover:border-accent/50 disabled:opacity-40"
               >
                 {tvBusy ? "…" : "Import"}
               </button>
@@ -394,7 +394,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               rows={6}
               aria-label="PineScript source"
               placeholder="…or paste the PineScript source here"
-              className="w-full resize-y rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
+              className="w-full resize-y rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
             />
           </div>
         </details>
@@ -440,7 +440,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       </section>
 
       {/* What it costs — the one thing every creator asks first */}
-      <section className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-4">
+      <section className="rounded-[16px] border border-white/[0.06] bg-[#141414] p-4">
         <h3 className="font-display text-[13px] font-semibold text-white">What it costs</h3>
         <dl className="mt-3 space-y-2">
           <FeeRow
@@ -460,7 +460,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             highlight
           />
         </dl>
-        <p className="mt-3 border-t border-[#2a2a2a] pt-2.5 text-[10px] leading-snug text-zinc-600">
+        <p className="mt-3 border-t border-white/[0.06] pt-2.5 text-[10px] leading-snug text-zinc-600">
           Upfront to launch: <span className="text-zinc-400">{launchCostUsdc(DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc)} USDC</span>.
           Decibel caps profit share at {DECIBEL_VAULT_LIMITS.maxFeeBps / 100}% — ours comes out of that,
           never on top, so the number depositors see is the number they pay.
@@ -469,13 +469,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
       {/* Advanced — collapsed; the chain bounds all of these anyway */}
       <details
-        className="rounded-xl border border-[#2a2a2a] bg-[#141414]"
+        className="rounded-[16px] border border-white/[0.06] bg-[#141414]"
         onToggle={(e) => setShowAdvanced((e.currentTarget as HTMLDetailsElement).open)}
       >
         <summary className="cursor-pointer list-none px-4 py-3 font-display text-[12px] font-semibold text-zinc-400 transition-colors hover:text-white">
           Trading rules {showAdvanced ? "−" : "+"}
         </summary>
-        <dl className="grid grid-cols-2 gap-3 border-t border-[#2a2a2a] px-4 py-3 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-3 border-t border-white/[0.06] px-4 py-3 sm:grid-cols-3">
           <Setting k="Order size" v={`${(config?.defaults.pctBps ?? 1000) / 100}% of NAV`} />
           <Setting k="Max leverage" v={`${(config?.defaults.maxLeverageX100 ?? 200) / 100}x`} />
           <Setting k="Trade cadence" v={`≤1 per ${config?.defaults.minBarIntervalS ?? 60}s`} />
@@ -582,12 +582,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none disabled:opacity-50";
+  "w-full rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none disabled:opacity-50";
 
 function Label({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <div className="mb-2 flex items-center gap-2">
-      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#2a2a2a] text-[9px] font-bold text-zinc-400">
+      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/[0.08] text-[9px] font-bold text-zinc-400">
         {n}
       </span>
       <span className="font-display text-[13px] font-semibold text-white">{children}</span>
@@ -612,8 +612,8 @@ function VisibilityCard({
       disabled={disabled}
       aria-pressed={active}
       className={cn(
-        "rounded-xl border p-3 text-left transition-all disabled:opacity-50",
-        active ? "border-accent/50 bg-accent/[0.06]" : "border-[#2a2a2a] bg-[#141414] hover:border-white/20",
+        "rounded-[16px] border p-3 text-left transition-all disabled:opacity-50",
+        active ? "border-accent/50 bg-accent/[0.06]" : "border-white/[0.06] bg-[#141414] hover:border-white/20",
       )}
     >
       <span className={cn("flex items-center gap-1.5", active ? "text-accent" : "text-zinc-400")}>

@@ -21,15 +21,24 @@ function detectAsset(script: string): string {
   return "BTC/USD";
 }
 
-function remapLineColor(color: string | undefined) {
-  const normalized = color?.toLowerCase();
-  if (["#089981", "#26a69a", "#4caf50"].includes(normalized ?? "")) return "#1e88e5";
-  if (["#f23645", "#ef5350", "#ff5252"].includes(normalized ?? "")) return "#ffffff";
-  return color || "#ffffff";
+/** PineTS colors are not always strings — conditional colors arrive as objects
+ *  and palette indices as numbers, so `color?.toLowerCase()` threw and crashed
+ *  the whole Deploy tab on mount (the default preset produces a fill with a
+ *  non-string color). Coerce first; non-strings fall through to the default. */
+function colorString(color: unknown): string | undefined {
+  return typeof color === "string" ? color : undefined;
 }
 
-function remapFillColor(color: string | undefined) {
-  const normalized = color?.toLowerCase().slice(0, 7);
+function remapLineColor(color: unknown) {
+  const raw = colorString(color);
+  const normalized = raw?.toLowerCase();
+  if (["#089981", "#26a69a", "#4caf50"].includes(normalized ?? "")) return "#1e88e5";
+  if (["#f23645", "#ef5350", "#ff5252"].includes(normalized ?? "")) return "#ffffff";
+  return raw || "#ffffff";
+}
+
+function remapFillColor(color: unknown) {
+  const normalized = colorString(color)?.toLowerCase().slice(0, 7);
   if (["#f23645", "#ef5350", "#ff5252"].includes(normalized ?? "")) return "#606878";
   return "#1a4a8a";
 }

@@ -190,7 +190,7 @@ export function SealedVaultFeed() {
               className={cn(
                 "rounded-2xl border p-4 text-left transition-all",
                 selected === v.strategyVaultAddr
-                  ? "border-white/40 bg-white/[0.04]"
+                  ? "border-accent/50 bg-accent/[0.04]"
                   : "border-[#2a2a2a] bg-[#141414] hover:border-white/20",
               )}
             >
@@ -202,7 +202,7 @@ export function SealedVaultFeed() {
                   className={cn(
                     "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
                     live
-                      ? "bg-emerald-500/15 text-emerald-400"
+                      ? "bg-accent/15 text-accent"
                       : v.paused
                         ? "bg-amber-500/15 text-amber-400"
                         : "bg-zinc-500/15 text-zinc-400",
@@ -269,7 +269,7 @@ export function SealedVaultFeed() {
               <p className="mb-1 font-display text-[11px] font-semibold text-zinc-300">
                 Program commitment
               </p>
-              <p className="break-all font-mono text-[10px] text-emerald-400">
+              <p className="break-all font-mono text-[10px] text-accent">
                 {active.programCommitment}
               </p>
               <p className="mt-1 text-[10px] leading-snug text-zinc-600">
@@ -318,7 +318,7 @@ export function SealedVaultFeed() {
                 <button
                   onClick={doDeposit}
                   disabled={depositBusy || !active.sealedAt}
-                  className="shrink-0 rounded-lg bg-white px-4 py-2 font-display text-[12px] font-semibold text-black transition-all hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-lg bg-accent px-4 py-2 font-display text-[12px] font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {depositBusy ? "…" : "Deposit"}
                 </button>
@@ -355,7 +355,7 @@ function Stat({ k, v }: { k: string; v: string }) {
 function Guarantee({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-1.5">
-      <span aria-hidden className="mt-px text-emerald-500">✓</span>
+      <span aria-hidden className="mt-px text-accent">✓</span>
       <span className="leading-snug">{children}</span>
     </li>
   );

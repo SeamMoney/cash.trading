@@ -7,7 +7,7 @@
  * stored. Everything after that is wallet-signed by the creator, except the
  * Decibel delegation, which the VAULT ADMIN must sign.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
@@ -18,6 +18,54 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.
   ssr: false,
   loading: () => <div className="h-full min-h-[280px] animate-pulse bg-[#1e1e1e]" />,
 });
+
+/** Monaco loads from a CDN; when that fails (offline, blocked CDN) the raw
+ *  loader error would surface as an unhandled rejection. Fall back to a plain
+ *  textarea — committing a strategy must never depend on jsdelivr being up. */
+function PineEditor({
+  value, onChange, readOnly,
+}: { value: string; onChange: (v: string) => void; readOnly: boolean }) {
+  const [monacoFailed, setMonacoFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    // A blocked CDN can hang rather than reject — race it with a deadline so
+    // the strategy editor always becomes usable.
+    const timer = setTimeout(() => { if (!cancelled) setMonacoFailed(true); }, 8000);
+    import("@monaco-editor/react")
+      .then((m) => m.loader.init())
+      .then(() => { if (!cancelled) clearTimeout(timer); })
+      .catch(() => { if (!cancelled) setMonacoFailed(true); });
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+  if (monacoFailed) {
+    return (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
+        spellCheck={false}
+        aria-label="PineScript source"
+        className="h-[280px] w-full resize-none bg-[#1e1e1e] p-3 font-mono text-[12px] leading-relaxed text-zinc-200 focus:outline-none"
+      />
+    );
+  }
+  return (
+    <MonacoEditor
+      height="280px"
+      defaultLanguage="javascript"
+      theme="vs-dark"
+      value={value}
+      onChange={(v) => onChange(v ?? "")}
+      options={{
+        minimap: { enabled: false },
+        fontSize: 12,
+        lineNumbers: "on",
+        scrollBeyondLastLine: false,
+        readOnly,
+      }}
+    />
+  );
+}
 
 const STARTER_PINE = `//@version=5
 strategy("My Sealed Strategy", overlay=true)
@@ -313,7 +361,7 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
               className={cn(
                 "rounded-xl border px-3 py-2.5",
                 done
-                  ? "border-emerald-500/40 bg-emerald-500/5"
+                  ? "border-accent/40 bg-accent/5"
                   : i === stepIndex
                     ? "border-white/30 bg-white/[0.03]"
                     : "border-[#2a2a2a] bg-[#141414]",
@@ -323,7 +371,7 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 <span
                   className={cn(
                     "flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
-                    done ? "bg-emerald-500 text-black" : "bg-[#2a2a2a] text-[#888]",
+                    done ? "bg-accent text-accent-foreground" : "bg-[#2a2a2a] text-[#888]",
                   )}
                 >
                   {done ? "✓" : i + 1}
@@ -345,22 +393,13 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
           </span>
         </div>
         <div className="h-[280px]">
-          <MonacoEditor
-            height="280px"
-            defaultLanguage="javascript"
-            theme="vs-dark"
+          <PineEditor
             value={pine}
             onChange={(v) => {
-              setPine(v ?? "");
+              setPine(v);
               setCommitInfo(null);
             }}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 12,
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              readOnly: Boolean(svAddr),
-            }}
+            readOnly={Boolean(svAddr)}
           />
         </div>
       </div>
@@ -407,21 +446,21 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
           <input
             type="range" min={100} max={10000} step={100} value={pctBps}
             onChange={(e) => setPctBps(Number(e.target.value))}
-            className="w-full accent-white" disabled={Boolean(svAddr)}
+            className="w-full accent-[#39ff14]" disabled={Boolean(svAddr)}
           />
         </Field>
         <Field label="Max leverage" hint={`${(maxLevX100 / 100).toFixed(2)}x hard cap`}>
           <input
             type="range" min={50} max={1000} step={25} value={maxLevX100}
             onChange={(e) => setMaxLevX100(Number(e.target.value))}
-            className="w-full accent-white" disabled={Boolean(svAddr)}
+            className="w-full accent-[#39ff14]" disabled={Boolean(svAddr)}
           />
         </Field>
         <Field label="Min bar interval" hint={`${minBarS}s — bounds attestor timing discretion`}>
           <input
             type="range" min={15} max={600} step={15} value={minBarS}
             onChange={(e) => setMinBarS(Number(e.target.value))}
-            className="w-full accent-white" disabled={Boolean(svAddr)}
+            className="w-full accent-[#39ff14]" disabled={Boolean(svAddr)}
           />
         </Field>
       </div>
@@ -432,7 +471,7 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
           <p className="mb-2 font-display text-[12px] font-semibold text-white">
             Program commitment
           </p>
-          <p className="break-all font-mono text-[11px] text-emerald-400">{commitInfo.commitment}</p>
+          <p className="break-all font-mono text-[11px] text-accent">{commitInfo.commitment}</p>
           <dl className="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
             <Meta k="Market" v={commitInfo.market.name} />
             <Meta k="Warmup" v={`${commitInfo.warmupBars} bars`} />
@@ -471,7 +510,7 @@ export function SealedVaultLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       )}
       {notice && !error && (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-[12px] text-emerald-400">
+        <p className="rounded-xl border border-accent/30 bg-accent/5 p-3 text-[12px] text-accent">
           {notice}
         </p>
       )}
@@ -557,8 +596,8 @@ function Action({
       className={cn(
         "rounded-lg px-4 py-2 font-display text-[12px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-40",
         primary
-          ? "bg-white text-black hover:bg-zinc-200"
-          : "border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-white/30",
+          ? "bg-accent text-accent-foreground hover:opacity-90"
+          : "border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-accent/60",
       )}
     >
       {busy ? "Working…" : children}

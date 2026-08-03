@@ -74,14 +74,22 @@ export function findSealedMarket(nameOrAddr: string): SealedMarket | null {
   );
 }
 
-export function isHexAddress(v: unknown): v is string {
-  if (typeof v !== "string") return false;
+/** Accepts long-form and short-form (leading-zero-stripped) addresses. SDK v5's
+ *  AccountAddress.fromString rejects short form outright, which turned a pasted
+ *  "0xCAFE"-style address into a confusing "invalid address" error. */
+export function normalizeAddress(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = /^0x([0-9a-fA-F]{1,64})$/.exec(v.trim());
+  if (!m) return null;
   try {
-    AccountAddress.fromString(v);
-    return true;
+    return AccountAddress.fromString("0x" + m[1].padStart(64, "0")).toString();
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isHexAddress(v: unknown): v is string {
+  return normalizeAddress(v) !== null;
 }
 
 export function isHex32(v: unknown): v is string {

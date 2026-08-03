@@ -398,6 +398,64 @@ export async function isVaultLicensed(
   }
 }
 
+/** Publicly schedule a replacement strategy, starting the depositor-notice clock. */
+export function buildAnnounceSwapPayload(args: {
+  packageAddress: string;
+  strategyVaultAddr: string;
+}) {
+  return {
+    function: `${args.packageAddress}::sealed_vault::announce_swap`,
+    typeArguments: [] as string[],
+    functionArguments: [args.strategyVaultAddr],
+  };
+}
+
+export interface SwapStatus {
+  isSwap: boolean;
+  announcedAt: number;
+  tradableAt: number;
+  expiresAt: number;
+  needsNotice: boolean;
+}
+
+/** Where a replacement strategy stands against its notice period. */
+export async function readSwapStatus(
+  strategyVaultAddr: string,
+  network?: "testnet" | "mainnet",
+): Promise<SwapStatus | null> {
+  if (!SEALED_PACKAGE) return null;
+  const net = network ?? sealedNetwork();
+  try {
+    const url =
+      net === "mainnet"
+        ? "https://api.mainnet.aptoslabs.com/v1/view"
+        : "https://api.testnet.aptoslabs.com/v1/view";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        function: `${SEALED_PACKAGE}::sealed_vault::swap_status`,
+        type_arguments: [],
+        arguments: [strategyVaultAddr],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const [isSwap, announcedAt, tradableAt, expiresAt, needsNotice] = (await res.json()) as [
+      boolean, string, string, string, boolean,
+    ];
+    return {
+      isSwap,
+      announcedAt: Number(announcedAt),
+      tradableAt: Number(tradableAt),
+      expiresAt: Number(expiresAt),
+      needsNotice,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Revoke a strategy's trading rights. Step one of a swap. */
 export function buildRevokeDelegationPayload(args: {
   decibelPackage: string;

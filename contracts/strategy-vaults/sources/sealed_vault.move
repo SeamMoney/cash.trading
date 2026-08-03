@@ -43,6 +43,8 @@ module cash_strategy::sealed_vault {
     // builder_code_registry's own constructors are friend-visible.
     use decibel::perp_engine_api;
     use decibel::builder_code_registry::BuilderCode;
+    use decibel::vault::Vault;
+    use decibel::vault_read_api;
     use order_book::order_book_types;
 
     // ─── Errors ──────────────────────────────────────────────────────
@@ -63,6 +65,9 @@ module cash_strategy::sealed_vault {
     const E_NOT_ADMIN:          u64 = 16;
     const E_NO_PLATFORM_CONFIG: u64 = 17;
     const E_BAD_FEE:            u64 = 18;
+    const E_SWAP_NOT_ANNOUNCED: u64 = 19;
+    const E_SWAP_NOT_MATURED:   u64 = 20;
+    const E_ANNOUNCE_EXPIRED:   u64 = 21;
 
     /// Upper bound on the slippage rule — 5%. Bounded so a curator cannot
     /// configure effectively-unlimited price tolerance.
@@ -87,6 +92,19 @@ module cash_strategy::sealed_vault {
     const MAX_BUILDER_FEE_BPS: u64 = 10;
     /// Hard ceiling on the one-time launch fee, in USDC micro-units (1e6). $500.
     const MAX_LAUNCH_FEE_UNITS: u64 = 500_000_000;
+
+    /// Notice a vault's depositors get before a REPLACEMENT strategy may trade their money.
+    /// 24h is meaningful here specifically because Decibel vaults launched by this module set
+    /// `contribution_lockup_duration_s = 0` and allow synchronous redemptions — a depositor who
+    /// dislikes the new algo can leave immediately, so the window is a real exit, not a
+    /// formality.
+    const SWAP_NOTICE_SECS: u64 = 86_400;
+    /// How long an announcement stays usable. Without an expiry a creator could announce a
+    /// replacement while their vault is still empty (no notice required, clock starts), wait
+    /// for deposits to arrive, and then activate it instantly months later — the announcement
+    /// would be stale but satisfied. Expiring it forces a fresh 24h notice with the depositors
+    /// actually present.
+    const ANNOUNCE_VALIDITY_SECS: u64 = 7 * 86_400;
 
     const SIGNAL_NEUTRAL: u8 = 0;
     const SIGNAL_BUY:     u8 = 1;
@@ -155,6 +173,16 @@ module cash_strategy::sealed_vault {
         builder_addr: address,
         /// Builder fee in bps of notional, bounded by MAX_BUILDER_FEE_BPS. 0 disables it.
         builder_fee_bps: u64,
+
+        // ── Swap notice ──
+        /// True when this strategy REPLACES an earlier one on a vault that was already licensed
+        /// — i.e. depositors may have bought into a different strategy than this one. Frozen at
+        /// creation; the first strategy on a vault is never a swap and is never gated.
+        is_swap: bool,
+        /// Unix seconds of the most recent public announcement, or 0. Mutable by design: an
+        /// announcement can expire and be renewed. It schedules WHEN this strategy may begin
+        /// trading; it can never change WHAT it does.
+        announced_at: u64,
 
         /// Mints the delegated-trader signer. Private to this module — no human holds it.
         extend_ref: ExtendRef,
@@ -242,6 +270,18 @@ module cash_strategy::sealed_vault {
         strategy_vault: address,
         creator: address,
         program_commitment: vector<u8>,
+    }
+
+    /// A replacement strategy has been publicly scheduled. Depositors can act on this.
+    #[event]
+    struct SwapAnnounced has drop, store {
+        decibel_vault: address,
+        strategy_vault: address,
+        creator: address,
+        program_commitment: vector<u8>,
+        announced_at: u64,
+        tradable_at: u64,
+        expires_at: u64,
     }
 
     #[event]
@@ -477,6 +517,8 @@ module cash_strategy::sealed_vault {
             trades: 0,
             builder_addr,
             builder_fee_bps,
+            is_swap: was_licensed,
+            announced_at: 0,
             extend_ref,
         });
 
@@ -528,6 +570,93 @@ module cash_strategy::sealed_vault {
         });
     }
 
+    // ─── Swap notice ─────────────────────────────────────────────────
+
+    /// Does anyone OTHER than the creator hold shares in this vault?
+    ///
+    /// Total shares minus everything the creator holds. Their shares can be in either of two
+    /// places and BOTH must be counted: funding a vault through `create_and_fund_vault` pays
+    /// the shares into the creator's Decibel SUBACCOUNT, not their wallet. Counting only the
+    /// wallet made every vault read as having outside depositors — including one the creator
+    /// was alone in — so the notice period applied to every swap and the "iterate freely while
+    /// nobody else is in" property silently did not exist. Verified on testnet: a solo creator's
+    /// 100 shares sat entirely in the subaccount and the wallet read zero.
+    ///
+    /// The remaining bias is one-directional and safe: shares the creator keeps somewhere else
+    /// again (a second wallet, a non-primary subaccount) read as outside holders and make the
+    /// requirement STRICTER. Going the other way — hiding a real depositor — would mean that
+    /// depositor moving their shares into the creator's own stores, at which point they have
+    /// given the shares away and are no longer a depositor.
+    fun has_outside_depositors(decibel_vault_addr: address, creator: address): bool {
+        let vault = object::address_to_object<Vault>(decibel_vault_addr);
+        let total = vault_read_api::get_vault_num_shares(vault);
+        if (total == 0) return false;
+        let share_meta = vault_read_api::get_vault_share_asset_type(vault);
+        let creator_shares = primary_fungible_store::balance(creator, share_meta)
+            + primary_fungible_store::balance(
+                dex_accounts::primary_subaccount_public(creator),
+                share_meta,
+            );
+        total > creator_shares
+    }
+
+    /// Publicly schedule a replacement strategy. Starts the depositor-notice clock.
+    ///
+    /// Anyone watching the chain sees this the moment it lands, and `SwapAnnounced` carries the
+    /// exact time the new algo may begin trading. Callable repeatedly — a lapsed announcement
+    /// is renewed by announcing again, which restarts the full notice period.
+    public entry fun announce_swap(creator: &signer, sv_addr: address) acquires SealedVault {
+        let sv = borrow_global_mut<SealedVault>(sv_addr);
+        assert!(signer::address_of(creator) == sv.creator, E_NOT_CREATOR);
+        let now = timestamp::now_seconds();
+        sv.announced_at = now;
+        event::emit(SwapAnnounced {
+            decibel_vault: sv.decibel_vault_addr,
+            strategy_vault: sv_addr,
+            creator: sv.creator,
+            program_commitment: sv.program_commitment,
+            announced_at: now,
+            tradable_at: now + SWAP_NOTICE_SECS,
+            expires_at: now + ANNOUNCE_VALIDITY_SECS,
+        });
+    }
+
+    /// The gate. A REPLACEMENT strategy may not trade other people's money until it has been
+    /// publicly announced for the full notice period.
+    ///
+    /// This is enforced here, on the trade, and not on the delegation — because the delegation
+    /// is Decibel's `vault_admin_api::delegate_dex_actions_to`, a `private entry` this module
+    /// cannot hook or observe. A creator can hand this strategy trading rights whenever they
+    /// like; what they cannot do is make it place an order. That makes the notice period an
+    /// actual constraint rather than a convention the UI happens to follow.
+    fun assert_may_trade(sv: &SealedVault) {
+        // The first strategy on a vault is what depositors bought into. Nothing to notice.
+        if (!sv.is_swap) return;
+        // Nobody else's money at risk — the creator is free to iterate instantly.
+        if (!has_outside_depositors(sv.decibel_vault_addr, sv.creator)) return;
+
+        assert!(sv.announced_at > 0, E_SWAP_NOT_ANNOUNCED);
+        let now = timestamp::now_seconds();
+        assert!(now >= sv.announced_at + SWAP_NOTICE_SECS, E_SWAP_NOT_MATURED);
+        // A stale announcement is not notice. See ANNOUNCE_VALIDITY_SECS.
+        assert!(now <= sv.announced_at + ANNOUNCE_VALIDITY_SECS, E_ANNOUNCE_EXPIRED);
+    }
+
+    #[view]
+    /// (is_swap, announced_at, tradable_at, expires_at, needs_notice). Drives the UI's swap
+    /// panel and lets a depositor check the schedule themselves.
+    public fun swap_status(sv_addr: address): (bool, u64, u64, u64, bool) acquires SealedVault {
+        let sv = borrow_global<SealedVault>(sv_addr);
+        let needs = sv.is_swap && has_outside_depositors(sv.decibel_vault_addr, sv.creator);
+        (
+            sv.is_swap,
+            sv.announced_at,
+            if (sv.announced_at == 0) { 0 } else { sv.announced_at + SWAP_NOTICE_SECS },
+            if (sv.announced_at == 0) { 0 } else { sv.announced_at + ANNOUNCE_VALIDITY_SECS },
+            needs,
+        )
+    }
+
     // ─── The tick ────────────────────────────────────────────────────
 
     /// Permissionless crank. The caller pays gas and supplies the bar timestamp, the attested
@@ -548,6 +677,8 @@ module cash_strategy::sealed_vault {
         let sv = borrow_global_mut<SealedVault>(sv_addr);
         assert!(sv.sealed, E_NOT_SEALED);
         assert!(!sv.paused, E_PAUSED);
+        // A replacement strategy cannot touch depositor money before its notice period is up.
+        assert_may_trade(sv);
 
         // Timing: strictly forward, spaced, and not from the future.
         let now = timestamp::now_seconds();

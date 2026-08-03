@@ -248,6 +248,42 @@ The UI drives all three from one button (`components/sealed/SealedLaunch.tsx`) a
 resumable — each completed step's address is retained, so a rejected signature restarts from
 the first incomplete step rather than paying for a second Decibel vault.
 
+### 8.2b Swapping the strategy
+
+The launch fee is charged once per DECIBEL VAULT (`LaunchLicenses`, keyed by vault address), so
+re-pointing a vault at a new indicator costs gas alone. A swap is:
+
+1. `create_sealed_vault` against the same Decibel vault — free, and flagged `is_swap`.
+2. `vault_admin_api::revoke_dex_actions_delegation(vault, [old])`
+3. `vault_admin_api::delegate_dex_actions_to(vault, new, expiry)`
+
+**The notice period.** A replacement strategy may not trade a vault that holds other people's
+money until it has been publicly announced (`announce_swap`, which emits `SwapAnnounced`) for
+24h — and the announcement expires after 7 days. Three properties make this real rather than
+decorative:
+
+- **It gates the TRADE, not the delegation.** `delegate_dex_actions_to` is a Decibel `private
+  entry`; this module can neither hook nor observe it. A creator can hand a replacement
+  strategy trading rights at any moment — what they cannot do is make it place an order.
+  Enforcement lives in `tick_attested`, which is ours.
+- **It applies only when someone else's money is present.** The first strategy on a vault is
+  what depositors bought into and is never gated; a creator alone in their own vault iterates
+  instantly. `has_outside_depositors` counts the creator's shares in BOTH their wallet and
+  their Decibel subaccount — `create_and_fund_vault` pays shares to the subaccount, and
+  counting only the wallet made every vault look like it had depositors.
+- **The announcement expires.** Without `ANNOUNCE_VALIDITY_SECS` a creator could announce while
+  the vault was still empty, wait for deposits, and activate instantly months later on an
+  announcement that was technically satisfied.
+
+24h is meaningful because vaults launched by this rail set `contribution_lockup_duration_s = 0`
+and allow synchronous redemptions — a depositor who dislikes the new algo can leave
+immediately, so the window is a real exit rather than a formality. A creator who needs to stop
+a bad algo *now* uses `set_paused`, which is instant and always available.
+
+Verified adversarially on testnet (`scripts/swap-security-test.ts`): a swap with no outside
+depositors trades immediately; the same swap after a real outside deposit aborts even when
+fully delegated, and still aborts after announcing until the 24h has elapsed.
+
 ### 8.3 Attestor service
 
 Needs: the ed25519 signing key, the committed program, and a Decibel price feed. Runs beside

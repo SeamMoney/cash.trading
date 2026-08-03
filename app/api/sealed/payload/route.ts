@@ -4,7 +4,7 @@
  * Builds the wallet-signed entry-function payloads for the sealed-vault launch
  * rail. The server holds no user key and never submits these — the UI signs.
  *
- * kinds: decibel-vault | create | delegate | revoke | pause
+ * kinds: decibel-vault | create | delegate | revoke | announce-swap | pause
  *
  * Launch order is decibel-vault → create → delegate, three wallet signatures. It cannot be
  * fewer: Decibel declares both `create_and_fund_vault` and `delegate_dex_actions_to` as
@@ -19,6 +19,7 @@ import {
   DECIBEL_PACKAGE_BY_NETWORK,
   SEALED_PACKAGE,
   USDC_METADATA_BY_NETWORK,
+  buildAnnounceSwapPayload,
   buildCreateSealedVaultPayload,
   buildRevokeDelegationPayload,
   buildSetPausedPayload,
@@ -253,6 +254,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Start the depositor-notice clock on a replacement strategy.
+  if (kind === "announce-swap") {
+    if (!isHexAddress(body.strategyVaultAddr)) {
+      return NextResponse.json(
+        { error: "strategyVaultAddr required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        payload: buildAnnounceSwapPayload({
+          packageAddress: pkg,
+          strategyVaultAddr: body.strategyVaultAddr as string,
+        }),
+      },
+      { status: 200, headers: NO_STORE },
+    );
+  }
+
   if (kind === "pause") {
     if (!isHexAddress(body.strategyVaultAddr)) {
       return NextResponse.json(
@@ -306,7 +327,11 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { error: 'kind must be one of "decibel-vault" | "create" | "delegate" | "revoke" | "pause"' },
+    {
+      error:
+        'kind must be one of "decibel-vault" | "create" | "delegate" | "revoke" | ' +
+        '"announce-swap" | "pause"',
+    },
     { status: 400, headers: NO_STORE },
   );
 }

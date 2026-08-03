@@ -15,4 +15,5 @@ AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir 
 # deps are never published. See deps/*/.
 decibel_accounts = { local = "deps/decibel_accounts" }
 decibel_perp_dex = { local = "deps/decibel_perp_dex" }
+decibel_vault = { local = "deps/decibel_vault" }
 AptosTrading = { local = "deps/AptosTrading" }

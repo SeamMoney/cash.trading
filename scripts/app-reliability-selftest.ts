@@ -1383,6 +1383,44 @@ assert.ok(
     "behind their vault changed",
 );
 
+// ── The swap notice period ─────────────────────────────────────────────────
+// Swapping the algo is the one hole in the sealed guarantee: build a record with strategy A,
+// take deposits on it, quietly run strategy B. The notice period is what closes it, and every
+// assertion here defends a property that was wrong at some point while building it.
+assert.ok(
+  sealedVaultMove.includes("assert_may_trade(sv)") &&
+    sealedVaultMove.indexOf("assert_may_trade(sv)") <
+      sealedVaultMove.indexOf("verify_attestation(sv, sv_addr"),
+  "the swap gate must run inside tick_attested, before anything is committed — gating the " +
+    "DELEGATION is impossible because Decibel's delegate_dex_actions_to is a private entry " +
+    "this module can neither hook nor observe, so the trade is the only enforceable point",
+);
+assert.ok(
+  sealedVaultMove.includes("if (!sv.is_swap) return;"),
+  "the FIRST strategy on a vault is what depositors bought into and must never be gated",
+);
+assert.ok(
+  sealedVaultMove.includes("if (!has_outside_depositors(sv.decibel_vault_addr, sv.creator)) return;"),
+  "a creator alone in their own vault must be able to iterate instantly — the notice period " +
+    "protects depositors, and with none present it is pure friction",
+);
+assert.ok(
+  sealedVaultMove.includes("dex_accounts::primary_subaccount_public(creator)"),
+  "the creator's shares must be counted in their SUBACCOUNT as well as their wallet: " +
+    "create_and_fund_vault pays shares to the subaccount, so counting only the wallet made " +
+    "every vault look like it had outside depositors and silently gated every swap",
+);
+assert.ok(
+  sealedVaultMove.includes("assert!(now <= sv.announced_at + ANNOUNCE_VALIDITY_SECS, E_ANNOUNCE_EXPIRED)"),
+  "an announcement must expire — otherwise a creator announces while their vault is empty " +
+    "(no notice required), waits for deposits, and activates instantly months later on a " +
+    "stale-but-satisfied announcement",
+);
+assert.ok(
+  sealedVaultMove.includes("struct SwapAnnounced"),
+  "the announcement must be an on-chain event; notice nobody can observe is not notice",
+);
+
 // The launch fee is spent from the WALLET while Decibel's fee comes from the SUBACCOUNT.
 // Checking only one pot lets the UI green-light a launch that aborts on EINSUFFICIENT_BALANCE.
 const sealedPreflightRoute = readFileSync("app/api/sealed/decibel-vault/route.ts", "utf8");

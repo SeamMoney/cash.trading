@@ -292,6 +292,11 @@ async function run() {
       // The package vendors the Decibel + order_book deps, so the publish writeset is large.
       // 200k units ran out of gas on testnet; 2M is the protocol's per-transaction ceiling.
       "--max-gas", "2000000",
+      // Ship bytecode only. With the default `sparse` artifacts the package is 62KB, over
+      // Aptos's 60KB single-transaction limit. Source verifiability does not depend on this:
+      // the module source is in this repo, and a vault's guarantee rests on the program
+      // commitment and the on-chain trace, not on the explorer rendering our Move.
+      "--included-artifacts", "none",
     ]);
     const tx = out.match(/"transaction_hash":\s*"(0x[0-9a-f]+)"/)?.[1];
     // The CLI exits 0 for a transaction that COMMITTED but reverted (e.g. "Out of gas"), and

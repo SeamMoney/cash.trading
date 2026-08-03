@@ -1,0 +1,17 @@
+# Compile-time interface mirroring the on-chain `decibel_vault` package, which owns
+# vault + vault_read_api. The package NAME matters: 0x1::code resolves publish-time
+# dependencies by package name, and declaring these modules under `decibel_perp_dex`
+# (where perp_engine_api and public_read_api genuinely live) fails the check with a bare
+# CONSTRAINT_NOT_SATISFIED. Verified against the on-chain PackageRegistry 2026-08-03:
+#   decibel_perp_dex -> perp_order, builder_code_registry, perp_market, perp_engine_api, public_read_api
+#   decibel_vault    -> vault, vault_read_api
+# Stubs only; never published.
+[package]
+name = "decibel_vault"
+version = "0.1.0"
+
+[addresses]
+decibel = "_"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }

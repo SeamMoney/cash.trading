@@ -42,11 +42,18 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY ??
     null;
 
+  // Say exactly WHICH piece is missing. "Not configured" with no detail is a
+  // dead end for whoever has to fix it.
+  const missing: string[] = [];
+  if (!SEALED_PACKAGE) missing.push("SEALED_VAULT_PACKAGE");
+  if (!attestorPubkey) missing.push("SEALED_ATTESTOR_PUBLIC_KEY");
+
   return NextResponse.json(
     {
       ok: true,
       packageAddress: SEALED_PACKAGE || null,
       attestorPubkey,
+      missing,
       // Honest readiness signal — the UI disables deploy and says why.
       ready: Boolean(SEALED_PACKAGE && attestorPubkey),
       network:

@@ -28,6 +28,7 @@ interface SealedConfig {
   packageAddress: string | null;
   attestorPubkey: string | null;
   ready: boolean;
+  missing?: string[];
   network: string;
   markets: Array<{ name: string; addr: string }>;
   defaults: {
@@ -561,8 +562,34 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       <AnimatePresence>
         {config && !config.ready && (
           <Banner tone="warn">
-            Sealed vaults aren&apos;t configured on this deployment yet — the contract address and
-            attestor key still need to be set. You can build and preview a bot, but not deploy one.
+            <span className="block font-semibold">
+              Not deployable on this environment yet
+            </span>
+            <span className="mt-1 block leading-snug">
+              The sealed-vault contract hasn&apos;t been published to{" "}
+              <span className="font-mono">{config.network}</span> yet, so there&apos;s nothing to
+              deploy into. Everything above still works — pick a strategy, see its program hash and
+              costs.
+            </span>
+            {config.missing && config.missing.length > 0 && (
+              <span className="mt-2 block">
+                <span className="block text-[10px] uppercase tracking-wide text-amber-500/70">
+                  Missing configuration
+                </span>
+                {config.missing.map((m) => (
+                  <span key={m} className="mt-0.5 block font-mono text-[10px] text-amber-300/90">
+                    {m}
+                  </span>
+                ))}
+                <span className="mt-1.5 block text-[10px] leading-snug text-zinc-500">
+                  Publish with{" "}
+                  <span className="font-mono text-zinc-400">
+                    pnpm sealed:e2e run --network {config.network}
+                  </span>
+                  , then set the values it prints. See docs/SEALED-INDICATOR.md §8.
+                </span>
+              </span>
+            )}
           </Banner>
         )}
       </AnimatePresence>

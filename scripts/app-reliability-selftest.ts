@@ -1564,10 +1564,32 @@ assert.ok(
     "alone",
 );
 assert.ok(
-  sealedLaunchUi.includes("SEALED_CATALOG.map") &&
-    sealedLaunchUi.includes("flex flex-wrap gap-1.5"),
-  "templates must be a wrapping horizontal strip — the original had a horizontal scrollbar, " +
-    "which was the actual complaint; wrapping keeps the strip without the scrollbar",
+  sealedLaunchUi.includes("SEALED_CATALOG.map") && sealedLaunchUi.includes("sm:flex-wrap"),
+  "templates must be a horizontal strip that WRAPS where there is room (sm+). The original " +
+    "complaint was the visible scrollbar, not the strip — so it wraps on desktop and scrolls " +
+    "without a bar on a phone, where wrapping cost three lines",
+);
+
+// ── Mobile ─────────────────────────────────────────────────────────────────
+// The launch page was built and reviewed exclusively at desktop width. On a phone the result
+// was 3.8 screens of identical full-width cards with the launch button at y=2992 — reachable
+// only by scrolling past every decision the user had already made.
+assert.ok(
+  sealedLaunchUi.includes("fixed inset-x-0 bottom-0") && sealedLaunchUi.includes("lg:hidden"),
+  "mobile needs a fixed action bar: the desktop rail footer sits ~3000px down on a phone",
+);
+assert.ok(
+  sealedLaunchUi.includes("env(safe-area-inset-bottom)"),
+  "the mobile action bar must respect the safe area or it sits under the home indicator",
+);
+assert.ok(
+  sealedLaunchUi.includes('className="h-24 lg:hidden"'),
+  "a spacer must reserve room for the fixed bar, or it covers the last card",
+);
+assert.ok(
+  sealedLaunchUi.includes("overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap"),
+  "template pills must scroll in one row on a phone — wrapping put six pills on three lines " +
+    "and ate a third of the first screen",
 );
 
 // ── Truthful UI state ──────────────────────────────────────────────────────

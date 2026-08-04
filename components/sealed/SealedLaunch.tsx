@@ -505,11 +505,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       {/* Preview banner spans both columns — the unavailable state must be the first thing
           read, not something discovered after configuring everything. */}
       {previewMode && (
-        <div className="mb-3 rounded-[16px] border border-amber-500/30 bg-amber-500/[0.06] p-4">
-          <p className="font-display text-[14px] font-semibold text-amber-300">
-            Preview mode · launching is unavailable on {config?.network}
+        <div className="mb-3 rounded-[12px] border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 sm:rounded-[16px] sm:p-4">
+          <p className="font-display text-[13px] font-semibold text-amber-300 sm:text-[14px]">
+            Preview mode · launching unavailable on {config?.network}
           </p>
-          <p className="mt-1.5 text-[13px] leading-relaxed text-amber-200/70">
+          <p className="mt-1 hidden text-[13px] leading-relaxed text-amber-200/70 sm:block">
             The sealed-vault contract isn&apos;t deployed here yet. You can pick a strategy, see
             its program hash and read the full cost breakdown — nothing can be funded or
             launched.
@@ -568,7 +568,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
           {/* Template strip. Horizontal like it always was — but wrapping, so there is never
               the scrollbar that made the old one ugly. */}
-          <div className="flex flex-wrap gap-1.5">
+          {/* One scrolling row on a phone — wrapping put six pills on three lines and ate a
+              third of the first screen. Wraps from sm up, where there is room. */}
+          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
             {SEALED_CATALOG.map((s) => {
               const active = !usingCustom && s.id === strategyId;
               return (
@@ -583,7 +585,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   aria-pressed={active}
                   title={s.blurb}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 font-display text-[12px] font-semibold transition-colors disabled:opacity-40",
+                    "shrink-0 rounded-full border px-3 py-1.5 font-display text-[12px] font-semibold transition-colors disabled:opacity-40",
                     active
                       ? "border-accent/50 bg-accent/10 text-accent"
                       : "border-white/[0.06] bg-[#141414] text-zinc-300 hover:border-white/20 hover:text-white",
@@ -654,7 +656,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               <CodeBlock
                 code={selected.script}
                 filename={`${selected.id}.pine`}
-                maxHeight={420}
+                maxHeight={260}
                 actions={
                   <button
                     type="button"
@@ -698,7 +700,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           {/* Behaviour preview — what this strategy does on real candles. */}
           {effectivePine && (
             <div className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
-              <PineVisualPreview pineScript={effectivePine} />
+              {/* Full-height on desktop; capped on a phone, where it otherwise ate an entire
+                  screen of scroll for context the user glances at. */}
+              <div className="max-h-[280px] overflow-hidden sm:max-h-none">
+                <PineVisualPreview pineScript={effectivePine} />
+              </div>
             </div>
           )}
         </div>
@@ -737,7 +743,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             {/* Source visibility */}
             <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
               <h3 className="font-display text-[13px] font-semibold text-white">Source visibility</h3>
-              <div className="mt-2 flex flex-col gap-2">
+              <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-1">
                 <RailChoice
                   active={isPrivate}
                   onClick={() => setIsPrivate(true)}
@@ -755,12 +761,17 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   body="Published with the vault so anyone can check it against the trades it made."
                 />
               </div>
+              <p className="mt-2 text-[12px] leading-relaxed text-zinc-400 lg:hidden">
+                {isPrivate
+                  ? "Only a commitment goes on-chain. Reveal later to prove every trade came from it."
+                  : "Published with the vault so anyone can check it against the trades it made."}
+              </p>
             </div>
 
             {/* Who runs it */}
             <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
               <h3 className="font-display text-[13px] font-semibold text-white">Who runs it</h3>
-              <div className="mt-2 flex flex-col gap-2">
+              <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-1">
                 <RailChoice
                   active={managed}
                   onClick={() => setManaged(true)}
@@ -778,6 +789,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   body="We never receive your source. The vault trades only while your attestor is running."
                 />
               </div>
+              <p className="mt-2 text-[12px] leading-relaxed text-zinc-400 lg:hidden">
+                {managed
+                  ? "Runs every minute automatically. We keep an encrypted copy to execute it — so we can technically read it."
+                  : "We never receive your source. The vault trades only while your attestor is running."}
+              </p>
             </div>
 
             {/* Cost */}
@@ -796,7 +812,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   <RailRow k="Our launch fee" v={`${config.economics.launchFeeUsdc}`} />
                   <RailRow k="Starting capital" v={`${seedUsdc}`} tone="warn" />
                 </dl>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-400">
+                {/* Three lines of caveat on a phone pushed everything else off-screen, so the
+                    mobile version keeps only the part that changes a decision. */}
+                <p className="mt-1.5 text-[12px] leading-relaxed text-amber-400/80 lg:hidden">
+                  Starting capital is at risk — it is traded, not a fee.
+                </p>
+                <p className="mt-1.5 hidden text-[12px] leading-relaxed text-zinc-400 lg:block">
                   Starting capital is not a fee — it is traded by the strategy and exposed to its
                   gains and losses. The launch fee is once per vault; swapping indicators later is
                   free.
@@ -945,8 +966,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
           </div>
 
-          {/* Pinned action. Always in view on desktop, whatever the rail is scrolled to. */}
-          <div className="mt-3 shrink-0 lg:border-t lg:border-white/[0.06] lg:pt-3">
+          {/* Pinned action. Desktop only — on a phone this sits ~3000px down the page, so the
+              mobile action is a fixed bottom bar instead (below). */}
+          <div className="mt-3 hidden shrink-0 lg:block lg:border-t lg:border-white/[0.06] lg:pt-3">
             {config && !previewMode && (
               <div className="mb-2 flex items-baseline justify-between gap-2">
                 <span className="text-[12px] text-zinc-400">Required to launch</span>
@@ -982,6 +1004,52 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           </div>
         </div>
       </div>
+
+      {/*
+        Mobile action bar. The launch button lived at the very bottom of a 3200px page on a
+        phone — a user had to scroll four screens past content they had already decided on to
+        reach it, which is the single worst thing about a checkout flow. Fixed to the viewport
+        instead, with the total beside it so the commitment is never out of sight.
+      */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-[#0a0a0a]/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:hidden"
+      >
+        {previewMode ? (
+          <div
+            role="status"
+            className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-4 py-3 font-display text-[14px] font-semibold text-zinc-500"
+          >
+            <Lock className="h-4 w-4" aria-hidden />
+            Launch unavailable
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            {config && (
+              <div className="min-w-0 shrink-0">
+                <span className="block text-[11px] leading-none text-zinc-400">Required</span>
+                <span className="mt-0.5 block font-mono text-[15px] font-semibold leading-none tabular-nums text-white">
+                  {config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc}
+                  <span className="ml-1 text-[11px] text-zinc-400">USDC</span>
+                </span>
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <ActionButton
+                onClick={launch}
+                state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
+                successLabel="Live"
+                errorLabel={started ? `Resume ${doneThrough + 1}/4` : "Try again"}
+                disabled={live}
+              >
+                {live ? "Live" : started ? `Resume ${doneThrough + 1}/4` : "Launch bot"}
+              </ActionButton>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Spacer so the bar never covers the last card. */}
+      <div className="h-24 lg:hidden" aria-hidden />
     </div>
   );
 }
@@ -1070,7 +1138,7 @@ function RailChoice({
       disabled={disabled}
       aria-pressed={active}
       className={cn(
-        "rounded-[10px] border p-2.5 text-left transition-colors disabled:opacity-50",
+        "rounded-[10px] border p-2.5 text-left transition-colors disabled:opacity-50 lg:self-auto",
         active
           ? "border-accent/50 bg-accent/[0.06]"
           : "border-white/[0.06] bg-[#0d0d0d] hover:border-white/20",
@@ -1080,7 +1148,12 @@ function RailChoice({
         {icon}
         <span className="font-display text-[13px] font-semibold">{title}</span>
       </span>
-      <span className="mt-1 block text-[12px] leading-relaxed text-zinc-400">{body}</span>
+      {/* Description is desktop-only. On a phone the pair sits side by side, and showing it
+          on only the selected card left the other as a tall empty box with a floating label —
+          the two never matched height. The selection is explained once, below the pair. */}
+      <span className="mt-1 hidden text-[12px] leading-relaxed text-zinc-400 lg:block">
+        {body}
+      </span>
     </button>
   );
 }

@@ -599,10 +599,12 @@ export function LaunchpadPage() {
           {tab === "launch" && (
             <div className="animate-enter-delay-1">
               <div className="mb-4">
-                <h2 className="font-display text-[22px] font-bold text-white">
+                <h2 className="font-display text-[18px] font-bold text-white sm:text-[22px]">
                   Launch a strategy as an automated bot
                 </h2>
-                <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-zinc-400">
+                {/* The full pitch is desktop-only: on a phone it pushed the first real control
+                    below the fold to restate what the tab already said. */}
+                <p className="mt-1 hidden max-w-2xl text-[13px] leading-relaxed text-zinc-400 sm:block">
                   Import a TradingView script or start from a template. It deploys as a vault
                   that trades on-chain under rules the contract enforces, and your source can
                   stay private.

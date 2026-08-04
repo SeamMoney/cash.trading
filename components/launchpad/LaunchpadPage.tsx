@@ -598,14 +598,14 @@ export function LaunchpadPage() {
           {/* ── Launch: pick a strategy, name it, ship it ── */}
           {tab === "launch" && (
             <div className="animate-enter-delay-1">
-              <div className="mx-auto mb-5 max-w-2xl text-center">
+              <div className="mb-4">
                 <h2 className="font-display text-[22px] font-bold text-white">
-                  Turn any strategy into an automated bot
+                  Launch a strategy as an automated bot
                 </h2>
-                <p className="mx-auto mt-1.5 max-w-lg text-[12px] leading-relaxed text-zinc-500">
-                  Pick a strategy or bring your own from TradingView. It deploys as a vault that
-                  trades on-chain under rules the contract enforces — and your source can stay
-                  private.
+                <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-zinc-400">
+                  Import a TradingView script or start from a template. It deploys as a vault
+                  that trades on-chain under rules the contract enforces, and your source can
+                  stay private.
                 </p>
               </div>
               <SealedLaunch onLaunched={() => setTab("vaults")} />

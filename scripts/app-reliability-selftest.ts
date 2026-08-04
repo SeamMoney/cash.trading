@@ -1305,6 +1305,8 @@ assert.ok(
 // the Decibel vault belonged and never delegated, so the vault it produced could not have
 // placed a single order. Nothing in the type system catches that — only this does.
 const sealedLaunchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+/** Same file with runs of whitespace collapsed, so copy assertions survive re-wrapping. */
+const sealedLaunchCopy = sealedLaunchUi.replace(/\s+/g, " ");
 for (const kind of ['kind: "decibel-vault"', 'kind: "create"', 'kind: "delegate"']) {
   assert.ok(
     sealedLaunchUi.includes(kind),
@@ -1484,7 +1486,7 @@ assert.ok(
 );
 // The UI must state the trade-off rather than implying custody is free.
 assert.ok(
-  sealedLaunchUi.includes("we can technically read it"),
+  sealedLaunchCopy.includes("we can technically read it"),
   "managed attestation must say plainly that the platform can read the source; tier-1 custody " +
     "is trust, not cryptography, and implying otherwise is a lie",
 );
@@ -1542,21 +1544,47 @@ assert.ok(
     "reports drift and a future `db push` would drop the tick cron's index",
 );
 
+// ── Launch layout ──────────────────────────────────────────────────────────
+// The launchpad has always been a two-column transpiler UI: editor left, decisions right.
+// It was briefly replaced with a single narrow centred column, which wasted the desktop
+// viewport and pushed the launch action ~2000px down the page. Restored, and asserted so it
+// does not drift back.
+assert.ok(
+  sealedLaunchUi.includes("lg:grid-cols-[1fr_360px]"),
+  "the launch page must stay a two-column grid — editor left, decision rail right",
+);
+assert.ok(
+  sealedLaunchUi.includes("lg:sticky") && sealedLaunchUi.includes("lg:overflow-y-auto"),
+  "the rail must be sticky with its own scroll: it is taller than any viewport, so pinning it " +
+    "whole leaves the launch action permanently below the fold",
+);
+assert.ok(
+  sealedLaunchUi.includes("PineVisualPreview"),
+  "the behaviour preview belongs on the launch page — a strategy is not judgeable from source " +
+    "alone",
+);
+assert.ok(
+  sealedLaunchUi.includes("SEALED_CATALOG.map") &&
+    sealedLaunchUi.includes("flex flex-wrap gap-1.5"),
+  "templates must be a wrapping horizontal strip — the original had a horizontal scrollbar, " +
+    "which was the actual complaint; wrapping keeps the strip without the scrollbar",
+);
+
 // ── Truthful UI state ──────────────────────────────────────────────────────
 // The worst defect a UX review found: the Launch button rendered as a live green primary
 // action while the page said launching was impossible. A financial action must never look
 // available when it isn't.
 assert.ok(
-  sealedLaunchUi.includes("Launch unavailable in preview mode") &&
+  sealedLaunchCopy.includes("Launch unavailable in preview mode") &&
     sealedLaunchUi.includes("previewMode ? ("),
   "when the contract is unpublished the primary action must RENDER as unavailable, not just " +
     "carry a disabled prop on a button that still looks launchable",
 );
 assert.ok(
   sealedLaunchUi.indexOf("Preview mode · launching is unavailable") <
-    sealedLaunchUi.indexOf("<Label n={1}>"),
-  "the unavailable state must appear ABOVE the form — users should not configure the whole " +
-    "page before learning they cannot launch",
+    sealedLaunchUi.indexOf("lg:grid-cols-[1fr_360px]"),
+  "the unavailable state must render ABOVE the two-column grid — users should not configure " +
+    "the whole page before learning they cannot launch",
 );
 assert.ok(
   sealedLaunchUi.includes("Developer details"),
@@ -1564,18 +1592,18 @@ assert.ok(
 );
 // Capital-at-risk language. "Stays yours" read as though the seed were protected.
 assert.ok(
-  sealedLaunchUi.includes("exposed to its gains and losses") &&
-    !sealedLaunchUi.includes("Stays yours"),
+  sealedLaunchCopy.includes("exposed to its gains and losses") &&
+    !sealedLaunchCopy.includes("Stays yours"),
   "starting capital must be described as at risk, not as money the creator keeps safe",
 );
 assert.ok(
-  sealedLaunchUi.includes("Before you launch") && sealedLaunchUi.includes("Capital at risk"),
+  sealedLaunchCopy.includes("Before you launch") && sealedLaunchCopy.includes("Capital at risk"),
   "a risk review must appear immediately before the launch action",
 );
 // The privacy copy contradicted the Public option sitting directly beneath it.
 assert.ok(
-  !sealedLaunchUi.includes("never your source") &&
-    !sealedLaunchUi.includes("Nobody can read your alpha"),
+  !sealedLaunchCopy.includes("never your source") &&
+    !sealedLaunchCopy.includes("Nobody can read your alpha"),
   "privacy copy must not make absolute claims, nor contradict the Public option",
 );
 

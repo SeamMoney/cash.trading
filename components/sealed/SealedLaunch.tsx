@@ -793,7 +793,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             permanently below the fold — the exact conversion problem the single-column layout
             had. Split it: the decisions scroll, the action does not. */}
         <div className="min-w-0 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-2rem)] lg:flex-col lg:self-start">
-          <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 no-scrollbar">
+          {/* Same fade as the code block: the rail's scroll boundary cut the cost card
+              mid-sentence, which reads as a layout bug rather than as "scroll for more".
+              lg-only, because on a phone the rail is not a scroll container at all. */}
+          <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 lg:[mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] no-scrollbar">
             {/* Name */}
             <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
               <label className="font-display text-[13px] font-semibold text-white" htmlFor="vault-name">
@@ -814,6 +817,107 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 What depositors see. Never your source.
               </p>
             </div>
+
+            {/* Markets. A primary decision, not an execution setting: picking a second one
+                changes which contract the vault runs on and what it can do. */}
+            {config && config.markets.length > 0 && (
+              <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h3 className="font-display text-[13px] font-semibold text-white">
+                    Markets to trade
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const all = config.markets.map((m) => m.name);
+                      // Toggle, so the shortcut can undo itself. Never empty — a vault with no
+                      // market cannot be created, and an empty selection would fail at the
+                      // signature rather than here.
+                      setMarkets(markets.length === all.length ? [all[0]] : all);
+                      setCommitInfo(null);
+                    }}
+                    className="text-[12px] text-zinc-400 transition-colors hover:text-white disabled:opacity-40"
+                  >
+                    {markets.length === config.markets.length ? "Just one" : "Select all"}
+                  </button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {config.markets.map((m) => {
+                    const on = markets.includes(m.name);
+                    return (
+                      <button
+                        key={m.addr}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        disabled={busy}
+                        onClick={() => {
+                          setMarkets((prev) => {
+                            if (!prev.includes(m.name)) return [...prev, m.name];
+                            // Refuse to deselect the last one rather than allowing an
+                            // unlaunchable state and explaining it afterwards.
+                            if (prev.length === 1) return prev;
+                            return prev.filter((x) => x !== m.name);
+                          });
+                          setCommitInfo(null);
+                        }}
+                        className={cn(
+                          "rounded-[10px] border px-2.5 py-1.5 font-mono text-[12px] transition-colors disabled:opacity-40",
+                          on
+                            ? "border-accent/60 bg-accent/10 text-accent"
+                            : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:text-white",
+                        )}
+                      >
+                        {m.name.replace("/USD", "")}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isPortfolio ? (
+                  <div className="mt-2.5 border-t border-white/[0.06] pt-2.5">
+                    <p className="text-[12px] leading-relaxed text-zinc-300">
+                      <span className="font-semibold text-white">Portfolio mode.</span> Your
+                      strategy is evaluated on each market separately and can hold up to{" "}
+                      {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)}{" "}
+                      positions at once, long or short.
+                    </p>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                      <Review
+                        k="Total exposure cap"
+                        v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
+                      />
+                      <Review
+                        k="Per position"
+                        v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
+                      />
+                      <Review
+                        k="Auto-close after"
+                        v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
+                      />
+                      <Review
+                        k="Funding stop-out"
+                        v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
+                      />
+                    </dl>
+                    {/* These two are the point of portfolio mode and are easy to miss in a
+                        table of caps, so they get a sentence. */}
+                    <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
+                      The contract closes any position held past the limit, or whose funding
+                      cost passes the stop-out — whether or not your strategy asks. Anyone can
+                      trigger that, so a stalled attestor cannot leave money in the market.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2.5 text-[12px] leading-relaxed text-zinc-400">
+                    One market, one position at a time, long or short. Pick a second market to
+                    run the same strategy across several at once.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Source visibility */}
             <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
@@ -924,107 +1028,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 {!config.economics.termsOnChain && (
                   <p className="mt-2 text-[12px] leading-relaxed text-amber-500/90">
                     Estimated — the contract isn&apos;t deployed here, so these are defaults.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Markets. A primary decision, not an execution setting: picking a second one
-                changes which contract the vault runs on and what it can do. */}
-            {config && config.markets.length > 0 && (
-              <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="font-display text-[13px] font-semibold text-white">
-                    Markets to trade
-                  </h3>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const all = config.markets.map((m) => m.name);
-                      // Toggle, so the shortcut can undo itself. Never empty — a vault with no
-                      // market cannot be created, and an empty selection would fail at the
-                      // signature rather than here.
-                      setMarkets(markets.length === all.length ? [all[0]] : all);
-                      setCommitInfo(null);
-                    }}
-                    className="text-[12px] text-zinc-400 transition-colors hover:text-white disabled:opacity-40"
-                  >
-                    {markets.length === config.markets.length ? "Just one" : "Select all"}
-                  </button>
-                </div>
-
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {config.markets.map((m) => {
-                    const on = markets.includes(m.name);
-                    return (
-                      <button
-                        key={m.addr}
-                        type="button"
-                        role="checkbox"
-                        aria-checked={on}
-                        disabled={busy}
-                        onClick={() => {
-                          setMarkets((prev) => {
-                            if (!prev.includes(m.name)) return [...prev, m.name];
-                            // Refuse to deselect the last one rather than allowing an
-                            // unlaunchable state and explaining it afterwards.
-                            if (prev.length === 1) return prev;
-                            return prev.filter((x) => x !== m.name);
-                          });
-                          setCommitInfo(null);
-                        }}
-                        className={cn(
-                          "rounded-[10px] border px-2.5 py-1.5 font-mono text-[12px] transition-colors disabled:opacity-40",
-                          on
-                            ? "border-accent/60 bg-accent/10 text-accent"
-                            : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:text-white",
-                        )}
-                      >
-                        {m.name.replace("/USD", "")}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {isPortfolio ? (
-                  <div className="mt-2.5 border-t border-white/[0.06] pt-2.5">
-                    <p className="text-[12px] leading-relaxed text-zinc-300">
-                      <span className="font-semibold text-white">Portfolio mode.</span> Your
-                      strategy is evaluated on each market separately and can hold up to{" "}
-                      {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)}{" "}
-                      positions at once, long or short.
-                    </p>
-                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
-                      <Review
-                        k="Total exposure cap"
-                        v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
-                      />
-                      <Review
-                        k="Per position"
-                        v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
-                      />
-                      <Review
-                        k="Auto-close after"
-                        v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
-                      />
-                      <Review
-                        k="Funding stop-out"
-                        v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
-                      />
-                    </dl>
-                    {/* These two are the point of portfolio mode and are easy to miss in a
-                        table of caps, so they get a sentence. */}
-                    <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
-                      The contract closes any position held past the limit, or whose funding
-                      cost passes the stop-out — whether or not your strategy asks. Anyone can
-                      trigger that, so a stalled attestor cannot leave money in the market.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mt-2.5 text-[12px] leading-relaxed text-zinc-400">
-                    One market, one position at a time, long or short. Pick a second market to
-                    run the same strategy across several at once.
                   </p>
                 )}
               </div>

@@ -97,8 +97,14 @@ export function CodeBlock({
           </button>
         </div>
       </div>
-      <div className="overflow-auto" style={{ maxHeight }}>
-        <pre className="min-w-full p-3 font-mono text-[11px] leading-[1.65] text-zinc-300">
+      {/* A hard cut through the middle of a line of code reads as a rendering bug rather than
+          as "there is more below". The mask fades the last few pixels so the clip is legible
+          as a scroll affordance; `overflow-auto` still does the actual scrolling. */}
+      <div
+        className="overflow-auto [mask-image:linear-gradient(to_bottom,black_calc(100%-18px),transparent)]"
+        style={{ maxHeight }}
+      >
+        <pre className="min-w-full p-3 pb-5 font-mono text-[11px] leading-[1.65] text-zinc-300">
           <code>
             {lines.map((l, i) => (
               <div key={i} className="flex">

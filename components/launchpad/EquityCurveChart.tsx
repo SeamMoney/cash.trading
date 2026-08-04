@@ -190,7 +190,11 @@ export function EquityCurveChart({ data, initialCapital = 10_000 }: EquityCurveC
         className="mb-1 flex items-center justify-between"
         style={{ opacity: revealed ? 1 : 0, transition: "opacity 0.4s ease 0.6s" }}
       >
-        <span className="text-[10px] text-zinc-500">Equity Curve (baseline run, $10k start)</span>
+        {/* The start was hardcoded to $10k, so a $100 backtest labelled itself
+            $10k — a caption that contradicts every number under it. */}
+        <span className="text-[10px] text-zinc-500">
+          Equity curve · ${initialCapital.toLocaleString("en-US", { maximumFractionDigits: 0 })} start
+        </span>
         <span className={`text-xs font-mono font-semibold ${pct >= 0 ? "text-green-400" : "text-red-400"}`}>
           {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
         </span>

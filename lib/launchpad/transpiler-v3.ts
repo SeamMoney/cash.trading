@@ -88,7 +88,11 @@ function estimateGas(ir: IndicatorIR): number {
 
 // ─── Confidence scoring ──────────────────────────────────────────────────────
 
-function scoreConfidence(ast: ParsedPine, ir: IndicatorIR): {
+function scoreConfidence(
+  ast: ParsedPine,
+  ir: IndicatorIR,
+  opts?: TranspileV3Options,
+): {
   confidence: TranspileV3Result["confidence"];
   warnings: string[];
   errors: string[];
@@ -114,7 +118,20 @@ function scoreConfidence(ast: ParsedPine, ir: IndicatorIR): {
   // custom functions whose body lowered to nothing but must return a value.
   errors.push(...collectUndeclaredFieldErrors(ir));
   errors.push(...collectEmptyFuncBodyErrors(ir));
-  // Silently infer signals when no explicit strategy.entry() found
+
+  // No strategy logic was recovered at all, so the IR's buy/sell conditions were
+  // INVENTED (a price-vs-previous-price momentum rule). The old launchpad target
+  // tolerates that as a warning. A sealed vault cannot: the creator's commitment
+  // would bind a program they never wrote, the chart would show one strategy and
+  // the vault would trade another, and nothing anywhere would say so. Hard reject.
+  if (ir.fabricatedSignal) {
+    const message =
+      "No strategy logic was found in this script — no strategy.entry() and no "
+      + "recognised pattern. A vault built from it would trade a substituted rule, "
+      + "not yours.";
+    if (opts?.target === "vault") errors.push(message);
+    else warnings.push(message);
+  }
 
   // Visual stripping info
   const visuals = ir.visualsStripped ?? [];
@@ -389,7 +406,7 @@ export function transpileV3(
   const moveToml = generateMoveToml(ir.moduleName, creatorAddr);
 
   // 5. Score confidence
-  const { confidence, warnings, errors } = scoreConfidence(ast, ir);
+  const { confidence, warnings, errors } = scoreConfidence(ast, ir, options);
   if (errors.length > 0) {
     moveSource = renderRejectedMoveSource(errors);
   }

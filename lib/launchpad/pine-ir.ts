@@ -110,6 +110,16 @@ export interface IndicatorIR {
   varFields?: Array<{ name: string; historyDepth: number }>;
   visualsStripped?: string[];
   needsOHLC?: boolean;
+  /**
+   * True when NO strategy logic could be recovered from the source and the signal
+   * conditions below were invented by the `default:` fallback in `buildSignalLogic`.
+   *
+   * That fallback exists so the older launchpad flow always has something to emit,
+   * but for a sealed vault it is a trap: the creator commits to a program that does
+   * something they never wrote, with no error to warn them. `transpileV3` refuses
+   * to build a vault target when this is set.
+   */
+  fabricatedSignal?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -971,7 +981,7 @@ export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): Indic
 
   // ── Step 6: Build signal logic ──────────────────────────────────────────
 
-  const signalLogic = buildSignalLogic(parsed, buyIR, sellIR);
+  const { fabricated: fabricatedSignal, ...signalLogic } = buildSignalLogic(parsed, buyIR, sellIR);
 
   // ── Step 7: Generate module name ────────────────────────────────────────
 
@@ -994,6 +1004,7 @@ export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): Indic
     varFields,
     visualsStripped,
     needsOHLC,
+    fabricatedSignal,
   };
 }
 
@@ -1007,7 +1018,7 @@ function buildSignalLogic(
   parsed: ParsedPine,
   buyIR: IRExpr | null,
   sellIR: IRExpr | null,
-): IRSignalLogic {
+): IRSignalLogic & { fabricated?: boolean } {
   // If we have explicit expressions, use them
   if (buyIR && sellIR) {
     return { buyCondition: buyIR, sellCondition: sellIR };
@@ -1193,6 +1204,9 @@ function buildSignalLogic(
       // Unknown / custom pattern — use any partial expression we have,
       // or fall back to a simple price-vs-SMA comparison
       return {
+        // Nothing at all was recovered: both sides below are inventions. Flagged so
+        // callers that cannot tolerate a substituted strategy can refuse outright.
+        fabricated: !buyIR && !sellIR,
         buyCondition: buyIR ?? {
           kind: "binop", op: ">",
           left: { kind: "price" },

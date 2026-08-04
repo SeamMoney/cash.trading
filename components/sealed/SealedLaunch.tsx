@@ -37,6 +37,7 @@ import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { SURFACE_CARD_SOLID, SURFACE_CONTROL } from "@/lib/surface";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
+import { SealedBacktest } from "@/components/sealed/SealedBacktest";
 
 interface SealedConfig {
   packageAddress: string | null;
@@ -706,9 +707,25 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               {/* Full-height on desktop; capped on a phone, where it otherwise ate an entire
                   screen of scroll for context the user glances at. */}
               <div className="max-h-[280px] overflow-hidden sm:max-h-none">
-                <PineVisualPreview pineScript={effectivePine} />
+                <PineVisualPreview
+                  asset={marketName ?? config?.markets[0]?.name ?? undefined}
+                  pineScript={effectivePine}
+                />
               </div>
             </div>
+          )}
+
+          {/* Measure it before paying to launch it. Runs the same evaluator the
+              attestor uses, priced with the same fees the vault will be charged. */}
+          {effectivePine && (
+            <SealedBacktest
+              asset={marketName ?? config?.markets[0]?.name ?? "BTC/USD"}
+              initialCapital={seedUsdc}
+              maxLeverageX100={maxLeverageX100}
+              pctBps={pctBps}
+              pineScript={effectivePine}
+              slippageBps={config?.defaults?.slippageBps ?? 30}
+            />
           )}
         </div>
 

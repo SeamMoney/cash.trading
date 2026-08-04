@@ -26,6 +26,7 @@
     "postinstall": "prisma generate",
     "sealed:e2e": "tsx scripts/sealed-e2e-deploy.ts",
     "test:catalog": "tsx scripts/sealed-catalog-selftest.ts",
+    "test:backtest": "tsx scripts/sealed-backtest-selftest.ts",
     "test:economics": "tsx scripts/vault-economics-selftest.ts",
     "test:source-vault": "tsx scripts/sealed-source-vault-selftest.ts",
     "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish"

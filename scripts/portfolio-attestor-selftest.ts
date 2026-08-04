@@ -28,6 +28,7 @@ import {
   validateActions,
   type Action,
 } from "../lib/portfolio-attestor";
+import { requestedPctBps } from "../lib/portfolio-tick";
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
@@ -161,7 +162,41 @@ for (let i = 0; i < prices.length; i++) {
 }
 console.log(`  ok   fold ${hex(folded).slice(0, 16)}… commits every market's price`);
 
-console.log("\n7. Move test fixture (paste into portfolio_vault_tests.move)");
+console.log("\n7. Strategy-requested sizing");
+{
+  // Only the explicit percent-of-equity form is honoured. A bare `qty` is a CONTRACT count in
+  // PineScript, and reading it as a percentage would silently mis-size every strategy using
+  // the default — 10 contracts becoming 10% of NAV, or 500 contracts becoming a rejected 500%.
+  assert.equal(requestedPctBps(`strategy("x", overlay=true)\n`), null);
+  assert.equal(
+    requestedPctBps(`strategy("x", overlay=true, default_qty_value=25)\n`),
+    null,
+    "a qty value without percent_of_equity was read as a percentage",
+  );
+  assert.equal(
+    requestedPctBps(
+      `strategy("x", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=25)\n`,
+    ),
+    2500,
+  );
+  assert.equal(
+    requestedPctBps(
+      `strategy("x", default_qty_type=strategy.percent_of_equity, default_qty_value=7.5)\n`,
+    ),
+    750,
+  );
+  // Out-of-range values fall back rather than clamping: a script asking for 400% of equity has
+  // a bug, and quietly turning it into the cap would hide it.
+  assert.equal(
+    requestedPctBps(
+      `strategy("x", default_qty_type=strategy.percent_of_equity, default_qty_value=400)\n`,
+    ),
+    null,
+  );
+  console.log("  ok   percent_of_equity honoured, bare qty and out-of-range values ignored");
+}
+
+console.log("\n8. Move test fixture (paste into portfolio_vault_tests.move)");
 console.log(`    pubkey         = x"${hex(pubkey)}";`);
 console.log(`    commitment     = x"${hex(commitment)}";`);
 console.log(`    genesis        = x"${hex(genesis)}";`);

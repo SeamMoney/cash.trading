@@ -131,6 +131,29 @@ curl -s https://api.mainnet.aptoslabs.com/v1/view \
 
 If this 404s, the package didn't publish. If it aborts, `init_platform` didn't run.
 
+### 2.5 Confirm the funding sign convention — REQUIRED before a portfolio vault
+
+`portfolio_vault::funding_exceeded` force-closes a leg whose accrued funding has eaten more
+than `max_adverse_funding_bps` of its notional. It decides *adverse* from the SIGN of
+`position_view_types::get_position_info_unrealized_funding_amount_before_last_update`, reading
+negative as "this position owes funding".
+
+That reading is inferred from the accessor's name. The ABI does not state it and Decibel's
+source is not public, so it gets checked against reality:
+
+```bash
+pnpm decibel:funding-canary --network mainnet 0x<account-with-a-long> 0x<account-with-a-short>
+```
+
+Pass any accounts with live perp exposure — the check needs a long and a short on the *same*
+market. It confirms the field is directional (opposite signs per side) rather than a magnitude.
+
+**If it reports the convention is inverted**, flip the comparison in `funding_exceeded` and the
+note in `deps/decibel_perp_dex/sources/position_view_types.move` before publishing. Inverted,
+the module force-closes positions that are being *paid* to stay open: a continuous drain that
+looks like a bad strategy rather than a bug. This step does not apply to single-market
+`sealed_vault`, which never reads funding.
+
 ---
 
 ## 3. Database
@@ -382,11 +405,32 @@ table. Vaults we don't attest have no rows, reported as *unavailable* — never 
 maker/taker fees, our 2 bp builder fee and slippage. The UI labels it as such. It is **not** a
 depositor's net return, and shouldn't be presented as one in marketing.
 
-### 8.5 One market
+### 8.5 One market in the single-market path
 
 Only BTC/USD is in `SEALED_MARKETS`. Mainnet params verified against the live chain
 (lot 1000, min 2000, tick 100000, 1e8 precision) — and note they **differ from testnet**
 (lot 10000, min 20000, 1e9), which is exactly the kind of drift that has caused aborts before.
+
+`portfolio_vault` takes its allowlist per vault at creation, so it is not limited to that
+table — but every market you put in a vault's allowlist needs its own verified lot / min /
+tick, from the same live-chain read, for the same reason.
+
+### 8.5a Portfolio mode is unpublished and untested against a live engine
+
+`cash_strategy::portfolio_vault` compiles, its Move unit tests pass, and its BCS layout is
+cross-checked against TypeScript inside the VM. **None of it has run against a real Decibel
+engine.** In particular these are unverified end-to-end:
+
+- `public_read_api::view_position` / `get_position_size` / `get_market_round_price_to_ticker` /
+  `get_market_round_size_to_lot` — all four are present on the live mainnet ABI with matching
+  signatures, but this module has never actually called them.
+- The funding sign convention (§2.5).
+- Gas cost per tick with a multi-market allowlist. Every market is priced on every bar, so a
+  16-market vault does 16 mark-price reads per tick, forever, paid by the crank wallet. Measure
+  before setting the crank funding in §5 — the 0.000186 APT/tick figure there is single-market.
+
+Do not launch a portfolio vault with depositor money before a testnet vault has ticked, opened,
+force-closed on `max_hold_bars`, and had `force_close_stale` called by an unrelated account.
 
 ### 8.6 `sealedRegistryAvailable()` only checks that `DATABASE_URL` is non-empty
 

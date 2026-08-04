@@ -178,6 +178,19 @@ export async function GET(
       cumulativeReturnPct: roundTrips.length ? cumulative * 100 : null,
       maxDrawdownPct: roundTrips.length ? maxDrawdown * 100 : null,
       recentTrades: roundTrips.slice(-20).reverse(),
+      /**
+       * Individual fills, oldest first, for plotting on the price trace. Round trips
+       * summarise; these are the marks a depositor can point at and say "that is when
+       * my money moved". Prices are 1e8-scaled like the trace, so both are on one axis.
+       */
+      fills: tradeEvents.slice(-200).map((t) => ({
+        seq: t.seq,
+        timestamp: t.timestamp,
+        price: t.price,
+        isBuy: t.isBuy,
+        reduceOnly: t.reduceOnly,
+        size: t.size,
+      })),
       /** "unavailable" means P&L could not be computed, NOT that the vault has no trades. */
       tradeSource,
       /** Committed price series, 1e8-scaled, oldest first. */

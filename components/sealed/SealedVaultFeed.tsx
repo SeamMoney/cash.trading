@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { SealedTraceChart, type TraceFill } from "@/components/sealed/SealedTraceChart";
 
 import { cn } from "@/lib/utils";
 import { AnimatedNumber, Banner, ContentState, Pressable, Reveal, Skeleton, ActionButton } from "@/components/ui/interactions";
@@ -59,6 +60,11 @@ interface PerfSummary {
   maxDrawdownPct: number | null;
   tradeSource: "recorded" | "unavailable";
   note: string;
+  /** Committed price series, 1e8-scaled, oldest first. */
+  trace?: number[];
+  traceTimestamps?: number[];
+  /** Individual fills, for marking on the trace. */
+  fills?: TraceFill[];
 }
 
 function PerfStat({ k, v, tone }: { k: string; v: string; tone?: "good" | "bad" }) {
@@ -344,6 +350,17 @@ export function SealedVaultFeed() {
                   ],
                   ["Rules frozen", detail.onChain.sealed ? "Yes" : "No"],
                 ]}
+              />
+            )}
+
+            {/* What the vault actually did, on the prices the contract actually signed.
+                A depositor should be able to see their money move, not just read a
+                summary statistic about it. */}
+            {perf?.trace && perf.traceTimestamps && perf.trace.length > 1 && (
+              <SealedTraceChart
+                fills={perf.fills ?? []}
+                trace={perf.trace}
+                traceTimestamps={perf.traceTimestamps}
               />
             )}
 

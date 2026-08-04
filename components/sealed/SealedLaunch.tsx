@@ -620,6 +620,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 </span>
               </div>
               <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-300">{selected.blurb}</p>
+              <p className="mt-1 font-mono text-[11px] text-zinc-500">
+                Draws {selected.draws.toLowerCase()}.
+              </p>
             </div>
           )}
 

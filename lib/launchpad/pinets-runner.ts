@@ -14,6 +14,17 @@ export interface PineTSPlot {
   data: Array<{ time: number; value: number | null; color: string }>;
   lineWidth?: number;
   visible: boolean;
+  /** `histogram` draws bars from zero — MACD's third series, not a line. */
+  style?: "line" | "histogram";
+  /** The colour the script asked for. Honoured verbatim by the renderer. */
+  color?: string;
+}
+
+/** A constant level from `hline()` — the 30/70 bands an RSI script is unreadable without. */
+export interface PineTSGuide {
+  title: string;
+  value: number;
+  color: string;
 }
 
 export interface PineTSFill {
@@ -46,6 +57,7 @@ export interface PineTSResult {
   fills: PineTSFill[];
   labels: PineTSLabel[];
   lines: PineTSLine[];
+  guides: PineTSGuide[];
   indicatorTitle: string;
   overlay: boolean;
 }
@@ -59,7 +71,7 @@ export function runOwnRuntime(
   if (!pineScript || candles.length === 0) return null;
   try {
     const ast = parsePine(pineScript);
-    const { plots, signals } = executeRuntime(ast, candles);
+    const { plots, signals, guides, fills } = executeRuntime(ast, candles);
 
     // Need at least plots or signals to show something useful
     if (plots.length === 0 && signals.length === 0) return null;
@@ -74,8 +86,17 @@ export function runOwnRuntime(
     const pineTSPlots: PineTSPlot[] = plots.map(p => ({
       title: p.title,
       lineWidth: p.lineWidth,
+      style: p.style,
+      color: p.color,
       visible: true,
       data: p.data.map(d => ({ time: d.time, value: d.value, color: d.color })),
+    }));
+
+    // `fill(u, l)` names plots; the renderer resolves band edges by plot title.
+    const pineTSFills: PineTSFill[] = fills.map(f => ({
+      title: f.title,
+      data: [],
+      options: { plot1: f.upper, plot2: f.lower, color: f.color },
     }));
 
     // Convert strategy signals → labels (rendered as chart markers)
@@ -95,7 +116,15 @@ export function runOwnRuntime(
       });
     }
 
-    return { plots: pineTSPlots, fills: [], labels, lines: [], indicatorTitle, overlay };
+    return {
+      plots: pineTSPlots,
+      fills: pineTSFills,
+      labels,
+      lines: [],
+      guides,
+      indicatorTitle,
+      overlay,
+    };
   } catch {
     return null;
   }
@@ -222,7 +251,7 @@ export async function runPineTS(
       }
     }
 
-    return { plots, fills, labels, lines, indicatorTitle, overlay };
+    return { plots, fills, labels, lines, guides: [], indicatorTitle, overlay };
   } catch (err) {
     // Expected for scripts the PineTS library can't parse — the caller falls
     // back to our own runtime's result, so this is a soft miss, not an error.

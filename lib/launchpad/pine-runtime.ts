@@ -18,7 +18,27 @@ import type { Candle } from "./types";
 export interface RuntimePlot {
   title: string;
   lineWidth: number;
+  /** `line` draws a polyline; `histogram` draws bars from zero. */
+  style: "line" | "histogram";
+  /** The colour the script asked for, so two series never collide by accident. */
+  color: string;
   data: Array<{ time: number; value: number; color: string }>;
+}
+
+/** A constant horizontal level — `hline(70, …)`. Renders as a dashed guide. */
+export interface RuntimeGuide {
+  title: string;
+  value: number;
+  color: string;
+}
+
+/** A shaded band between two plots — `fill(a, b, …)`. */
+export interface RuntimeFill {
+  title: string;
+  /** Plot titles, resolved from the `plot()` bindings the script named. */
+  upper: string;
+  lower: string;
+  color: string;
 }
 
 export interface RuntimeSignal {
@@ -39,6 +59,10 @@ interface BarContext {
   plots: Map<string, RuntimePlot>;  // plot key → accumulated plot data
   plotOrder: string[];              // insertion order of plot keys
   signals: RuntimeSignal[];         // strategy.entry / strategy.close events
+  guides: Map<string, RuntimeGuide>; // hline() levels, deduped by value
+  fills: Map<string, RuntimeFill>;  // fill() bands, deduped by title
+  /** `u = plot(...)` — variable name → plot title, so fill(u, l) can resolve. */
+  plotBindings: Map<string, string>;
 }
 
 /** Return value from a custom function — may be a single number or a tuple */
@@ -62,9 +86,15 @@ const MAX_ITERATIONS = 256;
 export function executeRuntime(
   ast: ParsedPine,
   candles: Candle[],
-): { history: Map<string, number[]>; plots: RuntimePlot[]; signals: RuntimeSignal[] } {
+): {
+  history: Map<string, number[]>;
+  plots: RuntimePlot[];
+  signals: RuntimeSignal[];
+  guides: RuntimeGuide[];
+  fills: RuntimeFill[];
+} {
   if (!candles || candles.length === 0) {
-    return { history: new Map(), plots: [], signals: [] };
+    return { history: new Map(), plots: [], signals: [], guides: [], fills: [] };
   }
 
   // Shared state across all bars
@@ -75,6 +105,9 @@ export function executeRuntime(
   const plots = new Map<string, RuntimePlot>();
   const plotOrder: string[] = [];
   const signals: RuntimeSignal[] = [];
+  const guides = new Map<string, RuntimeGuide>();
+  const fills = new Map<string, RuntimeFill>();
+  const plotBindings = new Map<string, string>();
 
   // ── Phase 0: Register function definitions ────────────────────────────────
   for (const stmt of ast.statements) {
@@ -128,6 +161,9 @@ export function executeRuntime(
       plots,
       plotOrder,
       signals,
+      guides,
+      fills,
+      plotBindings,
     };
 
     // Execute every statement in order
@@ -139,7 +175,24 @@ export function executeRuntime(
     snapshotHistory(ctx);
   }
 
-  return { history, plots: plotOrder.map(k => plots.get(k)!), signals };
+  // `fill(u, l)` names plot *variables*; the renderer needs plot *titles*. Resolve
+  // here, where both maps are in scope, and drop any band whose plots never
+  // materialised rather than shipping a dangling reference to the chart.
+  const resolvedFills: RuntimeFill[] = [];
+  for (const f of fills.values()) {
+    const upper = plotBindings.get(f.upper) ?? f.upper;
+    const lower = plotBindings.get(f.lower) ?? f.lower;
+    if (!plots.has(upper) || !plots.has(lower)) continue;
+    resolvedFills.push({ ...f, upper, lower });
+  }
+
+  return {
+    history,
+    plots: plotOrder.map(k => plots.get(k)!),
+    signals,
+    guides: [...guides.values()],
+    fills: resolvedFills,
+  };
 }
 
 // ─── History Snapshotting ───────────────────────────────────────────────────
@@ -175,32 +228,100 @@ function snapshotHistory(ctx: BarContext): void {
 
 let _plotCounter = 0;
 
-function executePlot(stmt: Extract<Stmt, { k: "visual" }>, ctx: BarContext): void {
-  if (stmt.fn !== "plot") return; // only handle plot() — plotshape/fill etc. ignored for now
+/** Read a string-valued keyword/positional argument, or undefined. */
+function strArg(e: Expr | undefined): string | undefined {
+  return e?.k === "str" ? e.v : undefined;
+}
 
-  const value = toNumber(evalExpr(stmt.args[0], ctx));
-  if (!Number.isFinite(value)) return; // skip NaN/Infinity bars
+/**
+ * Read a plot *reference* — `fill(u, l)` names the variables a `plot()` call was
+ * assigned to, so the argument arrives as an identifier, not a string.
+ */
+function refArg(e: Expr | undefined): string | undefined {
+  if (!e) return undefined;
+  if (e.k === "str") return e.v;
+  if (e.k === "id") return e.name;
+  return undefined;
+}
+
+/** `plot.style_histogram` arrives as a zero-arg namespaced call, not a string. */
+function styleArg(e: Expr | undefined): "line" | "histogram" | undefined {
+  const raw =
+    e?.k === "str" ? e.v
+    : e?.k === "id" ? e.name
+    : e?.k === "call" ? `${e.ns ?? ""}.${e.fn}`
+    : undefined;
+  if (!raw) return undefined;
+  return /histogram|column/i.test(raw) ? "histogram" : "line";
+}
+
+function executePlot(
+  stmt: Extract<Stmt, { k: "visual" }>,
+  ctx: BarContext,
+  /** Set when the call came from `u = plot(...)`, so `fill(u, …)` can resolve. */
+  bindName?: string,
+): void {
+  // `hline` and `fill` describe the chart, not a series — record them once and
+  // return. They were silently dropped before, which is why an RSI script drew a
+  // line with no 30/70 bands and a Bollinger script drew no channel.
+  if (stmt.fn === "hline") {
+    const value = toNumber(evalExpr(stmt.args[0], ctx));
+    if (!Number.isFinite(value)) return;
+    const key = String(value);
+    if (ctx.guides.has(key)) return;
+    ctx.guides.set(key, {
+      title: strArg(stmt.kw["title"] ?? stmt.args[1]) ?? String(value),
+      value,
+      color: strArg(stmt.kw["color"]) ?? "#7c8496",
+    });
+    return;
+  }
+
+  if (stmt.fn === "fill") {
+    const upper = refArg(stmt.args[0]);
+    const lower = refArg(stmt.args[1]);
+    if (!upper || !lower) return;
+    const title = strArg(stmt.kw["title"]) ?? `${upper}/${lower}`;
+    if (ctx.fills.has(title)) return;
+    ctx.fills.set(title, {
+      title,
+      upper,
+      lower,
+      color: strArg(stmt.kw["color"]) ?? "#4da3ff22",
+    });
+    return;
+  }
+
+  if (stmt.fn !== "plot") return; // plotshape/plotchar/bgcolor still ignored
 
   // Determine plot title (keyword arg "title" or fallback)
   const titleExpr = stmt.kw["title"] ?? stmt.args[1];
-  const title = titleExpr?.k === "str" ? titleExpr.v : `plot${_plotCounter}`;
+  const title = strArg(titleExpr) ?? `plot${_plotCounter}`;
 
   // Determine color (keyword arg "color")
-  const colorExpr = stmt.kw["color"];
-  const color = colorExpr?.k === "str" ? colorExpr.v : "#ffffff";
+  const color = strArg(stmt.kw["color"]) ?? "#ffffff";
 
   // Determine line width
   const lwExpr = stmt.kw["linewidth"] ?? stmt.args[3];
   const lineWidth = lwExpr ? Math.max(1, Math.min(4, Math.round(toNumber(evalExpr(lwExpr, ctx))))) : 2;
+  const style = styleArg(stmt.kw["style"]) ?? "line";
 
   // Use title as key (stable across bars); fall back to synthetic key
   const key = title;
 
+  // Bind BEFORE the finite check: a plot whose first bars are NaN (every moving
+  // average during warmup) must still be referenceable by `fill`, or the band
+  // silently disappears for exactly the scripts that need it most.
+  if (bindName) ctx.plotBindings.set(bindName, key);
+
   if (!ctx.plots.has(key)) {
     _plotCounter++;
-    ctx.plots.set(key, { title, lineWidth, data: [] });
+    ctx.plots.set(key, { title, lineWidth, style, color, data: [] });
     ctx.plotOrder.push(key);
   }
+
+  const value = toNumber(evalExpr(stmt.args[0], ctx));
+  if (!Number.isFinite(value)) return; // skip NaN/Infinity bars
 
   const candle = ctx.candle;
   ctx.plots.get(key)!.data.push({
@@ -243,6 +364,24 @@ function executeAssign(
   ctx: BarContext,
 ): void {
   const { targets, value, reDecl } = stmt;
+
+  // `u = plot(upper, …)` — Pine's way of naming a plot so `fill(u, l)` can refer
+  // to it. The parser only recognises a visual call in *statement* position, so
+  // this form reached here as an ordinary assignment and the series never drew.
+  // Every banded indicator (Bollinger, Donchian, Keltner) is written this way.
+  if (
+    targets.length === 1
+    && value.k === "call"
+    && !value.ns
+    && (value.fn === "plot" || value.fn === "hline")
+  ) {
+    executePlot(
+      { k: "visual", fn: value.fn, args: value.args, kw: value.kw },
+      ctx,
+      targets[0],
+    );
+    return;
+  }
 
   if (targets.length === 1) {
     // Single target assignment
@@ -357,11 +496,13 @@ function executeExprStmt(
   ctx: BarContext,
 ): void {
   const expr = stmt.e;
-  // Skip strategy.* and indicator() calls — they have no runtime effect
-  if (expr.k === "call") {
-    if (expr.ns === "strategy") return;
-    if (expr.fn === "indicator") return;
-    if (expr.fn === "strategy") return;
+  // `indicator(...)` / `strategy(...)` are the header declaration, not logic.
+  // `strategy.entry` and friends ARE evaluated — that is how entry signals become
+  // markers on the chart. They used to be skipped here because the parser leaked
+  // if-block statements to top level, so evaluating them fired an entry on every
+  // bar; the parser now scopes them correctly, so the guard is no longer needed.
+  if (expr.k === "call" && !expr.ns && (expr.fn === "indicator" || expr.fn === "strategy")) {
+    return;
   }
   evalExpr(expr, ctx);
 }
@@ -511,8 +652,15 @@ function evalCall(
     const time = candle.timestamp < 1e12 ? candle.timestamp : candle.timestamp / 1000;
     if (fn === "entry") {
       // Detect direction: second arg is strategy.long or strategy.short
+      // `strategy.short` parses as a namespaced call, not a bare identifier —
+      // matching only on `id` meant every short entry was recorded as a buy.
       const dirArg = args[1];
-      const isShort = dirArg?.k === "id" && dirArg.name.includes("short");
+      const dirName =
+        dirArg?.k === "id" ? dirArg.name
+        : dirArg?.k === "call" ? `${dirArg.ns ?? ""}.${dirArg.fn}`
+        : dirArg?.k === "str" ? dirArg.v
+        : "";
+      const isShort = /short/i.test(dirName);
       ctx.signals.push({ time, price: candle.low, type: isShort ? "sell" : "buy" });
     } else if (fn === "close" || fn === "close_all" || fn === "exit") {
       ctx.signals.push({ time, price: candle.high, type: "sell" });

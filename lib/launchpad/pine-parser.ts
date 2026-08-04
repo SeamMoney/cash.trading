@@ -478,6 +478,11 @@ export function parsePine(src: string): ParsedPine {
       eat("ASSIGN");
       const value = parseExpr();
       const stmt: Stmt = { k: "assign", targets, value, reDecl: true };
+      // Push it like every other statement. It was the one statement kind left out
+      // of `result.statements`, so the bar-by-bar runtime never executed it — which
+      // left `macdLine`, `upper`, `lower` and every other destructured series
+      // permanently NaN, and their plots empty.
+      result.statements.push(stmt);
       // Extract TA call info from destructured assignments
       extractTAFromAssign(targets, value);
       return stmt;
@@ -637,7 +642,11 @@ export function parsePine(src: string): ParsedPine {
       // Check for namespace visual functions (label.new, line.new, box.new, table.new)
       if (ns && VISUAL_NS_FNS.has(`${ns}.${fn}`) && is("LPAREN")) {
         const fullName = `${ns}.${fn}`;
-        pos -= 2; // backtrack to ns
+        // Three tokens were consumed to get here — `label`, `.`, `new` — so the
+        // backtrack must be 3. Rewinding 2 landed on the DOT, `parseExpr` gave up
+        // and returned `na`, and every `label.new`/`line.new` in a script silently
+        // became a no-op. That is why scripts that used to draw on the chart stopped.
+        pos -= 3;
         const e = parseExpr();
         const args = e.k === "call" ? e.args : [];
         const kw = e.k === "call" ? (e.kw ?? {}) : {};
@@ -648,8 +657,11 @@ export function parsePine(src: string): ParsedPine {
       }
 
       if (is("LPAREN")) {
-        // Re-parse as expression
-        pos -= (ns ? 2 : 1); // backtrack
+        // Re-parse as expression. `ns.fn` cost three tokens (ID, DOT, ID), not two —
+        // the old rewind left the cursor on the DOT, so `strategy.entry(...)` parsed
+        // as `na` and the runtime never saw an entry signal. No entry signal means no
+        // buy/sell marker on the preview chart, which is exactly the symptom.
+        pos -= (ns ? 3 : 1); // backtrack
         const e = parseExpr();
         const stmt: Stmt = { k: "expr", e };
         result.statements.push(stmt);
@@ -675,6 +687,14 @@ export function parsePine(src: string): ParsedPine {
     skip();
     // Collect statements until we see something that looks like a top-level line
     const startPos = pos;
+    // `parseStatement` appends to `result.statements` unconditionally, so every
+    // statement inside an `if` body used to appear TWICE in the AST: once nested,
+    // once at top level where it would run on every bar regardless of the
+    // condition. The runtime papered over that by refusing to execute
+    // `strategy.*` expression statements at all — which meant no entry ever
+    // registered, and the preview chart never drew a single buy or sell marker.
+    // Fixing it at the source: the block owns its statements, so unwind them.
+    const ownedFrom = result.statements.length;
     let attempts = 0;
     while (!is("EOF") && attempts < 20) {
       attempts++;
@@ -697,6 +717,7 @@ export function parsePine(src: string): ParsedPine {
       if (stmts.length > 0) break;
     }
     if (stmts.length === 0) pos = startPos; // backtrack if nothing parsed
+    result.statements.length = ownedFrom;
     return stmts;
   }
 

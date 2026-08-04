@@ -347,6 +347,15 @@ async function run() {
     }
   }
 
+  if (flags["publish-only"] !== undefined || cmd === "publish") {
+    console.log(`\n[publish-only] stopping here. The package is live and configured.`);
+    console.log(`  SEALED_VAULT_PACKAGE=${pkg}`);
+    console.log(`  NEXT_PUBLIC_SEALED_VAULT_PACKAGE=${pkg}`);
+    console.log(`  SEALED_ATTESTOR_PUBLIC_KEY=${state.attestorPub}`);
+    console.log(`\n  No vault was created and no USDC was spent.\n`);
+    return;
+  }
+
   // ── testnet USDC ──
   if (cfg.canMintUsdc && !state.usdcMintTx) {
     console.log(`[usdc] minting ${Number(USDC_MINT_UNITS) / 1e6} testnet USDC…`);
@@ -716,6 +725,10 @@ async function verifyMarkets() {
 
 (async () => {
   if (cmd === "run") return run();
+  // Publish + init_platform ONLY. `run` continues into creating a real Decibel vault, which on
+  // mainnet spends 100 USDC of protocol fee plus the seed plus our launch fee — not something
+  // a deployment step should do by surprise.
+  if (cmd === "publish") return run();
   if (cmd === "status") return status();
   if (cmd === "attest") return attestForever();
   if (cmd === "verify-markets") return verifyMarkets();

@@ -1489,6 +1489,59 @@ assert.ok(
     "is trust, not cryptography, and implying otherwise is a lie",
 );
 
+// ── Deploy-breaking configuration traps ────────────────────────────────────
+// Each of these shipped and would have produced a deployment that LOOKS healthy while no vault
+// ever trades. They are the failure mode that costs the most to diagnose, because nothing
+// errors — the app reports ready and the vaults are simply silent.
+assert.ok(
+  sealedTickCron.includes("process.env.CRON_SECRET"),
+  "the tick cron must accept CRON_SECRET — that is what Vercel Cron actually sends in the " +
+    "Authorization header. Reading only CRANK_SECRET made the scheduled run 401 forever while " +
+    "config reported ready:true and creators launched vaults that never placed an order",
+);
+assert.ok(
+  sealedTickCron.includes("attestorKeyMismatch"),
+  "the cron must cross-check the attestor keypair: the PUBLIC key is committed into every " +
+    "vault at creation and vaults are sealed at birth, so a swapped pair is unrecoverable",
+);
+assert.ok(
+  sourceVaultLib.includes("keyProblem") &&
+    sourceVaultLib.includes("silently TRUNCATES"),
+  "a malformed SEALED_SOURCE_KEY must report as malformed, not as missing — Buffer.from(hex) " +
+    "truncates at the first bad character, so a key that IS set reported as 'not set'",
+);
+const envExample = readFileSync(".env.example", "utf8");
+assert.ok(
+  !/^DECIBEL_VAULT_PACKAGE="0x[0-9a-f]+"/m.test(envExample),
+  ".env.example must not ship DECIBEL_VAULT_PACKAGE pre-filled — it was pinned to the TESTNET " +
+    "package, so copying this file to production pinned mainnet to testnet Decibel",
+);
+assert.ok(
+  envExample.includes("SEALED_SOURCE_KEY"),
+  ".env.example must document SEALED_SOURCE_KEY — without it a production deploy ships with " +
+    "managed attestation silently disabled",
+);
+const sealedConfigRoute = readFileSync("app/api/sealed/config/route.ts", "utf8");
+assert.ok(
+  sealedConfigRoute.includes("0x[0-9a-fA-F]{64}"),
+  "config must validate the attestor pubkey FORMAT, not just its presence: a bare-hex key " +
+    "reported ready:true and then failed on the LAST launch step, after the creator had " +
+    "already paid to create the Decibel vault",
+);
+const launchScript = readFileSync("scripts/sealed-vault-launch.ts", "utf8");
+assert.ok(
+  launchScript.includes("hexToBytes(attestorPub)"),
+  "the CLI launch script must pass vector<u8> as bytes; a hex string is encoded as its UTF-8 " +
+    "characters and aborts with E_BAD_PUBKEY, which reads like a bad env var",
+);
+// Prisma drift: the cron's hottest query depends on this index existing in BOTH places.
+const prismaSchema = readFileSync("prisma/schema.prisma", "utf8");
+assert.ok(
+  prismaSchema.includes("@@index([managedAttestation, network])"),
+  "schema.prisma must declare the index the migration creates, or `prisma migrate diff` " +
+    "reports drift and a future `db push` would drop the tick cron's index",
+);
+
 // ── Truthful UI state ──────────────────────────────────────────────────────
 // The worst defect a UX review found: the Launch button rendered as a live green primary
 // action while the page said launching was impossible. A financial action must never look

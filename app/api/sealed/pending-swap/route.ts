@@ -61,6 +61,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `${k} must be an address` }, { status: 400, headers: NO_STORE });
     }
   }
+  // Authorization. There is no wallet-signature auth on API routes in this app, so we verify
+  // the claim server-side instead: both strategies named here must already be registered as
+  // belonging to the address claiming them. Without this, anyone could write a swap record
+  // against someone else's vault — the chain would still refuse to act on it, but the owner's
+  // Manage tab would show a swap they never started.
+  const owned = await prisma.sealedVault
+    .findMany({
+      where: {
+        strategyVaultAddr: { in: [body.fromStrategyAddr as string, body.toStrategyAddr as string] },
+        creatorAddr: { equals: body.creatorAddr as string, mode: "insensitive" },
+      },
+      select: { strategyVaultAddr: true, decibelVaultAddr: true },
+    })
+    .catch(() => []);
+  // The replacement strategy is registered only after this call in some flows, so require the
+  // OUTGOING one — which always exists — and check it belongs to the named vault.
+  const from = owned.find(
+    (o) => o.strategyVaultAddr.toLowerCase() === String(body.fromStrategyAddr).toLowerCase(),
+  );
+  if (!from) {
+    return NextResponse.json(
+      { error: "the strategy being replaced is not registered to this creator" },
+      { status: 403, headers: NO_STORE },
+    );
+  }
+  if (from.decibelVaultAddr.toLowerCase() !== String(body.decibelVaultAddr).toLowerCase()) {
+    return NextResponse.json(
+      { error: "that strategy does not belong to the named vault" },
+      { status: 403, headers: NO_STORE },
+    );
+  }
+
   const data = {
     decibelVaultAddr: body.decibelVaultAddr as string,
     network: sealedNetwork(),
@@ -91,11 +123,24 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "rate limited" }, { status: 429, headers: NO_STORE });
   }
   const vault = request.nextUrl.searchParams.get("vault");
+  const creator = request.nextUrl.searchParams.get("creator");
   if (!vault || !isHexAddress(vault)) {
     return NextResponse.json({ error: "vault required" }, { status: 400, headers: NO_STORE });
   }
+  if (!creator || !isHexAddress(creator)) {
+    return NextResponse.json({ error: "creator required" }, { status: 400, headers: NO_STORE });
+  }
+  // Scope the delete to the claimed creator. Addresses are public, so this is not
+  // authentication — it stops accidents and casual tampering, not a determined griefer. The
+  // blast radius is a stale UI card: the swap itself lives on-chain and is unaffected.
+  // Proper wallet-signature auth is tracked in docs/DEPLOY-SEALED.md.
   await prisma.sealedPendingSwap
-    .delete({ where: { decibelVaultAddr: vault } })
+    .deleteMany({
+      where: {
+        decibelVaultAddr: vault,
+        creatorAddr: { equals: creator, mode: "insensitive" },
+      },
+    })
     .catch(() => undefined);
   return NextResponse.json({ ok: true }, { status: 200, headers: NO_STORE });
 }

@@ -250,6 +250,9 @@ model SealedVault {
   @@index([network, sealedAt])
   @@index([creatorAddr])
   @@index([programCommitment])
+  /// The tick cron's working set, queried every minute. Declared here to match
+  /// 20260804120000_sealed_managed_attestation, which creates it.
+  @@index([managedAttestation, network])
 }
 
 /// A fill a sealed vault made, captured from the tick transaction we submitted.

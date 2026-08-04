@@ -20,8 +20,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { performTick, isTooSoon } from "@/lib/sealed-tick";
-import { decryptSource, secretMatches, sourceVaultAvailable } from "@/lib/sealed-source-vault";
+import { attestorKeyMismatch, performTick, isTooSoon } from "@/lib/sealed-tick";
+import {
+  decryptSource,
+  keyProblem,
+  secretMatches,
+  sourceVaultAvailable,
+} from "@/lib/sealed-source-vault";
 import { sealedNetwork, sealedRegistryAvailable } from "@/lib/sealed-vaults";
 
 export const runtime = "nodejs";
@@ -36,18 +41,27 @@ function backoffMs(failures: number): number {
 }
 
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRANK_SECRET;
-  if (!secret) {
+  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET` — CRON_SECRET, not CRANK_SECRET.
+  // Reading only CRANK_SECRET meant the scheduled run 401'd forever while the deploy looked
+  // healthy: config reported ready, creators launched vaults, and not one of them ever traded.
+  // Both are accepted so the same endpoint works for Vercel and for a manual/keeper call.
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const crankSecret = process.env.CRANK_SECRET?.trim();
+  if (!cronSecret && !crankSecret) {
     return NextResponse.json(
-      { error: "CRANK_SECRET is not set — the tick cron is disabled" },
+      { error: "neither CRON_SECRET nor CRANK_SECRET is set — the tick cron is disabled" },
       { status: 501, headers: NO_STORE },
     );
   }
-  // Vercel Cron sends the secret as a bearer token; allow an explicit query param for manual runs.
-  const provided =
+  const provided = (
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    request.nextUrl.searchParams.get("secret");
-  if (!secretMatches(provided, secret)) {
+    request.nextUrl.searchParams.get("secret") ??
+    ""
+  ).trim();
+  const authorized =
+    (cronSecret ? secretMatches(provided, cronSecret) : false) ||
+    (crankSecret ? secretMatches(provided, crankSecret) : false);
+  if (!authorized) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }
 
@@ -59,12 +73,22 @@ export async function GET(request: NextRequest) {
       { status: 501, headers: NO_STORE },
     );
   }
+  // Fail the whole run loudly rather than letting every vault abort on-chain one at a time.
+  const mismatch = attestorKeyMismatch(
+    attestorKey,
+    process.env.SEALED_ATTESTOR_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY,
+  );
+  if (mismatch) {
+    return NextResponse.json({ error: mismatch }, { status: 500, headers: NO_STORE });
+  }
   if (!sealedRegistryAvailable()) {
     return NextResponse.json({ error: "registry unavailable" }, { status: 503, headers: NO_STORE });
   }
   if (!sourceVaultAvailable()) {
     return NextResponse.json(
-      { error: "SEALED_SOURCE_KEY is not set — managed strategies cannot be decrypted" },
+      {
+        error: `${keyProblem() ?? "SEALED_SOURCE_KEY unusable"} — managed strategies cannot be decrypted`,
+      },
       { status: 501, headers: NO_STORE },
     );
   }

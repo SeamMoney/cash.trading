@@ -55,7 +55,14 @@ export async function GET(request: NextRequest) {
   // dead end for whoever has to fix it.
   const missing: string[] = [];
   if (!SEALED_PACKAGE) missing.push("SEALED_VAULT_PACKAGE");
-  if (!attestorPubkey) missing.push("SEALED_ATTESTOR_PUBLIC_KEY");
+  if (!attestorPubkey) {
+    missing.push("SEALED_ATTESTOR_PUBLIC_KEY");
+  } else if (!/^0x[0-9a-fA-F]{64}$/.test(attestorPubkey.trim())) {
+    // Presence alone used to be enough, so a bare-hex key (what `aptos key generate` emits in
+    // some modes) reported ready:true — and the launch then 400'd on the FINAL step, after the
+    // creator had already paid to create the Decibel vault. Check the shape here instead.
+    missing.push("SEALED_ATTESTOR_PUBLIC_KEY (must be 0x + 64 hex)");
+  }
 
   return NextResponse.json(
     {
@@ -64,7 +71,7 @@ export async function GET(request: NextRequest) {
       attestorPubkey,
       missing,
       // Honest readiness signal — the UI disables deploy and says why.
-      ready: Boolean(SEALED_PACKAGE && attestorPubkey),
+      ready: missing.length === 0,
       network:
         (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
           ? "mainnet"

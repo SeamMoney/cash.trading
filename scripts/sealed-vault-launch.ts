@@ -37,7 +37,7 @@ import { transpileV3, TRANSPILER_VERSION } from "../lib/launchpad/transpiler-v3"
 import { SEALED_PRESETS, SEALED_PRESET_NAMES, buildManifest, canonicalizePine } from "../lib/sealed-presets";
 import { createStrategyRunner } from "../lib/strategy-equivalence";
 import { computeProgramCommitment, toHex } from "../lib/sealed-attestor";
-import { SEALED_MARKETS_BY_NETWORK } from "../lib/sealed-vaults";
+import { SEALED_MARKETS_BY_NETWORK, hexToBytes } from "../lib/sealed-vaults";
 
 const PKG_DIR = resolve(__dirname, "../contracts/strategy-vaults");
 
@@ -192,8 +192,11 @@ async function stepCreate(flags: Record<string, string>) {
     data: {
       function: `${pkg}::sealed_vault::create_sealed_vault`,
       functionArguments: [
-        toHex(commitment),
-        attestorPub,
+        // vector<u8> must be BYTES. The SDK encodes a JS string as its UTF-8 characters, so a
+        // hex string arrives as 66 bytes and trips E_BAD_COMMITMENT / E_BAD_PUBKEY — which
+        // reads like a bad env var when the script is what is wrong.
+        hexToBytes(toHex(commitment)),
+        hexToBytes(attestorPub),
         decibelVault,
         market,
         mp.sizeDecimalsPow,
@@ -205,7 +208,7 @@ async function stepCreate(flags: Record<string, string>) {
         minBar,
         slippageBps,
         traceCap,
-        measurement,
+        hexToBytes(measurement),
       ],
     },
   });

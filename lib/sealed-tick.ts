@@ -63,6 +63,38 @@ export type TickResult =
   | { ok: true; seq: string; signal: Signal; txHash: string; trades: TickTrade[] }
   | { ok: false; stage: string; error: string; seq?: string; signal?: Signal; retryable: boolean };
 
+/**
+ * Confirm the attestor private key matches the public key vaults commit to.
+ *
+ * `create_sealed_vault` bakes the public key in and the vault is sealed at birth, so a
+ * mismatched pair is unrecoverable: every `tick_attested` aborts with E_INVALID_SIGNATURE
+ * forever and the only remedy is relaunching the vault. Nothing else in the stack compares
+ * them — a launch with a swapped pair succeeds, takes the creator's money, and produces a vault
+ * that can never trade. Checked here so it surfaces as one clear error instead of an on-chain
+ * abort code per vault.
+ */
+export function attestorKeyMismatch(privateKeyRaw: string, expectedPublicKey?: string): string | null {
+  if (!expectedPublicKey) return null;
+  let derived: string;
+  try {
+    derived = new Ed25519PrivateKey(privateKeyRaw).publicKey().toString();
+  } catch (err) {
+    return `SEALED_ATTESTOR_PRIVATE_KEY is not a valid ed25519 key: ${
+      err instanceof Error ? err.message : "unparseable"
+    }`;
+  }
+  const want = expectedPublicKey.trim().toLowerCase();
+  const got = derived.toLowerCase();
+  if (want.replace(/^0x/, "") !== got.replace(/^0x/, "")) {
+    return (
+      `attestor keypair mismatch: SEALED_ATTESTOR_PRIVATE_KEY derives ${derived}, but ` +
+      `SEALED_ATTESTOR_PUBLIC_KEY is ${expectedPublicKey}. Vaults commit to the PUBLIC key at ` +
+      `creation and are sealed at birth, so signing with the wrong key can never be corrected.`
+    );
+  }
+  return null;
+}
+
 export async function performTick(input: TickInput): Promise<TickResult> {
   const aptos = new Aptos(
     new AptosConfig({

@@ -45,21 +45,35 @@ export interface SealedSourceCiphertext {
 }
 
 export function sourceVaultAvailable(): boolean {
-  return Boolean(readKey(true));
+  return keyProblem() === null;
 }
 
-function readKey(soft = false): Buffer | null {
+/**
+ * Why the key is unusable, or null if it is fine.
+ *
+ * Distinguishing "unset" from "malformed" matters more than it looks: Node's
+ * `Buffer.from(s, "hex")` silently TRUNCATES at the first non-hex character rather than
+ * throwing. A base64 key, a passphrase, or one typo'd character all yield a short buffer — so
+ * a variable that is very much set reported as "not set", sending whoever is debugging to hunt
+ * for a missing secret that was sitting right there.
+ */
+export function keyProblem(): string | null {
   const raw = process.env.SEALED_SOURCE_KEY?.trim();
-  if (!raw) {
-    if (soft) return null;
-    throw new Error("SEALED_SOURCE_KEY is not set — managed attestation is disabled");
+  if (!raw) return "SEALED_SOURCE_KEY is not set";
+  const hex = raw.replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]*$/.test(hex)) {
+    return "SEALED_SOURCE_KEY contains non-hex characters — generate it with `openssl rand -hex 32`";
   }
-  const key = Buffer.from(raw.replace(/^0x/i, ""), "hex");
-  if (key.length !== KEY_BYTES) {
-    if (soft) return null;
-    throw new Error(`SEALED_SOURCE_KEY must be ${KEY_BYTES} bytes of hex (got ${key.length})`);
+  if (hex.length !== KEY_BYTES * 2) {
+    return `SEALED_SOURCE_KEY must be ${KEY_BYTES} bytes of hex (${KEY_BYTES * 2} characters); got ${hex.length}`;
   }
-  return key;
+  return null;
+}
+
+function readKey(): Buffer {
+  const problem = keyProblem();
+  if (problem) throw new Error(`${problem} — managed attestation is disabled`);
+  return Buffer.from(process.env.SEALED_SOURCE_KEY!.trim().replace(/^0x/i, ""), "hex");
 }
 
 /**
@@ -73,7 +87,7 @@ export function encryptSource(
   pineScript: string,
   strategyVaultAddr: string,
 ): SealedSourceCiphertext {
-  const key = readKey()!;
+  const key = readKey();
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGO, key, iv);
   cipher.setAAD(Buffer.from(strategyVaultAddr.toLowerCase(), "utf8"));
@@ -90,7 +104,7 @@ export function decryptSource(
   blob: SealedSourceCiphertext,
   strategyVaultAddr: string,
 ): string {
-  const key = readKey()!;
+  const key = readKey();
   const decipher = createDecipheriv(ALGO, key, Buffer.from(blob.iv, "base64"));
   decipher.setAAD(Buffer.from(strategyVaultAddr.toLowerCase(), "utf8"));
   decipher.setAuthTag(Buffer.from(blob.tag, "base64"));

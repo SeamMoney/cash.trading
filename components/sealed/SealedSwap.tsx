@@ -266,10 +266,10 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
 
   const clearSwap = useCallback(async (vault: string) => {
     setPending((cur) => cur.filter((x) => x.decibelVaultAddr !== vault));
-    await fetch(`/api/sealed/pending-swap?vault=${vault}`, { method: "DELETE" }).catch(
-      () => undefined,
-    );
-  }, []);
+    await fetch(`/api/sealed/pending-swap?vault=${vault}&creator=${addr}`, {
+      method: "DELETE",
+    }).catch(() => undefined);
+  }, [addr]);
 
   // ── Stage 1: create the replacement + announce it ───────────────────────────
   const startSwap = useCallback(

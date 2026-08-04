@@ -240,6 +240,22 @@ export const TA_SILENT_SUBSTITUTIONS: Record<string, { was: string; why: string 
  *  Rejected for the same reason bare `high`/`low` are: better no strategy than a
  *  strategy that silently trades a different signal. They become available once
  *  the trace carries real OHLC bars (MASTER-PLAN WS1.2). */
+/** TA functions whose EMITTED form does not compute the indicator at all.
+ *
+ *  `ta.macd` returns three series, and both the codegen and the evaluator set the signal line
+ *  EQUAL to the MACD line (strategy-equivalence.ts had the comment "treat line/hist
+ *  symmetrically per backend"). A line can never cross itself, so `ta.crossover(macdLine,
+ *  signalLine)` is false on every bar forever — every MACD strategy transpiled cleanly,
+ *  committed, and then never traded. A vault that silently does nothing is worse than a
+ *  rejected script, because the creator has already paid for it.
+ *
+ *  Rejected on the same principle as TA_REQUIRES_OHLC: better no strategy than a strategy
+ *  that is not the one written. It becomes available when the codegen emits a real EMA of the
+ *  MACD line, which needs a second smoothing buffer on-chain. */
+export const TA_FABRICATED: Record<string, string> = {
+  macd: "the emitted signal line is set equal to the MACD line, so a MACD crossover can never fire",
+};
+
 export const TA_REQUIRES_OHLC: Record<string, string> = {
   atr: "ATR's true range needs the bar high/low; the emitted stand-in used |close - prev_close| * 2",
   supertrend: "SuperTrend is built on ATR; the emitted stand-in used an SMA of closes as the ATR",

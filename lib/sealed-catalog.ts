@@ -45,6 +45,12 @@ export interface CatalogStrategy {
    * information.
    */
   draws: string;
+  /**
+   * True when the script sets its own position size and leverage via `default_qty_*` /
+   * `margin_long` / `margin_short`. Asserted against the source by `pnpm test:catalog`, so
+   * this cannot claim a capability the script does not have.
+   */
+  selfSizing?: boolean;
   script: string;
 }
 
@@ -100,24 +106,6 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
       `if (r > 70)\n    strategy.entry("Short", strategy.short)\n`,
   },
   {
-    id: "macd",
-    label: "MACD Momentum",
-    blurb: "Long when MACD crosses above its signal line, short when it crosses below.",
-    category: "Momentum",
-    direction: "Long/short",
-    turnover: "Medium",
-    draws: "MACD, signal line and histogram in their own pane",
-    script:
-      head("MACD Momentum") +
-      `[macdLine, signalLine, hist] = ta.macd(close, 12, 26, 9)\n` +
-      `plot(macdLine, title="MACD", color=${q(C.upper)}, linewidth=2)\n` +
-      `plot(signalLine, title="Signal", color=${q(C.signal)}, linewidth=2)\n` +
-      `plot(hist, title="Histogram", color=${q(C.mid)}, style=plot.style_histogram)\n` +
-      `hline(0, title="Zero", color=${q(C.mid)})\n` +
-      `if (ta.crossover(macdLine, signalLine))\n    strategy.entry("Long", strategy.long)\n` +
-      `if (ta.crossunder(macdLine, signalLine))\n    strategy.entry("Short", strategy.short)\n`,
-  },
-  {
     id: "bollinger-breakout",
     label: "Bollinger Breakout",
     blurb: "Long above the upper Bollinger band, short below the lower, with trend agreement.",
@@ -156,6 +144,40 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
       `plot(slow, title="SMA 200", color=${q(C.slow)}, linewidth=2)\n` +
       `if (ta.crossover(fast, slow))\n    strategy.entry("Long", strategy.long)\n` +
       `if (ta.crossunder(fast, slow))\n    strategy.entry("Short", strategy.short)\n`,
+  },
+  {
+    id: "multi-asset-momentum",
+    label: "Multi-Asset Momentum",
+    blurb: "Long above the 50-bar mean with rising momentum, short below it. Sizes itself.",
+    category: "Momentum",
+    direction: "Long/short",
+    turnover: "Medium",
+    draws: "the 50-bar mean with the 10/30 EMA pair over price",
+    selfSizing: true,
+    // The only catalog entry that declares its OWN size and leverage, using the real
+    // TradingView parameters for both: 20% of equity per position at 50% margin (2x). Built
+    // for portfolio mode — select several markets and it runs on each, so the per-position
+    // size is what keeps four legs inside the vault's aggregate exposure cap.
+    script:
+      `//@version=5\n`
+      + `strategy("Multi-Asset Momentum", overlay=true, `
+      + `default_qty_type=strategy.percent_of_equity, default_qty_value=20, `
+      + `margin_long=50, margin_short=50)\n`
+      + `len = input.int(50, "Mean Length")\n`
+      + `mean = ta.sma(close, len)\n`
+      // Momentum as an EMA spread rather than ta.roc: the transpiler has no on-chain form for
+      // roc, and each TA call has to land on its own line to be lowered.
+      + `fastM = ta.ema(close, 10)\n`
+      + `slowM = ta.ema(close, 30)\n`
+      + `plot(mean, title="Mean 50", color=${q(C.slow)}, linewidth=2)\n`
+      + `plot(fastM, title="EMA 10", color=${q(C.fast)}, linewidth=2)\n`
+      + `plot(slowM, title="EMA 30", color=${q(C.upper)}, linewidth=1)\n`
+      // Momentum as a COMPARISON of the two averages, never as their difference.
+      // `fastM - slowM` lowers to a u64 safe_sub that saturates at zero, so `< 0` can
+      // never be true and the short leg would be silently dead on-chain. `pnpm
+      // test:catalog` now runs the vault's own evaluator and fails exactly this.
+      + `if (close > mean and fastM > slowM)\n    strategy.entry("Long", strategy.long)\n`
+      + `if (close < mean and fastM < slowM)\n    strategy.entry("Short", strategy.short)\n`,
   },
   {
     id: "breakout-channel",

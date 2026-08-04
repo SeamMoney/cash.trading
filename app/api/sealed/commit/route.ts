@@ -5,14 +5,16 @@
  * metadata. The source is never persisted and never echoed back — that is the
  * whole point of a sealed vault (docs/SEALED-INDICATOR.md §3.1).
  *
- * This is also the honest-rejection gate: a strategy the transpiler rejects, or
- * one whose IR the attestor could not evaluate, gets a 422 with the verbatim
- * reasons rather than a commitment it cannot stand behind.
+ * This is also the honest-rejection gate, in two stages. A strategy the transpiler rejects
+ * gets a 422 with the verbatim reasons. So does one that transpiles cleanly but whose emitted
+ * program would never fire, or would fire on only one of the two sides it advertises — that
+ * second class is invisible to the transpiler and is what lib/strategy-liveness.ts catches.
  */
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { commitProgram, findSealedMarket, SEALED_MARKETS } from "@/lib/sealed-vaults";
+import { checkLiveness } from "@/lib/strategy-liveness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +57,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Transpiling proves the source lowers to Move. It does not prove the emitted program does
+  // anything. Three real strategies passed this point and would have produced a vault that
+  // silently never traded, or traded only one of the two directions it advertised — see
+  // lib/strategy-liveness.ts. The creator pays before finding out, so the check happens here.
+  const liveness = checkLiveness(body.pineScript, market.addr);
+  if (liveness.problems.length > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "This script transpiles, but the on-chain evaluator would not trade it as written.",
+        errors: liveness.problems,
+        liveness: {
+          bars: liveness.bars,
+          buys: liveness.buys,
+          sells: liveness.sells,
+          declaresLong: liveness.declaresLong,
+          declaresShort: liveness.declaresShort,
+        },
+      },
+      { status: 422, headers: NO_STORE },
+    );
+  }
+
   return NextResponse.json(
     {
       ok: true,
@@ -65,6 +90,8 @@ export async function POST(request: NextRequest) {
       bufferCapacity: result.bufferCapacity,
       warnings: result.warnings,
       market: { name: market.name, addr: market.addr },
+      /** Proof the emitted program actually fires, on a fixed two-way price series. */
+      liveness: { bars: liveness.bars, buys: liveness.buys, sells: liveness.sells },
     },
     { status: 200, headers: NO_STORE },
   );

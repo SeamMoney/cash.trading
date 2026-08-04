@@ -66,6 +66,10 @@ console.log(`catalog metadata: ${SEALED_CATALOG.length} strategies, blurbs match
 // Run each one through the same runtime the preview uses and require real output.
 import { runOwnRuntime } from "../lib/launchpad/pinets-runner";
 import type { Candle } from "../lib/launchpad/types";
+import { requestedLeverageX100, requestedPctBps } from "../lib/pine-declarations";
+import { transpileV3 } from "../lib/launchpad/transpiler-v3";
+import { canonicalizePine } from "../lib/sealed-presets";
+import { createStrategyRunner } from "../lib/strategy-equivalence";
 
 const candles: Candle[] = [];
 {
@@ -113,6 +117,68 @@ for (const s of SEALED_CATALOG) {
     );
   }
 }
+// `selfSizing` must match the source. A catalog entry claiming a capability its script does
+// not have is the same class of lie as a blurb claiming a direction the script never takes.
+for (const s of SEALED_CATALOG) {
+  const declaresSize = requestedPctBps(s.script) !== null;
+  const declaresLev = requestedLeverageX100(s.script) !== null;
+  assert.equal(
+    Boolean(s.selfSizing),
+    declaresSize && declaresLev,
+    `${s.id}: selfSizing=${Boolean(s.selfSizing)} but the script declares size=${declaresSize} leverage=${declaresLev}`,
+  );
+  if (s.selfSizing) {
+    assert.ok(/sizes itself|self-siz/i.test(s.blurb), `${s.id}: selfSizing but the blurb never says so`);
+  }
+}
+console.log("catalog sizing: self-sizing claims match the scripts");
+
+// ── The evaluator the VAULT runs, not the one the preview runs ───────────────
+//
+// `runOwnRuntime` above is the preview interpreter: signed float arithmetic, its own TA
+// implementations. `createStrategyRunner` is the committed-program executor the attestor
+// actually signs from, and it mirrors the emitted Move. They can disagree, and when they do
+// the preview shows one strategy while the vault trades another — which is the single failure
+// this whole product exists to prevent.
+//
+// This gate caught three real ones. `ta.macd` set the signal line EQUAL to the MACD line, so
+// a MACD crossover could never fire and the vault never traded at all. `bb` had no case in the
+// evaluator, so the bands were never set and every Bollinger short was dead. And a strategy
+// keyed on `a - b < 0` never fires, because the IR lowers subtraction to a u64 `safe_sub` that
+// saturates at zero.
+for (const s of SEALED_CATALOG) {
+  const t = transpileV3(canonicalizePine(s.script), undefined, {
+    target: "vault",
+    marketAddr: market.addr,
+  });
+  assert.equal(t.errors?.length ?? 0, 0, `${s.id}: ${(t.errors ?? []).join("; ")}`);
+  const runner = createStrategyRunner(t.ir);
+  let buys = 0;
+  let sells = 0;
+  for (const c of candles) {
+    const sig = runner.pushBar(c.close);
+    if (sig === "buy") buys++;
+    if (sig === "sell") sells++;
+  }
+  assert.equal(
+    runner.unsupported.size,
+    0,
+    `${s.id}: the committed-program evaluator cannot run ${[...runner.unsupported].join(", ")}`,
+  );
+  assert.ok(
+    buys > 0,
+    `${s.id}: the evaluator the vault runs produces NO buy signal — this vault would never go long`,
+  );
+  if (s.direction === "Long/short") {
+    assert.ok(
+      sells > 0,
+      `${s.id}: declares long/short, and the preview shows shorts, but the evaluator the vault `
+      + `runs produces NO sell signal — the short leg would be silently dead on-chain`,
+    );
+  }
+}
+console.log("catalog execution: every strategy produces both sides through the VAULT's evaluator");
+
 console.log(`catalog visuals: every strategy plots, and every plot has data`);
 
 console.log(failures === 0 ? "\nAll catalog strategies commit." : `\n${failures} FAILED.`);

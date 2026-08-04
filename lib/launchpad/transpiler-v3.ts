@@ -10,7 +10,14 @@
 
 import { parsePine, exprToString } from "./pine-parser";
 import type { Expr, ParsedPine, Stmt, TACallInfo } from "./pine-parser";
-import { astToIndicatorIR, TA_SILENT_SUBSTITUTIONS, TA_REQUIRES_OHLC, type IndicatorIR, type IRFuncDef } from "./pine-ir";
+import {
+  astToIndicatorIR,
+  TA_FABRICATED,
+  TA_REQUIRES_OHLC,
+  TA_SILENT_SUBSTITUTIONS,
+  type IndicatorIR,
+  type IRFuncDef,
+} from "./pine-ir";
 import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
 /** Pinned emitter version recorded in StrategyArtifact rows; bump on any codegen change. */
@@ -243,6 +250,10 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
         const ohlc = expr.ns === "ta" ? TA_REQUIRES_OHLC[expr.fn] : undefined;
         if (ohlc) {
           add(`\`ta.${expr.fn}\` can't be computed from the on-chain price trace, which records one mark price per bar. ${ohlc}. Rejected rather than emitting a fabricated stand-in.`);
+        }
+        const fabricated = expr.ns === "ta" ? TA_FABRICATED[expr.fn] : undefined;
+        if (fabricated) {
+          add(`\`ta.${expr.fn}\` transpiles but does not work: ${fabricated}. A vault built from it would commit, cost you the launch fee, and then never trade. Rejected rather than shipping a bot that silently does nothing.`);
         }
         expr.args.forEach(walkExpr);
         Object.values(expr.kw).forEach(walkExpr);

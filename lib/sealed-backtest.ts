@@ -122,15 +122,6 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
   }
 
   const runner = createStrategyRunner(t.ir);
-  if (runner.unsupported.size > 0) {
-    // Refuse rather than substitute. A backtest of a strategy the evaluator cannot
-    // run would be a backtest of something else, presented as this one.
-    return {
-      ok: false,
-      error: "The evaluator cannot run every operation in this script.",
-      detail: [...runner.unsupported],
-    };
-  }
 
   const candles = p.candles.filter((c) => Number.isFinite(c.close) && c.close > 0);
   if (candles.length < runner.warmupBars + 20) {
@@ -236,6 +227,18 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
     if (prevEquity > 0) barReturns.push(marked / prevEquity - 1);
     prevEquity = marked;
     equityCurve.push({ t: bar.timestamp, v: Number(marked.toFixed(2)) });
+  }
+
+  // Refuse rather than substitute: a backtest of a strategy the evaluator cannot run would be
+  // a backtest of something else, presented as this one. Checked HERE because `unsupported` is
+  // populated as ops execute — checking it before the loop (as this did) meant the set was
+  // always empty and the refusal was dead code.
+  if (runner.unsupported.size > 0) {
+    return {
+      ok: false,
+      error: "The evaluator cannot run every operation in this script.",
+      detail: [...runner.unsupported],
+    };
   }
 
   // Close whatever is still open at the last price. A backtest that leaves a

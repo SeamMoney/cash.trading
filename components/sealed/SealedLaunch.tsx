@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { CodeBlock, ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
 import { ActionButton, Banner, Reveal, ValidatedField } from "@/components/ui/interactions";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
+import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { SURFACE_CARD_SOLID, SURFACE_CONTROL } from "@/lib/surface";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
@@ -192,6 +193,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const isPortfolio = markets.length > 1;
   /** The market the preview chart and the commitment manifest are built against. */
   const primaryMarket = markets[0] ?? config?.markets[0]?.name ?? "BTC/USD";
+
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -249,6 +251,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   );
   const usingCustom = customPine.trim().length > 0;
   const effectivePine = usingCustom ? customPine : (selected?.script ?? "");
+  // What the SCRIPT asks for, if anything. Shown so a creator whose strategy declares its own
+  // size or leverage is not left thinking the controls below decided them — and so one whose
+  // script declares nothing knows the controls are the whole answer.
+  const scriptPctBps = useMemo(() => requestedPctBps(effectivePine), [effectivePine]);
+  const scriptLeverageX100 = useMemo(() => requestedLeverageX100(effectivePine), [effectivePine]);
+  const effectivePctBps = Math.min(scriptPctBps ?? pctBps, pctBps);
+  const effectiveLeverageX100 = Math.min(scriptLeverageX100 ?? maxLeverageX100, maxLeverageX100);
 
   /** Name the vault for them. Only overwrite while the field is untouched. */
   const pickStrategy = useCallback(
@@ -1048,17 +1057,50 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   <Review k="Direction" v={usingCustom ? "Per your script" : (selected?.direction ?? "—")} />
                   <Review
                     k={isPortfolio ? "Markets" : "Market"}
-                    v={isPortfolio ? markets.join(", ") : primaryMarket}
+                    // Bare tickers when there are several: four "/USD" suffixes wrap the value
+                    // onto a second line and add nothing — every market here is USD-quoted.
+                    v={isPortfolio ? markets.map((m) => m.replace("/USD", "")).join(", ") : primaryMarket}
                   />
                   <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
-                  <Review k="Max leverage" v={`${maxLeverageX100 / 100}x`} tone={maxLeverageX100 > 200 ? "warn" : undefined} />
-                  <Review k="Order size" v={`${pctBps / 100}% of NAV`} />
+                  <Review
+                    k="Max leverage"
+                    v={`${effectiveLeverageX100 / 100}x`}
+                    tone={effectiveLeverageX100 > 200 ? "warn" : undefined}
+                  />
+                  <Review k="Order size" v={`${effectivePctBps / 100}% of NAV`} />
                   <Review k="Runs" v={managed ? "Automatically" : "Only while you run it"} tone={managed ? undefined : "warn"} />
                 </dl>
+                {(scriptPctBps !== null || scriptLeverageX100 !== null) && (
+                  <p className="mt-2.5 border-t border-white/[0.06] pt-2.5 text-[12px] leading-relaxed text-zinc-300">
+                    Your script sets its own{" "}
+                    {scriptPctBps !== null && scriptLeverageX100 !== null
+                      ? "size and leverage"
+                      : scriptPctBps !== null
+                        ? "position size"
+                        : "leverage"}
+                    .{" "}
+                    {/* Naming the cap matters: "your script chooses" printed next to a number
+                        SMALLER than the script asked for reads as a contradiction, and the
+                        creator would go looking for a bug that is really a working limit. */}
+                    {scriptPctBps !== null && scriptPctBps > pctBps ? (
+                      <>
+                        It asks for {scriptPctBps / 100}% per position; the {pctBps / 100}% order
+                        size above caps it.
+                      </>
+                    ) : scriptLeverageX100 !== null && scriptLeverageX100 > maxLeverageX100 ? (
+                      <>
+                        It asks for {scriptLeverageX100 / 100}x; the {maxLeverageX100 / 100}x cap
+                        above limits it.
+                      </>
+                    ) : (
+                      <>The settings above are ceilings it stays inside.</>
+                    )}
+                  </p>
+                )}
                 <p className="mt-2.5 border-t border-white/[0.06] pt-2.5 text-[12px] leading-relaxed text-zinc-400">
-                  Leveraged perpetual futures. At {maxLeverageX100 / 100}x, a{" "}
+                  Leveraged perpetual futures. At {effectiveLeverageX100 / 100}x, a{" "}
                   <span className="font-semibold text-white">
-                    {(100 / (maxLeverageX100 / 100)).toFixed(0)}%
+                    {(100 / (effectiveLeverageX100 / 100)).toFixed(0)}%
                   </span>{" "}
                   adverse move wipes out the capital behind a full-size position. On-chain
                   enforcement guarantees the vault follows your rules — not that they are

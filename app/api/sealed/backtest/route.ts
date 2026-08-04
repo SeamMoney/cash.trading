@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { PYTH_FEED_IDS } from "@/lib/launchpad/constants";
 import { fetchPythCandles } from "@/lib/launchpad/pyth";
+import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
 import { runSealedBacktest } from "@/lib/sealed-backtest";
 import { SEALED_MARKETS, readPlatformTerms } from "@/lib/sealed-vaults";
 
@@ -118,6 +119,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // A script that declares its own size or leverage must be backtested with THOSE numbers,
+  // not the vault's defaults — otherwise the backtest measures a strategy the live vault will
+  // not run, which is the one thing a backtest must never do. Both are still clamped by the
+  // form controls' values, exactly as the contract clamps them on chain.
+  const effectivePctBps = Math.min(requestedPctBps(pineScript) ?? pctBps, pctBps);
+  const effectiveLeverageX100 = Math.min(
+    requestedLeverageX100(pineScript) ?? maxLeverageX100,
+    maxLeverageX100,
+  );
+
   // Quote our own builder fee from the chain rather than a constant, so the cost
   // side of the backtest matches what the vault will really be charged.
   let builderFeeBps = 2;
@@ -139,8 +150,8 @@ export async function POST(request: NextRequest) {
         pineScript,
         candles: series.get(a) ?? [],
         marketAddr: SEALED_MARKETS.find((m) => m.name === a)?.addr ?? SEALED_MARKETS[0]?.addr ?? "0x1",
-        pctBps,
-        maxLeverageX100,
+        pctBps: effectivePctBps,
+        maxLeverageX100: effectiveLeverageX100,
         slippageBps,
         builderFeeBps,
         initialCapital: perMarket,
@@ -167,6 +178,11 @@ export async function POST(request: NextRequest) {
       assets,
       window: windowKey,
       builderFeeBps,
+      /** Echoed so the panel can say when the SCRIPT chose these, not the form. */
+      effectivePctBps,
+      effectiveLeverageX100,
+      scriptChoseSizing: requestedPctBps(pineScript) !== null,
+      scriptChoseLeverage: requestedLeverageX100(pineScript) !== null,
       ...combined,
       /** Per-market breakdown, so a portfolio result cannot hide one market carrying it. */
       perMarket: ok.map((l) => ({

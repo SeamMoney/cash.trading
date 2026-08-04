@@ -28,7 +28,7 @@ import {
   validateActions,
   type Action,
 } from "../lib/portfolio-attestor";
-import { requestedPctBps } from "../lib/portfolio-tick";
+import { requestedLeverageX100, requestedPctBps } from "../lib/portfolio-tick";
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
@@ -194,6 +194,22 @@ console.log("\n7. Strategy-requested sizing");
     null,
   );
   console.log("  ok   percent_of_equity honoured, bare qty and out-of-range values ignored");
+
+  // Leverage comes from margin_long / margin_short — real TradingView parameters that mean
+  // exactly this, so a script written for TradingView carries its leverage across unchanged.
+  assert.equal(requestedLeverageX100(`strategy("x", overlay=true)\n`), null);
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=50, margin_short=50)\n`), 200);
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=25)\n`), 400);
+  // The SMALLER margin wins: it is the more levered side, and a per-leg cap has to bound the
+  // worst case rather than the average of the two.
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=50, margin_short=20)\n`), 500);
+  // 0% is infinite leverage and >100% is nonsense. Both fall back rather than being clamped,
+  // so a script with a bug surfaces instead of quietly becoming the vault cap.
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=0)\n`), null);
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=150)\n`), null);
+  // 100% margin is 1x — unlevered, but a legitimate instruction, not a fallback.
+  assert.equal(requestedLeverageX100(`strategy("x", margin_long=100)\n`), 100);
+  console.log("  ok   margin_long/short read as leverage, smaller side wins, bad values ignored");
 }
 
 console.log("\n8. Move test fixture (paste into portfolio_vault_tests.move)");

@@ -154,15 +154,11 @@ export async function performTick(input: TickInput): Promise<TickResult> {
   }
 
   // 3. Warm the program on history, then take the latest bar.
+  // NOTE: `runner.unsupported` is populated as ops EXECUTE, so it is necessarily empty here.
+  // It used to be checked at this point, which made the refusal dead code — a strategy using
+  // an op the evaluator cannot run signed a signal derived from missing values instead of
+  // being refused. It is checked after the warmup loop below, where it is meaningful.
   const runner = createStrategyRunner(t.ir);
-  if (runner.unsupported.size > 0) {
-    return {
-      ok: false,
-      stage: "evaluate",
-      error: `evaluator cannot run: ${[...runner.unsupported].join(", ")}`,
-      retryable: false,
-    };
-  }
   const nowS = Math.floor(Date.now() / 1000);
   let closes: number[] = [];
   try {
@@ -191,6 +187,14 @@ export async function performTick(input: TickInput): Promise<TickResult> {
   }
   let signal: Signal = 0;
   for (const c of closes) signal = toTrit(runner.pushBar(c));
+  if (runner.unsupported.size > 0) {
+    return {
+      ok: false,
+      stage: "evaluate",
+      error: `evaluator cannot run: ${[...runner.unsupported].join(", ")}`,
+      retryable: false,
+    };
+  }
 
   // 4. Sign and submit. The cranker pays gas and contributes nothing else — it cannot alter
   //    the signal, and a wrong signature simply aborts.

@@ -276,6 +276,26 @@ class StrategyEvaluator {
         case "lowest":
           this.env.set(op.target, this.math.lowest(this.buffer, this.irValue(op.period)));
           break;
+        // Bollinger. The evaluator had NO case for this, so `bb` fell through to `default`
+        // and the bands were never set — every comparison against them was false, which is
+        // why a Bollinger strategy's short leg silently never fired while the preview showed
+        // it firing. Mirrors move-ta-lib's compute_bollinger_bands exactly: POPULATION stdev
+        // over the window (divide by period, not period-1), and the multiplier arrives ×10.
+        case "bb": {
+          const period = this.irValue(op.period);
+          const mid = this.math.sma(this.buffer, period);
+          const window = this.buffer.slice(-period);
+          let sumSq = 0;
+          for (const p of window) sumSq += (p - mid) * (p - mid);
+          const stdev = Math.sqrt(sumSq / period);
+          const offset = (stdev * this.irValue(op.multiplier)) / 10;
+          this.env.set(op.targetMid, mid);
+          this.env.set(op.targetUpper, mid + offset);
+          // Move floors at zero because u64 cannot go negative; matching that here keeps the
+          // two backends agreeing on the pathological case rather than only the normal one.
+          this.env.set(op.targetLower, mid >= offset ? mid - offset : 0);
+          break;
+        }
         case "macd": {
           const line =
             this.math.ema(this.buffer, this.irValue(op.fast)) -

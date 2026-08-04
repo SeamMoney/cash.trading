@@ -46,6 +46,10 @@ interface Response {
   assumptions?: string[];
   builderFeeBps?: number;
   assets?: string[];
+  effectivePctBps?: number;
+  effectiveLeverageX100?: number;
+  scriptChoseSizing?: boolean;
+  scriptChoseLeverage?: boolean;
   perMarket?: LegResult[];
   unavailable?: Array<{ asset: string; error: string }>;
 }
@@ -231,6 +235,16 @@ export function SealedBacktest(props: Props) {
               <span>
                 {s.barsSimulated.toLocaleString()} bars simulated · {s.warmupBars} bar warmup skipped ·
                 {" "}{s.timeInMarketPct}% of bars in a position
+              </span>
+              {/* When the script sets its own size or leverage, the form controls above are
+                  ceilings rather than settings — say so, or the numbers look like they came
+                  from controls the run did not use. */}
+              <span>
+                {(result.effectivePctBps ?? pctBps) / 100}% per position at{" "}
+                {(result.effectiveLeverageX100 ?? maxLeverageX100) / 100}x
+                {result.scriptChoseSizing || result.scriptChoseLeverage
+                  ? " — set by your script, capped by the vault"
+                  : " — from the settings above"}
               </span>
               <span>
                 {s.longFills} long entries · {s.shortFills} short entries · ended flat

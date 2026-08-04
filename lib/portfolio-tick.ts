@@ -15,12 +15,14 @@
  * and multi-position trading using the exact source the creator wrote and the exact evaluator
  * the single-market path already proves equivalent to the Move backend.
  *
- * ## Sizing
+ * ## Sizing and leverage
  *
- * A strategy sizes its own bets through `strategy.entry(..., qty=…)`, read from the IR as a
- * fraction of equity and converted to bps. Absent a qty the vault's default share is used.
- * Either way the contract clamps to `max_pct_bps`, so a script cannot size past the cap — it
- * can only ask for less.
+ * A strategy sizes its own bets through `default_qty_type=strategy.percent_of_equity` plus
+ * `default_qty_value`, and sets its own leverage through `margin_long` / `margin_short` —
+ * both real TradingView parameters with exactly these meanings, so a script written for
+ * TradingView carries them across unchanged. Absent either, the vault's configured value is
+ * used. The contract clamps both to the caps frozen at creation, so a script can always ask
+ * for LESS than the vault allows and never for more.
  *
  * ## What this refuses to do
  *
@@ -47,6 +49,12 @@ import {
   validateActions,
   type Action,
 } from "@/lib/portfolio-attestor";
+import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
+
+// Re-exported so the attestor, the backtester and the launch UI all read the same two
+// functions. Three implementations of "what did the script ask for" is how a preview starts
+// disagreeing with what the vault actually does.
+export { requestedLeverageX100, requestedPctBps };
 
 export interface PortfolioMarket {
   /** Position in the vault's frozen allowlist. Must match the on-chain order exactly. */
@@ -76,23 +84,6 @@ export interface PortfolioTickInput {
 export type PortfolioTickResult =
   | { ok: true; seq: string; actions: Action[]; txHash: string; skipped: string[] }
   | { ok: false; stage: string; error: string; detail?: string[]; retryable: boolean };
-
-/**
- * A strategy's own requested size, in bps of NAV, or null when it does not ask.
- *
- * PineScript's `qty` on `strategy.entry` is a quantity in contracts by default, and a percent
- * of equity only under `default_qty_type=strategy.percent_of_equity`. Reading a bare `qty` as a
- * percentage would silently mis-size every strategy that uses the default, so only the explicit
- * percent form is honoured and everything else falls back to the vault default.
- */
-export function requestedPctBps(pineScript: string): number | null {
-  if (!/default_qty_type\s*=\s*strategy\.percent_of_equity/.test(pineScript)) return null;
-  const m = pineScript.match(/default_qty_value\s*=\s*([0-9]+(?:\.[0-9]+)?)/);
-  if (!m) return null;
-  const pct = Number(m[1]);
-  if (!Number.isFinite(pct) || pct <= 0 || pct > 100) return null;
-  return Math.round(pct * 100); // percent → bps
-}
 
 export async function performPortfolioTick(
   input: PortfolioTickInput,
@@ -222,22 +213,20 @@ export async function performPortfolioTick(
 
   // 5. Evaluate the committed program once per market, on that market's own history.
   const pctBps = Math.min(requestedPctBps(canonical) ?? input.defaultPctBps, bounds.maxPctBps);
-  const leverageX100 = Math.min(input.leverageX100, bounds.maxLeverageX100);
+  // The script's leverage if it declares one, the vault's otherwise — and clamped either way.
+  // A script can always ask for LESS than the vault allows; it can never ask for more.
+  const leverageX100 = Math.min(
+    requestedLeverageX100(canonical) ?? input.leverageX100,
+    bounds.maxLeverageX100,
+  );
   const nowS = Math.floor(Date.now() / 1000);
   const actions: Action[] = [];
   const skipped: string[] = [];
 
   for (const market of input.markets) {
+    // Checked AFTER the warmup loop, not here: `unsupported` is populated as ops execute, so
+    // at this point it is always empty and the refusal never fired.
     const runner = createStrategyRunner(t.ir);
-    if (runner.unsupported.size > 0) {
-      return {
-        ok: false,
-        stage: "evaluate",
-        error: "evaluator cannot run this program",
-        detail: [...runner.unsupported],
-        retryable: false,
-      };
-    }
 
     let closes: number[];
     try {
@@ -264,6 +253,15 @@ export async function performPortfolioTick(
 
     let signal: "buy" | "sell" | "neutral" = "neutral";
     for (const c of closes) signal = runner.pushBar(c);
+    if (runner.unsupported.size > 0) {
+      return {
+        ok: false,
+        stage: "evaluate",
+        error: "evaluator cannot run this program",
+        detail: [...runner.unsupported],
+        retryable: false,
+      };
+    }
 
     const have = held.get(market.idx);
     if (signal === "neutral") continue; // no instruction is how a strategy says "leave it"

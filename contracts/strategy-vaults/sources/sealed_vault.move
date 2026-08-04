@@ -48,6 +48,13 @@ module cash_strategy::sealed_vault {
     use order_book::order_book_types;
 
     // ─── Errors ──────────────────────────────────────────────────────
+    /// The portfolio-mode module shares this one's fee tables — a creator who already licensed
+    /// a Decibel vault must not be charged again for moving it to portfolio mode, and both
+    /// modules must stamp the SAME builder terms. Friendship is limited to the three
+    /// accessors at the bottom of this file: nothing about the single-market trading path is
+    /// reachable from there.
+    friend cash_strategy::portfolio_vault;
+
     const E_NOT_CREATOR:        u64 = 1;
     const E_PAUSED:             u64 = 2;
     const E_BAD_BPS:            u64 = 3;
@@ -1029,4 +1036,38 @@ module cash_strategy::sealed_vault {
 
     #[test_only]
     public fun genesis_digest_for_test(): vector<u8> { hash::sha3_256(ATTESTATION_DOMAIN) }
+
+    // ─── Friend surface ──────────────────────────────────────────────
+    //
+    // Three read-through wrappers for `portfolio_vault`, added rather than duplicating the
+    // fee tables in a second module: two launch-licence tables would let a creator be charged
+    // twice for the same Decibel vault, and two builder-code sources would let the two paths
+    // drift on where fees are paid.
+
+    /// Charge the launch fee for `decibel_vault` unless already licensed, and return the
+    /// builder terms to stamp. Identical semantics to the single-market path — the same table,
+    /// so licensing is genuinely once per vault across both modes.
+    public(friend) fun collect_launch_fee_friend(
+        creator: &signer,
+        decibel_vault: address,
+    ): (address, u64) acquires PlatformConfig, LaunchLicenses {
+        collect_launch_fee(creator, decibel_vault)
+    }
+
+    /// The builder terms a newly created vault should stamp.
+    public(friend) fun builder_stamp_friend(): (address, u64) acquires PlatformConfig {
+        let cfg = borrow_global<PlatformConfig>(@cash_strategy);
+        (cfg.builder_addr, cfg.builder_fee_bps)
+    }
+
+    /// Whether anyone other than the creator holds shares in this Decibel vault. Gates the
+    /// swap notice period in both modules, and must agree between them: a creator should not
+    /// be able to dodge the notice by relaunching in the other mode.
+    public(friend) fun has_outside_depositors_friend(
+        decibel_vault_addr: address,
+        creator: address,
+    ): bool {
+        has_outside_depositors(decibel_vault_addr, creator)
+    }
+
 }

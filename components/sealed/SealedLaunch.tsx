@@ -492,8 +492,45 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       : "https://explorer.aptoslabs.com/object";
   const explorerSuffix = `?network=${config?.network ?? "testnet"}`;
 
+  const previewMode = Boolean(config && !config.ready);
+
   return (
     <div className="mx-auto max-w-2xl space-y-5">
+      {/* Say up front that launching is unavailable. This used to appear only after the whole
+          form, next to a button that still looked live — a user could configure everything
+          before discovering the action was impossible. */}
+      {previewMode && (
+        <div className="rounded-[16px] border border-amber-500/30 bg-amber-500/[0.06] p-4">
+          <p className="font-display text-[14px] font-semibold text-amber-300">
+            Preview mode · launching is unavailable on {config?.network}
+          </p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-amber-200/70">
+            The sealed-vault contract isn&apos;t deployed here yet. You can pick a strategy, see
+            its program hash and read the full cost breakdown — nothing can be funded or
+            launched.
+          </p>
+          {config?.missing && config.missing.length > 0 && (
+            <details className="mt-2.5">
+              <summary className="cursor-pointer list-none text-[12px] text-amber-200/60 underline underline-offset-2 hover:text-amber-200">
+                Developer details
+              </summary>
+              <div className="mt-2 space-y-1">
+                {config.missing.map((m) => (
+                  <p key={m} className="font-mono text-[11px] text-amber-300/80">{m}</p>
+                ))}
+                <p className="pt-1 text-[11px] leading-relaxed text-zinc-500">
+                  Publish with{" "}
+                  <span className="font-mono text-zinc-400">
+                    pnpm sealed:e2e run --network {config.network}
+                  </span>{" "}
+                  and set the values it prints. See docs/SEALED-INDICATOR.md §8.
+                </p>
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* 1 — Strategy */}
       <section>
         <Label n={1}>Pick a strategy</Label>
@@ -515,11 +552,20 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               <span className="block font-display text-[14px] font-semibold text-white">
                 {usingCustom ? "Your own strategy" : (selected?.label ?? "Select…")}
               </span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
+              <span className="mt-1 block text-[12px] leading-relaxed text-zinc-400">
                 {usingCustom
                   ? "Pasted source — used instead of the list"
                   : (selected?.blurb ?? "")}
               </span>
+              {!usingCustom && selected && (
+                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <Tag>{selected.category}</Tag>
+                  <Tag>{selected.direction}</Tag>
+                  <Tag>{marketName ?? config?.markets[0]?.name ?? "BTC/USD"}</Tag>
+                  <Tag>{minBarIntervalS < 60 ? `${minBarIntervalS}s` : `${minBarIntervalS / 60}m`} bars</Tag>
+                  <Tag>{selected.turnover} turnover</Tag>
+                </span>
+              )}
             </span>
             <ChevronDown
               className={cn("h-4 w-4 shrink-0 text-zinc-500 transition-transform", menuOpen && "rotate-180")}
@@ -560,7 +606,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                         <span className="block font-display text-[13px] font-semibold text-white">
                           {s.label}
                         </span>
-                        <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
+                        <span className="mt-0.5 block text-[12px] leading-relaxed text-zinc-500">
                           {s.blurb}
                         </span>
                       </span>
@@ -611,7 +657,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               rows={6}
               aria-label="PineScript source"
               placeholder="…or paste the PineScript source here"
-              className="w-full resize-y rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
+              className="w-full resize-y rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] p-3 font-mono text-[11px] leading-relaxed text-zinc-200 placeholder:text-zinc-400 focus:border-accent/40 focus:outline-none"
             />
           </div>
         </details>
@@ -631,22 +677,23 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           disabled={busy}
           validate={(v) => (v.trim() ? null : "Depositors see this name — give your bot one.")}
         />
-        <p className="mt-1.5 text-[11px] text-zinc-600">
-          Named after your strategy by default. Depositors see the name — never your source.
+        <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
+          Named after your strategy by default. This is what depositors see in the marketplace;
+          whether they can also see your source is the next choice.
         </p>
       </section>
 
       {/* 3 — Visibility */}
       <section>
-        <Label n={3}>Keep it private?</Label>
+        <Label n={3}>Source visibility</Label>
         <div className="grid grid-cols-2 gap-2">
           <VisibilityCard
             active={isPrivate}
             onClick={() => setIsPrivate(true)}
             disabled={busy}
             icon={<Lock className="h-3.5 w-3.5" aria-hidden />}
-            title="Proprietary"
-            body="Only a hash goes on-chain. Nobody can read your alpha — you can reveal it later to prove every trade."
+            title="Private"
+            body="Your source is not published — only a cryptographic commitment to it goes on-chain. You can reveal it later to prove every trade came from it. Trading behaviour itself is public, so a determined observer can still infer characteristics."
           />
           <VisibilityCard
             active={!isPrivate}
@@ -654,7 +701,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             disabled={busy}
             icon={<Globe className="h-3.5 w-3.5" aria-hidden />}
             title="Public"
-            body="Source published alongside the vault. Anyone can verify every trade against it immediately."
+            body="The source is published with the vault, so anyone can read it and check it against the trades the vault actually made."
           />
         </div>
       </section>
@@ -663,61 +710,76 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       {config && (
         <section className={cn(SURFACE_CARD_SOLID, "p-4")}>
           <h3 className="font-display text-[13px] font-semibold text-white">What it costs</h3>
-          <dl className="mt-3 space-y-2">
-            <FeeRow
-              k="Decibel's vault-creation fee"
-              v={`${config.economics.creationFeeUsdc} USDC`}
-              note="Charged once by the protocol, from your Decibel balance. Not ours."
+          {/* The number that actually matters, before any breakdown. */}
+          <div className="mt-3 flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-3">
+            <span className="font-display text-[14px] font-semibold text-white">
+              Required to launch
+            </span>
+            <span className="font-mono text-[22px] font-semibold tabular-nums text-accent">
+              {config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc} USDC
+            </span>
+          </div>
+
+          <dl className="mt-3 space-y-3">
+            <CostGroup
+              title="One-time fees"
+              total={`${config.economics.creationFeeUsdc + config.economics.launchFeeUsdc} USDC`}
+              rows={[
+                [`Decibel protocol fee`, `${config.economics.creationFeeUsdc} USDC`,
+                 "Charged by the exchange when the vault is created. Not ours."],
+                [`Our launch fee`, `${config.economics.launchFeeUsdc} USDC`,
+                 "Charged once per vault. Swapping to a different indicator later is free."],
+              ]}
             />
-            <FeeRow
-              k="Our one-time launch fee"
-              v={`${config.economics.launchFeeUsdc} USDC`}
-              note="Paid from your wallet. Charged once per vault — swapping the algo later is free."
-              highlight
-            />
-            <FeeRow
-              k="You seed the vault"
-              v={`${seedUsdc} USDC`}
-              note="Stays yours — it's the vault's starting capital."
-            />
-            <FeeRow
-              k="Depositors pay on profits"
-              v={`${config.economics.depositorPaysPct}%`}
-              note={`You keep ${config.economics.creatorKeepsPct}% · platform takes ${config.economics.platformTakesPct}%. Only on gains.`}
-            />
-            <FeeRow
-              k="Trading fee"
-              v={`${config.economics.builderFeeBps / 100}%`}
-              note="Of notional, on each fill the bot makes. Built into the order."
+            <CostGroup
+              title="Starting capital"
+              total={`${seedUsdc} USDC`}
+              tone="warn"
+              rows={[
+                ["Seeded into the vault", `${seedUsdc} USDC`,
+                 "Not a fee — this is traded by the strategy and is exposed to its gains and losses."],
+              ]}
             />
           </dl>
 
           {/* Two pots, and they are not interchangeable. */}
-          <div className="mt-3 space-y-1.5 border-t border-white/[0.06] pt-2.5">
+          <div className="mt-4 space-y-2 border-t border-white/[0.06] pt-3">
+            <p className="text-[13px] font-semibold text-zinc-300">Where it has to be</p>
             <PotRow
-              label="In your Decibel balance"
+              label="Decibel balance — protocol fee + capital"
               need={config.economics.creationFeeUsdc + seedUsdc}
               have={preflight?.usdc}
             />
             <PotRow
-              label="In your wallet"
+              label="Wallet — our launch fee"
               need={config.economics.launchFeeUsdc}
               have={preflight?.walletUsdc}
             />
           </div>
 
-          <p className="mt-2.5 text-[10px] leading-snug text-zinc-600">
-            The {config.economics.launchFeeUsdc} USDC buys the vault, not the bot: once it&apos;s
-            paid you can swap in any other indicator for the cost of gas, as often as you like.
-            Decibel caps profit share at {config.economics.depositorPaysPct}% — ours comes out of
-            that, never on top.
-            {!config.economics.termsOnChain && (
-              <span className="mt-1 block text-amber-500/80">
-                Showing default pricing — the contract isn&apos;t published here, so these are
-                not live quotes.
-              </span>
-            )}
-          </p>
+          {/* Revenue, not cost. Deliberately not mixed in above. */}
+          <div className="mt-4 border-t border-white/[0.06] pt-3">
+            <p className="text-[13px] font-semibold text-zinc-300">After launch</p>
+            <dl className="mt-2 space-y-2">
+              <FeeRow
+                k="Performance fee on profits"
+                v={`${config.economics.depositorPaysPct}%`}
+                note={`Paid by depositors, not you. You receive ${config.economics.creatorKeepsPct}% and the platform ${config.economics.platformTakesPct}%.`}
+              />
+              <FeeRow
+                k="Trading fee"
+                v={`${config.economics.builderFeeBps / 100}% per fill`}
+                note="Of order notional, taken by the platform on each trade the bot makes. This is on top of Decibel's own maker/taker fees."
+              />
+            </dl>
+          </div>
+
+          {!config.economics.termsOnChain && (
+            <p className="mt-3 border-t border-white/[0.06] pt-2.5 text-[12px] leading-relaxed text-amber-500/90">
+              Estimated preview — the contract isn&apos;t deployed on this network, so these are
+              default rates rather than live quotes.
+            </p>
+          )}
         </section>
       )}
 
@@ -725,7 +787,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       <details className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
         <summary className="cursor-pointer list-none px-4 py-3 font-display text-[12px] font-semibold text-zinc-400 transition-colors hover:text-white">
           Custom settings
-          <span className="ml-2 font-normal text-zinc-600">optional — sensible defaults applied</span>
+          <span className="ml-2 font-normal text-zinc-400">optional — sensible defaults applied</span>
         </summary>
         <div className="space-y-3 border-t border-white/[0.06] px-4 py-3.5">
           <Segmented
@@ -773,7 +835,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               disabled={busy}
             />
           )}
-          <p className="border-t border-white/[0.06] pt-2.5 text-[10px] leading-snug text-zinc-600">
+          <p className="border-t border-white/[0.06] pt-2.5 text-[12px] leading-relaxed text-zinc-400">
             Every value here is inside the range the contract accepts, and all of them are frozen
             the moment your bot goes live. Slippage is fixed at{" "}
             {(config?.defaults.slippageBps ?? 30) / 100}% and the fee interval at{" "}
@@ -835,12 +897,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             {errorList.length > 0 && (
               <ul className="mt-1.5 space-y-1">
                 {errorList.map((e) => (
-                  <li key={e} className="text-[11px] leading-snug text-red-300/80">• {e}</li>
+                  <li key={e} className="text-[12px] leading-relaxed text-red-300/80">• {e}</li>
                 ))}
               </ul>
             )}
             {started && !live && (
-              <span className="mt-2 block text-[11px] leading-snug text-red-300/70">
+              <span className="mt-2 block text-[12px] leading-relaxed text-red-300/70">
                 {doneThrough >= 2
                   ? "Your Decibel vault already exists and its funds are safe — resuming will not create a second one."
                   : "Nothing has been spent yet."}
@@ -854,7 +916,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         {live && svAddr && (
           <Banner tone="success">
             <span className="block font-semibold">Your bot is live and trading.</span>
-            <span className="mt-1.5 block text-[11px] leading-snug text-zinc-400">
+            <span className="mt-1.5 block text-[12px] leading-relaxed text-zinc-400">
               The sealed module is now the only account that can place an order for this vault.
             </span>
             <span className="mt-2 flex flex-col gap-1">
@@ -867,51 +929,56 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {config && !config.ready && (
-          <Banner tone="warn">
-            <span className="block font-semibold">Not deployable on this environment yet</span>
-            <span className="mt-1 block leading-snug">
-              The sealed-vault contract hasn&apos;t been published to{" "}
-              <span className="font-mono">{config.network}</span> yet, so there&apos;s nothing to
-              deploy into. Everything above still works — pick a strategy, see its program hash
-              and costs.
-            </span>
-            {config.missing && config.missing.length > 0 && (
-              <span className="mt-2 block">
-                <span className="block text-[10px] uppercase tracking-wide text-amber-500/70">
-                  Missing configuration
-                </span>
-                {config.missing.map((m) => (
-                  <span key={m} className="mt-0.5 block font-mono text-[10px] text-amber-300/90">
-                    {m}
-                  </span>
-                ))}
-                <span className="mt-1.5 block text-[10px] leading-snug text-zinc-500">
-                  Publish with{" "}
-                  <span className="font-mono text-zinc-400">
-                    pnpm sealed:e2e run --network {config.network}
-                  </span>
-                  , then set the values it prints. See docs/SEALED-INDICATOR.md §8.
-                </span>
-              </span>
-            )}
-          </Banner>
-        )}
-      </AnimatePresence>
+      {/* What the creator is actually agreeing to, stated once, right before the button.
+          Previously leverage, order size and cadence lived only inside a collapsed disclosure
+          and the words "capital at risk" appeared nowhere on the page. */}
+      {config && (
+        <section className={cn(SURFACE_CARD_SOLID, "p-4")}>
+          <h3 className="font-display text-[14px] font-semibold text-white">Before you launch</h3>
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+            <Review k="Strategy" v={usingCustom ? "Your own script" : (selected?.label ?? "—")} />
+            <Review k="Direction" v={usingCustom ? "Depends on your script" : (selected?.direction ?? "—")} />
+            <Review k="Market" v={marketName ?? config.markets[0]?.name ?? "BTC/USD"} />
+            <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
+            <Review k="Order size" v={`${pctBps / 100}% of vault value`} />
+            <Review k="Max leverage" v={`${maxLeverageX100 / 100}x`} tone={maxLeverageX100 > 200 ? "warn" : undefined} />
+          </dl>
+          <p className="mt-3 border-t border-white/[0.06] pt-3 text-[13px] leading-relaxed text-zinc-400">
+            This is a leveraged perpetual-futures strategy. At {maxLeverageX100 / 100}x, a move of
+            roughly{" "}
+            <span className="font-semibold text-white">
+              {(100 / (maxLeverageX100 / 100)).toFixed(0)}%
+            </span>{" "}
+            against a full-size position would wipe out the capital backing it. Your{" "}
+            {seedUsdc} USDC can lose value, and so can any money depositors add. Nothing about
+            the on-chain enforcement makes the strategy profitable — it only guarantees the vault
+            trades the rules you committed to.
+          </p>
+        </section>
+      )}
 
-      <ActionButton
-        onClick={launch}
-        state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
-        successLabel="Live"
-        errorLabel={started ? `Resume launch (step ${doneThrough + 1} of 4)` : "Try again"}
-        disabled={live || !config?.ready}
-      >
-        {buttonLabel}
-      </ActionButton>
+      {previewMode ? (
+        <div
+          role="status"
+          className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 font-display text-[14px] font-semibold text-zinc-500"
+        >
+          <Lock className="h-4 w-4" aria-hidden />
+          Launch unavailable in preview mode
+        </div>
+      ) : (
+        <ActionButton
+          onClick={launch}
+          state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
+          successLabel="Live"
+          errorLabel={started ? `Resume launch (step ${doneThrough + 1} of 4)` : "Try again"}
+          disabled={live}
+        >
+          {buttonLabel}
+        </ActionButton>
+      )}
 
-      {!started && config?.ready && (
-        <p className="-mt-2 text-center text-[10px] leading-snug text-zinc-600">
+      {!started && !previewMode && (
+        <p className="-mt-2 text-center text-[12px] leading-relaxed text-zinc-500">
           Three wallet signatures: create the vault, seal the strategy, hand it trading rights.
           Decibel requires each to be its own transaction.
         </p>
@@ -921,7 +988,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 }
 
 const inputCls =
-  "w-full rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none disabled:opacity-50";
+  "w-full rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-400 focus:border-accent/40 focus:outline-none disabled:opacity-50";
 
 function Label({ n, children }: { n: number; children: React.ReactNode }) {
   return (
@@ -955,7 +1022,7 @@ function Segmented<T extends string | number>({
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <span className="font-display text-[12px] font-semibold text-white">{label}</span>
-        <span className="text-right text-[10px] leading-snug text-zinc-600">{hint}</span>
+        <span className="text-right text-[12px] leading-relaxed text-zinc-400">{hint}</span>
       </div>
       <div
         role="radiogroup"
@@ -1010,7 +1077,7 @@ function VisibilityCard({
         {icon}
         <span className="font-display text-[12px] font-semibold">{title}</span>
       </span>
-      <span className="mt-1 block text-[10px] leading-snug text-zinc-500">{body}</span>
+      <span className="mt-1 block text-[12px] leading-relaxed text-zinc-500">{body}</span>
     </button>
   );
 }
@@ -1032,6 +1099,60 @@ function ExplorerLink({
   );
 }
 
+/** A cost bucket with its own subtotal. The audit finding this answers: fees, capital the
+ *  creator still owns, and ongoing rates were all rendered as sibling rows under one "What it
+ *  costs" heading, so the reader had to do the arithmetic AND the categorisation themselves. */
+/** Small metadata chip. Deliberately readable rather than 9px uppercase. */
+function Tag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+      {children}
+    </span>
+  );
+}
+
+function Review({ k, v, tone }: { k: string; v: string; tone?: "warn" }) {
+  return (
+    <div>
+      <dt className="text-[12px] text-zinc-500">{k}</dt>
+      <dd className={cn("mt-0.5 font-display text-[14px] font-semibold", tone === "warn" ? "text-amber-400" : "text-white")}>
+        {v}
+      </dd>
+    </div>
+  );
+}
+
+function CostGroup({
+  title, total, rows, tone,
+}: {
+  title: string;
+  total: string;
+  rows: Array<[string, string, string]>;
+  tone?: "warn";
+}) {
+  return (
+    <div className={cn(SURFACE_CONTROL, "p-3")}>
+      <div className="flex items-baseline justify-between gap-3">
+        <dt className="font-display text-[13px] font-semibold text-white">{title}</dt>
+        <dd className={cn("font-mono text-[14px] font-semibold tabular-nums", tone === "warn" ? "text-amber-400" : "text-zinc-200")}>
+          {total}
+        </dd>
+      </div>
+      <div className="mt-2 space-y-2">
+        {rows.map(([k, v, note]) => (
+          <div key={k}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] text-zinc-300">{k}</span>
+              <span className="shrink-0 font-mono text-[12px] tabular-nums text-zinc-400">{v}</span>
+            </div>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-zinc-500">{note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** One funding requirement, against what the connected wallet actually holds. Two separate
  *  pots — Decibel spends from the subaccount, our fee comes from the wallet — and a creator
  *  with plenty in the wrong one still cannot launch. */
@@ -1039,13 +1160,13 @@ function PotRow({ label, need, have }: { label: string; need: number; have?: num
   const known = typeof have === "number";
   const ok = known && have >= need;
   return (
-    <div className="flex items-baseline justify-between gap-3 text-[10px]">
-      <span className="text-zinc-500">{label}</span>
+    <div className="flex items-baseline justify-between gap-3 text-[12px]">
+      <span className="text-zinc-400">{label}</span>
       <span className="shrink-0 font-mono tabular-nums">
         <span className={ok ? "text-accent" : known ? "text-amber-400" : "text-zinc-500"}>
           {known ? have.toFixed(2) : "—"}
         </span>
-        <span className="text-zinc-600"> / {need} USDC</span>
+        <span className="text-zinc-500"> / {need} USDC</span>
         {known && !ok && (
           <span className="ml-1.5 text-amber-400">add {(need - have).toFixed(2)}</span>
         )}
@@ -1060,8 +1181,8 @@ function FeeRow({
   return (
     <div className="flex items-baseline justify-between gap-3">
       <div>
-        <dt className={cn("text-[12px]", highlight ? "font-semibold text-white" : "text-zinc-300")}>{k}</dt>
-        <dd className="mt-0.5 text-[10px] leading-snug text-zinc-600">{note}</dd>
+        <dt className={cn("text-[13px]", highlight ? "font-semibold text-white" : "text-zinc-300")}>{k}</dt>
+        <dd className="mt-0.5 text-[12px] leading-relaxed text-zinc-500">{note}</dd>
       </div>
       <span
         className={cn(

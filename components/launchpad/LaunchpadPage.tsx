@@ -7,6 +7,7 @@ import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
+import { SealedSwap } from "@/components/sealed/SealedSwap";
 import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
@@ -745,7 +746,8 @@ export function LaunchpadPage() {
 
           {/* ── Manage: your bots & earnings ── */}
           {tab === "manage" && (
-            <div className="animate-enter-delay-1">
+            <div className="animate-enter-delay-1 space-y-8">
+              <SealedSwap creatorAddr={account?.address?.toString()} />
               <CreatorDashboard creatorAddr={account?.address?.toString()} />
             </div>
           )}

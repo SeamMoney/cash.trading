@@ -11,8 +11,21 @@
 export interface CatalogStrategy {
   id: string;
   label: string;
-  /** One line a non-quant understands. Shown under the dropdown. */
+  /**
+   * One line a non-quant understands — and one that matches the code.
+   *
+   * Every entry here is long/short: the scripts all call `strategy.entry(…, strategy.short)`.
+   * The blurbs used to describe only the long leg ("goes long when the fast average crosses
+   * above the slow one"), which understated the risk of a product people commit capital to.
+   * `pnpm test:catalog` fails if a blurb claims a direction the script does not take.
+   */
   blurb: string;
+  /** What the strategy family is, in one word a trader recognises. */
+  category: "Trend following" | "Mean reversion" | "Momentum" | "Breakout";
+  /** Which sides it takes. Derived from the script and asserted by the catalog selftest. */
+  direction: "Long only" | "Short only" | "Long/short";
+  /** Roughly how often it flips, at the default 1-minute cadence. */
+  turnover: "Low" | "Medium" | "High";
   script: string;
 }
 
@@ -22,7 +35,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "ema-cross",
     label: "EMA Cross (9/21)",
-    blurb: "Trend following. Goes long when the fast average crosses above the slow one.",
+    blurb: "Long when EMA 9 crosses above EMA 21, short when it crosses below.",
+    category: "Trend following",
+    direction: "Long/short",
+    turnover: "Medium",
     script:
       head("EMA Cross 9/21") +
       `fastLen = input.int(9, "Fast")\n` +
@@ -35,7 +51,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "rsi-reversion",
     label: "RSI Mean Reversion",
-    blurb: "Buys oversold, sells overbought. Works best in ranging markets.",
+    blurb: "Long under RSI 30, short over RSI 70. Fights trends; best in ranging markets.",
+    category: "Mean reversion",
+    direction: "Long/short",
+    turnover: "High",
     script:
       head("RSI Mean Reversion") +
       `rsiLen = input.int(14, "RSI Length")\n` +
@@ -46,7 +65,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "macd",
     label: "MACD Momentum",
-    blurb: "Follows momentum shifts using the MACD signal-line crossover.",
+    blurb: "Long when MACD crosses above its signal line, short when it crosses below.",
+    category: "Momentum",
+    direction: "Long/short",
+    turnover: "Medium",
     script:
       head("MACD Momentum") +
       `[macdLine, signalLine, hist] = ta.macd(close, 12, 26, 9)\n` +
@@ -56,7 +78,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "bollinger-breakout",
     label: "Bollinger Breakout",
-    blurb: "Trades expansion out of a volatility squeeze, confirmed by trend.",
+    blurb: "Long above the upper Bollinger band, short below the lower, with trend agreement.",
+    category: "Breakout",
+    direction: "Long/short",
+    turnover: "Low",
     script:
       head("Bollinger Breakout") +
       `len = input.int(20, "Length")\n` +
@@ -69,7 +94,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "sma-trend",
     label: "SMA Trend (50/200)",
-    blurb: "Classic golden/death cross. Slow, low-turnover trend capture.",
+    blurb: "Golden/death cross. Long on 50 over 200, short on 50 under 200. Flips rarely.",
+    category: "Trend following",
+    direction: "Long/short",
+    turnover: "Low",
     script:
       head("SMA Trend 50/200") +
       `fast = ta.sma(close, 50)\n` +
@@ -80,7 +108,10 @@ export const SEALED_CATALOG: CatalogStrategy[] = [
   {
     id: "breakout-channel",
     label: "Donchian Breakout",
-    blurb: "Buys new highs, sells new lows over a rolling window.",
+    blurb: "Long at a 20-bar high, short at a 20-bar low, with trend agreement.",
+    category: "Breakout",
+    direction: "Long/short",
+    turnover: "Medium",
     script:
       head("Donchian Breakout") +
       `len = input.int(20, "Lookback")\n` +

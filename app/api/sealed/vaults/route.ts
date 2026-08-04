@@ -43,8 +43,14 @@ export async function GET(request: NextRequest) {
     );
   }
   const network = request.nextUrl.searchParams.get("network") ?? "testnet";
+  // `creator` scopes the feed to one wallet's vaults — what the Manage tab needs to show a
+  // creator which of their bots is live and which can be swapped.
+  const creator = request.nextUrl.searchParams.get("creator");
+  if (creator && !isHexAddress(creator)) {
+    return NextResponse.json({ error: "invalid creator" }, { status: 400, headers: NO_STORE });
+  }
   try {
-    const vaults = await listSealedVaults(network);
+    const vaults = await listSealedVaults(network, creator ?? undefined);
     return NextResponse.json({ ok: true, network, vaults }, { status: 200, headers: NO_STORE });
   } catch (err) {
     console.error("[sealed/vaults] list failed:", err instanceof Error ? err.message : err);

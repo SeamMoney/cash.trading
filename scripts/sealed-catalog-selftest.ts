@@ -4,6 +4,7 @@
  *
  *   pnpm test:catalog
  */
+import assert from "node:assert/strict";
 import { SEALED_CATALOG } from "../lib/sealed-catalog";
 import { commitProgram, SEALED_MARKETS } from "../lib/sealed-vaults";
 
@@ -32,7 +33,33 @@ for (const s of SEALED_CATALOG) {
   }
 }
 
-console.log(failures === 0 ? "\nAll catalog strategies commit.\n" : `\n${failures} FAILED.\n`);
-process.exit(failures === 0 ? 0 : 1);
 
+// ── Blurbs must match the code ──────────────────────────────────────────────
+// Every catalog script calls strategy.entry(..., strategy.short), but the blurbs originally
+// described only the long leg — "goes long when the fast average crosses above the slow one".
+// A creator commits capital on the strength of that sentence, so an incomplete one understates
+// the risk of the product. This fails the build if the two ever drift apart again.
+for (const s of SEALED_CATALOG) {
+  const takesLong = /strategy\.long/.test(s.script);
+  const takesShort = /strategy\.short/.test(s.script);
+  const claimed =
+    takesLong && takesShort ? "Long/short" : takesShort ? "Short only" : "Long only";
+  assert.equal(
+    s.direction,
+    claimed,
+    `${s.id}: declares "${s.direction}" but the script takes ${claimed.toLowerCase()}`,
+  );
+  if (takesShort) {
+    assert.ok(
+      /short/i.test(s.blurb),
+      `${s.id}: the script enters shorts but the blurb never says so — "${s.blurb}"`,
+    );
+  }
+  assert.ok(s.blurb.length <= 90, `${s.id}: blurb too long for the dropdown`);
+  assert.ok(s.category && s.turnover, `${s.id}: missing category/turnover metadata`);
+}
+console.log(`catalog metadata: ${SEALED_CATALOG.length} strategies, blurbs match their scripts`);
+
+console.log(failures === 0 ? "\nAll catalog strategies commit." : `\n${failures} FAILED.`);
+process.exit(failures === 0 ? 0 : 1);
 export {};

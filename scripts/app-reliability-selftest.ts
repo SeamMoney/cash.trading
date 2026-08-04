@@ -1421,6 +1421,43 @@ assert.ok(
   "the announcement must be an on-chain event; notice nobody can observe is not notice",
 );
 
+// ── Truthful UI state ──────────────────────────────────────────────────────
+// The worst defect a UX review found: the Launch button rendered as a live green primary
+// action while the page said launching was impossible. A financial action must never look
+// available when it isn't.
+assert.ok(
+  sealedLaunchUi.includes("Launch unavailable in preview mode") &&
+    sealedLaunchUi.includes("previewMode ? ("),
+  "when the contract is unpublished the primary action must RENDER as unavailable, not just " +
+    "carry a disabled prop on a button that still looks launchable",
+);
+assert.ok(
+  sealedLaunchUi.indexOf("Preview mode · launching is unavailable") <
+    sealedLaunchUi.indexOf("<Label n={1}>"),
+  "the unavailable state must appear ABOVE the form — users should not configure the whole " +
+    "page before learning they cannot launch",
+);
+assert.ok(
+  sealedLaunchUi.includes("Developer details"),
+  "raw env-var names belong behind a disclosure, not in the default customer experience",
+);
+// Capital-at-risk language. "Stays yours" read as though the seed were protected.
+assert.ok(
+  sealedLaunchUi.includes("exposed to its gains and losses") &&
+    !sealedLaunchUi.includes("Stays yours"),
+  "starting capital must be described as at risk, not as money the creator keeps safe",
+);
+assert.ok(
+  sealedLaunchUi.includes("Before you launch") && sealedLaunchUi.includes("Capital at risk"),
+  "a risk review must appear immediately before the launch action",
+);
+// The privacy copy contradicted the Public option sitting directly beneath it.
+assert.ok(
+  !sealedLaunchUi.includes("never your source") &&
+    !sealedLaunchUi.includes("Nobody can read your alpha"),
+  "privacy copy must not make absolute claims, nor contradict the Public option",
+);
+
 // The launch fee is spent from the WALLET while Decibel's fee comes from the SUBACCOUNT.
 // Checking only one pot lets the UI green-light a launch that aborts on EINSUFFICIENT_BALANCE.
 const sealedPreflightRoute = readFileSync("app/api/sealed/decibel-vault/route.ts", "utf8");

@@ -571,9 +571,14 @@ export function sealedRegistryAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
 
-export async function listSealedVaults(network: string): Promise<PublicSealedVault[]> {
+export async function listSealedVaults(
+  network: string,
+  creatorAddr?: string,
+): Promise<PublicSealedVault[]> {
   const rows = await prisma.sealedVault.findMany({
-    where: { network },
+    where: creatorAddr
+      ? { network, creatorAddr: { equals: creatorAddr, mode: "insensitive" } }
+      : { network },
     orderBy: [{ sealedAt: "desc" }, { createdAt: "desc" }],
     take: 100,
   });

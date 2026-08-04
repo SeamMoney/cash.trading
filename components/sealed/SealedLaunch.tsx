@@ -704,9 +704,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           {/* Behaviour preview — what this strategy does on real candles. */}
           {effectivePine && (
             <div className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
-              {/* Full-height on desktop; capped on a phone, where it otherwise ate an entire
-                  screen of scroll for context the user glances at. */}
-              <div className="max-h-[280px] overflow-hidden sm:max-h-none">
+              {/* The chart sizes itself down on a phone rather than being cropped — see
+                  PineVisualPreview. Cropping removed the time axis, which is the part that
+                  makes the candles mean anything. */}
+              <div>
                 <PineVisualPreview
                   asset={marketName ?? config?.markets[0]?.name ?? undefined}
                   pineScript={effectivePine}

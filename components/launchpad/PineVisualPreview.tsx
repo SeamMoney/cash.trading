@@ -13,7 +13,6 @@ import type { Candle } from "@/lib/launchpad/types";
 
 import { LaunchpadIndicatorPane, type LaunchpadIndicatorLine } from "./LaunchpadIndicatorPane";
 
-const CHART_HEIGHT = 480;
 const CHART_BG = "#0d0d14";
 
 /** Fallback palette for plots the script never coloured. Distinct, in order. */
@@ -419,7 +418,11 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
         </div>
       )}
 
-      <div className="relative w-full" style={{ height: CHART_HEIGHT, backgroundColor: CHART_BG }}>
+      {/* Height, not a crop. The preview used to render at a fixed 480px inside a
+          `max-h-[280px] overflow-hidden` wrapper on phones, which cut the bottom off the
+          chart — including the time axis — so the mobile preview was a chart with its
+          scale missing rather than a smaller chart. */}
+      <div className="relative h-[300px] w-full sm:h-[480px]" style={{ backgroundColor: CHART_BG }}>
         {candles.length > 0 && (
           <BklitCandlePlot
             candles={candles.map((candle) => ({

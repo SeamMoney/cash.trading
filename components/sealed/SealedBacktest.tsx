@@ -29,6 +29,14 @@ interface Stats {
   shortFills: number;
 }
 
+interface LegResult {
+  asset: string;
+  returnPct: number;
+  holdReturnPct: number;
+  trades: number;
+  maxDrawdownPct: number;
+}
+
 interface Response {
   ok: boolean;
   error?: string;
@@ -37,11 +45,16 @@ interface Response {
   stats?: Stats;
   assumptions?: string[];
   builderFeeBps?: number;
+  assets?: string[];
+  perMarket?: LegResult[];
+  unavailable?: Array<{ asset: string; error: string }>;
 }
 
 interface Props {
   pineScript: string;
   asset: string;
+  /** Every market the vault will trade. Capital is split across them, as the vault does. */
+  markets?: string[];
   pctBps: number;
   maxLeverageX100: number;
   slippageBps: number;
@@ -49,7 +62,8 @@ interface Props {
 }
 
 export function SealedBacktest(props: Props) {
-  const { pineScript, asset, pctBps, maxLeverageX100, slippageBps, initialCapital } = props;
+  const { pineScript, asset, markets, pctBps, maxLeverageX100, slippageBps, initialCapital } = props;
+  const assets = markets && markets.length > 0 ? markets : [asset];
   const [windowKey, setWindowKey] = useState<(typeof WINDOWS)[number]["key"]>("1h");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Response | null>(null);
@@ -63,7 +77,7 @@ export function SealedBacktest(props: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pineScript,
-          asset,
+          assets,
           window: windowKey,
           pctBps,
           maxLeverageX100,
@@ -77,7 +91,9 @@ export function SealedBacktest(props: Props) {
     } finally {
       setLoading(false);
     }
-  }, [asset, initialCapital, maxLeverageX100, pctBps, pineScript, slippageBps, windowKey]);
+    // `assets` is rebuilt on every render, so depend on its VALUE. Depending on the array
+    // identity would re-create the callback each render and, with it, discard the result.
+  }, [assets.join(","), initialCapital, maxLeverageX100, pctBps, pineScript, slippageBps, windowKey]);
 
   const s = result?.stats;
   // Beating buy-and-hold is the only comparison that matters for a directional
@@ -91,7 +107,9 @@ export function SealedBacktest(props: Props) {
         <div>
           <h3 className="font-display text-[14px] font-semibold text-white">Backtest</h3>
           <p className="text-[11px] leading-snug text-zinc-500">
-            Your script, under the fees and sizing this vault will trade with.
+            {assets.length > 1
+              ? `Your script on all ${assets.length} markets, capital split between them.`
+              : "Your script, under the fees and sizing this vault will trade with."}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -147,7 +165,7 @@ export function SealedBacktest(props: Props) {
                 tone={s.returnPct >= 0 ? "up" : "down"}
               />
               <Stat
-                label="Buy & hold"
+                label={assets.length > 1 ? "Hold basket" : "Buy & hold"}
                 value={`${s.holdReturnPct >= 0 ? "+" : ""}${s.holdReturnPct}%`}
                 tone={beatsHold ? "muted" : "down"}
                 note={beatsHold ? "beaten" : "not beaten"}
@@ -163,6 +181,51 @@ export function SealedBacktest(props: Props) {
                 tone={s.fundingPaid > 0 ? "down" : "up"}
               />
             </div>
+
+            {/* Per-market breakdown. A portfolio number can be carried entirely by one
+                market, and a creator deciding what to launch needs to see that rather than
+                a single flattering average. */}
+            {result.perMarket && result.perMarket.length > 1 && (
+              <div className="overflow-hidden rounded-[10px] border border-white/[0.06]">
+                <table className="w-full font-mono text-[11px]">
+                  <thead className="border-b border-white/[0.06] text-zinc-500">
+                    <tr>
+                      <th className="px-2.5 py-1.5 text-left font-normal">Market</th>
+                      <th className="px-2 py-1.5 text-right font-normal">Return</th>
+                      <th className="px-2 py-1.5 text-right font-normal">Hold</th>
+                      <th className="px-2 py-1.5 text-right font-normal">Max DD</th>
+                      <th className="px-2.5 py-1.5 text-right font-normal">Trips</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.perMarket.map((m) => (
+                      <tr key={m.asset} className="border-b border-white/[0.04] last:border-0">
+                        <td className="px-2.5 py-1.5 text-zinc-300">{m.asset.replace("/USD", "")}</td>
+                        <td className={cn("px-2 py-1.5 text-right", m.returnPct >= 0 ? "text-[#39ff14]" : "text-red-400")}>
+                          {m.returnPct >= 0 ? "+" : ""}{m.returnPct}%
+                        </td>
+                        {/* The hold number, not a verdict. "beat" next to a red -2.34% reads
+                            as a contradiction until you know the asset itself fell 65%; the
+                            two numbers side by side say that without needing the explanation. */}
+                        <td className="px-2 py-1.5 text-right text-zinc-500">
+                          {m.holdReturnPct >= 0 ? "+" : ""}{m.holdReturnPct}%
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-red-400">-{m.maxDrawdownPct}%</td>
+                        <td className="px-2.5 py-1.5 text-right text-zinc-400">{m.trades}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Named, not dropped. A market silently missing from a portfolio backtest makes
+                the remaining ones look like the whole answer. */}
+            {result.unavailable && result.unavailable.length > 0 && (
+              <p className="rounded-[10px] border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-400/90">
+                Not simulated: {result.unavailable.map((u) => u.asset).join(", ")} — {result.unavailable[0].error}
+              </p>
+            )}
 
             <div className="grid gap-1 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2 font-mono text-[10px] text-zinc-500">
               <span>

@@ -22,12 +22,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { attestorKeyMismatch, performTick, isTooSoon } from "@/lib/sealed-tick";
 import {
+  performPortfolioTick,
+  isTooSoon as isPortfolioTooSoon,
+} from "@/lib/portfolio-tick";
+import {
   decryptSource,
   keyProblem,
   secretMatches,
   sourceVaultAvailable,
 } from "@/lib/sealed-source-vault";
-import { sealedNetwork, sealedRegistryAvailable } from "@/lib/sealed-vaults";
+import { findSealedMarket, sealedNetwork, sealedRegistryAvailable } from "@/lib/sealed-vaults";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,6 +145,88 @@ export async function GET(request: NextRequest) {
         },
       }).catch(() => undefined);
       results.push({ vault: row.strategyVaultAddr, error: "decrypt failed" });
+      continue;
+    }
+
+    // Two modules, two tick paths. Routed on the stored kind rather than on the market count,
+    // because the kind is what says which Move module the vault's address actually holds — a
+    // portfolio vault ticked as a single one calls a function its module does not have, and
+    // the abort would read as a transient failure and be retried every minute forever.
+    const isPortfolio = row.vaultKind === "portfolio";
+
+    if (isPortfolio) {
+      // The allowlist, in stored order. Index i here MUST be market_idx i on-chain; the tick
+      // path re-reads the on-chain market count and refuses to sign on a mismatch, so a
+      // corrupted list fails closed rather than trading the wrong book.
+      const names = (row.marketNames ?? row.marketName ?? "").split(",").map((n) => n.trim()).filter(Boolean);
+      const resolved = names.map((n, idx) => {
+        const m = findSealedMarket(n);
+        return m ? { idx, name: m.name, asset: m.pythAsset } : null;
+      });
+      if (resolved.some((m) => m === null)) {
+        await prisma.sealedVault.update({
+          where: { strategyVaultAddr: row.strategyVaultAddr },
+          data: {
+            tickFailures: row.tickFailures + 1,
+            lastTickAt: new Date(),
+            lastTickError: `unknown market in allowlist: ${names.join(",")}`,
+          },
+        }).catch(() => undefined);
+        results.push({ vault: row.strategyVaultAddr, ok: false, stage: "markets", error: "unknown market in allowlist" });
+        continue;
+      }
+
+      const pr = await performPortfolioTick({
+        strategyVaultAddr: row.strategyVaultAddr,
+        packageAddress: row.packageAddress,
+        network: row.network,
+        markets: resolved as Array<{ idx: number; name: string; asset: string }>,
+        manifestJson: row.manifestJson,
+        pineScript: pine,
+        defaultPctBps: row.pctBps,
+        leverageX100: row.maxLeverageX100,
+        attestorPrivateKey: attestorKey,
+        crankPrivateKey: crankKey,
+      }).catch((err) => ({
+        ok: false as const,
+        stage: "unexpected",
+        error: err instanceof Error ? err.message : "unknown",
+        retryable: true,
+      }));
+
+      if (pr.ok) {
+        await prisma.sealedVault.update({
+          where: { strategyVaultAddr: row.strategyVaultAddr },
+          data: {
+            lastTickAt: new Date(),
+            lastTickSeq: Number(pr.seq),
+            tickFailures: 0,
+            // A partial tick is not a clean one. Markets that were skipped are recorded so a
+            // vault quietly trading three of its four markets is visible rather than green.
+            lastTickError: pr.skipped.length > 0 ? `skipped: ${pr.skipped.join("; ")}`.slice(0, 500) : null,
+          },
+        }).catch(() => undefined);
+        results.push({
+          vault: row.strategyVaultAddr,
+          ok: true,
+          seq: pr.seq,
+          actions: pr.actions.length,
+          skipped: pr.skipped.length,
+          tx: pr.txHash,
+        });
+      } else if (isPortfolioTooSoon(pr)) {
+        results.push({ vault: row.strategyVaultAddr, skipped: "too soon" });
+      } else {
+        await prisma.sealedVault.update({
+          where: { strategyVaultAddr: row.strategyVaultAddr },
+          data: {
+            tickFailures: row.tickFailures + 1,
+            lastTickAt: new Date(),
+            lastTickError: `${pr.stage}: ${pr.error}`.slice(0, 500),
+          },
+        }).catch(() => undefined);
+        results.push({ vault: row.strategyVaultAddr, ok: false, stage: pr.stage, error: pr.error });
+      }
       continue;
     }
 

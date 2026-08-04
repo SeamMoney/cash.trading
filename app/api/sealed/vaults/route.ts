@@ -203,6 +203,35 @@ export async function POST(request: NextRequest) {
     };
   }
 
+  // The allowlist, in order. Order is load-bearing — an action's `market_idx` addresses the
+  // on-chain list positionally, so a resolved-but-reordered list would eventually place a real
+  // order on the wrong book. Unknown names are rejected rather than dropped for the same
+  // reason: dropping one shifts every index after it.
+  const allowlist: string[] = [];
+  if (Array.isArray(body.markets)) {
+    for (const n of body.markets) {
+      const m = findSealedMarket(typeof n === "string" ? n : "");
+      if (!m) {
+        return NextResponse.json(
+          { error: `unknown market in allowlist: ${String(n)}` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      if (allowlist.includes(m.name)) {
+        return NextResponse.json(
+          { error: `market ${m.name} listed twice in the allowlist` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      allowlist.push(m.name);
+    }
+  }
+  if (allowlist.length === 0) allowlist.push(market.name);
+  // Derived from the allowlist rather than trusted from the body: a record claiming
+  // "portfolio" with one market would send the cron down a tick path the vault's module does
+  // not implement.
+  const vaultKind = allowlist.length > 1 ? "portfolio" : "single";
+
   const sealed = body.sealed === true;
   const data = {
     strategyVaultAddr: body.strategyVaultAddr as string,
@@ -212,6 +241,8 @@ export async function POST(request: NextRequest) {
     decibelVaultAddr: body.decibelVaultAddr as string,
     marketAddr: market.addr,
     marketName: market.name,
+    vaultKind,
+    marketNames: allowlist.length > 1 ? allowlist.join(",") : null,
     programCommitment: (body.programCommitment as string).toLowerCase(),
     attestorPubkey: (body.attestorPubkey as string).toLowerCase(),
     enclaveMeasurement:

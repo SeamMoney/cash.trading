@@ -53,6 +53,14 @@ interface SealedConfig {
     slippageBps: number;
     performanceFeeBps: number;
   };
+  portfolioDefaults?: {
+    maxPctBps: number;
+    maxLeverageX100: number;
+    maxPortfolioLeverageX100: number;
+    maxPositions: number;
+    maxHoldBars: number;
+    maxAdverseFundingBps: number;
+  };
   economics: {
     creationFeeUsdc: number;
     minFundingUsdc: number;
@@ -162,7 +170,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [maxLeverageX100, setMaxLeverageX100] = useState(200);
   const [minBarIntervalS, setMinBarIntervalS] = useState(60);
   const [seedUsdc, setSeedUsdc] = useState(SEED_CHOICES[0]);
-  const [marketName, setMarketName] = useState<string | null>(null);
+  // A LIST, not one market. Selecting a second market is what turns this into a portfolio
+  // vault — there is no separate mode switch, because "which markets" and "single or
+  // portfolio" are the same question asked twice.
+  const [markets, setMarkets] = useState<string[]>([]);
 
   // Progress. Each address is the receipt for a completed step, so a retry resumes.
   const [step, setStep] = useState<StepId | null>(null);
@@ -177,6 +188,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
   const busy = step !== null && !delegated;
   const live = delegated && Boolean(svAddr);
+  /** Two or more markets means the portfolio module, with its own bounds and guarantees. */
+  const isPortfolio = markets.length > 1;
+  /** The market the preview chart and the commitment manifest are built against. */
+  const primaryMarket = markets[0] ?? config?.markets[0]?.name ?? "BTC/USD";
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -189,7 +204,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         setMaxLeverageX100(cfg.defaults?.maxLeverageX100 ?? 200);
         setMinBarIntervalS(cfg.defaults?.minBarIntervalS ?? 60);
         setSeedUsdc(cfg.economics?.minFundingUsdc ?? 100);
-        setMarketName(cfg.markets?.[0]?.name ?? null);
+        setMarkets(cfg.markets?.[0]?.name ? [cfg.markets[0].name] : []);
       })
       .catch(() => setConfig(null));
   }, []);
@@ -305,7 +320,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         ]);
         const { ok, json } = await postJson("/api/sealed/commit", {
           pineScript: effectivePine,
-          market: marketName ?? undefined,
+          market: primaryMarket,
         });
         if (!ok) {
           setError((json.error as string) ?? "This strategy can't run on-chain.");
@@ -357,17 +372,40 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       let sv = svAddr;
       if (!sv) {
         setStep("bind");
-        const { ok, json } = await postJson("/api/sealed/payload", {
-          kind: "create",
-          programCommitment: info.commitment,
-          attestorPubkey: config.attestorPubkey,
-          decibelVaultAddr: vault,
-          market: info.market.name,
-          pctBps,
-          maxLeverageX100,
-          minBarIntervalS,
-          slippageBps: config.defaults.slippageBps,
-        });
+        // Two modules, chosen by how many markets the creator picked. The single-market path
+        // stays exactly as it was — a one-market vault does not pay for machinery it will
+        // never use, and the audited contract keeps handling the audited case.
+        const { ok, json } = await postJson("/api/sealed/payload", isPortfolio
+          ? {
+              kind: "create-portfolio",
+              programCommitment: info.commitment,
+              attestorPubkey: config.attestorPubkey,
+              decibelVaultAddr: vault,
+              markets,
+              // The per-leg cap is the creator's chosen order size; the aggregate cap and the
+              // close guarantees come from the platform defaults the Markets card displays.
+              maxPctBps: pctBps,
+              maxLeverageX100,
+              minBarIntervalS,
+              slippageBps: config.defaults.slippageBps,
+              // `maxPositions` cannot exceed the allowlist — the contract would abort, and
+              // clamping here keeps the number the card showed honest.
+              maxPositions: Math.min(
+                config.portfolioDefaults?.maxPositions ?? 4,
+                markets.length,
+              ),
+            }
+          : {
+              kind: "create",
+              programCommitment: info.commitment,
+              attestorPubkey: config.attestorPubkey,
+              decibelVaultAddr: vault,
+              market: info.market.name,
+              pctBps,
+              maxLeverageX100,
+              minBarIntervalS,
+              slippageBps: config.defaults.slippageBps,
+            });
         if (!ok) {
           setError((json.error as string) ?? "Could not build the strategy transaction");
           setStep(null);
@@ -425,6 +463,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         attestorPubkey: config.attestorPubkey,
         manifestJson: info.manifestJson,
         market: info.market.name,
+        // Every market this vault trades. The registry stored only the manifest's market, so
+        // a portfolio vault would have listed as single-market and the cron would have ticked
+        // it with a one-element allowlist — indices that address the wrong books.
+        markets,
+        vaultKind: isPortfolio ? "portfolio" : "single",
         name,
         description: usingCustom ? undefined : selected?.blurb,
         pctBps,
@@ -456,7 +499,8 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     }
   }, [
     config, connected, account, vaultName, effectivePine, usingCustom, selected, isPrivate,
-    commitInfo, decibelVaultAddr, svAddr, bindTxHash, marketName, seedUsdc, pctBps, managed,
+    commitInfo, decibelVaultAddr, svAddr, bindTxHash, markets, primaryMarket, isPortfolio,
+    seedUsdc, pctBps, managed,
     maxLeverageX100, minBarIntervalS,
     signAndSubmitTransaction, onLaunched, refreshPreflight,
   ]);
@@ -613,7 +657,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 <span className="flex flex-wrap items-center gap-1.5">
                   <Tag>{selected.category}</Tag>
                   <Tag>{selected.direction}</Tag>
-                  <Tag>{marketName ?? config?.markets[0]?.name ?? "BTC/USD"}</Tag>
+                  <Tag>{isPortfolio ? `${markets.length} markets` : primaryMarket}</Tag>
                   <Tag>
                     {minBarIntervalS < 60 ? `${minBarIntervalS}s` : `${minBarIntervalS / 60}m`} bars
                   </Tag>
@@ -709,7 +753,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   makes the candles mean anything. */}
               <div>
                 <PineVisualPreview
-                  asset={marketName ?? config?.markets[0]?.name ?? undefined}
+                  asset={primaryMarket}
                   pineScript={effectivePine}
                 />
               </div>
@@ -720,7 +764,8 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               attestor uses, priced with the same fees the vault will be charged. */}
           {effectivePine && (
             <SealedBacktest
-              asset={marketName ?? config?.markets[0]?.name ?? "BTC/USD"}
+              asset={primaryMarket}
+              markets={markets}
               initialCapital={seedUsdc}
               maxLeverageX100={maxLeverageX100}
               pctBps={pctBps}
@@ -875,6 +920,107 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               </div>
             )}
 
+            {/* Markets. A primary decision, not an execution setting: picking a second one
+                changes which contract the vault runs on and what it can do. */}
+            {config && config.markets.length > 0 && (
+              <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h3 className="font-display text-[13px] font-semibold text-white">
+                    Markets to trade
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const all = config.markets.map((m) => m.name);
+                      // Toggle, so the shortcut can undo itself. Never empty — a vault with no
+                      // market cannot be created, and an empty selection would fail at the
+                      // signature rather than here.
+                      setMarkets(markets.length === all.length ? [all[0]] : all);
+                      setCommitInfo(null);
+                    }}
+                    className="text-[12px] text-zinc-400 transition-colors hover:text-white disabled:opacity-40"
+                  >
+                    {markets.length === config.markets.length ? "Just one" : "Select all"}
+                  </button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {config.markets.map((m) => {
+                    const on = markets.includes(m.name);
+                    return (
+                      <button
+                        key={m.addr}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        disabled={busy}
+                        onClick={() => {
+                          setMarkets((prev) => {
+                            if (!prev.includes(m.name)) return [...prev, m.name];
+                            // Refuse to deselect the last one rather than allowing an
+                            // unlaunchable state and explaining it afterwards.
+                            if (prev.length === 1) return prev;
+                            return prev.filter((x) => x !== m.name);
+                          });
+                          setCommitInfo(null);
+                        }}
+                        className={cn(
+                          "rounded-[10px] border px-2.5 py-1.5 font-mono text-[12px] transition-colors disabled:opacity-40",
+                          on
+                            ? "border-accent/60 bg-accent/10 text-accent"
+                            : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:text-white",
+                        )}
+                      >
+                        {m.name.replace("/USD", "")}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isPortfolio ? (
+                  <div className="mt-2.5 border-t border-white/[0.06] pt-2.5">
+                    <p className="text-[12px] leading-relaxed text-zinc-300">
+                      <span className="font-semibold text-white">Portfolio mode.</span> Your
+                      strategy is evaluated on each market separately and can hold up to{" "}
+                      {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)}{" "}
+                      positions at once, long or short.
+                    </p>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                      <Review
+                        k="Total exposure cap"
+                        v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
+                      />
+                      <Review
+                        k="Per position"
+                        v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
+                      />
+                      <Review
+                        k="Auto-close after"
+                        v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
+                      />
+                      <Review
+                        k="Funding stop-out"
+                        v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
+                      />
+                    </dl>
+                    {/* These two are the point of portfolio mode and are easy to miss in a
+                        table of caps, so they get a sentence. */}
+                    <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
+                      The contract closes any position held past the limit, or whose funding
+                      cost passes the stop-out — whether or not your strategy asks. Anyone can
+                      trigger that, so a stalled attestor cannot leave money in the market.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2.5 text-[12px] leading-relaxed text-zinc-400">
+                    One market, one position at a time, long or short. Pick a second market to
+                    run the same strategy across several at once.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Rules */}
             <details className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
               <summary className="cursor-pointer list-none px-3.5 py-3 font-display text-[13px] font-semibold text-zinc-300 transition-colors hover:text-white">
@@ -886,19 +1032,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 <Segmented label="Max leverage" hint="Hard cap the contract enforces." options={LEVERAGE_CHOICES} value={maxLeverageX100} onChange={setMaxLeverageX100} disabled={busy} />
                 <Segmented label="Trade cadence" hint="Minimum time between bars." options={CADENCE_CHOICES} value={minBarIntervalS} onChange={setMinBarIntervalS} disabled={busy} />
                 <Segmented label="Seed capital" hint="Your own USDC, at risk." options={SEED_CHOICES.map((v) => ({ label: `${v}`, value: v }))} value={seedUsdc} onChange={setSeedUsdc} disabled={busy} />
-                {config && config.markets.length > 1 && (
-                  <Segmented
-                    label="Market"
-                    hint="The perp market traded."
-                    options={config.markets.map((m) => ({ label: m.name, value: m.name }))}
-                    value={marketName ?? config.markets[0].name}
-                    onChange={(m) => {
-                      setMarketName(m);
-                      setCommitInfo(null);
-                    }}
-                    disabled={busy}
-                  />
-                )}
                 <p className="border-t border-white/[0.06] pt-2.5 text-[12px] leading-relaxed text-zinc-400">
                   Frozen when your bot goes live. Slippage {(config?.defaults.slippageBps ?? 30) / 100}%
                   and the {config?.economics.feeIntervalDays ?? 30}-day fee interval are protocol
@@ -913,7 +1046,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 <h3 className="font-display text-[13px] font-semibold text-white">Before you launch</h3>
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2.5">
                   <Review k="Direction" v={usingCustom ? "Per your script" : (selected?.direction ?? "—")} />
-                  <Review k="Market" v={marketName ?? config.markets[0]?.name ?? "BTC/USD"} />
+                  <Review
+                    k={isPortfolio ? "Markets" : "Market"}
+                    v={isPortfolio ? markets.join(", ") : primaryMarket}
+                  />
                   <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
                   <Review k="Max leverage" v={`${maxLeverageX100 / 100}x`} tone={maxLeverageX100 > 200 ? "warn" : undefined} />
                   <Review k="Order size" v={`${pctBps / 100}% of NAV`} />

@@ -10,7 +10,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
-import { SEALED_MARKETS, SEALED_PACKAGE, readPlatformTerms } from "@/lib/sealed-vaults";
+import {
+  PORTFOLIO_DEFAULTS,
+  SEALED_MARKETS,
+  SEALED_PACKAGE,
+  readPlatformTerms,
+} from "@/lib/sealed-vaults";
 import { SEALED_PRESETS } from "@/lib/sealed-presets";
 import {
   DECIBEL_VAULT_LIMITS,
@@ -78,6 +83,8 @@ export async function GET(request: NextRequest) {
           : "testnet",
       markets: SEALED_MARKETS.map((m) => ({ name: m.name, addr: m.addr })),
       defaults: SEALED_DEFAULTS,
+      /** Frozen bounds a portfolio vault is created with. Shown, not asked for. */
+      portfolioDefaults: PORTFOLIO_DEFAULTS,
       presets: Object.keys(SEALED_PRESETS),
       // Everything the cost panel shows, straight from the on-chain limits — so the UI never
       // hardcodes a number that a Decibel config change could silently falsify.

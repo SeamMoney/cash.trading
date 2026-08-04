@@ -8,55 +8,55 @@ datasource db {
 }
 
 model BotInstance {
-  id                 String         @id @default(cuid())
-  userWalletAddress  String
-  userSubaccount     String
-  capitalUSDC        Float
-  volumeTargetUSDC   Float
-  bias               String
-  strategy           String         @default("twap")
-  market             String
-  marketName         String
-  isRunning          Boolean        @default(true)
-  cumulativeVolume   Float          @default(0)
-  ordersPlaced       Int            @default(0)
-  currentCapitalUsed Float          @default(0)
-  lastOrderTime      DateTime?
-  error              String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  sessionId          String?
-  lastTwapOrderTime  DateTime?
+  id                   String         @id @default(cuid())
+  userWalletAddress    String
+  userSubaccount       String
+  capitalUSDC          Float
+  volumeTargetUSDC     Float
+  bias                 String
+  strategy             String         @default("twap")
+  market               String
+  marketName           String
+  isRunning            Boolean        @default(true)
+  cumulativeVolume     Float          @default(0)
+  ordersPlaced         Int            @default(0)
+  currentCapitalUsed   Float          @default(0)
+  lastOrderTime        DateTime?
+  error                String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  sessionId            String?
+  lastTwapOrderTime    DateTime?
   // High-risk strategy position tracking (so bot doesn't interfere with manual trades)
-  activePositionSize    Float?     // Size of position opened by bot (null = no bot position)
-  activePositionIsLong  Boolean?   // Direction of bot's position
-  activePositionEntry   Float?     // Entry price of bot's position
-  activePositionTxHash  String?    // Tx hash that opened the position
-  orders             OrderHistory[]
+  activePositionSize   Float? // Size of position opened by bot (null = no bot position)
+  activePositionIsLong Boolean? // Direction of bot's position
+  activePositionEntry  Float? // Entry price of bot's position
+  activePositionTxHash String? // Tx hash that opened the position
+  orders               OrderHistory[]
 
   @@unique([userWalletAddress, userSubaccount])
   @@index([userWalletAddress])
 }
 
 model OrderHistory {
-  id              String      @id @default(cuid())
+  id              String              @id @default(cuid())
   botId           String
-  timestamp       DateTime    @default(now())
+  timestamp       DateTime            @default(now())
   txHash          String
   direction       String
-  strategy        String      @default("twap")
-  size            BigInt      // Changed from Int - contract sizes can exceed 2^31
+  strategy        String              @default("twap")
+  size            BigInt // Changed from Int - contract sizes can exceed 2^31
   volumeGenerated Float
   success         Boolean
   entryPrice      Float?
   exitPrice       Float?
-  pnl             Float       @default(0)
-  positionHeldMs  Int         @default(0)
+  pnl             Float               @default(0)
+  positionHeldMs  Int                 @default(0)
   sessionId       String?
-  market          String?     // Market name (e.g., "BTC/USD")
-  leverage        Int?        // Leverage used for this trade
-  userSubaccount  String?     // Subaccount address this trade was executed on
-  bot             BotInstance @relation(fields: [botId], references: [id], onDelete: Cascade)
+  market          String? // Market name (e.g., "BTC/USD")
+  leverage        Int? // Leverage used for this trade
+  userSubaccount  String? // Subaccount address this trade was executed on
+  bot             BotInstance         @relation(fields: [botId], references: [id], onDelete: Cascade)
   cashReward      CashRewardTransfer?
 
   @@index([botId])
@@ -73,26 +73,26 @@ enum CashRewardStatus {
 }
 
 model CashRewardTransfer {
-  id                       String           @id @default(cuid())
-  createdAt                DateTime         @default(now())
-  updatedAt                DateTime         @updatedAt
-  sentAt                   DateTime?
-  sourceType               String
-  sourceId                 String
-  orderHistoryId           String?          @unique
-  userWalletAddress        String
-  userSubaccount           String?
-  recipientAddress         String
-  amountCash               Float
-  amountAtomic             BigInt
-  volumeGenerated          Float?
-  rewardRateCashPerUsd     Float?
-  status                   CashRewardStatus @default(PENDING)
-  txHash                   String?
-  error                    String?
-  attemptCount             Int              @default(0)
-  metadata                 Json?
-  orderHistory             OrderHistory?    @relation(fields: [orderHistoryId], references: [id], onDelete: SetNull)
+  id                   String           @id @default(cuid())
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  sentAt               DateTime?
+  sourceType           String
+  sourceId             String
+  orderHistoryId       String?          @unique
+  userWalletAddress    String
+  userSubaccount       String?
+  recipientAddress     String
+  amountCash           Float
+  amountAtomic         BigInt
+  volumeGenerated      Float?
+  rewardRateCashPerUsd Float?
+  status               CashRewardStatus @default(PENDING)
+  txHash               String?
+  error                String?
+  attemptCount         Int              @default(0)
+  metadata             Json?
+  orderHistory         OrderHistory?    @relation(fields: [orderHistoryId], references: [id], onDelete: SetNull)
 
   @@unique([sourceType, sourceId])
   @@index([recipientAddress])
@@ -209,6 +209,14 @@ model SealedVault {
   decibelVaultAddr   String
   marketAddr         String
   marketName         String?
+  /// Which contract this vault runs on: "single" (sealed_vault) or "portfolio"
+  /// (portfolio_vault). The tick path is different for each — a portfolio vault ticked as a
+  /// single one would call a function its module does not have.
+  vaultKind          String    @default("single")
+  /// Every market in the allowlist, comma-separated, IN ALLOWLIST ORDER. Order is not
+  /// cosmetic: an action's `market_idx` addresses this list positionally on-chain, so a
+  /// reordering here would place real orders on the wrong book.
+  marketNames        String?
   /// sha3_256(pine || 0x00 || move || 0x00 || manifest). The public identity.
   programCommitment  String
   attestorPubkey     String
@@ -351,19 +359,19 @@ model DecibelMarket {
 }
 
 model DecibelMarketPrice {
-  id              String   @id @default(cuid())
-  network         String
-  marketAddress   String
-  marketName      String?
-  markPrice       Float?
-  midPrice        Float?
-  oraclePrice     Float?
-  fundingRateBps  Float?
+  id                String   @id @default(cuid())
+  network           String
+  marketAddress     String
+  marketName        String?
+  markPrice         Float?
+  midPrice          Float?
+  oraclePrice       Float?
+  fundingRateBps    Float?
   isFundingPositive Boolean?
-  openInterest    Float?
+  openInterest      Float?
   transactionUnixMs BigInt?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([network, marketAddress])
   @@index([network, updatedAt])
@@ -395,23 +403,23 @@ model DecibelMarketTrade {
 }
 
 model DecibelAccountOverview {
-  id                 String   @id @default(cuid())
-  network            String
-  subaccount         String
-  equity             Float?
-  unrealizedPnl      Float?
-  realizedPnl        Float?
-  marginRatio        Float?
-  maintenanceMargin  Float?
-  leverage           Float?
-  totalMargin        Float?
-  totalNotional      Float?
-  collateral         Float?
-  crossWithdrawable  Float?
-  volume30d          Float?
-  raw                Json?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  network           String
+  subaccount        String
+  equity            Float?
+  unrealizedPnl     Float?
+  realizedPnl       Float?
+  marginRatio       Float?
+  maintenanceMargin Float?
+  leverage          Float?
+  totalMargin       Float?
+  totalNotional     Float?
+  collateral        Float?
+  crossWithdrawable Float?
+  volume30d         Float?
+  raw               Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([network, subaccount])
   @@index([network, updatedAt])

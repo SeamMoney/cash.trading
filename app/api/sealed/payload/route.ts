@@ -4,7 +4,7 @@
  * Builds the wallet-signed entry-function payloads for the sealed-vault launch
  * rail. The server holds no user key and never submits these — the UI signs.
  *
- * kinds: decibel-vault | create | delegate | revoke | announce-swap | pause
+ * kinds: decibel-vault | create | create-portfolio | delegate | revoke | announce-swap | pause
  *
  * Launch order is decibel-vault → create → delegate, three wallet signatures. It cannot be
  * fewer: Decibel declares both `create_and_fund_vault` and `delegate_dex_actions_to` as
@@ -20,6 +20,7 @@ import {
   SEALED_PACKAGE,
   USDC_METADATA_BY_NETWORK,
   buildAnnounceSwapPayload,
+  buildCreatePortfolioVaultPayload,
   buildCreateSealedVaultPayload,
   buildRevokeDelegationPayload,
   buildSetPausedPayload,
@@ -28,6 +29,7 @@ import {
   findSealedMarket,
   isHex32,
   isHexAddress,
+  PORTFOLIO_DEFAULTS,
   sealedNetwork,
   truncateDisplayName,
 } from "@/lib/sealed-vaults";
@@ -222,6 +224,136 @@ export async function POST(request: NextRequest) {
           minBarIntervalS,
           slippageBps,
           traceCapacity,
+        }),
+      },
+      { status: 200, headers: NO_STORE },
+    );
+  }
+
+  // Portfolio mode: one program, an allowlist of markets, several legs at once.
+  //
+  // A separate kind rather than an option on `create`, because it targets a DIFFERENT MODULE
+  // with different bounds. Overloading `create` would mean one endpoint whose validation rules
+  // change shape based on how many markets came in — the shape where a missing check on one
+  // branch is easy to miss.
+  if (kind === "create-portfolio") {
+    const { programCommitment, attestorPubkey, decibelVaultAddr } = body as {
+      programCommitment?: unknown;
+      attestorPubkey?: unknown;
+      decibelVaultAddr?: unknown;
+    };
+    if (!isHex32(programCommitment)) {
+      return NextResponse.json(
+        { error: "programCommitment must be 32 bytes of hex" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    if (!isHex32(attestorPubkey)) {
+      return NextResponse.json(
+        { error: "attestorPubkey must be a 32-byte ed25519 key" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    if (!isHexAddress(decibelVaultAddr)) {
+      return NextResponse.json(
+        { error: "decibelVaultAddr required" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+
+    const names = Array.isArray(body.markets) ? body.markets : [];
+    if (names.length < 1 || names.length > 16) {
+      return NextResponse.json(
+        { error: "markets must be a list of 1..16 market names" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const markets = [];
+    const seen = new Set<string>();
+    for (const n of names) {
+      const m = findSealedMarket(typeof n === "string" ? n : "");
+      if (!m) {
+        return NextResponse.json(
+          { error: `unknown market: ${String(n)}` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      // The allowlist order defines `market_idx` forever, and a repeat would make two indices
+      // address one book — the pyramiding path the per-bar duplicate check exists to close.
+      if (seen.has(m.addr)) {
+        return NextResponse.json(
+          { error: `market ${m.name} listed twice` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      seen.add(m.addr);
+      markets.push(m);
+    }
+
+    const num = (v: unknown, d: number) => Number(v ?? d);
+    const maxPctBps = num(body.maxPctBps, PORTFOLIO_DEFAULTS.maxPctBps);
+    const maxLeverageX100 = num(body.maxLeverageX100, PORTFOLIO_DEFAULTS.maxLeverageX100);
+    const maxPortfolioLeverageX100 = num(
+      body.maxPortfolioLeverageX100,
+      PORTFOLIO_DEFAULTS.maxPortfolioLeverageX100,
+    );
+    const maxPositions = num(body.maxPositions, PORTFOLIO_DEFAULTS.maxPositions);
+    const maxHoldBars = num(body.maxHoldBars, PORTFOLIO_DEFAULTS.maxHoldBars);
+    const maxAdverseFundingBps = num(
+      body.maxAdverseFundingBps,
+      PORTFOLIO_DEFAULTS.maxAdverseFundingBps,
+    );
+    const minBarIntervalS = num(body.minBarIntervalS, 60);
+    const slippageBps = num(body.slippageBps, 30);
+    const traceCapacity = num(body.traceCapacity, 500);
+
+    // Every bound below is also checked in Move. Duplicating them here is not redundancy:
+    // an abort code arrives AFTER the creator has paid to create the Decibel vault, at which
+    // point the only remedy is relaunching. These say which field is wrong, before that.
+    const bad = (msg: string) =>
+      NextResponse.json({ error: msg }, { status: 400, headers: NO_STORE });
+    const int = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
+    if (!int(maxPctBps, 1, 10000)) return bad("maxPctBps must be 1..10000");
+    if (!int(maxLeverageX100, 100, 2000)) return bad("maxLeverageX100 must be 100..2000");
+    // MAX_PORTFOLIO_LEVERAGE_X100 in portfolio_vault.move.
+    if (!int(maxPortfolioLeverageX100, 100, 1000)) {
+      return bad("maxPortfolioLeverageX100 must be 100..1000 (10x ceiling)");
+    }
+    // MAX_OPEN_POSITIONS.
+    if (!int(maxPositions, 1, 8)) return bad("maxPositions must be 1..8");
+    // MAX_HOLD_BARS. Zero is rejected on purpose: it would mean "hold forever", which is the
+    // failure the field exists to prevent.
+    if (!int(maxHoldBars, 1, 14400)) return bad("maxHoldBars must be 1..14400");
+    if (!int(maxAdverseFundingBps, 1, 10000)) return bad("maxAdverseFundingBps must be 1..10000");
+    if (!int(minBarIntervalS, 1, 86400)) return bad("minBarIntervalS must be 1..86400");
+    if (!int(slippageBps, 0, 500)) return bad("slippageBps must be 0..500 (5% ceiling)");
+    if (!int(traceCapacity, 30, 2000)) return bad("traceCapacity must be 30..2000");
+    if (maxPositions > markets.length) {
+      return bad(
+        `maxPositions (${maxPositions}) exceeds the ${markets.length} market(s) in the allowlist`,
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        markets: markets.map((m) => ({ name: m.name, addr: m.addr })),
+        payload: buildCreatePortfolioVaultPayload({
+          packageAddress: pkg,
+          programCommitment,
+          attestorPubkey,
+          decibelVaultAddr,
+          markets,
+          maxPctBps,
+          maxLeverageX100,
+          maxPortfolioLeverageX100,
+          maxPositions,
+          maxHoldBars,
+          maxAdverseFundingBps,
+          minBarIntervalS,
+          slippageBps,
+          traceCapacity,
+          isSwap: body.isSwap === true,
         }),
       },
       { status: 200, headers: NO_STORE },

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { PYTH_FEED_IDS } from "../lib/launchpad/constants";
+import { SEALED_MARKETS_BY_NETWORK } from "../lib/sealed-vaults";
 import {
   builderFeeBpsToChainUnits,
   buildDecibelOrderPayload,
@@ -1744,5 +1746,117 @@ assert.ok(
   "the launchpad must stay at three tabs",
 );
 assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-honesty-selftest.ts");
+
+// ── Portfolio mode: the wiring that decides which contract a vault runs on ──
+//
+// Every check here guards a failure that is silent rather than loud: a vault created on one
+// module and ticked as the other, or an allowlist whose order stops matching the on-chain
+// indices that address it.
+{
+  const sealedVaults = readFileSync("lib/sealed-vaults.ts", "utf8");
+  const payloadRoute = readFileSync("app/api/sealed/payload/route.ts", "utf8");
+  const cron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
+  const launchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+  const registry = readFileSync("app/api/sealed/vaults/route.ts", "utf8");
+  const backtestRoute = readFileSync("app/api/sealed/backtest/route.ts", "utf8");
+
+  // Every market must carry its OWN engine params. APT is 10^5 size precision against BTC's
+  // 10^9 on testnet — one shared set of constants would mis-size three markets out of four.
+  for (const m of SEALED_MARKETS_BY_NETWORK.testnet) {
+    assert.ok(m.pythAsset, `${m.name} has no Pyth feed — the attestor could never warm up on it`);
+    assert.ok(
+      Object.hasOwn(PYTH_FEED_IDS, m.pythAsset),
+      `${m.name} names a Pyth asset that does not exist: ${m.pythAsset}`,
+    );
+  }
+  for (const net of ["testnet", "mainnet"] as const) {
+    const names = SEALED_MARKETS_BY_NETWORK[net].map((m) => m.name);
+    assert.equal(new Set(names).size, names.length, `${net} market table has a duplicate`);
+    for (const m of SEALED_MARKETS_BY_NETWORK[net]) {
+      for (const k of ["sizeDecimalsPow", "lotSize", "minSize", "tickerSize"] as const) {
+        assert.ok(/^\d+$/.test(m[k]) && BigInt(m[k]) > 0n, `${net} ${m.name}.${k} must be a positive integer string`);
+      }
+    }
+  }
+  // The two networks must not share a market address — that would mean one of the tables was
+  // copied from the other, which is how the stale testnet BTC entry happened before.
+  const testnetAddrs = new Set(SEALED_MARKETS_BY_NETWORK.testnet.map((m) => m.addr));
+  for (const m of SEALED_MARKETS_BY_NETWORK.mainnet) {
+    assert.ok(!testnetAddrs.has(m.addr), `${m.name} has the same address on both networks`);
+  }
+
+  assert.ok(
+    sealedVaults.includes("buildCreatePortfolioVaultPayload"),
+    "the portfolio create payload builder is missing",
+  );
+  assert.ok(
+    payloadRoute.includes('kind === "create-portfolio"'),
+    "the payload route has no portfolio branch",
+  );
+  // The aggregate cap is the field that actually bounds depositor loss; a missing bound check
+  // here surfaces as a Move abort AFTER the creator has paid for the Decibel vault.
+  for (const bound of [
+    "maxPortfolioLeverageX100 must be 100..1000",
+    "maxPositions must be 1..8",
+    "maxHoldBars must be 1..14400",
+    "maxAdverseFundingBps must be 1..10000",
+  ]) {
+    assert.ok(payloadRoute.includes(bound), `payload route is missing the bound check: ${bound}`);
+  }
+  assert.ok(
+    payloadRoute.includes("listed twice"),
+    "the payload route must reject a duplicated market — two indices addressing one book is the pyramiding path",
+  );
+
+  // Kind must be DERIVED from the allowlist, never trusted from the request body: a record
+  // claiming "portfolio" with one market sends the cron down a path the module does not have.
+  assert.ok(
+    /const vaultKind = allowlist\.length > 1 \? "portfolio" : "single"/.test(registry),
+    "vaultKind must be derived from the allowlist length, not read from the body",
+  );
+  assert.ok(
+    registry.includes("unknown market in allowlist"),
+    "the registry must reject an unknown market rather than dropping it — dropping shifts every later index",
+  );
+
+  // The cron routes on the stored kind. Routing on market count would tick a one-market
+  // portfolio vault through the single-market module.
+  assert.ok(
+    /row\.vaultKind === "portfolio"/.test(cron),
+    "the cron must route on vaultKind, not on how many markets are stored",
+  );
+  assert.ok(
+    cron.includes("performPortfolioTick"),
+    "the cron never calls the portfolio tick path",
+  );
+
+  // Selecting a second market is what switches modules; the UI must send the matching kind.
+  assert.ok(
+    launchUi.includes('kind: "create-portfolio"'),
+    "the launch UI cannot create a portfolio vault",
+  );
+  assert.ok(
+    /const isPortfolio = markets\.length > 1/.test(launchUi),
+    "portfolio mode must be derived from the market selection",
+  );
+  // The last market cannot be deselected — an empty selection is unlaunchable, and failing at
+  // the signature instead of at the click is the worse of the two.
+  assert.ok(
+    /if \(prev\.length === 1\) return prev;/.test(launchUi),
+    "the market picker must refuse to deselect the last market",
+  );
+
+  // Capital SPLIT across markets, not replicated. Replicating would report the returns of N
+  // vaults as if they were one — an N-fold overstatement dressed as diversification.
+  assert.ok(
+    /const perMarket = initialCapital \/ assets\.length/.test(backtestRoute),
+    "the multi-market backtest must split capital, not replicate it",
+  );
+  assert.ok(
+    backtestRoute.includes("unavailable"),
+    "markets that could not be simulated must be named, not silently dropped",
+  );
+}
+console.log("portfolio mode: market table, payload bounds, kind routing and backtest split all hold");
 
 console.log("app reliability self-test: passed");

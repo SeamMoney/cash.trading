@@ -26,6 +26,16 @@ export interface SealedMarket {
   minSize: string;
   /** Engine price grid (px units, 1e6). Order prices must be multiples. */
   tickerSize: string;
+  /**
+   * Pyth feed symbol for this market's price history.
+   *
+   * Only markets with a feed can be in a vault: the attestor warms the committed program on
+   * historical closes, and a market whose history cannot be fetched cannot be evaluated. That
+   * is why Decibel lists more perps than this table does — XRP, DOGE, SUI and BNB are all
+   * live with verified engine params, but `PYTH_FEED_IDS` has no entry for them, so a vault
+   * bound to one would tick forever without ever producing a signal.
+   */
+  pythAsset: string;
 }
 
 /**
@@ -34,13 +44,18 @@ export interface SealedMarket {
  * — the sealed module takes them as creation args so a vault on any market
  * sizes and lots correctly.
  *
- * Values are AUTHORITATIVE, read from perp_engine views on 2026-07-30
- * (market_lot_size / market_min_size / market_sz_decimals on each network's
- * current Decibel package). The previous entry carried the OLD testnet
- * package's market (lot=10, min=100000, szDecimals=8) — on the current package
- * BTC/USD is lot=10000, min=20000, szDecimals=9, so every order built from the
- * stale numbers would have aborted on lot mismatch or mis-sized by 10x.
- * Re-verify with `pnpm sealed:e2e verify-markets` after any Decibel redeploy.
+ * Values are AUTHORITATIVE, read from perp_engine views (market_lot_size / market_min_size /
+ * market_sz_decimals / market_ticker_size) against each network's live Decibel package —
+ * BTC/USD on 2026-07-30, the other three on 2026-08-04. The previous BTC entry carried the OLD
+ * testnet package's market (lot=10, min=100000, szDecimals=8); on the current package it is
+ * lot=10000, min=20000, szDecimals=9, so every order built from the stale numbers would have
+ * aborted on lot mismatch or mis-sized by 10x. Re-verify with `pnpm sealed:e2e verify-markets`
+ * after any Decibel redeploy.
+ *
+ * The four markets differ from each other by MORE than their addresses — APT/USD is 10^5 size
+ * precision against BTC's 10^9 on testnet, and its tick is 100 against BTC's 1000000. A
+ * portfolio vault carries per-market params for exactly this reason: one shared set of engine
+ * constants would mis-size three markets out of four.
  */
 export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMarket[]> = {
   testnet: [
@@ -51,6 +66,34 @@ export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMark
       lotSize: "10000",
       minSize: "20000",
       tickerSize: "1000000",
+      pythAsset: "BTC/USD",
+    },
+    {
+      name: "ETH/USD",
+      addr: "0x12cf0b34f9ba0a1144f1e7c6f7d0aa28e4a7815a55bf637ba96d66256becc559",
+      sizeDecimalsPow: "100000000", // 10^8
+      lotSize: "10000",
+      minSize: "50000",
+      tickerSize: "100000",
+      pythAsset: "ETH/USD",
+    },
+    {
+      name: "SOL/USD",
+      addr: "0xc2f9b548d2b75afa0aa449ec36c7b1279b2c88022233b4c44965b5b27507ed7c",
+      sizeDecimalsPow: "10000000", // 10^7
+      lotSize: "10000",
+      minSize: "200000",
+      tickerSize: "10000",
+      pythAsset: "SOL/USD",
+    },
+    {
+      name: "APT/USD",
+      addr: "0x2bfe28c0de988afd44843ddd8ddf9a81d0e106eb8d85d9275d330b2d93a02bb6",
+      sizeDecimalsPow: "100000", // 10^5
+      lotSize: "10000",
+      minSize: "100000",
+      tickerSize: "100",
+      pythAsset: "APT/USD",
     },
   ],
   mainnet: [
@@ -61,6 +104,34 @@ export const SEALED_MARKETS_BY_NETWORK: Record<"testnet" | "mainnet", SealedMark
       lotSize: "1000",
       minSize: "2000",
       tickerSize: "100000",
+      pythAsset: "BTC/USD",
+    },
+    {
+      name: "ETH/USD",
+      addr: "0x96c3c2e77041264d082d03365e9c346fbc6be9c9428a401be8e70dcb60dc60c6",
+      sizeDecimalsPow: "100000000", // 10^8
+      lotSize: "10000",
+      minSize: "50000",
+      tickerSize: "100000",
+      pythAsset: "ETH/USD",
+    },
+    {
+      name: "SOL/USD",
+      addr: "0xdf3f9b3241aaf20c47e99eac29f3ff2f736e40644c856e0db612a22e62b847f3",
+      sizeDecimalsPow: "10000000", // 10^7
+      lotSize: "10000",
+      minSize: "200000",
+      tickerSize: "10000",
+      pythAsset: "SOL/USD",
+    },
+    {
+      name: "APT/USD",
+      addr: "0xda8615922bac85a53811e845ce39110713be6d80366f4477d5427002ac0162e3",
+      sizeDecimalsPow: "100000", // 10^5
+      lotSize: "10000",
+      minSize: "100000",
+      tickerSize: "100",
+      pythAsset: "APT/USD",
     },
   ],
 };
@@ -311,6 +382,100 @@ export function buildCreateSealedVaultPayload(args: {
       String(args.traceCapacity),
       // Sealed at birth — there is no separate seal() call. See sealed_vault.move.
       hexToBytes(args.enclaveMeasurement ?? "0x"),
+    ],
+  };
+}
+
+/**
+ * Defaults for a portfolio vault's frozen bounds.
+ *
+ * These are the numbers a creator does not have to think about, chosen so the common case is
+ * safe rather than maximal. Every one is a CEILING the strategy may come in under; none is a
+ * target. They are separated from the single-market defaults because the aggregate leverage cap
+ * has no single-market analogue and is the field that actually bounds depositor loss.
+ */
+export const PORTFOLIO_DEFAULTS = {
+  /** Per-leg share of NAV ceiling. A 4-market vault at 25% each is fully invested. */
+  maxPctBps: 2500,
+  /** Per-leg leverage ceiling. */
+  maxLeverageX100: 200,
+  /**
+   * Aggregate notional ceiling across every open leg. Deliberately BELOW
+   * maxPositions x maxLeverageX100: four legs at 2x each would be 8x total, which is a
+   * liquidation waiting for a correlated drawdown. Crypto perps are correlated.
+   */
+  maxPortfolioLeverageX100: 300,
+  maxPositions: 4,
+  /**
+   * Force-close after this many bars. At the 60s floor that is 24 hours — long enough for any
+   * intraday strategy to work, short enough that a stalled attestor cannot leave depositor
+   * money in a leveraged position for a week.
+   */
+  maxHoldBars: 1440,
+  /** Force-close a leg once funding has eaten 2% of its notional. */
+  maxAdverseFundingBps: 200,
+} as const;
+
+/**
+ * `portfolio_vault::create_portfolio_vault`.
+ *
+ * The market allowlist goes in as five PARALLEL vectors because Move entry functions cannot
+ * take user-defined structs. Their order defines the `market_idx` an action addresses forever
+ * after, so it must match the order the attestor uses — that coupling is why the tick path
+ * re-reads the on-chain market count and refuses to sign when it disagrees.
+ */
+export function buildCreatePortfolioVaultPayload(args: {
+  packageAddress: string;
+  programCommitment: string;
+  attestorPubkey: string;
+  decibelVaultAddr: string;
+  markets: SealedMarket[];
+  maxPctBps: number;
+  maxLeverageX100: number;
+  maxPortfolioLeverageX100: number;
+  maxPositions: number;
+  maxHoldBars: number;
+  maxAdverseFundingBps: number;
+  minBarIntervalS: number;
+  slippageBps: number;
+  traceCapacity: number;
+  isSwap: boolean;
+  /** Tier-2 TEE measurement, or "0x" for tier-1 bare-key attestation. */
+  enclaveMeasurement?: string;
+}) {
+  if (args.markets.length === 0) throw new Error("a portfolio vault needs at least one market");
+  const seen = new Set<string>();
+  for (const m of args.markets) {
+    const key = m.addr.toLowerCase();
+    // The contract rejects a repeated market too, but aborting here names the market instead
+    // of surfacing as E_DUPLICATE_MARKET after the creator has already paid to create the
+    // Decibel vault.
+    if (seen.has(key)) throw new Error(`market ${m.name} appears twice in the allowlist`);
+    seen.add(key);
+  }
+  return {
+    function: `${args.packageAddress}::portfolio_vault::create_portfolio_vault`,
+    typeArguments: [] as string[],
+    functionArguments: [
+      args.decibelVaultAddr,
+      hexToBytes(args.programCommitment),
+      hexToBytes(args.attestorPubkey),
+      hexToBytes(args.enclaveMeasurement ?? "0x"),
+      args.markets.map((m) => m.addr),
+      args.markets.map((m) => m.sizeDecimalsPow),
+      args.markets.map((m) => m.lotSize),
+      args.markets.map((m) => m.minSize),
+      args.markets.map((m) => m.tickerSize),
+      String(args.maxPctBps),
+      String(args.maxLeverageX100),
+      String(args.maxPortfolioLeverageX100),
+      String(args.maxPositions),
+      String(args.maxHoldBars),
+      String(args.maxAdverseFundingBps),
+      String(args.minBarIntervalS),
+      String(args.slippageBps),
+      String(args.traceCapacity),
+      args.isSwap,
     ],
   };
 }

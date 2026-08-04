@@ -286,9 +286,49 @@ fully delegated, and still aborts after announcing until the 24h has elapsed.
 
 ### 8.3 Attestor service
 
-Needs: the ed25519 signing key, the committed program, and a Decibel price feed. Runs beside
-the crank on Fly (`infra/fly/fly.toml` already has an always-on process model and bakes in the
-aptos CLI). Per bar: read mark price → run program → sign → submit `tick_attested`.
+Needs: the ed25519 signing key, the committed program, and a Decibel price feed. Per bar: read
+mark price → run program → sign → submit `tick_attested`.
+
+**Who holds the program.** This is the load-bearing question, not an implementation detail. A
+vault does nothing until something runs its committed strategy every bar, and that something
+needs the source. Two arrangements exist:
+
+| | Managed (`managedAttestation = true`) | Self-hosted |
+|---|---|---|
+| Who runs it | `/api/cron/sealed-tick`, every minute | The creator |
+| Where the source lives | AES-256-GCM in `SealedVault.encryptedPine`, key in `SEALED_SOURCE_KEY` | Only the creator's machine |
+| Can we read it | **Yes** — the attestor holds the key | No |
+| Vault trades when | Always | Only while the creator's process runs |
+
+Managed custody is a real trust concession, not a cryptographic guarantee, and the UI says so
+in those words. A database dump alone reveals nothing (the key is not in the database and the
+vault address is bound in as AAD, so a row swap fails closed), but an operator with production
+access can decrypt a creator's alpha. Tier 2 (§4) is what removes us from that equation: the
+enclave holds the key and its measurement is bound into the vault at creation.
+
+Both paths run the SAME code — `lib/sealed-tick.ts` — because two implementations of the
+signing path is how a cron quietly starts signing something the manual endpoint would have
+refused. It refuses to sign when the supplied source does not reproduce the vault's on-chain
+commitment, when the vault is not sealed, or when there is not enough history to warm the
+program up.
+
+`E_BAR_TOO_SOON` is the normal state of a vault whose cadence is slower than the cron and is
+never counted as a failure; a genuinely failing vault backs off exponentially rather than
+burning gas every minute.
+
+### 8.3b Track record
+
+`GET /api/sealed/vaults/:addr/performance` rebuilds a vault's record: bars processed, closed
+round trips, win rate, compounded return and max drawdown.
+
+Aptos's hosted indexer removed its `events` table, so `VaultTraded` cannot be queried after the
+fact. We are the party submitting every managed tick, though, so fills are read out of our own
+transaction receipt and persisted to `SealedTrade` — a cache of on-chain facts, each row
+re-derivable from its `txHash`. Self-hosted vaults therefore have no rows, which the endpoint
+reports as *unavailable*, never as *no trades*.
+
+Returns are per-trade price moves before leverage, fees and slippage — not the vault's net
+return to depositors. The UI says that verbatim.
 
 The cranker pays gas and contributes nothing else — it cannot alter the signal, and a wrong
 signature simply aborts the transaction.

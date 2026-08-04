@@ -1421,6 +1421,74 @@ assert.ok(
   "the announcement must be an on-chain event; notice nobody can observe is not notice",
 );
 
+// ── Managed attestation ────────────────────────────────────────────────────
+// A launched vault does nothing until something ticks it. Before this existed, the only cron
+// in production was depth-compact and /api/sealed/attest required a caller to supply the
+// PineScript — which for a private strategy only the creator had. A creator could complete the
+// whole launch flow and own a vault that never placed an order.
+const sealedTickLib = readFileSync("lib/sealed-tick.ts", "utf8");
+const sealedTickCron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
+const sealedAttestRoute = readFileSync("app/api/sealed/attest/route.ts", "utf8");
+const sourceVaultLib = readFileSync("lib/sealed-source-vault.ts", "utf8");
+
+assert.ok(
+  sealedAttestRoute.includes("performTick") && sealedTickCron.includes("performTick"),
+  "the manual endpoint and the cron must share ONE signing path — two implementations is how " +
+    "a scheduled job quietly starts signing something the endpoint would have refused",
+);
+assert.ok(
+  sealedTickLib.includes('stage: "commitment"') &&
+    sealedTickLib.includes("localCommitment.toLowerCase() !== onChainCommitment.toLowerCase()"),
+  "the attestor must refuse to sign for a program the vault did not commit to; that refusal " +
+    "IS the product guarantee",
+);
+assert.ok(
+  sealedTickCron.includes("isTooSoon(r)"),
+  "E_BAR_TOO_SOON is the normal state of a vault slower than the cron — counting it as a " +
+    "failure would back off every healthy vault",
+);
+assert.ok(
+  sealedTickCron.includes("backoffMs(row.tickFailures)"),
+  "a persistently failing vault must back off rather than burn gas every minute",
+);
+const vercelJson = readFileSync("vercel.json", "utf8");
+assert.ok(
+  vercelJson.includes("/api/cron/sealed-tick"),
+  "the tick cron must be scheduled — without it every launched vault sits inert",
+);
+
+// The encrypted-source custody that makes managed attestation possible at all.
+assert.ok(
+  sourceVaultLib.includes("aes-256-gcm") && sourceVaultLib.includes("setAAD"),
+  "sources must be authenticated-encrypted with the vault address bound in, so a row swap " +
+    "cannot hand one creator another's strategy",
+);
+assert.ok(
+  sourceVaultLib.includes("randomBytes(IV_BYTES)"),
+  "GCM nonces must be fresh per encryption — reuse is catastrophic",
+);
+assert.ok(
+  !/SEALED_SOURCE_KEY[^\n]*(default|\?\?\s*")/.test(sourceVaultLib),
+  "the encryption key must have no fallback — a default key is no key",
+);
+const sealedVaultsRoute2 = readFileSync("app/api/sealed/vaults/route.ts", "utf8");
+assert.ok(
+  sealedVaultsRoute2.includes("managedPine") && sealedVaultsRoute2.includes("encryptSource"),
+  "a managed source must be stored encrypted, never in plaintext",
+);
+assert.ok(
+  sealedVaultsRoute2.split("managedPine")[1]?.includes("verifyRevealedProgram") ||
+    sealedVaultsRoute2.includes("the source given for managed attestation does not hash"),
+  "a source accepted for managed attestation must be verified against the vault's commitment " +
+    "before it is stored — otherwise the attestor could be handed a different strategy",
+);
+// The UI must state the trade-off rather than implying custody is free.
+assert.ok(
+  sealedLaunchUi.includes("we can technically read it"),
+  "managed attestation must say plainly that the platform can read the source; tier-1 custody " +
+    "is trust, not cryptography, and implying otherwise is a lie",
+);
+
 // ── Truthful UI state ──────────────────────────────────────────────────────
 // The worst defect a UX review found: the Launch button rendered as a live green primary
 // action while the page said launching was impossible. A financial action must never look

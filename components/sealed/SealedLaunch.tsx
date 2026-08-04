@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { ChevronDown, Lock, Globe, Check, ExternalLink } from "lucide-react";
+import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CodeBlock, ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
@@ -151,6 +151,8 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [vaultName, setVaultName] = useState(SEALED_CATALOG[0].label);
   const [nameTouched, setNameTouched] = useState(false);
   const [isPrivate, setIsPrivate] = useState(true);
+  // Default ON: a bot nobody runs is not a bot. The trade-off is stated in full below.
+  const [managed, setManaged] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Rules — defaults chosen so the common case needs zero interaction.
@@ -433,6 +435,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         // Only sent when the creator chose Public. The server re-hashes it against the
         // commitment and refuses to publish a source that doesn't match.
         revealedPine: isPrivate ? undefined : effectivePine,
+        // Sent when the creator opted into managed attestation. Stored encrypted, and only
+        // after the server confirms it reproduces the vault's commitment.
+        managedPine: managed ? effectivePine : undefined,
       }).catch(() => undefined);
 
       setStep(null);
@@ -449,7 +454,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     }
   }, [
     config, connected, account, vaultName, effectivePine, usingCustom, selected, isPrivate,
-    commitInfo, decibelVaultAddr, svAddr, bindTxHash, marketName, seedUsdc, pctBps,
+    commitInfo, decibelVaultAddr, svAddr, bindTxHash, marketName, seedUsdc, pctBps, managed,
     maxLeverageX100, minBarIntervalS,
     signAndSubmitTransaction, onLaunched, refreshPreflight,
   ]);
@@ -706,6 +711,46 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       </section>
 
+      {/* 4 — Who runs it. This is the difference between a launched vault and a working bot. */}
+      <section>
+        <Label n={4}>Who runs your bot</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <VisibilityCard
+            active={managed}
+            onClick={() => setManaged(true)}
+            disabled={busy}
+            icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
+            title="We run it"
+            body="Your strategy runs every minute automatically. We keep an encrypted copy so we can execute it — which means we can technically read it. Nothing is published."
+          />
+          <VisibilityCard
+            active={!managed}
+            onClick={() => setManaged(false)}
+            disabled={busy}
+            icon={<Server className="h-3.5 w-3.5" aria-hidden />}
+            title="I run it myself"
+            body="We never receive your source. You run the attestor on your own machine, and the vault only trades while it is running."
+          />
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
+          {managed ? (
+            <>
+              A vault nobody runs never places a trade. Choosing this stores your source
+              encrypted at rest — a database leak alone exposes nothing — but our attestor holds
+              the key, so treat this as trusting us with your alpha, not as a cryptographic
+              guarantee. Hardware-enclave attestation, which removes us from that equation, is
+              on the roadmap.
+            </>
+          ) : (
+            <>
+              Nothing about your strategy leaves your browser. You will need to run{" "}
+              <span className="font-mono text-zinc-300">pnpm sealed:attest</span> continuously —
+              the vault sits idle whenever it is not running.
+            </>
+          )}
+        </p>
+      </section>
+
       {/* What it costs */}
       {config && (
         <section className={cn(SURFACE_CARD_SOLID, "p-4")}>
@@ -942,6 +987,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
             <Review k="Order size" v={`${pctBps / 100}% of vault value`} />
             <Review k="Max leverage" v={`${maxLeverageX100 / 100}x`} tone={maxLeverageX100 > 200 ? "warn" : undefined} />
+            <Review k="Runs" v={managed ? "Automatically" : "Only while you run it"} tone={managed ? undefined : "warn"} />
           </dl>
           <p className="mt-3 border-t border-white/[0.06] pt-3 text-[13px] leading-relaxed text-zinc-400">
             This is a leveraged perpetual-futures strategy. At {maxLeverageX100 / 100}x, a move of

@@ -50,12 +50,41 @@ interface Detail {
   chainError: string | null;
 }
 
+interface PerfSummary {
+  bars: number;
+  trades: number;
+  closedTrades: number;
+  winRatePct: number | null;
+  cumulativeReturnPct: number | null;
+  maxDrawdownPct: number | null;
+  tradeSource: "recorded" | "unavailable";
+  note: string;
+}
+
+function PerfStat({ k, v, tone }: { k: string; v: string; tone?: "good" | "bad" }) {
+  return (
+    <div>
+      <dt className="text-[11px] text-zinc-500">{k}</dt>
+      <dd
+        className={cn(
+          "mt-0.5 font-mono text-[15px] font-semibold tabular-nums",
+          tone === "good" ? "text-accent" : tone === "bad" ? "text-red-400" : "text-white",
+        )}
+      >
+        {v}
+      </dd>
+    </div>
+  );
+}
+
 export function SealedVaultFeed() {
   const { connected, account, signAndSubmitTransaction } = useWallet();
   const [vaults, setVaults] = useState<SealedVault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [perf, setPerf] = useState<PerfSummary | null>(null);
+  const [perfLoading, setPerfLoading] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [amount, setAmount] = useState("");
   const [depositBusy, setDepositBusy] = useState(false);
@@ -99,6 +128,31 @@ export function SealedVaultFeed() {
         /* detail is best-effort */
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  // Track record, rebuilt from chain. A depositor should not be asked to fund a strategy on a
+  // name and a fee schedule alone.
+  useEffect(() => {
+    if (!selected) {
+      setPerf(null);
+      return;
+    }
+    let cancelled = false;
+    setPerfLoading(true);
+    fetch(`/api/sealed/vaults/${selected}/performance`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled) setPerf(j?.ok ? (j as PerfSummary) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setPerf(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPerfLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -292,6 +346,47 @@ export function SealedVaultFeed() {
                 ]}
               />
             )}
+
+            {/* Track record. Every number here is derived from what the contract actually did —
+                nothing is self-reported by the creator. */}
+            <div className={cn("rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] p-3")}>
+              <div className="flex items-baseline justify-between gap-3">
+                <h5 className="font-display text-[13px] font-semibold text-white">Track record</h5>
+                {perfLoading && <span className="text-[11px] text-zinc-500">reading chain…</span>}
+              </div>
+
+              {perf && perf.closedTrades > 0 ? (
+                <>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-3">
+                    <PerfStat
+                      k="Return"
+                      v={`${perf.cumulativeReturnPct! >= 0 ? "+" : ""}${perf.cumulativeReturnPct!.toFixed(1)}%`}
+                      tone={perf.cumulativeReturnPct! >= 0 ? "good" : "bad"}
+                    />
+                    <PerfStat k="Win rate" v={`${perf.winRatePct!.toFixed(0)}%`} />
+                    <PerfStat
+                      k="Max drawdown"
+                      v={`${perf.maxDrawdownPct!.toFixed(1)}%`}
+                      tone={perf.maxDrawdownPct! < -20 ? "bad" : undefined}
+                    />
+                  </dl>
+                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                    {perf.closedTrades} closed trade{perf.closedTrades === 1 ? "" : "s"} over{" "}
+                    {perf.bars} bars. Returns are per-trade price moves before leverage, fees and
+                    slippage — not the vault&apos;s net return to depositors.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
+                  {perf?.note ??
+                    "No closed trades yet — there is no track record to judge this vault on."}
+                </p>
+              )}
+              <p className="mt-2 border-t border-white/[0.06] pt-2 text-[11px] leading-relaxed text-zinc-500">
+                Past performance says nothing about future results. This is a leveraged strategy
+                and deposits can lose value.
+              </p>
+            </div>
 
             {detail?.registryMatchesChain === false && (
               <p role="alert" className="rounded-[10px] border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">

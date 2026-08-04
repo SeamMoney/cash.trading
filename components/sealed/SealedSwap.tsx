@@ -61,22 +61,18 @@ interface PendingSwap {
   announced: boolean;
 }
 
-const STORE_KEY = "cash.sealed.pendingSwaps.v1";
+/** Legacy store. Read once so a swap started before server persistence isn't stranded. */
+const LEGACY_KEY = "cash.sealed.pendingSwaps.v1";
 
-function loadPending(): PendingSwap[] {
+function drainLegacy(): PendingSwap[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    return raw ? (JSON.parse(raw) as PendingSwap[]) : [];
+    const raw = window.localStorage.getItem(LEGACY_KEY);
+    if (!raw) return [];
+    window.localStorage.removeItem(LEGACY_KEY);
+    return JSON.parse(raw) as PendingSwap[];
   } catch {
     return [];
-  }
-}
-function savePending(list: PendingSwap[]) {
-  try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(list));
-  } catch {
-    /* private browsing — the swap still works, it just won't survive a reload */
   }
 }
 
@@ -124,7 +120,50 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
 
   const addr = creatorAddr ?? account?.address?.toString();
 
-  useEffect(() => setPending(loadPending()), []);
+  /** Server-held, so clearing browser data no longer strands a swap. */
+  const loadPending = useCallback(async () => {
+    if (!addr) return;
+    try {
+      const r = await fetch(`/api/sealed/pending-swap?creator=${addr}`, { cache: "no-store" });
+      const j = await r.json();
+      const rows: PendingSwap[] = Array.isArray(j.swaps)
+        ? j.swaps.map((x: Record<string, string | boolean>) => ({
+            decibelVaultAddr: String(x.decibelVaultAddr),
+            fromStrategy: String(x.fromStrategyAddr),
+            toStrategy: String(x.toStrategyAddr),
+            toLabel: String(x.toLabel),
+            vaultName: String(x.vaultName),
+            announced: Boolean(x.announced),
+          }))
+        : [];
+      // Migrate anything left in localStorage from before this moved server-side.
+      const legacy = drainLegacy().filter(
+        (l) => !rows.some((r2) => r2.decibelVaultAddr === l.decibelVaultAddr),
+      );
+      for (const l of legacy) {
+        await fetch("/api/sealed/pending-swap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decibelVaultAddr: l.decibelVaultAddr,
+            creatorAddr: addr,
+            fromStrategyAddr: l.fromStrategy,
+            toStrategyAddr: l.toStrategy,
+            toLabel: l.toLabel,
+            vaultName: l.vaultName,
+            announced: l.announced,
+          }),
+        }).catch(() => undefined);
+      }
+      setPending([...rows, ...legacy]);
+    } catch {
+      setPending([]);
+    }
+  }, [addr]);
+
+  useEffect(() => {
+    void loadPending();
+  }, [loadPending]);
   useEffect(() => {
     fetch("/api/sealed/config", { cache: "no-store" })
       .then((r) => r.json())
@@ -205,9 +244,31 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
     [pending],
   );
 
-  const updatePending = useCallback((next: PendingSwap[]) => {
-    setPending(next);
-    savePending(next);
+  const recordSwap = useCallback(
+    async (p: PendingSwap) => {
+      setPending((cur) => [...cur.filter((x) => x.decibelVaultAddr !== p.decibelVaultAddr), p]);
+      await fetch("/api/sealed/pending-swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decibelVaultAddr: p.decibelVaultAddr,
+          creatorAddr: addr,
+          fromStrategyAddr: p.fromStrategy,
+          toStrategyAddr: p.toStrategy,
+          toLabel: p.toLabel,
+          vaultName: p.vaultName,
+          announced: p.announced,
+        }),
+      }).catch(() => undefined);
+    },
+    [addr],
+  );
+
+  const clearSwap = useCallback(async (vault: string) => {
+    setPending((cur) => cur.filter((x) => x.decibelVaultAddr !== vault));
+    await fetch(`/api/sealed/pending-swap?vault=${vault}`, { method: "DELETE" }).catch(
+      () => undefined,
+    );
   }, []);
 
   // ── Stage 1: create the replacement + announce it ───────────────────────────
@@ -275,17 +336,14 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
           announced = true;
         }
 
-        updatePending([
-          ...pending.filter((p) => p.decibelVaultAddr !== vault),
-          {
-            decibelVaultAddr: vault,
-            fromStrategy: currentStrategy,
-            toStrategy: newSv,
-            toLabel: selected.label,
-            vaultName,
-            announced,
-          },
-        ]);
+        await recordSwap({
+          decibelVaultAddr: vault,
+          fromStrategy: currentStrategy,
+          toStrategy: newSv,
+          toLabel: selected.label,
+          vaultName,
+          announced,
+        });
         setBusyStep(null);
         setActiveVault(null);
         await refreshStatus();
@@ -299,7 +357,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         setBusyStep(null);
       }
     },
-    [connected, account, config, selected, pending, updatePending, signAndSubmitTransaction, refreshStatus],
+    [connected, account, config, selected, recordSwap, signAndSubmitTransaction, refreshStatus],
   );
 
   // ── Stage 2: hand trading over ──────────────────────────────────────────────
@@ -342,7 +400,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         });
         await waitForTransactionConfirmation(r2.hash);
 
-        updatePending(pending.filter((x) => x.decibelVaultAddr !== p.decibelVaultAddr));
+        await clearSwap(p.decibelVaultAddr);
         setBusyStep(null);
         await loadVaults();
       } catch (err) {
@@ -355,7 +413,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         setBusyStep(null);
       }
     },
-    [pending, updatePending, signAndSubmitTransaction, loadVaults],
+    [clearSwap, signAndSubmitTransaction, loadVaults],
   );
 
   if (!addr) {
@@ -637,9 +695,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    updatePending(pending.filter((x) => x.decibelVaultAddr !== decibelVaultAddr))
-                  }
+                  onClick={() => void clearSwap(decibelVaultAddr)}
                   className="w-full text-center text-[12px] text-zinc-500 underline underline-offset-2 transition-colors hover:text-zinc-300"
                 >
                   Abandon this swap — keep the current strategy

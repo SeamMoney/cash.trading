@@ -228,6 +228,21 @@ model SealedVault {
   /// Set only if/when the creator reveals. Enables full retroactive replay.
   revealedPine       String?
   revealedAt         DateTime?
+  /// Managed attestation: we run the creator's program for them every bar.
+  /// Opt-in. False means the creator runs their own attestor and nothing below is stored.
+  managedAttestation Boolean   @default(false)
+  /// AES-256-GCM ciphertext of the PineScript, with the vault address as AAD.
+  /// The key lives in SEALED_SOURCE_KEY, never here — a database dump reveals no strategy.
+  encryptedPine      String?
+  encryptedPineIv    String?
+  encryptedPineTag   String?
+  /// Last successful tick, for the cron's health reporting.
+  lastTickAt         DateTime?
+  lastTickSeq        Int?
+  /// Consecutive failures. The cron backs off a vault that keeps aborting rather than
+  /// burning gas on it every minute.
+  tickFailures       Int       @default(0)
+  lastTickError      String?
   paused             Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -235,6 +250,52 @@ model SealedVault {
   @@index([network, sealedAt])
   @@index([creatorAddr])
   @@index([programCommitment])
+}
+
+/// A fill a sealed vault made, captured from the tick transaction we submitted.
+///
+/// Aptos's hosted indexer dropped its `events` table, so module events are not queryable after
+/// the fact. We submit every managed tick, so the receipt is recorded here instead. Purely a
+/// cache of on-chain facts — each row is re-derivable from `txHash`.
+model SealedTrade {
+  id                String   @id @default(cuid())
+  strategyVaultAddr String
+  network           String
+  seq               Int
+  isBuy             Boolean
+  reduceOnly        Boolean
+  size              BigInt
+  /// 1e8-scaled trace price, matching the committed series.
+  price             BigInt
+  /// Engine px units (1e6) actually submitted as the IOC limit.
+  orderPx           BigInt
+  txHash            String
+  tradedAt          DateTime
+  createdAt         DateTime @default(now())
+
+  @@unique([strategyVaultAddr, seq, reduceOnly])
+  @@index([strategyVaultAddr, seq])
+}
+
+/// A strategy swap in flight.
+///
+/// The chain records the notice schedule but not WHICH strategy replaces which — that pairing
+/// is the creator's intent, and it previously lived in localStorage, so clearing browser data
+/// mid-swap stranded the countdown.
+model SealedPendingSwap {
+  id               String   @id @default(cuid())
+  decibelVaultAddr String   @unique
+  network          String
+  creatorAddr      String
+  fromStrategyAddr String
+  toStrategyAddr   String
+  toLabel          String
+  vaultName        String
+  announced        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([creatorAddr, network])
 }
 
 model DecibelIndexerCheckpoint {

@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { prisma } from "@/lib/prisma";
+import { encryptSource, sourceVaultAvailable } from "@/lib/sealed-source-vault";
 import {
   MAX_PINE_BYTES,
   findSealedMarket,
@@ -153,6 +154,55 @@ export async function POST(request: NextRequest) {
     revealedPine = body.revealedPine;
   }
 
+  // Managed attestation: the creator asked us to run their program for them. We store the
+  // source encrypted (AES-256-GCM, key in SEALED_SOURCE_KEY, never in this table) and verify
+  // it reproduces the vault's commitment first — signing for a program the vault did not
+  // commit to is the one thing the attestor must never do.
+  let managed: { managedAttestation: boolean; encryptedPine: string | null; encryptedPineIv: string | null; encryptedPineTag: string | null } = {
+    managedAttestation: false,
+    encryptedPine: null,
+    encryptedPineIv: null,
+    encryptedPineTag: null,
+  };
+  if (typeof body.managedPine === "string" && body.managedPine.trim()) {
+    if (!sourceVaultAvailable()) {
+      return NextResponse.json(
+        { error: "managed attestation is unavailable — SEALED_SOURCE_KEY is not configured" },
+        { status: 501, headers: NO_STORE },
+      );
+    }
+    if (body.managedPine.length > MAX_PINE_BYTES) {
+      return NextResponse.json(
+        { error: `strategy source exceeds ${MAX_PINE_BYTES} bytes` },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const check = verifyRevealedProgram({
+      pine: body.managedPine,
+      manifestJson: body.manifestJson,
+      expectedCommitment: body.programCommitment as string,
+      marketAddr: market.addr,
+    });
+    if (!check.matches) {
+      return NextResponse.json(
+        {
+          error:
+            "the source given for managed attestation does not hash to the vault's commitment",
+          expected: (body.programCommitment as string).toLowerCase(),
+          got: check.recomputed,
+        },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const blob = encryptSource(body.managedPine, body.strategyVaultAddr as string);
+    managed = {
+      managedAttestation: true,
+      encryptedPine: blob.ciphertext,
+      encryptedPineIv: blob.iv,
+      encryptedPineTag: blob.tag,
+    };
+  }
+
   const sealed = body.sealed === true;
   const data = {
     strategyVaultAddr: body.strategyVaultAddr as string,
@@ -178,6 +228,7 @@ export async function POST(request: NextRequest) {
     sealedAt: sealed ? new Date() : null,
     revealedPine,
     revealedAt: revealedPine ? new Date() : null,
+    ...managed,
   };
 
   try {
@@ -196,6 +247,9 @@ export async function POST(request: NextRequest) {
         // re-registration without it must not silently un-reveal the vault.
         revealedPine: revealedPine ?? undefined,
         revealedAt: revealedPine ? new Date() : undefined,
+        // Re-registering with a source re-arms managed attestation; without one, leave the
+        // existing arrangement alone rather than silently switching a live vault off.
+        ...(managed.managedAttestation ? managed : {}),
       },
     });
     return NextResponse.json(

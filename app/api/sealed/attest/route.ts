@@ -12,35 +12,16 @@
  * the recommended production path. Guarded by CRANK_SECRET.
  */
 import { NextRequest, NextResponse } from "next/server";
-import {
-  Account,
-  Aptos,
-  AptosConfig,
-  Ed25519PrivateKey,
-  Network,
-} from "@aptos-labs/ts-sdk";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
-import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
-import { createStrategyRunner } from "@/lib/strategy-equivalence";
-import { canonicalizePine } from "@/lib/sealed-presets";
-import {
-  buildTickAttestedPayload,
-  computeProgramCommitment,
-  fromHex,
-  signAttestation,
-  toHex,
-  type Signal,
-} from "@/lib/sealed-attestor";
+import { performTick } from "@/lib/sealed-tick";
 import { getSealedVault, isHexAddress, sealedRegistryAvailable } from "@/lib/sealed-vaults";
 import { prisma } from "@/lib/prisma";
-import { fetchPythCandles } from "@/lib/launchpad/pyth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store" };
-const toTrit = (s: "buy" | "sell" | "neutral"): Signal => (s === "buy" ? 1 : s === "sell" ? 2 : 0);
 
 export async function POST(request: NextRequest) {
   const rate = checkApiRateLimit(request, "sealed-attest", 30, 60_000);
@@ -111,122 +92,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const aptos = new Aptos(
-    new AptosConfig({
-      network: vault.network === "mainnet" ? Network.MAINNET : Network.TESTNET,
-    }),
-  );
-
-  // Read the context FIRST: the attestation must be signed against the digest
-  // the chain currently holds, not one we assume.
-  let seq: bigint;
-  let inputDigest: string;
-  let onChainCommitment: string;
-  try {
-    const ctx = (await aptos.view({
-      payload: {
-        function: `${vault.packageAddress}::sealed_vault::get_attestation_context`,
-        functionArguments: [addr],
-      },
-    })) as unknown[];
-    onChainCommitment = String(ctx[0]);
-    seq = BigInt(String(ctx[1]));
-    inputDigest = String(ctx[2]);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "chain read failed" },
-      { status: 502, headers: NO_STORE },
-    );
-  }
-
-  // Refuse to sign for a program the vault didn't commit to.
-  const t = transpileV3(canonicalizePine(body.pineScript), undefined, {
-    target: "vault",
+  // One signing path, shared with the cron. Two implementations is how a scheduled job
+  // quietly starts signing something this endpoint would have refused.
+  const result = await performTick({
+    strategyVaultAddr: addr,
+    packageAddress: vault.packageAddress,
+    network: vault.network,
     marketAddr: vault.marketAddr,
-  });
-  if (t.errors?.length) {
-    return NextResponse.json(
-      { error: "supplied pineScript does not transpile", errors: t.errors },
-      { status: 422, headers: NO_STORE },
-    );
-  }
-  const localCommitment = toHex(
-    computeProgramCommitment({
-      canonicalPine: canonicalizePine(body.pineScript),
-      emittedMove: t.moveSource,
-      manifestJson: row.manifestJson,
-    }),
-  );
-  if (localCommitment.toLowerCase() !== onChainCommitment.toLowerCase()) {
-    return NextResponse.json(
-      {
-        error: "commitment mismatch — refusing to sign",
-        onChain: onChainCommitment,
-        local: localCommitment,
-      },
-      { status: 409, headers: NO_STORE },
-    );
-  }
-
-  // Warm the program up on history, then take the latest bar.
-  const asset = typeof body.asset === "string" ? body.asset : "BTC/USD";
-  const runner = createStrategyRunner(t.ir);
-  const nowS = Math.floor(Date.now() / 1000);
-  let closes: number[] = [];
-  try {
-    const candles = await fetchPythCandles(asset, "1", nowS - (runner.warmupBars + 80) * 120, nowS);
-    closes = candles.map((c) => c.close);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "price fetch failed" },
-      { status: 502, headers: NO_STORE },
-    );
-  }
-  if (closes.length < runner.warmupBars + 2) {
-    return NextResponse.json(
-      { error: `insufficient price history (${closes.length} bars)` },
-      { status: 503, headers: NO_STORE },
-    );
-  }
-  let signal: Signal = 0;
-  for (const c of closes) signal = toTrit(runner.pushBar(c));
-
-  const attestorPriv = new Ed25519PrivateKey(attestorKeyRaw);
-  const signature = signAttestation(attestorPriv, {
-    chainId: await aptos.getChainId(),
-    strategyVault: addr,
-    programCommitment: fromHex(onChainCommitment),
-    seq,
-    inputDigest: fromHex(inputDigest),
-    signal,
+    manifestJson: row.manifestJson,
+    pineScript: body.pineScript,
+    asset: typeof body.asset === "string" ? body.asset : (vault.marketName ?? "BTC/USD"),
+    attestorPrivateKey: attestorKeyRaw,
+    crankPrivateKey: crankKeyRaw,
   });
 
-  const cranker = Account.fromPrivateKey({
-    privateKey: new Ed25519PrivateKey(crankKeyRaw),
-  });
-  try {
-    const txn = await aptos.transaction.build.simple({
-      sender: cranker.accountAddress,
-      data: buildTickAttestedPayload({
-        packageAddress: vault.packageAddress,
-        strategyVault: addr,
-        barTs: BigInt(nowS),
-        signal,
-        signature,
-      }),
-    });
-    const res = await aptos.signAndSubmitTransaction({ signer: cranker, transaction: txn });
-    await aptos.waitForTransaction({ transactionHash: res.hash });
+  if (result.ok) {
     return NextResponse.json(
-      { ok: true, seq: seq.toString(), signal, txHash: res.hash },
+      { ok: true, seq: result.seq, signal: result.signal, txHash: result.txHash },
       { status: 200, headers: NO_STORE },
     );
-  } catch (err) {
-    // A Move abort here is meaningful (E_BAR_TOO_SOON, E_INVALID_SIGNATURE, …) —
-    // pass it through verbatim rather than flattening it.
-    return NextResponse.json(
-      { ok: false, seq: seq.toString(), signal, error: err instanceof Error ? err.message : "submit failed" },
-      { status: 502, headers: NO_STORE },
-    );
   }
+  // Pass the Move abort through verbatim — E_BAR_TOO_SOON and E_INVALID_SIGNATURE mean very
+  // different things to whoever is debugging.
+  const status =
+    result.stage === "commitment" ? 409 : result.stage === "transpile" ? 422 : 502;
+  return NextResponse.json(
+    { ok: false, stage: result.stage, error: result.error, seq: result.seq, signal: result.signal },
+    { status, headers: NO_STORE },
+  );
 }

@@ -153,6 +153,20 @@ module cash_strategy::portfolio_vault_tests {
         assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 11);
     }
 
+    /// A new vault must start at the DOMAIN-SEEDED genesis digest, not an empty vector.
+    /// An empty digest cannot be signed (the message layout requires 32 bytes), so bar 0 of
+    /// every portfolio vault would abort — and the domain seed is also what stops a signature
+    /// from one protocol version being replayed at another's genesis.
+    #[test]
+    fun genesis_is_sha3_of_domain() {
+        assert!(
+            portfolio_vault::genesis_digest_for_test()
+                == std::hash::sha3_256(b"cash.trading/portfolio-vault/v1"),
+            14,
+        );
+        assert!(portfolio_vault::genesis_digest_for_test() == FIXTURE_GENESIS, 15);
+    }
+
     /// The multi-market fold matches TypeScript, and every market's price is committed.
     #[test]
     fun fold_matches_typescript_and_commits_every_market() {

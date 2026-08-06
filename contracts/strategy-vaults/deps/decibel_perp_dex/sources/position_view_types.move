@@ -21,7 +21,12 @@ module decibel::position_view_types {
     use aptos_framework::object::Object;
     use decibel::perp_market::PerpMarket;
 
-    struct PositionViewInfo has copy, drop, store {}
+    /// ABILITIES ARE `drop` ONLY, verified against the live ABI. This stub originally
+    /// declared `copy, drop, store` and the publish aborted with a bare TYPE_MISMATCH after
+    /// the transaction had already committed — the linker checks a dependency struct's
+    /// abilities against the real module, and a stub that over-claims fails there rather than
+    /// at compile time. Do not widen these to make a borrow-checker complaint go away.
+    struct PositionViewInfo has drop {}
 
     public fun get_position_info_size(_p: &PositionViewInfo): u64 { abort 0 }
     public fun get_position_info_is_long(_p: &PositionViewInfo): bool { abort 0 }

@@ -439,7 +439,6 @@ export function buildCreatePortfolioVaultPayload(args: {
   minBarIntervalS: number;
   slippageBps: number;
   traceCapacity: number;
-  isSwap: boolean;
   /** Tier-2 TEE measurement, or "0x" for tier-1 bare-key attestation. */
   enclaveMeasurement?: string;
 }) {
@@ -475,7 +474,9 @@ export function buildCreatePortfolioVaultPayload(args: {
       String(args.minBarIntervalS),
       String(args.slippageBps),
       String(args.traceCapacity),
-      args.isSwap,
+      // NOTE: no `isSwap`. The contract derives it from whether the Decibel vault already
+      // holds a launch licence. It used to be an argument, which made the depositor-notice
+      // period opt-in by the party it constrains.
     ],
   };
 }

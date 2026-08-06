@@ -422,22 +422,50 @@ Only BTC/USD is in `SEALED_MARKETS`. Mainnet params verified against the live ch
 table — but every market you put in a vault's allowlist needs its own verified lot / min /
 tick, from the same live-chain read, for the same reason.
 
-### 8.5a Portfolio mode is unpublished and untested against a live engine
+### 8.5a Portfolio mode — what the live testnet run proved, and what it did not
 
-`cash_strategy::portfolio_vault` compiles, its Move unit tests pass, and its BCS layout is
-cross-checked against TypeScript inside the VM. **None of it has run against a real Decibel
-engine.** In particular these are unverified end-to-end:
+`pnpm test:portfolio-e2e` runs `portfolio_vault` against the **live** Decibel testnet engine
+(package `0xacc35ae1…`). It found four real bugs that nothing else could have found, all fixed:
 
-- `public_read_api::view_position` / `get_position_size` / `get_market_round_price_to_ticker` /
-  `get_market_round_size_to_lot` — all four are present on the live mainnet ABI with matching
-  signatures, but this module has never actually called them.
-- The funding sign convention (§2.5).
-- Gas cost per tick with a multi-market allowlist. Every market is priced on every bar, so a
-  16-market vault does 16 mark-price reads per tick, forever, paid by the crank wallet. Measure
-  before setting the crank funding in §5 — the 0.000186 APT/tick figure there is single-market.
+| Bug | Why only a live run finds it |
+|---|---|
+| `PositionViewInfo` stub declared `copy, drop, store`; the real struct is `drop` only | The linker compares a dependency struct's abilities at PUBLISH time. Compiles clean, then aborts with a bare `TYPE_MISMATCH` **after the transaction has already committed**. |
+| `input_digest` seeded to an empty vector instead of `sha3_256(DOMAIN)` | The signed message needs 32 bytes, so bar 0 of **every** portfolio vault was unsignable. Move unit tests cannot create a vault (that needs a live engine), so nothing caught it. |
+| `get_positions`' `vector<u8>` read as a JSON array | The Aptos REST API hex-encodes `vector<u8>` (`"0x0002"`). A `TypeError` invisible to TypeScript, to the selftests and to the Move tests. |
+| `is_swap` was a **caller argument** | It made the depositor-notice period opt-in by the party it constrains — pass `false` and a replacement strategy trades other people's money immediately. Now derived on chain from the launch licence, matching `sealed_vault`. |
 
-Do not launch a portfolio vault with depositor money before a testnet vault has ticked, opened,
-force-closed on `max_hold_bars`, and had `force_close_stale` called by an unrelated account.
+**Verified against the live engine:** `create_portfolio_vault` with a real four-market
+allowlist; the launch licence shared with `sealed_vault` (already-licensed vault charged
+nothing); `delegate_dex_actions_to`; `get_bounds` / `get_markets` / `get_state` / `swap_status`
+reading back exactly what was written, allowlist **in order**; `announce_swap` setting a correct
+24h window; and the genesis digest so a first tick is signable.
+
+**NOT yet verified against the live engine:**
+
+- **A completed attested tick.** The test vault's Decibel vault is already licensed, so
+  `is_swap` derives `true` and the notice gate correctly blocks trading for 24h. Finishing the
+  proof needs either that window to elapse or a fresh Decibel vault (100 USDC + seed; the
+  testnet deployer holds 60). Everything up to the gate — signing, submission, on-chain
+  signature verification — is exercised; the multi-market price fold, order placement,
+  `view_position` / `get_position_size` / `get_market_round_price_to_ticker`, the max-hold
+  close and the funding close are all **downstream of the gate and still unproven**.
+- **The `is_swap` fix itself on testnet.** Removing an entry-function parameter is a breaking
+  change, so the testnet package cannot take it in place; it needs a fresh package address.
+  Mainnet is unpublished, so mainnet ships the correct signature from day one.
+- **Gas per tick with a multi-market allowlist.** Every market is priced on every bar, so a
+  16-market vault does 16 mark-price reads per tick forever. The §5 crank-funding figure
+  (0.000186 APT/tick) is single-market.
+- **The funding sign convention** (§2.5).
+
+**Open question worth resolving before mainnet.** On the test vault, share supply is `2e8` while
+the creator's two primary stores hold `1e8`, so `has_outside_depositors` returns true. The other
+`1e8` is not in the vault object, the strategy object, or pending redemptions. Either there is a
+genuine second holder, or the function under-counts creator-held shares (it reads
+`primary_fungible_store::balance` only — shares in a secondary store are invisible to it). It
+fails **closed against the creator**, which is the safe direction, but if it is under-counting
+then *every* vault gates its own strategy swap for 24h, and "swap your algo free and instantly"
+quietly stops being true. This affects the SHIPPED single-market contract, not just portfolio
+mode.
 
 ### 8.6 `sealedRegistryAvailable()` only checks that `DATABASE_URL` is non-empty
 

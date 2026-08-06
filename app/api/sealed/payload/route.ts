@@ -353,7 +353,6 @@ export async function POST(request: NextRequest) {
           minBarIntervalS,
           slippageBps,
           traceCapacity,
-          isSwap: body.isSwap === true,
         }),
       },
       { status: 200, headers: NO_STORE },

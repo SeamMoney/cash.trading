@@ -363,7 +363,6 @@ module cash_strategy::portfolio_vault {
         min_bar_interval_s: u64,
         slippage_bps: u64,
         trace_capacity: u64,
-        is_swap: bool,
     ) {
         assert!(vector::length(&program_commitment) == 32, E_BAD_COMMITMENT);
         assert!(vector::length(&attestor_pubkey) == 32, E_BAD_PUBKEY);
@@ -425,6 +424,16 @@ module cash_strategy::portfolio_vault {
             i = i + 1;
         };
 
+        // Whether this is a SWAP is derived on chain, never taken from the caller.
+        //
+        // It was an argument at first, which meant the depositor-notice period was opt-in by
+        // the exact party it constrains: pass `false` and a replacement strategy starts trading
+        // other people's money the same second, with no notice. `sealed_vault` already derives
+        // it the same way — a vault that is already licensed necessarily has a prior strategy,
+        // so this one replaces it. Read BEFORE collecting the fee, because collecting is what
+        // creates the licence.
+        let is_swap = sealed_vault::is_licensed(decibel_vault_addr);
+
         // One launch fee per Decibel vault, charged by the same table the single-market path
         // uses — so a creator who already licensed their vault can move to portfolio mode for
         // free, exactly as swapping strategies is free.
@@ -451,7 +460,13 @@ module cash_strategy::portfolio_vault {
             max_adverse_funding_bps,
             min_bar_interval_s,
             slippage_bps,
-            input_digest: vector::empty<u8>(),
+            // Genesis digest, NOT an empty vector. `sealed_vault` seeds the same way, the TS
+            // attestor exports `portfolioGenesisDigest()` expecting it, and the signed message
+            // requires a 32-byte digest — an empty one made bar 0 unsignable, so the very
+            // first tick of every portfolio vault would have failed. The Move unit tests never
+            // caught it because they cannot create a vault (that needs a live Decibel engine),
+            // which is exactly why the testnet e2e exists.
+            input_digest: hash::sha3_256(ATTESTATION_DOMAIN),
             seq: 0,
             last_bar_ts: 0,
             positions: vector::empty<OpenPos>(),
@@ -1225,6 +1240,12 @@ module cash_strategy::portfolio_vault {
     ): vector<u8> {
         let actions = build_actions(&market_idxs, &sides, &pct_bps_list, &leverage_list);
         hash::sha3_256(bcs::to_bytes(&actions))
+    }
+
+    #[test_only]
+    /// The digest a freshly created vault starts at.
+    public fun genesis_digest_for_test(): vector<u8> {
+        hash::sha3_256(ATTESTATION_DOMAIN)
     }
 
     #[test_only]

@@ -199,7 +199,11 @@ export async function performPortfolioTick(
         functionArguments: [input.strategyVaultAddr],
       },
     })) as unknown[];
-    const idxs = (p[0] as unknown[]).map(Number);
+    // `get_positions` returns `vector<u8>` first, and the Aptos REST API serializes a
+    // `vector<u8>` as a HEX STRING, not a JSON array — `["0x0002", [...]]`, not `[[0,2], ...]`.
+    // Treating it as an array is a TypeError at runtime and is invisible to the type system,
+    // to unit tests, and to the Move tests. It only appears against a live node.
+    const idxs = decodeU8Vector(p[0]);
     const longs = p[1] as boolean[];
     held = new Map(idxs.map((idx, i) => [idx, Boolean(longs[i])]));
   } catch (err) {
@@ -343,6 +347,26 @@ export async function performPortfolioTick(
     const benign = /E_BAR_TOO_SOON|EBAR_TOO_SOON|,\s*11\)/.test(msg);
     return { ok: false, stage: "submit", error: msg, retryable: benign };
   }
+}
+
+/**
+ * Decode a Move `vector<u8>` as returned by the Aptos REST API.
+ *
+ * The node hex-encodes byte vectors ("0x0002") rather than emitting a JSON array, which is
+ * the same family of trap as the SDK encoding a JS string argument as its UTF-8 bytes. Both
+ * directions of the `vector<u8>` boundary have now bitten this codebase, so both are handled
+ * explicitly rather than by whatever the runtime happens to do. Accepts an array too, so a
+ * future node or SDK change that starts returning one does not break this.
+ */
+function decodeU8Vector(v: unknown): number[] {
+  if (Array.isArray(v)) return v.map(Number);
+  if (typeof v === "string") {
+    const hex = v.replace(/^0x/i, "");
+    const out: number[] = [];
+    for (let i = 0; i + 1 < hex.length; i += 2) out.push(parseInt(hex.slice(i, i + 2), 16));
+    return out;
+  }
+  return [];
 }
 
 /** The market address the commitment's manifest was built over. */

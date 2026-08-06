@@ -262,8 +262,67 @@ export async function POST(request: NextRequest) {
     ...managed,
   };
 
+  // A swap registers the replacement and retires its predecessor. Both writes have to land or
+  // neither: registering alone leaves two strategies in the cron's working set for one Decibel
+  // vault, and retiring alone leaves the vault with no strategy being ticked at all. The chain
+  // has already revoked the outgoing delegation by the time this is called, so the retirement
+  // is recording a fact, not making a decision.
+  // A list, not one address: a Decibel vault can end up with several stale strategies if an
+  // earlier swap was abandoned between its create and its handover. The handover revokes all of
+  // them in one transaction, so all of them get retired in one write.
+  const retires: string[] = [];
+  const claimed = Array.isArray(body.retiresStrategyVaultAddrs)
+    ? body.retiresStrategyVaultAddrs
+    : body.retiresStrategyVaultAddr !== undefined
+      ? [body.retiresStrategyVaultAddr]
+      : [];
+  for (const raw of claimed) {
+    if (!isHexAddress(raw)) {
+      return NextResponse.json(
+        { error: "retiresStrategyVaultAddrs must all be valid addresses" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const outgoing = raw as string;
+    if (outgoing.toLowerCase() === data.strategyVaultAddr.toLowerCase()) {
+      return NextResponse.json(
+        { error: "a strategy cannot retire itself" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    // Same server-side authorization as /api/sealed/pending-swap: there is no wallet-signature
+    // auth here, so the claim is checked against what is already registered. Each outgoing
+    // strategy must belong to the same creator AND the same Decibel vault — otherwise anyone
+    // could silently retire a stranger's live vault by registering a throwaway one.
+    const prior = await prisma.sealedVault
+      .findUnique({
+        where: { strategyVaultAddr: outgoing },
+        select: { creatorAddr: true, decibelVaultAddr: true },
+      })
+      .catch(() => null);
+    if (!prior) {
+      return NextResponse.json(
+        { error: `${outgoing} is not registered, so it cannot be retired` },
+        { status: 404, headers: NO_STORE },
+      );
+    }
+    if (prior.creatorAddr.toLowerCase() !== data.creatorAddr.toLowerCase()) {
+      return NextResponse.json(
+        { error: "a strategy being retired belongs to a different creator" },
+        { status: 403, headers: NO_STORE },
+      );
+    }
+    if (prior.decibelVaultAddr.toLowerCase() !== data.decibelVaultAddr.toLowerCase()) {
+      return NextResponse.json(
+        { error: "a strategy being retired trades a different Decibel vault" },
+        { status: 403, headers: NO_STORE },
+      );
+    }
+    if (!retires.includes(outgoing)) retires.push(outgoing);
+  }
+
   try {
-    const row = await prisma.sealedVault.upsert({
+    const write = prisma.sealedVault.upsert({
       where: { strategyVaultAddr: data.strategyVaultAddr },
       create: data,
       // Re-registering (e.g. after the seal step) updates the lifecycle fields.
@@ -281,10 +340,24 @@ export async function POST(request: NextRequest) {
         // Re-registering with a source re-arms managed attestation; without one, leave the
         // existing arrangement alone rather than silently switching a live vault off.
         ...(managed.managedAttestation ? managed : {}),
+        // Re-registering a live vault must never resurrect a retired one by omission, and must
+        // never retire a live one either — retirement is driven only by the branch below.
       },
     });
+    const row =
+      retires.length > 0
+        ? (
+            await prisma.$transaction([
+              write,
+              prisma.sealedVault.updateMany({
+                where: { strategyVaultAddr: { in: retires }, retiredAt: null },
+                data: { retiredAt: new Date(), retiredBy: data.strategyVaultAddr },
+              }),
+            ])
+          )[0]
+        : await write;
     return NextResponse.json(
-      { ok: true, vault: toPublicSealedVault(row) },
+      { ok: true, vault: toPublicSealedVault(row), retired: retires },
       { status: 200, headers: NO_STORE },
     );
   } catch (err) {

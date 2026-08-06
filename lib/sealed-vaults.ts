@@ -622,12 +622,31 @@ export async function readSwapStatus(
   }
 }
 
-/** Revoke a strategy's trading rights. Step one of a swap. */
+/**
+ * Revoke trading rights. Step one of a swap.
+ *
+ * With no `strategyVaultAddrs`, this revokes EVERY delegation on the vault — which is what a
+ * swap actually wants. Two delegates share one Decibel subaccount, so the engine nets their
+ * positions against each other and each strategy's own book then describes a position it does
+ * not solely own (docs/DEPLOY-SEALED.md §8.5c). Naming addresses explicitly means the caller
+ * has to already know every delegate: a strategy created by an abandoned swap, or one
+ * delegated outside this app, would survive the revoke and keep trading alongside its
+ * replacement. Revoke-all needs no such knowledge and cannot be wrong about it.
+ *
+ * The targeted form stays available for revoking one strategy without disarming the vault.
+ */
 export function buildRevokeDelegationPayload(args: {
   decibelPackage: string;
   decibelVaultAddr: string;
-  strategyVaultAddrs: string[];
+  strategyVaultAddrs?: string[];
 }) {
+  if (!args.strategyVaultAddrs || args.strategyVaultAddrs.length === 0) {
+    return {
+      function: `${args.decibelPackage}::vault_admin_api::revoke_all_dex_actions_delegations`,
+      typeArguments: [] as string[],
+      functionArguments: [args.decibelVaultAddr],
+    };
+  }
   return {
     function: `${args.decibelPackage}::vault_admin_api::revoke_dex_actions_delegation`,
     typeArguments: [] as string[],
@@ -681,6 +700,16 @@ export interface PublicSealedVault {
   createdAt: string;
   /** Tier-1 unless an enclave measurement is bound. Drives the UI trust badge. */
   attestationTier: "bare" | "tee";
+  /** Non-null once a swap handed this vault's Decibel account to another strategy. A retired
+   *  vault is history: its delegation is revoked and the cron will never tick it again. */
+  retiredAt: string | null;
+  /** The strategy that replaced it, so the chain of custody is followable. */
+  retiredBy: string | null;
+  /** True when we run this creator's program for them every bar. It is what decides whether the
+   *  tick cron is responsible for the vault at all, so a swap has to carry it forward — a
+   *  replacement registered without it would simply never be ticked. Not a privacy leak: it
+   *  says who runs the program, never what the program is. */
+  managedAttestation: boolean;
 }
 
 type SealedVaultRow = {
@@ -703,6 +732,9 @@ type SealedVaultRow = {
   paused: boolean;
   revealedPine: string | null;
   revealedAt: Date | null;
+  retiredAt?: Date | null;
+  retiredBy?: string | null;
+  managedAttestation?: boolean;
   createdAt: Date;
 };
 
@@ -730,6 +762,9 @@ export function toPublicSealedVault(row: SealedVaultRow): PublicSealedVault {
     revealedAt: row.revealedAt ? row.revealedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     attestationTier: hasEnclave ? "tee" : "bare",
+    retiredAt: row.retiredAt ? row.retiredAt.toISOString() : null,
+    retiredBy: row.retiredBy ?? null,
+    managedAttestation: row.managedAttestation === true,
   };
 }
 
@@ -737,14 +772,23 @@ export function sealedRegistryAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
 
+/**
+ * The live feed. Retired strategies are excluded by default: after a swap the outgoing
+ * strategy's delegation is revoked on chain, so listing it alongside its replacement would show
+ * a trader two bots for one pot of money, only one of which can trade. Pass `includeRetired` to
+ * read the full history of a Decibel vault.
+ */
 export async function listSealedVaults(
   network: string,
   creatorAddr?: string,
+  opts?: { includeRetired?: boolean },
 ): Promise<PublicSealedVault[]> {
   const rows = await prisma.sealedVault.findMany({
-    where: creatorAddr
-      ? { network, creatorAddr: { equals: creatorAddr, mode: "insensitive" } }
-      : { network },
+    where: {
+      network,
+      ...(creatorAddr ? { creatorAddr: { equals: creatorAddr, mode: "insensitive" } } : {}),
+      ...(opts?.includeRetired ? {} : { retiredAt: null }),
+    },
     orderBy: [{ sealedAt: "desc" }, { createdAt: "desc" }],
     take: 100,
   });

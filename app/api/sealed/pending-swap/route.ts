@@ -100,6 +100,10 @@ export async function POST(request: NextRequest) {
     fromStrategyAddr: body.fromStrategyAddr as string,
     toStrategyAddr: body.toStrategyAddr as string,
     toLabel: typeof body.toLabel === "string" ? body.toLabel.slice(0, 80) : "New strategy",
+    // The catalog id, not the display label. The handover step re-derives the replacement's
+    // commitment from it so the registry row it writes matches what is sealed on chain — and a
+    // reload mid-swap must not lose that, which is the whole reason this table exists.
+    toStrategyId: typeof body.toStrategyId === "string" ? body.toStrategyId.slice(0, 80) : null,
     vaultName: typeof body.vaultName === "string" ? body.vaultName.slice(0, 80) : "Vault",
     announced: body.announced === true,
   };

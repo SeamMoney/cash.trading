@@ -1545,6 +1545,53 @@ assert.ok(
   "schema.prisma must declare the index the migration creates, or `prisma migrate diff` " +
     "reports drift and a future `db push` would drop the tick cron's index",
 );
+assert.ok(
+  prismaSchema.includes("@@index([network, retiredAt])"),
+  "same for the retirement index the cron's working-set query now filters on",
+);
+
+// ── Swapping an algo must not leave the vault dark ─────────────────────────
+// The failure this guards is silent and total: a swap revokes the outgoing strategy's
+// delegation on-chain and delegates the replacement, but the tick cron works off the registry.
+// If the registry is not updated in the same flow, the cron keeps ticking a strategy that can
+// no longer place an order and never ticks the one that can — the vault simply stops trading,
+// with nothing in the UI to say so. Same shape as the CRON_SECRET trap.
+assert.ok(
+  /retiredAt:\s*null/.test(sealedTickCron),
+  "the tick cron must exclude retired vaults: a retired strategy's delegation was revoked in " +
+    "a swap, so every tick of it that produced an order would abort on Decibel forever",
+);
+const swapUi = readFileSync("components/sealed/SealedSwap.tsx", "utf8");
+assert.ok(
+  swapUi.includes("retiresStrategyVaultAddrs"),
+  "the handover must register the replacement AND retire its predecessor in one call — " +
+    "registering alone leaves two strategies in the cron's working set for one Decibel vault, " +
+    "retiring alone leaves the vault with nothing being ticked",
+);
+assert.ok(
+  /kind:\s*"revoke",\s*\n\s*decibelVaultAddr:\s*p\.decibelVaultAddr,\s*\n\s*\}\)/.test(swapUi),
+  "the handover must revoke with NO address list, which builds revoke_all_dex_actions_delegations. " +
+    "Naming addresses only disarms the delegates we know about; one we missed keeps trading the " +
+    "same subaccount as the replacement and the engine nets them together (DEPLOY-SEALED §8.5c)",
+);
+assert.ok(
+  sealedLib.includes("revoke_all_dex_actions_delegations"),
+  "buildRevokeDelegationPayload must support the revoke-all form — it is the only variant that " +
+    "needs no knowledge of who the delegates are",
+);
+const vaultsRoute = readFileSync("app/api/sealed/vaults/route.ts", "utf8");
+assert.ok(
+  vaultsRoute.includes("prisma.$transaction"),
+  "register-and-retire must be one transaction; a half-applied swap is a vault with either " +
+    "two live strategies or none",
+);
+assert.ok(
+  vaultsRoute.includes("belongs to a different creator") &&
+    vaultsRoute.includes("trades a different Decibel vault"),
+  "retirement is unauthenticated like the rest of these routes, so it must be checked against " +
+    "what is already registered — otherwise anyone could retire a stranger's live vault by " +
+    "registering a throwaway one",
+);
 
 // ── Launch layout ──────────────────────────────────────────────────────────
 // The launchpad has always been a two-column transpiler UI: editor left, decisions right.

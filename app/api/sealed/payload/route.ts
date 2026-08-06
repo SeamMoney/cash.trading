@@ -361,11 +361,20 @@ export async function POST(request: NextRequest) {
 
   // Swapping the algo: revoke the old strategy's trading rights. Pair it with a fresh
   // `create` (free on a licensed vault) and a `delegate` to the new strategy address.
+  //
+  // `strategyVaultAddrs` is optional and normally omitted: with no list this builds
+  // `revoke_all_dex_actions_delegations`, which disarms the vault completely before the
+  // replacement is delegated. That is the only form that cannot leave a second strategy
+  // trading the same subaccount, because it needs no knowledge of who the delegates are.
   if (kind === "revoke") {
     const addrs = Array.isArray(body.strategyVaultAddrs) ? body.strategyVaultAddrs : [];
-    if (!isHexAddress(body.decibelVaultAddr) || addrs.length === 0 || !addrs.every(isHexAddress)) {
+    if (!isHexAddress(body.decibelVaultAddr) || !addrs.every(isHexAddress)) {
       return NextResponse.json(
-        { error: "decibelVaultAddr and a non-empty strategyVaultAddrs[] are required" },
+        {
+          error:
+            "decibelVaultAddr is required, and strategyVaultAddrs[] (optional — omit to revoke " +
+            "every delegation) must contain only addresses",
+        },
         { status: 400, headers: NO_STORE },
       );
     }

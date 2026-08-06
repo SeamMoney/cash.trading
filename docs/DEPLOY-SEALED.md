@@ -201,7 +201,7 @@ looks like a bad strategy rather than a bug. This step does not apply to single-
 
 ## 3. Database
 
-Four migrations touch sealed vaults. All are **additive** — new tables and nullable columns
+Six migrations touch sealed vaults. All are **additive** — new tables and nullable columns
 with defaults — so they are safe against a live database with existing rows.
 
 | Migration | Adds |
@@ -210,6 +210,8 @@ with defaults — so they are safe against a live database with existing rows.
 | `20260804120000_sealed_managed_attestation` | encrypted-source + tick-health columns |
 | `20260804130000_sealed_trades` | `SealedTrade` table |
 | `20260804140000_sealed_pending_swap` | `SealedPendingSwap` table |
+| `20260805000000_sealed_portfolio_mode` | `vaultKind`, `marketNames` (the ordered allowlist) |
+| `20260806000000_sealed_vault_retirement` | `retiredAt` / `retiredBy` — **the tick cron filters on these** (§8.5c) |
 
 ```bash
 pnpm db:migrate:deploy
@@ -224,6 +226,12 @@ WHERE table_name = 'SealedVault' AND column_name LIKE '%ncrypted%';
 
 SELECT to_regclass('"SealedTrade"'), to_regclass('"SealedPendingSwap"');
 -- both non-null
+
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'SealedVault' AND column_name IN ('retiredAt','retiredBy');
+-- expect both. Without them the tick cron's working-set query fails outright, which is the
+-- loud failure; the quiet one is running the app against a database missing them and having
+-- every swap leave its vault dark (§8.5c).
 ```
 
 ---
@@ -561,11 +569,42 @@ Each vault's own `positions` book still says it holds its full leg. Consequences
   trade, or close**. Fixed: sub-minimum legs are dropped from the book and reported as
   `PortfolioSkipped`, never placed.
 
-**The rule: revoke the old strategy's delegation before delegating a new one.**
-`buildRevokeDelegationPayload` exists and `/api/sealed/payload` has a `revoke` kind, but **the
-launch flow does not call it** — swapping a strategy through the UI today leaves both delegated.
-Fixing that is a prerequisite for shipping algo swaps, and it is a UI/flow change, not a
-contract one: the contract cannot enumerate Decibel's delegate list.
+**The rule: exactly one delegate per Decibel vault, always.** The contract cannot enforce it —
+it cannot enumerate Decibel's delegate list — so the swap flow does, and it now does it the only
+way that can't be wrong:
+
+- The handover calls **`revoke_all_dex_actions_delegations`**, not the targeted form. A list only
+  disarms the delegates we know about; one created by an abandoned swap, or delegated outside
+  this app, would survive it and keep trading the same subaccount as its replacement. Revoke-all
+  needs no such knowledge. `buildRevokeDelegationPayload` with no `strategyVaultAddrs` builds it;
+  the targeted form is still there for revoking one strategy without disarming the vault.
+- The vault is disarmed for the seconds between the revoke and the delegate. That is the safe
+  direction to fail in: a vault nobody can trade, not a vault two strategies are fighting over.
+
+**A second bug, found while fixing that one, and worse.** The swap updated the chain and never
+updated the registry. The tick cron's working set is every managed, unpaused, sealed row — so
+after a swap it kept ticking the OLD strategy, whose delegation had just been revoked, and never
+ticked the replacement, which was never registered at all. **The vault silently stopped
+trading**, with nothing in the UI saying so. Same shape as the `CRON_SECRET` trap in §4.2.
+
+Fixed by making retirement a first-class state:
+
+- `SealedVault.retiredAt` / `retiredBy` (migration `20260806000000_sealed_vault_retirement`).
+  NULL means live; the cron filters on `retiredAt: null` and the feed excludes retired rows.
+- `POST /api/sealed/vaults` takes `retiresStrategyVaultAddrs[]` and does both writes in one
+  `prisma.$transaction`. Half-applied is exactly the two states worth preventing: two live
+  strategies on one vault, or none. Retirement is authorized the same way `/api/sealed/pending-swap`
+  is — the outgoing rows must already be registered to the same creator **and** the same Decibel
+  vault — because these routes still have no wallet-signature auth (§8.1).
+- The handover re-derives the replacement's commitment from the catalog id stored on the pending
+  swap, so a page reload mid-swap cannot register a row that disagrees with what the chain
+  sealed. The server rejects a source that doesn't hash to the commitment anyway, so a wrong
+  guess fails loudly instead of quietly.
+- `managedAttestation` is carried forward. A creator running their own attestor is not silently
+  moved onto ours, and a creator on ours is not silently dropped off it — the latter being another
+  way to end up with a vault nothing ticks.
+
+Guarded in `pnpm test:reliability`.
 
 ### 8.5d Crank gas, measured
 

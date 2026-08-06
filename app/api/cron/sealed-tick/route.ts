@@ -105,6 +105,11 @@ export async function GET(request: NextRequest) {
       paused: false,
       sealedAt: { not: null },
       encryptedPine: { not: null },
+      // A retired strategy lost its delegation in a swap. Ticking it is not merely wasted gas:
+      // any tick that produced an order would abort on Decibel forever, and the failure counter
+      // would keep the row churning. `retiredAt` is set in the same transaction that registers
+      // the replacement, so exactly one strategy per Decibel vault is ever in this set.
+      retiredAt: null,
     },
     take: 200,
   });

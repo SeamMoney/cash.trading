@@ -39,6 +39,9 @@ interface VaultRow {
   minBarIntervalS: number;
   paused: boolean;
   createdAt: string;
+  /** Whether we tick this vault. Carried forward on a swap: a replacement registered without it
+   *  is a vault nothing ever ticks. */
+  managedAttestation: boolean;
 }
 
 interface SwapStatus {
@@ -57,6 +60,10 @@ interface PendingSwap {
   fromStrategy: string;
   toStrategy: string;
   toLabel: string;
+  /** Catalog id. The handover re-derives the replacement's commitment from this, so the
+   *  registry row it writes is the one the chain actually sealed. Labels can be renamed;
+   *  a swap that survives a page reload cannot depend on one. */
+  toStrategyId: string | null;
   vaultName: string;
   announced: boolean;
 }
@@ -132,6 +139,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
             fromStrategy: String(x.fromStrategyAddr),
             toStrategy: String(x.toStrategyAddr),
             toLabel: String(x.toLabel),
+            toStrategyId: x.toStrategyId ? String(x.toStrategyId) : null,
             vaultName: String(x.vaultName),
             announced: Boolean(x.announced),
           }))
@@ -150,6 +158,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
             fromStrategyAddr: l.fromStrategy,
             toStrategyAddr: l.toStrategy,
             toLabel: l.toLabel,
+            toStrategyId: l.toStrategyId,
             vaultName: l.vaultName,
             announced: l.announced,
           }),
@@ -256,6 +265,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
           fromStrategyAddr: p.fromStrategy,
           toStrategyAddr: p.toStrategy,
           toLabel: p.toLabel,
+          toStrategyId: p.toStrategyId,
           vaultName: p.vaultName,
           announced: p.announced,
         }),
@@ -341,6 +351,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
           fromStrategy: currentStrategy,
           toStrategy: newSv,
           toLabel: selected.label,
+          toStrategyId: selected.id,
           vaultName,
           announced,
         });
@@ -360,16 +371,118 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
     [connected, account, config, selected, recordSwap, signAndSubmitTransaction, refreshStatus],
   );
 
+  /**
+   * Put the replacement into the tick cron's working set and take the strategies it replaced
+   * out of it, in one write.
+   *
+   * The commitment is re-derived rather than remembered: `/api/sealed/commit` is deterministic
+   * over (script, market), so re-running it reproduces exactly what was sealed on chain at
+   * announce time. That matters because this step can run minutes or days after the announce,
+   * on a different page load — and the server refuses a registration whose source does not hash
+   * to the commitment, so a wrong guess here fails loudly instead of registering a lie.
+   */
+  const registerReplacement = useCallback(
+    async (
+      p: PendingSwap,
+      siblings: VaultRow[],
+      retires: string[],
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      if (!config?.packageAddress || !config.attestorPubkey || !addr) {
+        return { ok: false, error: "the sealed module is not configured on this network" };
+      }
+      // Whatever this vault was before the swap: its name, its sizing, and crucially whether we
+      // are the ones ticking it. A creator running their own attestor must not be quietly
+      // switched onto ours, and a creator on ours must not be quietly switched off it.
+      const prior = siblings.find(
+        (v) => v.strategyVaultAddr.toLowerCase() === p.fromStrategy.toLowerCase(),
+      ) ?? siblings[0];
+      const strategy = p.toStrategyId
+        ? SEALED_CATALOG.find((s) => s.id === p.toStrategyId)
+        : SEALED_CATALOG.find((s) => s.label === p.toLabel);
+      if (!strategy) {
+        return { ok: false, error: `unknown strategy "${p.toLabel}"` };
+      }
+
+      const commit = await postJson("/api/sealed/commit", {
+        pineScript: strategy.script,
+        market: prior?.marketName ?? undefined,
+      });
+      if (!commit.ok) {
+        return { ok: false, error: (commit.json.error as string) ?? "could not re-derive the commitment" };
+      }
+      const info = commit.json as { commitment: string; manifestJson: string; market: { name: string } };
+
+      const res = await postJson("/api/sealed/vaults", {
+        strategyVaultAddr: p.toStrategy,
+        packageAddress: config.packageAddress,
+        network: config.network,
+        creatorAddr: addr,
+        decibelVaultAddr: p.decibelVaultAddr,
+        programCommitment: info.commitment,
+        attestorPubkey: config.attestorPubkey,
+        manifestJson: info.manifestJson,
+        market: info.market.name,
+        name: p.vaultName,
+        description: strategy.blurb,
+        pctBps: prior?.pctBps,
+        maxLeverageX100: prior?.maxLeverageX100,
+        minBarIntervalS: prior?.minBarIntervalS,
+        sealed: true,
+        // Catalog strategies are public source, so revealing costs no alpha and lets a
+        // depositor read what their money is now following.
+        revealedPine: strategy.script,
+        // Only if the vault it replaces was managed. Otherwise the creator ticks it themselves,
+        // exactly as they were doing before.
+        managedPine: prior?.managedAttestation ? strategy.script : undefined,
+        retiresStrategyVaultAddrs: retires,
+      });
+      if (!res.ok) {
+        return { ok: false, error: (res.json.error as string) ?? "registry write failed" };
+      }
+      return { ok: true };
+    },
+    [config, addr],
+  );
+
   // ── Stage 2: hand trading over ──────────────────────────────────────────────
+  //
+  // Three things have to happen together, and the order is not negotiable:
+  //
+  //   1. Revoke EVERY delegation on this Decibel vault — `revoke_all_dex_actions_delegations`,
+  //      not a list we compiled. Two delegates share one trading subaccount, so the engine nets
+  //      their positions against each other and each vault's own book then describes a position
+  //      it does not solely own (docs/DEPLOY-SEALED.md §8.5c — the failure that could strand
+  //      sub-minimum dust). A list can be wrong; revoke-all cannot.
+  //   2. Delegate the replacement.
+  //   3. Tell the registry, in ONE call that registers the replacement and retires the old
+  //      rows. Until this lands the cron is ticking a strategy whose delegation we just revoked
+  //      and ignoring the one that now holds the money — a vault that silently stops trading.
   const finishSwap = useCallback(
-    async (p: PendingSwap) => {
+    async (p: PendingSwap, siblings: VaultRow[]) => {
       setError(null);
       try {
+        // Everything the registry still believes is live on this Decibel vault, minus the
+        // incoming strategy. Normally that is exactly `fromStrategy`; it is more when an
+        // earlier swap was abandoned after its create but before its handover. This drives the
+        // registry write only — the on-chain revoke below does not consult it, because the
+        // registry is not authoritative about who Decibel thinks is delegated.
+        const stale = Array.from(
+          new Set(
+            [p.fromStrategy, ...siblings.map((v) => v.strategyVaultAddr)]
+              .map((a) => a.toLowerCase())
+              .filter((a) => a !== p.toStrategy.toLowerCase()),
+          ),
+        );
+
+        // No address list: revoke EVERY delegation. Naming addresses would only disarm the
+        // delegates we happen to know about, and one we missed keeps trading the same
+        // subaccount as the replacement — the netting failure in DEPLOY-SEALED §8.5c. The vault
+        // is disarmed for the few seconds between this and the delegate below, which is the
+        // safe direction to fail in.
         setBusyStep(`${p.decibelVaultAddr}:revoke`);
         const rev = await postJson("/api/sealed/payload", {
           kind: "revoke",
           decibelVaultAddr: p.decibelVaultAddr,
-          strategyVaultAddrs: [p.fromStrategy],
         });
         if (!rev.ok) {
           setError((rev.json.error as string) ?? "Could not build the revoke transaction");
@@ -400,6 +513,22 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         });
         await waitForTransactionConfirmation(r2.hash);
 
+        // The chain is now correct. The registry is not, and until it is, this vault is dark:
+        // the replacement is not in the tick cron's working set and the strategy that is has no
+        // delegation left. Everything above cost a signature; this costs none, so it is worth
+        // reporting loudly rather than swallowing.
+        setBusyStep(`${p.decibelVaultAddr}:register`);
+        const registered = await registerReplacement(p, siblings, stale);
+        if (!registered.ok) {
+          setError(
+            `Trading was handed over on-chain, but the replacement could not be registered ` +
+              `(${registered.error}). It will NOT trade until it is — press Activate again.`,
+          );
+          setBusyStep(null);
+          await loadVaults();
+          return;
+        }
+
         await clearSwap(p.decibelVaultAddr);
         setBusyStep(null);
         await loadVaults();
@@ -413,7 +542,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         setBusyStep(null);
       }
     },
-    [clearSwap, signAndSubmitTransaction, loadVaults],
+    [clearSwap, signAndSubmitTransaction, loadVaults, registerReplacement],
   );
 
   if (!addr) {
@@ -455,7 +584,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
         )}
       </AnimatePresence>
 
-      {byVault.map(({ decibelVaultAddr, current }) => {
+      {byVault.map(({ decibelVaultAddr, rows, current }) => {
         const p = pendingFor(decibelVaultAddr);
         const st = p ? status[p.toStrategy] : undefined;
         const secsLeft = st ? Math.max(0, st.tradableAt - (st.now + tick)) : 0;
@@ -483,8 +612,16 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
               {
                 id: "handover",
                 label: "Hand trading to the new strategy",
-                detail: ready ? "Two signatures: revoke the old, delegate the new" : undefined,
-                state: busyStep?.endsWith("revoke") || busyStep?.endsWith("delegate") ? "active" : "pending",
+                detail: ready
+                  ? "Two signatures — revoke the old, delegate the new — then the new one " +
+                    "starts getting ticked and the old one stops"
+                  : undefined,
+                state:
+                  busyStep?.endsWith("revoke") ||
+                  busyStep?.endsWith("delegate") ||
+                  busyStep?.endsWith("register")
+                    ? "active"
+                    : "pending",
               },
             ]
           : [];
@@ -685,7 +822,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                   </ActionButton>
                 ) : (
                   <ActionButton
-                    onClick={() => finishSwap(p)}
+                    onClick={() => finishSwap(p, rows)}
                     state={busy ? "pending" : "idle"}
                     disabled={busy || !ready}
                   >

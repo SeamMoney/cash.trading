@@ -252,6 +252,14 @@ model SealedVault {
   tickFailures       Int       @default(0)
   lastTickError      String?
   paused             Boolean   @default(false)
+  /// Set when a swap hands this vault's Decibel account to a different strategy. A retired row
+  /// keeps its history — trades, commitment, reveal — but the cron must never tick it again:
+  /// its delegation was revoked in the same flow, so every tick that placed an order would
+  /// abort forever. NULL means live.
+  retiredAt          DateTime?
+  /// The strategy that replaced it. Lets a depositor follow the chain of custody on a Decibel
+  /// vault that has run several algos.
+  retiredBy          String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -261,6 +269,9 @@ model SealedVault {
   /// The tick cron's working set, queried every minute. Declared here to match
   /// 20260804120000_sealed_managed_attestation, which creates it.
   @@index([managedAttestation, network])
+  /// The retirement filter the cron adds to that working set. Matches
+  /// 20260806000000_sealed_vault_retirement.
+  @@index([network, retiredAt])
 }
 
 /// A fill a sealed vault made, captured from the tick transaction we submitted.
@@ -301,6 +312,10 @@ model SealedPendingSwap {
   fromStrategyAddr String
   toStrategyAddr   String
   toLabel          String
+  /// Catalog id of the replacement. `toLabel` is for display and can be renamed; this is what
+  /// lets the handover step re-derive the exact program commitment after a page reload,
+  /// which is what the replacement's registry row is built from.
+  toStrategyId     String?
   vaultName        String
   announced        Boolean  @default(false)
   createdAt        DateTime @default(now())

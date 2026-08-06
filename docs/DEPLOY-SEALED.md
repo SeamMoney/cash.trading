@@ -55,6 +55,48 @@ access can read their alpha. The UI states this plainly. If you are not comforta
 that, don't set the key — creators then self-host their attestor and vaults only trade while
 their process runs.
 
+### 1.4 Four keys, four jobs — all fresh for mainnet
+
+An Aptos address is derived from its keypair, **not from the network**. The same key gives the
+same address string on testnet and mainnet; only the accounts are separate. So there is no such
+thing as "the testnet address" of a role — there is one address per role, and the question is
+only whether that keypair is fresh.
+
+Every key under `.sealed-e2e-testnet/`, `.portfolio-cleanroom-testnet/` and `.sealed-e2e-mainnet/`
+that was generated during development has lived in ephemeral CI containers and appeared in agent
+transcripts. **Treat all of them as burned.** Generate four new ones for mainnet:
+
+| Role | Where it lives | What it does | Compromise means |
+|---|---|---|---|
+| **Deployer / admin** | cold — signs a handful of times, ever | Publishes the package (its address **is** `@cash_strategy`), and is the only account `init_platform` / `set_platform_config` accept | Attacker can redirect the treasury and builder addresses for **future** vaults. Existing vaults snapshot their terms at creation and are unaffected. Cannot change bytecode: the mainnet publish is immutable (§1.2) |
+| **Builder / treasury** | cold, ideally hardware | Receives the 2 bps builder fee and the launch fee. Registered with Decibel (`docs/DECIBEL-BUILDER-CODE-REQUEST.md`) | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
+| **Attestor** | hot — Vercel env, `SEALED_ATTESTOR_PRIVATE_KEY` | Signs one bounded action per bar. Its public key is sealed into every vault at birth | Attacker can steer trades **within** the frozen bounds: market allowlist, per-leg and aggregate leverage, max positions, bar cadence, max-hold. Cannot withdraw, cannot exceed caps, cannot unseal |
+| **Cranker** | hot — Vercel env, `SEALED_CRANK_PRIVATE_KEY` | Submits the tick transaction and pays gas. No authority whatsoever | Attacker gets a gas wallet. Signals are verified against the attestor pubkey on chain |
+
+Rules that follow from the table:
+
+- **Never reuse one key for two roles.** Deployer = admin is already a doubling-up the contract
+  forces on us; don't add more. Attestor ≠ cranker is enforced by §4.2's guidance and is the
+  reason a stolen gas wallet can't forge signals.
+- **Builder ≠ deployer.** The builder address is the one Decibel registers and the one that
+  accumulates revenue; it should never be an account whose key ever touched a server.
+- The deployer is cold **but not disposable** — losing it means no future `set_platform_config`,
+  so back it up the way you back up the attestor key.
+- The two hot keys are the only ones that go in Vercel. If either leaks, rotating the cranker is
+  trivial; rotating the **attestor is not** — its pubkey is frozen into every live vault, so a
+  rotation means relaunching every vault. Treat it accordingly.
+
+Generate them separately, and write down which is which before funding anything:
+
+```bash
+for role in deployer builder attestor cranker; do
+  aptos key generate --output-file "mainnet-$role.key" --assume-yes
+done
+```
+
+Fund the deployer (~1 APT, §2.2) and the cranker (§5). The builder and attestor need no APT —
+the builder never submits a transaction from this system, and the attestor only signs off-chain.
+
 ---
 
 ## 2. Publish the contract

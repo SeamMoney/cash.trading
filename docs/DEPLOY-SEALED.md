@@ -479,6 +479,11 @@ ever produced a non-neutral signal.
 vault creation is necessary but **not sufficient** — it records the payer's approval; it does
 not register the builder.
 
+**The registration request is written and ready to send:**
+[`docs/DECIBEL-BUILDER-CODE-REQUEST.md`](./DECIBEL-BUILDER-CODE-REQUEST.md). It has one
+placeholder — the mainnet builder address — which cannot be filled until the mainnet package is
+published. Do not send it with the placeholder in it.
+
 Before mainnet, one of these must be true:
 
 1. **Decibel registers our builder address** (ask them; this is the revenue path — 2 bps on

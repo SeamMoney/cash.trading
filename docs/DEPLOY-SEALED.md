@@ -15,6 +15,7 @@ This document assumes you do and only covers getting it live.
 |---|---|
 | Contract on **testnet** | Published & exercised end-to-end — `0xacc35ae1a8a692d2070e0f6f4b7e0969752789300e055f6973f0ec8287f1740c` |
 | Contract on **mainnet** | **Not published.** Nothing below has run on mainnet. |
+| Builder code (2 bps revenue) | **BLOCKED — see §8.5b.** Decibel must register our builder address; until then `init_platform` MUST use `builder_fee_bps = 0` or every vault is unable to trade. |
 | Prod database | 4 sealed migrations pending (§3) |
 | Prod env vars | None of the sealed vars are set — `/api/sealed/config` returns `ready:false` |
 | Tick cron | Committed to `vercel.json`, never run in prod |
@@ -422,50 +423,74 @@ Only BTC/USD is in `SEALED_MARKETS`. Mainnet params verified against the live ch
 table — but every market you put in a vault's allowlist needs its own verified lot / min /
 tick, from the same live-chain read, for the same reason.
 
-### 8.5a Portfolio mode — what the live testnet run proved, and what it did not
+### 8.5a Portfolio mode — PROVEN on the live testnet engine
 
-`pnpm test:portfolio-e2e` runs `portfolio_vault` against the **live** Decibel testnet engine
-(package `0xacc35ae1…`). It found four real bugs that nothing else could have found, all fixed:
+`pnpm test:portfolio-cleanroom` builds a whole stack from nothing (fresh account → minted USDC
+→ package published at a fresh address → `init_platform` → subaccount → Decibel vault →
+portfolio vault → delegate → tick) and a portfolio vault **placed four real orders across four
+live markets in one attested tick**:
 
-| Bug | Why only a live run finds it |
-|---|---|
-| `PositionViewInfo` stub declared `copy, drop, store`; the real struct is `drop` only | The linker compares a dependency struct's abilities at PUBLISH time. Compiles clean, then aborts with a bare `TYPE_MISMATCH` **after the transaction has already committed**. |
-| `input_digest` seeded to an empty vector instead of `sha3_256(DOMAIN)` | The signed message needs 32 bytes, so bar 0 of **every** portfolio vault was unsignable. Move unit tests cannot create a vault (that needs a live engine), so nothing caught it. |
-| `get_positions`' `vector<u8>` read as a JSON array | The Aptos REST API hex-encodes `vector<u8>` (`"0x0002"`). A `TypeError` invisible to TypeScript, to the selftests and to the Move tests. |
-| `is_swap` was a **caller argument** | It made the depositor-notice period opt-in by the party it constrains — pass `false` and a replacement strategy trades other people's money immediately. Now derived on chain from the launch licence, matching `sealed_vault`. |
+```
+ok   tick  seq 0, 4 action(s)
+       BTC/USD side=2 20% @ 2x     PortfolioTraded  market 0 SELL size=310000  px=64270000000
+       ETH/USD side=1 20% @ 2x                      market 1 BUY  size=1050000 px=1902500000
+       SOL/USD side=2 20% @ 2x                      market 2 SELL size=2720000 px=73190000
+       APT/USD side=1 20% @ 2x                      market 3 BUY  size=3360000 px=596500
+get_positions ["0x00010203",[false,true,false,true],…]   4 legs, long AND short simultaneously
+get_trace     4 prices / 4 markets per row
+```
 
-**Verified against the live engine:** `create_portfolio_vault` with a real four-market
-allowlist; the launch licence shared with `sealed_vault` (already-licensed vault charged
-nothing); `delegate_dex_actions_to`; `get_bounds` / `get_markets` / `get_state` / `swap_status`
-reading back exactly what was written, allowlist **in order**; `announce_swap` setting a correct
-24h window; and the genesis digest so a first tick is signable.
+That single run verifies, against the real engine: multi-market trading, simultaneous long and
+short legs, multiple open positions, script-declared sizing and leverage (20% @ 2x came from
+`default_qty_type=percent_of_equity` + `margin_long/short=50`), the multi-market price fold,
+per-market lot/tick rounding on four markets with **different** size precisions,
+`view_position` / `get_position_size` / `get_market_round_price_to_ticker`, permissionless
+`force_close_stale`, `is_swap` deriving `false` on a fresh vault and `true` on the second
+strategy, and **no launch fee on the second launch** — the free-algo-swap promise, confirmed on
+chain.
 
-**NOT yet verified against the live engine:**
+Bugs it found, all fixed: the `PositionViewInfo` stub's abilities (publish-time
+`TYPE_MISMATCH`), an empty `input_digest` that made bar zero unsignable for every vault, a
+hex-encoded `vector<u8>` read as an array, `is_swap` being caller-asserted, and a missing
+`approve_max_fee` at creation.
 
-- **A completed attested tick.** The test vault's Decibel vault is already licensed, so
-  `is_swap` derives `true` and the notice gate correctly blocks trading for 24h. Finishing the
-  proof needs either that window to elapse or a fresh Decibel vault (100 USDC + seed; the
-  testnet deployer holds 60). Everything up to the gate — signing, submission, on-chain
-  signature verification — is exercised; the multi-market price fold, order placement,
-  `view_position` / `get_position_size` / `get_market_round_price_to_ticker`, the max-hold
-  close and the funding close are all **downstream of the gate and still unproven**.
-- **The `is_swap` fix itself on testnet.** Removing an entry-function parameter is a breaking
-  change, so the testnet package cannot take it in place; it needs a fresh package address.
-  Mainnet is unpublished, so mainnet ships the correct signature from day one.
-- **Gas per tick with a multi-market allowlist.** Every market is priced on every bar, so a
-  16-market vault does 16 mark-price reads per tick forever. The §5 crank-funding figure
-  (0.000186 APT/tick) is single-market.
-- **The funding sign convention** (§2.5).
+**Still unproven:** the max-hold and adverse-funding force-closes (both need a position held
+across many bars), gas per tick at 16 markets, and the funding sign convention (§2.5).
 
-**Open question worth resolving before mainnet.** On the test vault, share supply is `2e8` while
-the creator's two primary stores hold `1e8`, so `has_outside_depositors` returns true. The other
-`1e8` is not in the vault object, the strategy object, or pending redemptions. Either there is a
-genuine second holder, or the function under-counts creator-held shares (it reads
-`primary_fungible_store::balance` only — shares in a secondary store are invisible to it). It
-fails **closed against the creator**, which is the safe direction, but if it is under-counting
-then *every* vault gates its own strategy swap for 24h, and "swap your algo free and instantly"
-quietly stops being true. This affects the SHIPPED single-market contract, not just portfolio
-mode.
+---
+
+### 8.5b 🚨 LAUNCH BLOCKER — the builder code bricks every order
+
+**A vault created while `builder_fee_bps > 0` cannot place a single trade.** Every order aborts:
+
+```
+Move abort in …::builder_code_registry: EBUILDER_NOT_REGISTERED(0x2)
+```
+
+Proven by isolation on the clean-room stack: identical code and vault config, `builder_fee_bps
+= 2` → every order aborts; `set_platform_config` to `0`, new vault → four orders fill. This is
+not portfolio-specific — **`sealed_vault` attaches the same builder code to every order**, so
+the single-market path is affected identically. It has never surfaced because no live vault has
+ever produced a non-neutral signal.
+
+**Becoming a Decibel builder is not permissionless.** `builder_code_registry::initialize` is
+`friend`-visible, there is no public or entry wrapper anywhere in the package, and
+`admin_apis::set_global_max_builder_fee` is Decibel-admin only. Our `approve_max_fee` call at
+vault creation is necessary but **not sufficient** — it records the payer's approval; it does
+not register the builder.
+
+Before mainnet, one of these must be true:
+
+1. **Decibel registers our builder address** (ask them; this is the revenue path — 2 bps on
+   notional is the whole volume-based business model), **or**
+2. **`init_platform` runs with `builder_fee_bps = 0`.** Vaults snapshot builder terms at
+   creation, so vaults launched at 0 stay at 0 forever and a later config change does not
+   retroactively fix or break them. Launching at 0 and turning it on after registration is the
+   safe order.
+
+Do **not** publish with a non-zero builder fee and assume it will start working — every vault
+created in the meantime is permanently unable to trade, and the failure is a Move abort on the
+tick, which the cron records as a retryable error and retries forever.
 
 ### 8.6 `sealedRegistryAvailable()` only checks that `DATABASE_URL` is non-empty
 

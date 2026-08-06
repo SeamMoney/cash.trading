@@ -480,6 +480,22 @@ module cash_strategy::portfolio_vault {
             extend_ref,
         });
 
+        // Pre-authorize the builder fee from the vault's own trading identity, exactly as
+        // `sealed_vault` does at creation. Without it every single order aborts with
+        // `EBUILDER_NOT_REGISTERED` — Decibel validates an attached builder code against an
+        // approval recorded for the account that PLACES the order, and a vault admin cannot
+        // grant it on a subaccount's behalf. This module shipped without it, so the very first
+        // order of the very first portfolio vault reverted; the live clean-room run is what
+        // surfaced it, because a vault that never signals never places an order and every
+        // earlier test happened to see `neutral`.
+        if (builder_fee_bps > 0) {
+            perp_engine_api::approve_max_fee(
+                &sv_signer,
+                builder_addr,
+                builder_fee_bps * BUILDER_UNITS_PER_BPS,
+            );
+        };
+
         move_to(&sv_signer, PriceTrace {
             prices: vector::empty<u64>(),
             timestamps: vector::empty<u64>(),

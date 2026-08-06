@@ -30,6 +30,7 @@
     "test:portfolio": "tsx scripts/portfolio-attestor-selftest.ts",
     "test:liveness": "tsx scripts/strategy-liveness-selftest.ts",
     "test:portfolio-e2e": "tsx scripts/portfolio-e2e-testnet.ts",
+    "test:portfolio-cleanroom": "tsx scripts/portfolio-cleanroom-testnet.ts",
     "decibel:funding-canary": "tsx scripts/decibel-funding-canary.ts",
     "test:economics": "tsx scripts/vault-economics-selftest.ts",
     "test:source-vault": "tsx scripts/sealed-source-vault-selftest.ts",

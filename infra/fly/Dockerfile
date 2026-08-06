@@ -1,34 +1,25 @@
-# Worker box for cash.trading (fly.io): depth capture + vault crank loop.
-# The aptos CLI is baked in for the phase-2 compile-service sidecar
-# (Vercel serverless can't run the Move compiler).
+# Worker box for cash.trading (fly.io): depth capture + legacy vault crank loop.
+#
+# Deliberately lean. This image used to carry the pinned Aptos CLI, a second npm
+# tree with tsx + the Aptos SDK, and the whole of lib/ — all of it for a
+# sealed-vault attestor process and a "phase-2 compile-service sidecar" that
+# were never wired up. Both are closed (docs/MASTER-PLAN.md WS5.2):
+#
+#   - the attestor runs on Vercel Cron, which loops every vault in one
+#     invocation instead of one Fly machine per vault;
+#   - the sealed rail never compiles Move at runtime — the transpiler emits Move
+#     source only to hash it into the program commitment, and the modules are
+#     published once by us rather than per vault.
+#
+# So the CLI came out. The two workers below are plain .mjs with one dependency
+# between them (`pg`); keep it that way.
 FROM node:20-slim
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl unzip ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-# aptos CLI (pinned)
-ARG APTOS_CLI_VERSION=8.1.0
-RUN curl -fsSL -o /tmp/aptos.zip \
-  "https://github.com/aptos-labs/aptos-core/releases/download/aptos-cli-v${APTOS_CLI_VERSION}/aptos-cli-${APTOS_CLI_VERSION}-Linux-x86_64.zip" \
-  && unzip /tmp/aptos.zip -d /usr/local/bin \
-  && chmod +x /usr/local/bin/aptos \
-  && rm /tmp/aptos.zip \
-  && aptos --version
 
 WORKDIR /app
 COPY infra/fly/package.json ./package.json
 RUN npm install --omit=dev
 
 COPY scripts/depth-capture-worker.mjs scripts/crank-loop.mjs ./scripts/
-
-# ── Sealed-vault attestor (docs/SEALED-INDICATOR.md) ─────────────────────────
-# Needs the transpiler chain (lib/launchpad) + SDK + tsx; installed in its own
-# tree so the lean .mjs workers above stay dependency-free.
-RUN npm install --prefix /app/sealed --no-audit --no-fund tsx@4 @aptos-labs/ts-sdk@5
-COPY lib/ ./lib/
-COPY scripts/sealed-attestor-runner.ts scripts/sealed-e2e-deploy.ts ./scripts/
-COPY tsconfig.json ./
 
 # Process selected per fly.toml [processes]; default to the crank loop.
 CMD ["node", "scripts/crank-loop.mjs"]

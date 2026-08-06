@@ -297,6 +297,13 @@ bars than their strategy assumes.
 
 ## 6. The cron
 
+> **Where the attestor runs: Vercel Cron. Not fly.io.** The fly.io box
+> (`cash-trading-jdma7a`) runs depth capture and the legacy `tick_oracle` crank
+> only — it has no attestor process and no Aptos CLI. See MASTER-PLAN WS5.2/5.5
+> for why. If you find `scripts/sealed-attestor-runner.ts`, it is a local
+> simulate/debug tool, not a deployment target: it drives one vault at a time
+> and cannot tick a portfolio vault.
+
 ```json
 { "path": "/api/cron/sealed-tick", "schedule": "* * * * *" }
 ```

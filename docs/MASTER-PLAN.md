@@ -58,13 +58,30 @@ profit-share/fee config; deposit caps; curator identity binding.
 Deliverable first: docs/CURATOR-RULES.md enforcement matrix (agent-drafted).
 
 ### WS5 — Operations
-1. Multi-vault crank cadence (post-WS2.4); move to VPS for reliability.
-2. **VPS decision (USER)**: one box runs prod compile service + crank loop +
-   depth capture. Blocks prod deploy-from-UI (Vercel has no aptos CLI).
-3. Depth-capture worker (backend): record Decibel order books for
-   fill-accurate backtests + vault capacity limits — data accrues only from
-   start date.
-4. Monitoring: crank failures, sponsor balance, compile queue.
+1. ~~Multi-vault crank cadence (post-WS2.4); move to VPS for reliability.~~
+   **DONE** — fly.io app `cash-trading-jdma7a` (sjc), `infra/fly/`.
+2. ~~**VPS decision (USER)**: one box runs prod compile service + crank loop +
+   depth capture. Blocks prod deploy-from-UI (Vercel has no aptos CLI).~~
+   **CLOSED 2026-08-06.** The box exists and runs the crank loop and depth
+   capture. The compile service was **dropped, not deferred**: the sealed rail
+   never compiles Move at runtime. The transpiler emits Move source only to
+   HASH it into the program commitment, and `sealed_vault` / `portfolio_vault`
+   are published once by us rather than per vault — so "Vercel has no aptos
+   CLI" stopped being a blocker when the sealed design replaced the
+   per-vault-package rail. The Aptos CLI has been removed from the Fly image.
+3. ~~Depth-capture worker~~ **DONE** — running, 15s cadence, 39 markets. This is
+   now the main reason the Fly box exists: depth cannot be backfilled.
+4. Monitoring: crank failures, sponsor balance. **NOT BUILT.** (Compile queue
+   dropped with the compile service.)
+5. **Attestor placement — decided 2026-08-06: Vercel Cron.**
+   `app/api/cron/sealed-tick` loops every vault in one invocation, reads each
+   one's encrypted source from the registry, and routes single-market vs
+   portfolio vaults to the right Move module. The Fly `attestor` process took a
+   single `--vault` with its Pine from a flag — one machine per vault, and no
+   knowledge of `portfolio_vault`. It has been removed from `fly.toml`.
+   `scripts/sealed-attestor-runner.ts` stays as a local dev/simulate tool; it is
+   no longer a deployment target. Vercel Cron's 1/minute floor equals the
+   contract's `min_bar_interval_s` floor, so the cadence is not a compromise.
 
 ### WS6 — Later (explicitly deferred)
 - Aptos mainnet deploys (sponsor/payer policy, real-money gates).

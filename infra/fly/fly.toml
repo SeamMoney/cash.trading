@@ -4,6 +4,28 @@
 #   fly deploy . -a cash-trading-jdma7a -c infra/fly/fly.toml \
 #       --dockerfile infra/fly/Dockerfile --remote-only
 # (build context = repo root so the Dockerfile finds scripts/ and infra/fly/)
+#
+# ── What this box is NOT for ─────────────────────────────────────────────────
+#
+# Two things were planned for here and are deliberately NOT here. Both closed
+# 2026-08-06; see docs/MASTER-PLAN.md WS5.2.
+#
+# 1. The SEALED-VAULT ATTESTOR. It runs on Vercel Cron
+#    (app/api/cron/sealed-tick), not here. A Fly process would be one machine
+#    per vault — `sealed-attestor-runner.ts live` takes a single `--vault` and
+#    reads its Pine from a flag — whereas the cron loops every vault in one
+#    invocation, reads each one's encrypted source from the registry, and routes
+#    single-market vs portfolio vaults to the right module. Two implementations
+#    of the signing path is also how one of them quietly starts signing
+#    something the other would have refused. Vercel Cron's 1/minute floor is
+#    exactly the contract's `min_bar_interval_s` floor, so nothing is lost.
+#
+# 2. The MOVE COMPILE SERVICE. The sealed rail never compiles Move at runtime:
+#    the transpiler emits Move source only to HASH it into the program
+#    commitment, and `sealed_vault` / `portfolio_vault` are published once by us
+#    rather than per vault. WS5.2's "blocks prod deploy-from-UI" described the
+#    older per-vault-package rail that the sealed design replaced. The Aptos CLI
+#    is therefore no longer baked into the image.
 app = "cash-trading-jdma7a"
 primary_region = "sjc"
 
@@ -11,14 +33,16 @@ primary_region = "sjc"
   dockerfile = "Dockerfile"
 
 [processes]
+  # Legacy rail. Cranks `tick_oracle` for pre-sealed `strategy_vault` /
+  # `indicator` vaults, and defaults to TESTNET (see scripts/crank-loop.mjs env
+  # docs — CRANK_KEY is the testnet deployer and APTOS_NETWORK_URL is unset
+  # here). Sealed vaults do not use this path. Retire it when the last legacy
+  # vault is gone; until then it is ~$0.13/day.
   crank = "node scripts/crank-loop.mjs"
+  # The reason this box exists. Order-book depth cannot be backfilled, so this
+  # dataset only exists from the day the worker started — losing it means
+  # losing history, not just uptime.
   depth = "node scripts/depth-capture-worker.mjs"
-  # Sealed-vault attestor: signs one signal per bar and submits tick_attested.
-  # Requires secrets: SEALED_ATTESTOR_PRIVATE_KEY, SEALED_CRANK_PRIVATE_KEY,
-  # and env SEALED_VAULT_PACKAGE + SEALED_STRATEGY_VAULT (+ SEALED_PINE_PRESET
-  # or a mounted pine file). Starts at count 0; enable after the e2e deploy:
-  #   fly scale count attestor=1 -a cash-trading-jdma7a
-  attestor = "node --import /app/sealed/node_modules/tsx/dist/loader.mjs scripts/sealed-attestor-runner.ts live --package $SEALED_VAULT_PACKAGE --vault $SEALED_STRATEGY_VAULT --preset $SEALED_PINE_PRESET"
 
 [env]
   CRANK_INTERVAL_S = "60"
@@ -31,13 +55,9 @@ primary_region = "sjc"
   memory = "512mb"
   processes = ["crank", "depth"]
 
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"          # transpiler + SDK need headroom over the .mjs workers
-  processes = ["attestor"]
-
-# Workers must never be auto-stopped.
-[machine]
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+# NOTE: there is no autostop configuration here on purpose. `auto_stop_machines`
+# / `auto_start_machines` / `min_machines_running` are keys of `[http_service]`
+# / `[[services]]`, NOT of a top-level `[machine]` table — a `[machine]` block
+# was here for a month doing nothing. This app declares no services, so Fly
+# never autostops it and both processes stay up, which is the behaviour those
+# keys were meant to express. Adding an HTTP service later would change that.

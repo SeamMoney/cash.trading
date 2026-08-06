@@ -497,6 +497,48 @@ Do **not** publish with a non-zero builder fee and assume it will start working 
 created in the meantime is permanently unable to trade, and the failure is a Move abort on the
 tick, which the cron records as a retryable error and retries forever.
 
+### 8.5c 🚨 Two strategy vaults on one Decibel vault corrupt each other
+
+Reproduced on testnet. Two `portfolio_vault` objects were delegated to the same Decibel vault.
+They share **one** trading subaccount, so the engine holds a single NET position per market:
+
+```
+vault A opened  BTC SHORT 310000
+vault B opened  BTC LONG  300000
+engine holds    BTC SHORT  10000      ← net, and below the 20000 market minimum
+```
+
+Each vault's own `positions` book still says it holds its full leg. Consequences:
+
+- A close reads the NET size, not the vault's own leg. `close_leg` now takes
+  `min(live, pos.size)` so it can never close through another vault's position, but the
+  accounting is still two books over one account.
+- The netted remainder can land **below the market minimum**, and a reduce-only order for it is
+  rejected with `ESIZE_NOT_RESPECTING_MIN_SIZE`. That used to abort the whole tick — and since
+  `close_expired` runs before anything else, the vault became **permanently unable to tick,
+  trade, or close**. Fixed: sub-minimum legs are dropped from the book and reported as
+  `PortfolioSkipped`, never placed.
+
+**The rule: revoke the old strategy's delegation before delegating a new one.**
+`buildRevokeDelegationPayload` exists and `/api/sealed/payload` has a `revoke` kind, but **the
+launch flow does not call it** — swapping a strategy through the UI today leaves both delegated.
+Fixing that is a prerequisite for shipping algo swaps, and it is a UI/flow change, not a
+contract one: the contract cannot enumerate Decibel's delegate list.
+
+### 8.5d Crank gas, measured
+
+From real 4-market ticks on testnet:
+
+| Tick | Gas | Per tick | Per day @ 1/min |
+|---|---|---|---|
+| No action (the common case) | 316 | 0.000316 APT | **0.46 APT** |
+| Four orders placed | 1,428 | 0.001428 APT | 2.06 APT |
+
+Against 0.000186 APT/tick for a single-market vault, a 4-market idle tick is ~1.7× — four mark
+reads instead of one. The dominant lever is **cadence, not market count**: 5-minute bars cut it
+to ~0.09 APT/day per vault. Budget the crank wallet on the idle figure plus expected turnover,
+and re-measure before offering 16-market vaults.
+
 ### 8.6 `sealedRegistryAvailable()` only checks that `DATABASE_URL` is non-empty
 
 A syntactically valid but wrong or unmigrated database passes the gate, so routes return

@@ -911,9 +911,34 @@ module cash_strategy::portfolio_vault {
         reason: u8,
     ): u64 {
         let account = dex_accounts::primary_subaccount_public(pv.decibel_vault_addr);
+        // The engine reports the NET position on this market for the whole Decibel vault. If
+        // another strategy is still delegated to the same vault, its legs net against ours and
+        // `live` is smaller than what we opened — closing `live` would be right for the
+        // account and wrong for this vault's book, and closing `pos.size` would close through
+        // someone else's position. Take the smaller: never close more than the account holds,
+        // never more than this vault opened.
         let live = public_read_api::get_position_size(account, mspec.market);
-        let size = if (live > 0) { live } else { pos.size };
+        let size = if (live == 0) { 0 } else if (live < pos.size) { live } else { pos.size };
         if (size == 0) return 0;
+
+        // Dust below the market minimum cannot be closed by a reduce-only order — the engine
+        // rejects it with ESIZE_NOT_RESPECTING_MIN_SIZE. Placing it anyway aborts the WHOLE
+        // tick, and because `close_expired` runs before anything else, the vault would then be
+        // permanently unable to tick, trade, or close: bricked by a rounding remainder. This
+        // was reproduced on testnet. Drop the record and report it instead; the position stays
+        // on the account, visible, and is closable once it can be netted or topped up.
+        if ((size as u128) < mspec.min_size) {
+            event::emit(PortfolioSkipped {
+                strategy_vault: sv_addr,
+                seq: pv.seq,
+                market_idx: pos.market_idx,
+                side: SIDE_CLOSE,
+                computed_size: size,
+                min_size: (mspec.min_size as u64),
+                blocked_by_portfolio_cap: false,
+            });
+            return 0
+        };
 
         // A long closes with a sell, so the closing order takes the opposite side and is
         // priced on that side's slippage band.

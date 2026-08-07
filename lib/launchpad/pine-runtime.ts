@@ -47,6 +47,14 @@ export interface RuntimeSignal {
   type: "buy" | "sell";
 }
 
+/** A Pine `log.info`, `log.warning`, or `log.error` event emitted on a bar. */
+export interface RuntimeLog {
+  level: "info" | "warning" | "error";
+  message: string;
+  barIndex: number;
+  time: number;
+}
+
 interface BarContext {
   barIndex: number;
   candle: Candle;
@@ -63,6 +71,7 @@ interface BarContext {
   fills: Map<string, RuntimeFill>;  // fill() bands, deduped by title
   /** `u = plot(...)` — variable name → plot title, so fill(u, l) can resolve. */
   plotBindings: Map<string, string>;
+  logs: RuntimeLog[];
 }
 
 /** Return value from a custom function — may be a single number or a tuple */
@@ -92,9 +101,10 @@ export function executeRuntime(
   signals: RuntimeSignal[];
   guides: RuntimeGuide[];
   fills: RuntimeFill[];
+  logs: RuntimeLog[];
 } {
   if (!candles || candles.length === 0) {
-    return { history: new Map(), plots: [], signals: [], guides: [], fills: [] };
+    return { history: new Map(), plots: [], signals: [], guides: [], fills: [], logs: [] };
   }
 
   // Shared state across all bars
@@ -108,6 +118,7 @@ export function executeRuntime(
   const guides = new Map<string, RuntimeGuide>();
   const fills = new Map<string, RuntimeFill>();
   const plotBindings = new Map<string, string>();
+  const logs: RuntimeLog[] = [];
 
   // ── Phase 0: Register function definitions ────────────────────────────────
   for (const stmt of ast.statements) {
@@ -164,6 +175,7 @@ export function executeRuntime(
       guides,
       fills,
       plotBindings,
+      logs,
     };
 
     // Execute every statement in order
@@ -192,6 +204,7 @@ export function executeRuntime(
     signals,
     guides: [...guides.values()],
     fills: resolvedFills,
+    logs,
   };
 }
 
@@ -597,6 +610,25 @@ function evalCall(
 ): number | number[] {
   const { ns, fn, args, kw } = expr;
 
+  // ── Pine Logs ───────────────────────────────────────────────────────────
+  // Pine v6 scripts use these calls as their runtime console. A call outside
+  // a conditional emits once per bar, so retain only the latest 500 entries.
+  if (ns === "log" && (fn === "info" || fn === "warning" || fn === "error")) {
+    const template = logArg(args[0], ctx);
+    const values = args.slice(1).map((arg) => logArg(arg, ctx));
+    const message = values.length > 0
+      ? template.replace(/\{(\d+)(?:,[^}]*)?\}/g, (match, index: string) => (
+          values[Number(index)] ?? match
+        ))
+      : template;
+    const time = ctx.candle.timestamp < 1e12
+      ? ctx.candle.timestamp
+      : Math.floor(ctx.candle.timestamp / 1000);
+    if (ctx.logs.length >= 500) ctx.logs.shift();
+    ctx.logs.push({ level: fn, message, barIndex: ctx.barIndex, time });
+    return NaN;
+  }
+
   // ── TA namespace calls ──────────────────────────────────────────────────
   if (ns === "ta") {
     return evalTACall(fn, args, kw, expr, ctx);
@@ -693,6 +725,19 @@ function evalCall(
 
   // ── Unknown call — return NaN ──────────────────────────────────────────
   return NaN;
+}
+
+function logArg(expr: Expr | undefined, ctx: BarContext): string {
+  if (!expr) return "";
+  if (expr.k === "str") return expr.v;
+  if (expr.k === "bool") return expr.v ? "true" : "false";
+  if (expr.k === "na") return "NaN";
+  if (expr.k === "call" && expr.ns === "str" && expr.fn === "tostring") {
+    const value = expr.args[0] ? toNumber(evalExpr(expr.args[0], ctx)) : NaN;
+    return Number.isFinite(value) ? String(value) : "NaN";
+  }
+  const value = toNumber(evalExpr(expr, ctx));
+  return Number.isFinite(value) ? String(value) : "NaN";
 }
 
 // ─── TA Function Evaluation ─────────────────────────────────────────────────

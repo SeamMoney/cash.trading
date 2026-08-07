@@ -5,7 +5,7 @@
 
 import type { Candle } from "./types";
 import { parsePine } from "./pine-parser";
-import { executeRuntime } from "./pine-runtime";
+import { executeRuntime, type RuntimeLog } from "./pine-runtime";
 
 // ─── Output types for chart rendering ────────────────────────────────────────
 
@@ -60,6 +60,7 @@ export interface PineTSResult {
   guides: PineTSGuide[];
   indicatorTitle: string;
   overlay: boolean;
+  logs: RuntimeLog[];
 }
 
 // ─── Run through our own pine-runtime (primary) ──────────────────────────────
@@ -67,14 +68,15 @@ export interface PineTSResult {
 export function runOwnRuntime(
   pineScript: string,
   candles: Candle[],
+  onError?: (message: string) => void,
 ): PineTSResult | null {
   if (!pineScript || candles.length === 0) return null;
   try {
     const ast = parsePine(pineScript);
-    const { plots, signals, guides, fills } = executeRuntime(ast, candles);
+    const { plots, signals, guides, fills, logs } = executeRuntime(ast, candles);
 
     // Need at least plots or signals to show something useful
-    if (plots.length === 0 && signals.length === 0) return null;
+    if (plots.length === 0 && signals.length === 0 && logs.length === 0) return null;
 
     // Detect overlay from script ("overlay=true" in indicator/strategy call)
     const overlay = /(?:indicator|strategy)\s*\([^)]*overlay\s*=\s*true/.test(pineScript);
@@ -124,8 +126,10 @@ export function runOwnRuntime(
       guides,
       indicatorTitle,
       overlay,
+      logs,
     };
-  } catch {
+  } catch (error) {
+    onError?.(error instanceof Error ? error.message : "Pine preview runtime failed");
     return null;
   }
 }
@@ -251,7 +255,7 @@ export async function runPineTS(
       }
     }
 
-    return { plots, fills, labels, lines, guides: [], indicatorTitle, overlay };
+    return { plots, fills, labels, lines, guides: [], indicatorTitle, overlay, logs: [] };
   } catch (err) {
     // Expected for scripts the PineTS library can't parse — the caller falls
     // back to our own runtime's result, so this is a soft miss, not an error.

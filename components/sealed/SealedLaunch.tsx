@@ -25,7 +25,7 @@
  * Every step is resumable. If a signature is rejected or a transaction fails, the completed
  * steps are kept and the button restarts from the first incomplete one.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
@@ -38,6 +38,10 @@ import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations"
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { SURFACE_CARD_SOLID, SURFACE_CONTROL } from "@/lib/surface";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
+import {
+  PineMarketplace,
+  type PineMarketplaceSelection,
+} from "@/components/launchpad/PineMarketplace";
 import { SealedBacktest } from "@/components/sealed/SealedBacktest";
 
 interface SealedConfig {
@@ -157,6 +161,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
   const [strategyId, setStrategyId] = useState(SEALED_CATALOG[0].id);
   const [customPine, setCustomPine] = useState("");
+  const [importedScript, setImportedScript] = useState<PineMarketplaceSelection | null>(null);
   const [tvUrl, setTvUrl] = useState("");
   const [tvBusy, setTvBusy] = useState(false);
   const [vaultName, setVaultName] = useState(SEALED_CATALOG[0].label);
@@ -164,7 +169,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [isPrivate, setIsPrivate] = useState(true);
   // Default ON: a bot nobody runs is not a bot. The trade-off is stated in full below.
   const [managed, setManaged] = useState(true);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   // Rules — defaults chosen so the common case needs zero interaction.
   const [pctBps, setPctBps] = useState(1000);
@@ -193,8 +197,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const isPortfolio = markets.length > 1;
   /** The market the preview chart and the commitment manifest are built against. */
   const primaryMarket = markets[0] ?? config?.markets[0]?.name ?? "BTC/USD";
-
-  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/sealed/config", { cache: "no-store" })
@@ -231,20 +233,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     void refreshPreflight();
   }, [refreshPreflight]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   const selected: CatalogStrategy | null = useMemo(
     () => SEALED_CATALOG.find((s) => s.id === strategyId) ?? null,
     [strategyId],
@@ -263,12 +251,21 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const pickStrategy = useCallback(
     (s: CatalogStrategy) => {
       setStrategyId(s.id);
-      setMenuOpen(false);
+      setImportedScript(null);
       setCommitInfo(null);
       if (!nameTouched) setVaultName(s.label);
     },
     [nameTouched],
   );
+
+  const useMarketplaceScript = useCallback((script: PineMarketplaceSelection) => {
+    setCustomPine(script.source);
+    setImportedScript(script);
+    setTvUrl(script.url);
+    setCommitInfo(null);
+    setError(null);
+    if (!nameTouched) setVaultName(script.title);
+  }, [nameTouched]);
 
   const importTradingView = useCallback(async () => {
     if (!tvUrl.trim()) return;
@@ -277,13 +274,25 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     try {
       const res = await fetch(`/api/launchpad/tv-import?url=${encodeURIComponent(tvUrl.trim())}`);
       const json = await res.json();
-      if (!res.ok || !json.script) {
+      const source = typeof json.source === "string"
+        ? json.source
+        : typeof json.script === "string"
+          ? json.script
+          : "";
+      if (!res.ok || !source) {
         setError(json.error ?? "Could not read that TradingView script. Paste the source instead.");
         return;
       }
-      setCustomPine(json.script);
+      const title = typeof json.title === "string" ? json.title : "TradingView script";
+      setCustomPine(source);
+      setImportedScript({
+        source,
+        title,
+        url: tvUrl.trim(),
+        author: "TradingView author",
+      });
       setCommitInfo(null);
-      if (!nameTouched) setVaultName(typeof json.title === "string" ? json.title : "My Strategy");
+      if (!nameTouched) setVaultName(title);
     } catch (err) {
       setError(err instanceof Error ? err.message : "TradingView import failed");
     } finally {
@@ -590,6 +599,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       )}
 
+      <PineMarketplace
+        disabled={busy}
+        market={primaryMarket}
+        onUse={useMarketplaceScript}
+      />
+
       {/*
         Two columns, matching the transpiler UI this page has always used:
         left is the editor at full width, right is a narrow sticky rail that carries the
@@ -605,7 +620,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               value={tvUrl}
               onChange={(e) => setTvUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && importTradingView()}
-              placeholder="Paste a TradingView indicator URL, or pick a template below"
+              placeholder="Paste a TradingView script URL"
               disabled={busy}
               aria-label="TradingView indicator URL"
               className={inputCls}
@@ -620,41 +635,38 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             </button>
           </div>
 
-          {/* Template strip. Horizontal like it always was — but wrapping, so there is never
-              the scrollbar that made the old one ugly. */}
-          {/* One scrolling row on a phone — wrapping put six pills on three lines and ate a
-              third of the first screen. Wraps from sm up, where there is room. */}
-          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-            {SEALED_CATALOG.map((s) => {
-              const active = !usingCustom && s.id === strategyId;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => {
-                    setCustomPine("");
-                    pickStrategy(s);
-                  }}
-                  disabled={busy}
-                  aria-pressed={active}
-                  title={s.blurb}
-                  className={cn(
-                    "shrink-0 rounded-full border px-3 py-1.5 font-display text-[12px] font-semibold transition-colors disabled:opacity-40",
-                    active
-                      ? "border-accent/50 bg-accent/10 text-accent"
-                      : "border-white/[0.06] bg-[#141414] text-zinc-300 hover:border-white/20 hover:text-white",
-                  )}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
-            {usingCustom && (
-              <span className="rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 font-display text-[12px] font-semibold text-accent">
-                Your own script
-              </span>
-            )}
-          </div>
+          <details className={cn(SURFACE_CARD_SOLID, "group overflow-hidden")}>
+            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 font-display text-[12px] font-semibold text-zinc-300 hover:text-white">
+              <span>Vault-ready examples</span>
+              <ChevronDown className="h-4 w-4 text-zinc-600 transition-transform group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="grid grid-cols-1 gap-1.5 border-t border-white/[0.06] p-2 sm:grid-cols-2">
+              {SEALED_CATALOG.map((strategy) => {
+                const active = !usingCustom && strategy.id === strategyId;
+                return (
+                  <button
+                    key={strategy.id}
+                    type="button"
+                    onClick={() => {
+                      setCustomPine("");
+                      pickStrategy(strategy);
+                    }}
+                    disabled={busy}
+                    aria-pressed={active}
+                    className={cn(
+                      "rounded-[10px] border px-3 py-2 text-left disabled:opacity-40",
+                      active
+                        ? "border-accent/35 bg-accent/[0.06]"
+                        : "border-transparent bg-white/[0.02] hover:border-white/[0.08]",
+                    )}
+                  >
+                    <span className={cn("block font-display text-[12px] font-semibold", active ? "text-accent" : "text-zinc-200")}>{strategy.label}</span>
+                    <span className="mt-0.5 line-clamp-1 block text-[10px] text-zinc-500">{strategy.blurb}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </details>
 
           {/* What the selected strategy actually does. */}
           {!usingCustom && selected && (
@@ -695,15 +707,30 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="font-display text-[12px] font-semibold text-zinc-300">
-                  Your PineScript
+                  {importedScript ? importedScript.title : "Your PineScript"}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setCustomPine("")}
-                  className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
-                >
-                  Discard and use a template
-                </button>
+                <div className="flex items-center gap-3">
+                  {importedScript && (
+                    <a
+                      href={importedScript.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-zinc-500 underline decoration-white/15 underline-offset-2 hover:text-zinc-300"
+                    >
+                      Original source
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomPine("");
+                      setImportedScript(null);
+                    }}
+                    className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
+                  >
+                    Use default
+                  </button>
+                </div>
               </div>
               <textarea
                 value={customPine}

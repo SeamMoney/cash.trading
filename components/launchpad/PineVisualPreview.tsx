@@ -278,6 +278,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
   const [loading, setLoading] = useState(false);
   const [pineTSResult, setPineTSResult] = useState<PineTSResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runtimeIssue, setRuntimeIssue] = useState<string | null>(null);
   const detected = useMemo(() => detectAsset(pineScript), [pineScript]);
   const asset = assetOverride ?? detected;
   const hasScript = pineScript.trim().length > 0;
@@ -344,7 +345,8 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
     if (!pineScript || candles.length === 0) return;
     let cancelled = false;
     setPineTSResult(null);
-    const ownResult = runOwnRuntime(pineScript, candles);
+    setRuntimeIssue(null);
+    const ownResult = runOwnRuntime(pineScript, candles, setRuntimeIssue);
 
     void runPineTS(pineScript, candles)
       .then((pineResult) => {
@@ -362,6 +364,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
           guides: pineResult.guides.length > 0 ? pineResult.guides : ownResult?.guides ?? [],
           fills: pineResult.fills.length > 0 ? pineResult.fills : ownResult?.fills ?? [],
           plots: pineResult.plots.length > 0 ? pineResult.plots : ownResult?.plots ?? [],
+          logs: ownResult?.logs ?? pineResult.logs,
           labels: [
             ...pineResult.labels,
             ...ownLabels.filter((label) => (
@@ -459,6 +462,41 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
           This script computes its signal but never calls <span className="text-zinc-300">plot()</span>, so
           there is nothing to draw. Add <span className="text-zinc-300">plot(mySeries, title=&quot;…&quot;)</span> to
           see it on the chart — plotting is inert to the trading logic and does not change the commitment&apos;s behaviour.
+        </div>
+      )}
+
+      {(pineTSResult?.logs.length ?? 0) > 0 && (
+        <details className="group border-t border-white/[0.06] bg-[#0d0d0d]">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-mono text-[10px] text-zinc-400 hover:text-white">
+            <span>Pine logs</span>
+            <span className="text-zinc-600">{pineTSResult!.logs.length}</span>
+          </summary>
+          <div className="max-h-44 overflow-y-auto overscroll-contain border-t border-white/[0.06] px-3 py-2">
+            {pineTSResult!.logs.slice(-200).map((entry, index) => (
+              <div
+                key={`${entry.time}-${entry.barIndex}-${index}`}
+                className="grid grid-cols-[72px_54px_minmax(0,1fr)] gap-2 py-0.5 font-mono text-[10px] leading-relaxed"
+              >
+                <span className="text-zinc-600">bar {entry.barIndex}</span>
+                <span className={
+                  entry.level === "error"
+                    ? "text-red-400"
+                    : entry.level === "warning"
+                      ? "text-amber-400"
+                      : "text-sky-400"
+                }>
+                  {entry.level}
+                </span>
+                <span className="break-words text-zinc-300">{entry.message}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {runtimeIssue && (
+        <div className="border-t border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 font-mono text-[9px] leading-relaxed text-amber-300/80">
+          Preview runtime: {runtimeIssue}
         </div>
       )}
 

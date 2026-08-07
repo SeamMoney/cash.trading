@@ -672,35 +672,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       )}
 
-      <div ref={workbenchRef} className="scroll-mt-4">
-        <PineMarketplace
-          activeSelection={activeMarketplaceSelection}
-          disabled={busy}
-          market={previewMarket}
-          marketControl={(
-            <ProductSelectorButton
-              onClick={() => setPreviewMarketOpen(true)}
-              disabled={busy}
-              className="w-full sm:min-w-[220px] sm:max-w-[260px]"
-              icon={<MarketLogo market={previewMarket} size={28} />}
-              label="Preview market"
-              value={previewMarket}
-              detail="Decibel history"
-              trailing={<ChevronDown className="h-4 w-4" aria-hidden />}
-            />
-          )}
-          onUse={useMarketplaceScript}
-          preview={effectivePine ? (
-            <PineVisualPreview
-              asset={previewMarket}
-              embedded
-              pineScript={effectivePine}
-              title={activeMarketplaceSelection?.title}
-            />
-          ) : undefined}
-        />
-      </div>
-
       <MarketModal
         description="Crypto, stocks, and commodities"
         markets={marketOptions.length > 0 ? marketOptions : executionMarketOptions}
@@ -743,15 +714,42 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         title="Markets to trade"
       />
 
-      {/*
-        Two columns, matching the transpiler UI this page has always used:
-        left is the editor at full width, right is a narrow sticky rail that carries the
-        decisions and the action. The single narrow centred column that briefly replaced it
-        wasted the desktop viewport and pushed the launch button ~2000px down the page.
-      */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_360px] lg:gap-4">
+      {/* One workbench: the preview, source, backtest, and launch decisions begin on the same
+          row. Separating the chart above this grid made desktop feel like two stacked pages and
+          left an empty half-screen beside the sticky rail. */}
+      <div
+        ref={workbenchRef}
+        className="grid scroll-mt-4 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_400px]"
+      >
         {/* ══ LEFT: source ══ */}
         <div className="flex min-w-0 flex-col gap-3">
+          <PineMarketplace
+            activeSelection={activeMarketplaceSelection}
+            disabled={busy}
+            market={previewMarket}
+            marketControl={(
+              <ProductSelectorButton
+                onClick={() => setPreviewMarketOpen(true)}
+                disabled={busy}
+                className="w-full sm:min-w-[220px] sm:max-w-[260px]"
+                icon={<MarketLogo market={previewMarket} size={28} />}
+                label="Preview market"
+                value={previewMarket}
+                detail="Decibel history"
+                trailing={<ChevronDown className="h-4 w-4" aria-hidden />}
+              />
+            )}
+            onUse={useMarketplaceScript}
+            preview={effectivePine ? (
+              <PineVisualPreview
+                asset={previewMarket}
+                embedded
+                pineScript={effectivePine}
+                title={activeMarketplaceSelection?.title}
+              />
+            ) : undefined}
+          />
+
           {/* Import is a first-class path, not a footnote under the code block. */}
           <div className="flex gap-2">
             <input
@@ -892,7 +890,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   }}
                   disabled={busy}
                   spellCheck={false}
-                  rows={24}
+                  rows={18}
                   aria-label="PineScript source"
                   className="w-full resize-y rounded-[var(--radius)] border border-card-border bg-background-secondary p-4 font-mono text-[12px] leading-[1.7] text-foreground-secondary placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none"
                 />
@@ -900,7 +898,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 <CodeBlock
                   code={customPine}
                   filename={`${importedScript?.title ?? "custom"}.pine`}
-                  maxHeight={520}
+                  maxHeight="min(420px, 44vh)"
                 />
               )}
             </div>
@@ -966,19 +964,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
 
         {/* ══ RIGHT: decisions + action, sticky ══ */}
-        {/* The rail is taller than most viewports, so pinning it alone would leave the launch
-            action permanently below the fold. Giving it its own scroll container keeps the
-            whole decision surface — and the button — reachable without scrolling the editor
-            past it. */}
-        {/* The rail is taller than any viewport, so pinning it whole leaves the launch action
-            permanently below the fold — the exact conversion problem the single-column layout
-            had. Split it: the decisions scroll, the action does not. */}
-        <div className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start">
-          {/* Same fade as the code block: the rail's scroll boundary cut the cost card
-              mid-sentence, which reads as a layout bug rather than as "scroll for more".
-              lg-only, because on a phone the rail is not a scroll container at all. */}
-          <ProductPanel className="overflow-hidden lg:flex lg:max-h-[calc(100vh-2rem)] lg:flex-col">
-          <div className="flex flex-col divide-y divide-card-border lg:min-h-0 lg:flex-1 lg:overflow-y-auto no-scrollbar">
+        <div className="min-w-0 lg:self-start">
+          <ProductPanel className="overflow-hidden">
+          <div className="flex flex-col divide-y divide-card-border">
             {/* Name */}
             <ProductSection
               title={<label htmlFor="vault-name">Bot name</label>}

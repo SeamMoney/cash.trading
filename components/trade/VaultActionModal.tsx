@@ -3,17 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, ExternalLink, Loader2, Send } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import { useIsMobile } from "@/components/ui/use-mobile";
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 import { cn } from "@/lib/utils";
@@ -505,59 +496,31 @@ export function VaultActionModal({
     </>
   );
 
-  if (isMobile) {
-    return (
-      <MobileModalSheet
-        open={open}
-        onClose={() => onOpenChange(false)}
-        initialSnap={isContributionMode ? "compact" : "mid"}
-        title={copy.title}
-        description={isContributionMode ? undefined : copy.description}
-        titleId="vault-action-title"
-      >
-        <form onSubmit={submit} className="pt-3">
-          <div className="space-y-4 px-2 pb-4">{formFields}</div>
-          <div className="sticky bottom-0 flex items-center gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4">
-            {formActions}
-          </div>
-        </form>
-      </MobileModalSheet>
-    );
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("max-w-md gap-0 border-zinc-800 bg-zinc-950 p-0 text-zinc-100", className)}>
-        <DialogHeader className="border-b border-zinc-800 px-5 py-4 text-left">
-          <div className="flex items-start justify-between gap-3 pr-8">
-            <div className="min-w-0">
-              <DialogTitle className="text-balance text-base">{copy.title}</DialogTitle>
-              {isContributionMode ? (
-                <DialogDescription className="sr-only">
-                  {mode === "deposit" ? "Deposit USDC into" : "Withdraw shares from"} {indicator.name}.
-                </DialogDescription>
-              ) : (
-                <DialogDescription className="mt-1 text-pretty text-xs text-zinc-400">
-                  {copy.description}
-                </DialogDescription>
-              )}
-            </div>
-            {!isContributionMode ? (
-              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-                {mode}
-              </Badge>
-            ) : null}
-          </div>
-        </DialogHeader>
-
-        <form onSubmit={submit}>
-          <div className="space-y-4 px-5 py-4">{formFields}</div>
-          <DialogFooter className="border-t border-zinc-800 px-5 py-4 sm:justify-between">
-            {formActions}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <ResponsiveModalSheet
+      badge={isContributionMode ? undefined : mode}
+      desktopClassName={className}
+      desktopContentClassName="p-0"
+      desktopMaxWidthClassName="sm:!max-w-md"
+      initialSnap={isContributionMode ? "compact" : "mid"}
+      onClose={() => onOpenChange(false)}
+      open={open}
+      title={copy.title}
+      description={isContributionMode
+        ? `${mode === "deposit" ? "Deposit USDC into" : "Withdraw shares from"} ${indicator.name}.`
+        : copy.description}
+      titleId="vault-action-title"
+    >
+      <form onSubmit={submit} className="pt-3 sm:pt-0">
+        <div className="space-y-4 px-2 pb-4 sm:px-5 sm:py-4">{formFields}</div>
+        <div className={cn(
+          "sticky bottom-0 flex items-center gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4 sm:px-5",
+          !isMobile && !isContributionMode && "justify-between",
+        )}>
+          {formActions}
+        </div>
+      </form>
+    </ResponsiveModalSheet>
   );
 }
 

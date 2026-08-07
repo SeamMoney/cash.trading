@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { Liveline } from "liveline";
 import { Check, ChevronDown, X } from "lucide-react";
 import { usePriceCandles } from "@/hooks/useBtcCandles";
@@ -11,7 +10,7 @@ import { TetherLoader } from "@/components/layout/TetherLoader";
 import { BtcPerpsChart, type PerpMarketSnapshot } from "@/components/trade/BtcPerpsChart";
 import { PERP_MARKET_DATA, type PerpMarketData } from "@/components/trade/perpMarketConfig";
 import { NumberTicker } from "@/components/ui/number-ticker";
-import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -592,7 +591,6 @@ export function MarketModal({
   network: DecibelPublicNetwork;
 }) {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -614,41 +612,6 @@ export function MarketModal({
   const activeIds = multiple ? (selectedIds ?? []) : [selected];
   const selectableMarkets = marketsList.filter((market) => !disabledIds.includes(market.id));
   const allSelected = selectableMarkets.length > 0 && selectableMarkets.every((market) => activeIds.includes(market.id));
-
-  // Lock body scroll + escape key
-  useEffect(() => {
-    if (!open) return;
-    if (!window.matchMedia("(min-width: 640px)").matches) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (!first || !last) return;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -806,57 +769,18 @@ export function MarketModal({
     </div>
   );
 
-  return createPortal(
-    <div className="cash-trade-theme">
-      <MobileModalSheet
-        open={open}
-        onClose={onClose}
-        title={title}
-        description={description ?? `${network} markets`}
-        titleId="market-selector-title"
-      >
-        {marketContent}
-      </MobileModalSheet>
-      <div
-        className="fixed inset-0 z-[9999] hidden items-center justify-center px-4 py-4 sm:flex"
-        onClick={onClose}
-      >
-        <div className="absolute inset-0 bg-black/85" />
-      <div
-        ref={dialogRef}
-        aria-labelledby="market-selector-title-desktop"
-        aria-modal="true"
-        role="dialog"
-        onClick={(e) => e.stopPropagation()}
-        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[900px] overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70"
-        style={{ animation: "market-modal-in 0.2s ease-out" }}
-      >
-        <div className="overflow-hidden">
-          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
-              <span id="market-selector-title-desktop">{title.toUpperCase()}</span>
-              <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
-                {network}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close market selector"
-              className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </header>
-          <div className="p-4">
-            {marketContent}
-          </div>
-        </div>
-      </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <ResponsiveModalSheet
+      badge={network}
+      desktopContentClassName="p-4"
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description ?? `${network} markets`}
+      titleId="market-selector-title"
+    >
+      {marketContent}
+    </ResponsiveModalSheet>
   );
 }
 

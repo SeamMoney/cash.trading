@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import {
   groupAndSortWallets,
@@ -11,9 +10,9 @@ import type {
   AdapterNotDetectedWallet,
   AdapterWallet,
 } from "@aptos-labs/wallet-adapter-core";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
-import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import {
   EVM_SOURCE_CHAIN_STORAGE_KEY,
   storeEvmSourceChain,
@@ -68,7 +67,6 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
   const [activeChain, setActiveChain] = useState<WalletChain>("Aptos");
   const [evmSourceChain, setEvmSourceChain] = useState<EvmCctpSourceChain>("Arbitrum");
   const [showMore, setShowMore] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const wasOpenRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
@@ -126,34 +124,6 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
       // Storage is optional; the visible selector remains authoritative.
     }
   }, [availableByChain, open]);
-
-  useEffect(() => {
-    if (!open || typeof window === "undefined" || !window.matchMedia("(min-width: 640px)").matches) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
 
   const handleConnect = useCallback(async (walletName: string) => {
     setConnecting(walletName);
@@ -318,55 +288,18 @@ export function WalletSelector({ open, onClose }: WalletSelectorProps) {
     </div>
   );
 
-  return createPortal(
-    <div className="cash-trade-theme">
-      <MobileModalSheet
-        open={open}
-        onClose={onClose}
-        title="Connect wallet"
-        description="Choose Aptos, Solana, or EVM"
-        titleId="wallet-selector-title"
-      >
-        {selectorContent}
-      </MobileModalSheet>
-
-      <div
-        className="fixed inset-0 z-[9999] hidden items-center justify-center px-4 py-4 sm:flex"
-        onClick={onClose}
-      >
-        <div className="absolute inset-0 bg-black/85" />
-        <div
-          ref={dialogRef}
-          aria-labelledby="wallet-selector-title-desktop"
-          aria-modal="true"
-          role="dialog"
-          onClick={(event) => event.stopPropagation()}
-          className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[620px] overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#101010] shadow-2xl shadow-black/70"
-          style={{ animation: "market-modal-in 0.2s ease-out" }}
-        >
-          <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
-            <span className="flex items-center gap-2">
-              <span className="size-2 shrink-0 rounded-full bg-accent" />
-              <span id="wallet-selector-title-desktop">CONNECT WALLET</span>
-              <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-accent">
-                {activeChain}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close wallet selector"
-              className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white"
-            >
-              <X className="size-3.5" aria-hidden="true" />
-            </button>
-          </header>
-          <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain p-4">
-            {selectorContent}
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <ResponsiveModalSheet
+      badge={activeChain}
+      desktopContentClassName="p-4"
+      desktopMaxWidthClassName="sm:!max-w-[620px]"
+      open={open}
+      onClose={onClose}
+      title="Connect wallet"
+      description="Choose Aptos, Solana, or EVM"
+      titleId="wallet-selector-title"
+    >
+      {selectorContent}
+    </ResponsiveModalSheet>
   );
 }

@@ -11,19 +11,12 @@ import {
   MessageSquare,
   Rocket,
   Terminal,
-  X,
 } from "lucide-react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { CodeBlock } from "@/components/ui/agent";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import {
   PRODUCT_CONTROL_CLASS,
-  PRODUCT_MODAL_CLASS,
   ProductBadge,
   ProductPanel,
   ProductSegmented,
@@ -323,7 +316,7 @@ export function PineMarketplace({
 
   return (
     <>
-      <ProductPanel className="mb-4 overflow-hidden">
+      <ProductPanel className="overflow-hidden">
         <div className="flex flex-col gap-2 border-b border-card-border p-3 sm:flex-row sm:items-center sm:justify-between">
           <ProductSelectorButton
             onClick={showGallery}
@@ -348,37 +341,20 @@ export function PineMarketplace({
         )}
       </ProductPanel>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className={cn(
-            PRODUCT_MODAL_CLASS,
-            "!bottom-0 !top-auto !block h-[calc(100dvh-12px)] w-full !max-w-none !translate-y-0 rounded-b-none rounded-t-[var(--radius)] shadow-2xl sm:!bottom-auto sm:!top-1/2 sm:h-[min(760px,calc(100dvh-32px))] sm:w-[min(1040px,calc(100vw-32px))] sm:!translate-y-[-50%] sm:rounded-[var(--radius)]",
-          )}
-        >
-          <DialogTitle className="sr-only">
-            {selected?.title ?? "Popular TradingView scripts"}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Browse public Pine scripts, inspect their source, and adapt one for a cash.trading vault.
-          </DialogDescription>
-
+      <ResponsiveModalSheet
+        badge={selected?.scriptType ?? "Public scripts"}
+        desktopClassName="h-[min(760px,calc(100dvh-2rem))]"
+        desktopContentClassName="flex min-h-0 flex-1 overflow-hidden p-0"
+        desktopMaxWidthClassName="sm:!max-w-[1040px]"
+        mobileContentClassName="overflow-hidden px-0 pb-[env(safe-area-inset-bottom)]"
+        onClose={() => setOpen(false)}
+        open={open}
+        title={selected?.title ?? "Select indicator"}
+        description={selected ? `by ${selected.author} · Public Pine script` : "Popular public Pine scripts"}
+        titleId="pine-marketplace-title"
+      >
           {!selected ? (
             <div className="flex h-full min-h-0 flex-col">
-              <header className="flex shrink-0 items-center justify-between border-b border-card-border px-4 py-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Select indicator</p>
-                  <h2 className="mt-0.5 truncate font-display text-[17px] font-semibold text-foreground">Popular Pine scripts</h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close script marketplace"
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-card-hover hover:text-foreground"
-                >
-                  <X className="h-5 w-5" aria-hidden />
-                </button>
-              </header>
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-card-border px-4 py-2.5">
                 <span className="font-display text-[12px] font-semibold text-foreground">Popular</span>
                 <ProductBadge className="text-accent">Public source</ProductBadge>
@@ -394,27 +370,18 @@ export function PineMarketplace({
           ) : (
             <div className="flex h-full min-h-0 flex-col">
               <header className="shrink-0 border-b border-card-border px-3 pt-3 sm:px-4">
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-2 pb-2.5">
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
                     aria-label="Back to popular scripts"
-                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-card-border bg-background-tertiary text-muted-foreground transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary text-muted-foreground transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground"
                   >
-                    <ArrowLeft className="h-5 w-5" aria-hidden />
+                    <ArrowLeft className="h-4 w-4" aria-hidden />
                   </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono text-[9px] uppercase text-muted-foreground">Public Pine script · {relativeDate(selected.publishedAt)}</p>
-                    <h2 className="mt-0.5 truncate font-display text-[16px] font-semibold text-foreground sm:text-[18px]">{selected.title}</h2>
-                    <a
-                      href={selected.authorUrl ?? selected.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 inline-block font-mono text-[10px] text-zinc-500 hover:text-zinc-300"
-                    >
-                      by {selected.author}
-                    </a>
-                  </div>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[9px] uppercase text-muted-foreground">
+                    Public script · {relativeDate(selected.publishedAt)} · {sourceMeta ? `${sourceMeta.lineCount.toLocaleString()} lines` : "Loading source"}
+                  </span>
                   <a
                     href={selected.url}
                     target="_blank"
@@ -425,17 +392,9 @@ export function PineMarketplace({
                     <span className="hidden sm:inline">TradingView</span>
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    aria-label="Close script"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card-hover hover:text-foreground"
-                  >
-                    <X className="h-5 w-5" aria-hidden />
-                  </button>
                 </div>
 
-                <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-card-border py-2.5">
+                <div className="flex items-center justify-between gap-3 border-t border-card-border py-2.5">
                   <ProductSegmented role="tablist" aria-label="Script details" className="grid min-w-0 flex-1 grid-cols-3 sm:max-w-[330px]">
                     {([
                       ["chart", "Chart", CandlestickChart],
@@ -641,8 +600,7 @@ export function PineMarketplace({
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </ResponsiveModalSheet>
     </>
   );
 }

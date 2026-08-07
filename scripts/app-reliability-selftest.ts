@@ -67,6 +67,7 @@ const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const accountManager = readFileSync("components/trade/DecibelAccountManager.tsx", "utf8");
 const mobileModalSheet = readFileSync("components/ui/mobile-modal-sheet.tsx", "utf8");
+const responsiveModalSheet = readFileSync("components/ui/responsive-modal-sheet.tsx", "utf8");
 const mobilePortfolioSheet = readFileSync("components/trade/MobilePortfolioSheet.tsx", "utf8");
 const walletAccountModal = readFileSync("components/wallet/wallet-account-modal.tsx", "utf8");
 const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
@@ -351,13 +352,13 @@ assert.deepEqual(
   { fills: 2, totalFeesPaidUsd: 0.25, rebatesUsd: 0.1, netFeesUsd: 0.15 },
   "all-time fees must deduplicate fills and report paid fees separately from rebates",
 );
-assert.match(vaultActionModal, /<MobileModalSheet/);
+assert.match(vaultActionModal, /<ResponsiveModalSheet/);
 assert.match(tradePage, /hasHolding \? "Manage" : "Deposit"/);
 assert.ok(
   !btcChart.includes('placeholder="Search markets"'),
   "the mobile market sheet must not summon a keyboard with a search field",
 );
-assert.match(cashWalletSelector, /<MobileModalSheet/);
+assert.match(cashWalletSelector, /<ResponsiveModalSheet/);
 assert.match(cashWalletSelector, /Show more wallets/);
 assert.match(cashWalletSelector, /EVM_SOURCE_CHAINS/);
 assert.ok(!cashWalletSelector.toLowerCase().includes('"nightly"'), "Nightly must not be offered by cash.trading");
@@ -379,7 +380,7 @@ assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
 assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
 assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
 assert.ok(!btcChart.includes('type="search"'), "the asset selector must not render a search control");
-assert.match(btcChart, /MobileModalSheet/);
+assert.match(btcChart, /ResponsiveModalSheet/);
 assert.ok(
   !btcChart.includes('{displayConnected ? "Live" : "..."}')
     && !btcChart.includes('displayConnected ? "bg-success" : "bg-muted"'),
@@ -388,9 +389,11 @@ assert.ok(
 assert.match(btcChart, /cash:selected-trade-market:v1/);
 assert.match(btcChart, /persistedMarketRef/);
 assert.match(btcChart, /window\.localStorage\.setItem\(selectedMarketStorageKey\(network\), id\)/);
-assert.match(walletAccountModal, /MobileModalSheet/);
-assert.match(walletAccountModal, /max-w-\[900px\]/);
-assert.match(walletAccountModal, /bg-\[#171717\]/);
+assert.match(walletAccountModal, /ResponsiveModalSheet/);
+assert.match(responsiveModalSheet, /<MobileModalSheet/);
+assert.match(responsiveModalSheet, /<DialogContent/);
+assert.match(responsiveModalSheet, /sm:!max-w-\[900px\]/);
+assert.match(responsiveModalSheet, /bg-\[#171717\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(28px, 1fr\)\)`/);
 assert.match(orderBook, /RECENT_TRADES_TIMEOUT_MS = 8_000/);
@@ -712,8 +715,10 @@ assert.match(tradePanel, /role=\{tradeStatus === "error" \? "alert" : "status"\}
 assert.match(positionsComponent, /Close \$\{p\.market\} \$\{p\.isLong \? "long" : "short"\} position/);
 assert.match(positionsComponent, /Cancel \$\{o\.market\} \$\{o\.isBuy \? "buy" : "sell"\} order/);
 assert.match(positionsComponent, /role=\{actionStatus\.tone === "error" \? "alert" : "status"\}/);
-assert.match(btcChart, /aria-modal="true"/);
-assert.match(btcChart, /role="dialog"/);
+assert.match(responsiveModalSheet, /<DialogContent/);
+assert.match(responsiveModalSheet, /<DialogTitle/);
+assert.match(mobileModalSheet, /aria-modal="true"/);
+assert.match(mobileModalSheet, /role="dialog"/);
 assert.ok(!btcChart.includes('aria-label="Search markets"'));
 
 const sanitizedTradeHistory = sanitizeOnChainTrades([
@@ -1601,13 +1606,13 @@ assert.ok(
 // viewport and pushed the launch action ~2000px down the page. Restored, and asserted so it
 // does not drift back.
 assert.ok(
-  sealedLaunchUi.includes("lg:grid-cols-[1fr_360px]"),
+  sealedLaunchUi.includes("lg:grid-cols-[minmax(0,1fr)_360px]")
+    && sealedLaunchUi.includes("xl:grid-cols-[minmax(0,1fr)_400px]"),
   "the launch page must stay a two-column grid — editor left, decision rail right",
 );
 assert.ok(
-  sealedLaunchUi.includes("lg:sticky") && sealedLaunchUi.includes("lg:overflow-y-auto"),
-  "the rail must be sticky with its own scroll: it is taller than any viewport, so pinning it " +
-    "whole leaves the launch action permanently below the fold",
+  !sealedLaunchUi.includes("lg:overflow-y-auto"),
+  "the decision rail must use the page scroll instead of creating a nested desktop scroll trap",
 );
 assert.ok(
   sealedLaunchUi.includes("PineVisualPreview"),
@@ -1655,7 +1660,7 @@ assert.ok(
 );
 assert.ok(
   sealedLaunchUi.indexOf("Preview mode · launching is unavailable") <
-    sealedLaunchUi.indexOf("lg:grid-cols-[1fr_360px]"),
+    sealedLaunchUi.indexOf("lg:grid-cols-[minmax(0,1fr)_360px]"),
   "the unavailable state must render ABOVE the two-column grid — users should not configure " +
     "the whole page before learning they cannot launch",
 );
@@ -1808,7 +1813,7 @@ assert.ok(
 );
 assert.ok(
   pineMarketplaceUi.includes("ProductSelectorButton")
-    && pineMarketplaceUi.includes("PRODUCT_MODAL_CLASS")
+    && pineMarketplaceUi.includes("ResponsiveModalSheet")
     && pineMarketplaceUi.includes("ProductPanel"),
   "the Pine workbench and browser must use the shared product primitives",
 );

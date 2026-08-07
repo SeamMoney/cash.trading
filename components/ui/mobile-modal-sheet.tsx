@@ -15,9 +15,11 @@ import {
   MOBILE_SHEET_VELOCITY_THRESHOLD,
   mobileSheetRubberBand,
 } from "@/lib/mobile-sheet-motion";
+import { cn } from "@/lib/utils";
 
 interface MobileModalSheetProps {
   children: ReactNode;
+  contentClassName?: string;
   description?: string;
   initialSnap?: "compact" | "mid";
   onClose: () => void;
@@ -33,6 +35,7 @@ interface MobileModalSheetProps {
  */
 export function MobileModalSheet({
   children,
+  contentClassName,
   description,
   initialSnap = "mid",
   onClose,
@@ -478,7 +481,10 @@ export function MobileModalSheet({
             <div
               ref={scrollAreaRef}
               data-mobile-sheet-scroll-area="true"
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+              className={cn(
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
+                contentClassName,
+              )}
               style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
             >
               {children}

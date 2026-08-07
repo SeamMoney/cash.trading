@@ -564,16 +564,16 @@ export function LaunchpadPage() {
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <AmbientBlobs variant="launchpad" />
-        <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 w-full">
+        <main className="relative z-10 mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 
           {/* ── Hero ── */}
           <div className="mb-4 animate-enter flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <h1 className="font-display font-bold text-[20px] sm:text-[24px] tracking-tight text-white">
+              <h1 className="text-balance font-display text-[20px] font-bold text-foreground sm:text-[24px]">
                 Strategy Marketplace
               </h1>
               {!loading && (
-                <span className="text-[10px] font-mono text-[#555]">
+                <span className="font-mono text-[10px] text-muted-foreground">
                   {meta.total} strategies · {meta.graduated} live
                 </span>
               )}
@@ -581,14 +581,14 @@ export function LaunchpadPage() {
           </div>
 
           {/* ── Tab bar ── */}
-          <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
+          <div className="mb-6 flex items-center gap-1 border-b border-card-border animate-enter-delay-1">
             {(["launch", "vaults", "manage"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)}
                 className={cn(
-                  "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
+                  "-mb-px border-b-2 px-4 py-2.5 font-display text-[13px] font-semibold transition-colors",
                   tab === t
-                    ? "border-white text-white"
-                    : "border-transparent text-[#888] hover:text-zinc-300",
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground-secondary",
                 )}>
                 {t === "launch" ? "Build a Bot" : t === "vaults" ? "Invest in Bots" : "Manage"}
               </button>
@@ -599,12 +599,12 @@ export function LaunchpadPage() {
           {tab === "launch" && (
             <div className="animate-enter-delay-1">
               <div className="mb-4">
-                <h2 className="font-display text-[18px] font-bold text-white sm:text-[22px]">
+                <h2 className="text-balance font-display text-[18px] font-bold text-foreground sm:text-[22px]">
                   Build your own automated trading bot
                 </h2>
                 {/* The full pitch is desktop-only: on a phone it pushed the first real control
                     below the fold to restate what the tab already said. */}
-                <p className="mt-1 hidden max-w-2xl text-[13px] leading-relaxed text-zinc-400 sm:block">
+                <p className="mt-1 hidden max-w-2xl text-pretty text-[13px] leading-relaxed text-foreground-secondary sm:block">
                   Import a TradingView script or start from a template. It deploys as a vault
                   that trades on-chain under rules the contract enforces, and your source can
                   stay private.

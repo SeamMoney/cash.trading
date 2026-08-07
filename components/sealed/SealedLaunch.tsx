@@ -677,6 +677,16 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               <p className="mt-1 font-mono text-[11px] text-zinc-500">
                 Draws {selected.draws.toLowerCase()}.
               </p>
+              {selected.source && (
+                <a
+                  href={selected.source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex font-mono text-[11px] text-zinc-500 underline decoration-white/15 underline-offset-2 transition-colors hover:text-zinc-300"
+                >
+                  Adapted from {selected.source.label}
+                </a>
+              )}
             </div>
           )}
 

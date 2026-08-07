@@ -57,6 +57,11 @@ for (const s of SEALED_CATALOG) {
   }
   assert.ok(s.blurb.length <= 90, `${s.id}: blurb too long for the dropdown`);
   assert.ok(s.category && s.turnover, `${s.id}: missing category/turnover metadata`);
+  if (s.source) {
+    assert.match(s.source.url, /^https:\/\/www\.tradingview\.com\/script\//, `${s.id}: source must link to the original TradingView script`);
+    assert.match(s.script, /MPL-2\.0/, `${s.id}: adapted community source must preserve its license notice`);
+    assert.ok(s.script.includes(s.source.url), `${s.id}: adapted source must credit the original URL in the Pine file`);
+  }
 }
 console.log(`catalog metadata: ${SEALED_CATALOG.length} strategies, blurbs match their scripts`);
 
@@ -141,11 +146,10 @@ console.log("catalog sizing: self-sizing claims match the scripts");
 // the preview shows one strategy while the vault trades another — which is the single failure
 // this whole product exists to prevent.
 //
-// This gate caught three real ones. `ta.macd` set the signal line EQUAL to the MACD line, so
-// a MACD crossover could never fire and the vault never traded at all. `bb` had no case in the
-// evaluator, so the bands were never set and every Bollinger short was dead. And a strategy
-// keyed on `a - b < 0` never fires, because the IR lowers subtraction to a u64 `safe_sub` that
-// saturates at zero.
+// This gate caught three real ones. `ta.macd` once set the signal line EQUAL to the MACD line,
+// so a MACD crossover could never fire. `bb` had no case in the evaluator, so the bands were
+// never set and every Bollinger short was dead. And a strategy keyed on `a - b < 0` never
+// fires, because the IR lowers subtraction to a u64 `safe_sub` that saturates at zero.
 for (const s of SEALED_CATALOG) {
   const t = transpileV3(canonicalizePine(s.script), undefined, {
     target: "vault",

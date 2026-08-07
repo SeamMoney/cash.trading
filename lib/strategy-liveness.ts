@@ -7,7 +7,7 @@
  * anything. Three real strategies got all the way through the commit step and would have
  * produced a vault that silently did nothing, or did half of what it claimed:
  *
- *   - `ta.macd` set the signal line EQUAL to the MACD line in both the codegen and the
+ *   - `ta.macd` once set the signal line EQUAL to the MACD line in both the codegen and the
  *     evaluator. A line cannot cross itself, so every MACD crossover was false on every bar.
  *   - `bb` had no case in the evaluator at all, so the bands were never set and every
  *     comparison against them was false — Bollinger's short leg was dead.

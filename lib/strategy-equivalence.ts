@@ -297,14 +297,25 @@ class StrategyEvaluator {
           break;
         }
         case "macd": {
-          const line =
+          // Match the generated Move exactly. MACD is signed, so all three state values are
+          // stored around a shared positive offset. The signal line is a persistent EMA of
+          // the MACD line; setting it equal to the line here used to make every crossover
+          // strategy permanently inert.
+          const offset = 1_000_000;
+          const rawLine =
             this.math.ema(this.buffer, this.irValue(op.fast)) -
             this.math.ema(this.buffer, this.irValue(op.slow));
+          const line = Math.max(1 / SCALE, offset + rawLine);
+          const previousSignal = Number(this.env.get(op.targetSignal) ?? 0);
+          const signalPeriod = this.irValue(op.signal);
+          const kScaled = Math.floor(2_000_000 / (signalPeriod + 1));
+          const signal = previousSignal === 0
+            ? line
+            : (line * kScaled + previousSignal * (1_000_000 - kScaled)) / 1_000_000;
+          const histogram = Math.max(1 / SCALE, offset + line - signal);
           this.env.set(op.targetLine, line);
-          // Signal line approximation matches codegen: EMA of MACD line is
-          // approximated on-chain; treat line/hist symmetrically per backend.
-          this.env.set(op.targetSignal, line);
-          this.env.set(op.targetHist, 0);
+          this.env.set(op.targetSignal, signal);
+          this.env.set(op.targetHist, histogram);
           break;
         }
         case "crossover": {

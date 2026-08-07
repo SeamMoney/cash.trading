@@ -51,6 +51,8 @@ export interface CatalogStrategy {
    * this cannot claim a capability the script does not have.
    */
   selfSizing?: boolean;
+  /** Original community script when this is a credited, materially adapted strategy. */
+  source?: { label: string; url: string };
   script: string;
 }
 
@@ -67,6 +69,84 @@ const C = {
 } as const;
 
 export const SEALED_CATALOG: CatalogStrategy[] = [
+  {
+    id: "swing-consensus",
+    label: "Swing Consensus",
+    blurb: "Eight trend, momentum, and breakout votes; long or short on a five-vote consensus.",
+    category: "Momentum",
+    direction: "Long/short",
+    turnover: "Medium",
+    draws: "three EMAs, Bollinger bands, and the rolling breakout channel",
+    source: {
+      label: "Optimized4U's open-source Swing Trade Strategy",
+      url: "https://www.tradingview.com/script/tE6a5fXq-Swing-Trade-Strategy/",
+    },
+    script: `//@version=5
+// Swing Consensus — verified cash.trading adaptation
+// Inspired by Optimized4U's open-source Swing Trade Strategy:
+// https://www.tradingview.com/script/tE6a5fXq-Swing-Trade-Strategy/
+// Original and adaptation licensed under MPL-2.0.
+//
+// The community strategy combines ten indicators. This adaptation keeps its
+// weighted-consensus design while using the close-series inputs a sealed vault
+// can replay exactly from its public on-chain trace.
+strategy("Swing Consensus", overlay=true)
+
+// ── Regime and momentum ──────────────────────────────────────────────
+fast = ta.ema(close, 9)
+slow = ta.ema(close, 21)
+trend = ta.ema(close, 55)
+rsiValue = ta.rsi(close, 14)
+[macdLine, signalLine, histogram] = ta.macd(close, 12, 26, 9)
+
+// ── Volatility and breakout structure ───────────────────────────────
+[basis, upper, lower] = ta.bb(close, 20, 2)
+channelHigh = ta.highest(close, 20)
+channelLow = ta.lowest(close, 20)
+mean = ta.sma(close, 50)
+
+// ── Eight independently readable votes ──────────────────────────────
+emaBull = fast > slow
+emaBear = fast < slow
+regimeBull = close > trend
+regimeBear = close < trend
+rsiBull = rsiValue > 55
+rsiBear = rsiValue < 45
+macdBull = macdLine > signalLine
+macdBear = macdLine < signalLine
+bandBull = close > basis
+bandBear = close < basis
+breakoutBull = close >= channelHigh
+breakoutBear = close <= channelLow
+slopeBull = fast > fast[1]
+slopeBear = fast < fast[1]
+meanBull = close > mean
+meanBear = close < mean
+
+bullScore = (emaBull ? 1 : 0) + (regimeBull ? 1 : 0) + (rsiBull ? 1 : 0) + (macdBull ? 1 : 0) + (bandBull ? 1 : 0) + (breakoutBull ? 1 : 0) + (slopeBull ? 1 : 0) + (meanBull ? 1 : 0)
+bearScore = (emaBear ? 1 : 0) + (regimeBear ? 1 : 0) + (rsiBear ? 1 : 0) + (macdBear ? 1 : 0) + (bandBear ? 1 : 0) + (breakoutBear ? 1 : 0) + (slopeBear ? 1 : 0) + (meanBear ? 1 : 0)
+
+// Require broad agreement. The sealed vault itself deduplicates a repeated side,
+// so a persistent consensus cannot submit the same position twice.
+longConsensus = bullScore >= 5 and bearScore <= 2
+shortConsensus = bearScore >= 5 and bullScore <= 2
+
+if longConsensus
+    strategy.entry("Long", strategy.long)
+if shortConsensus
+    strategy.entry("Short", strategy.short)
+
+// ── What the depositor sees is what the strategy reads ───────────────
+plot(fast, title="EMA 9", color=${q(C.fast)}, linewidth=2)
+plot(slow, title="EMA 21", color=${q(C.upper)}, linewidth=1)
+plot(trend, title="EMA 55", color=${q(C.slow)}, linewidth=2)
+u = plot(upper, title="Upper Band", color=${q(C.upper)}, linewidth=1)
+l = plot(lower, title="Lower Band", color=${q(C.lower)}, linewidth=1)
+fill(u, l, title="Volatility Channel", color=${q("#4da3ff16")})
+plot(channelHigh, title="20-bar High", color=${q(C.signal)}, linewidth=1)
+plot(channelLow, title="20-bar Low", color=${q(C.lower)}, linewidth=1)
+`,
+  },
   {
     id: "ema-cross",
     label: "EMA Cross (9/21)",

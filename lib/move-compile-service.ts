@@ -87,6 +87,11 @@ version = "0.1.0"
 
 [addresses]
 ${moduleAddressName} = "${addressValue}"
+# The UI compiler/publisher is testnet-only. These are the current Decibel testnet package
+# address and the framework address that owns order_book_types. Leaving them unresolved in the
+# local interface packages makes every generated strategy fail before type checking begins.
+decibel = "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f"
+order_book = "0x5"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
@@ -221,7 +226,7 @@ export async function compilePineVault(args: {
 
   const run = async (): Promise<CompileResult> => {
     try {
-      const { stdout } = await withTempPackage(moveSource, moduleName, "0xCAFE", (dir) =>
+      const { stdout, stderr } = await withTempPackage(moveSource, moduleName, "0xCAFE", (dir) =>
         execFileAsync(
           "aptos",
           ["move", "compile", "--skip-fetch-latest-git-deps", "--package-dir", dir],
@@ -229,9 +234,10 @@ export async function compilePineVault(args: {
         ),
       );
       // aptos CLI (8.0.0) exits 0 on compile FAILURE when run without a TTY —
-      // the error arrives as {"Error": ...} JSON on stdout. Exit code alone
-      // would cache broken Move as success (found by dogfooding the rail).
-      const cliError = extractCliError(stdout);
+      // the error arrives as {"Error": ...} JSON on stdout while the useful source diagnostics
+      // can arrive on stderr. Exit code alone would cache broken Move as success, and reading
+      // stdout alone reduces a real type error to the useless phrase "context checking errors".
+      const cliError = extractCliError([stderr, stdout].filter(Boolean).join("\n"));
       if (cliError) {
         return { ok: false, sourceHash, moduleName, moveSource, compilerError: cliError };
       }

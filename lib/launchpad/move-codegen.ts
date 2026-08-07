@@ -479,8 +479,15 @@ function generateTAOp(op: IRTAOp, indent: number): string {
       lines.push(`${p}    let updated = ((${op.targetLine} as u128) * k_scaled + (state.${op.targetSignal} as u128) * k_inv) / 1_000_000;`);
       lines.push(`${p}    (updated as u64)`);
       lines.push(`${p}};`);
+      lines.push(`${p}let ${op.targetHist}: u64 = if (${op.targetLine} >= ${op.targetSignal}) {`);
+      lines.push(`${p}    100_000_000_000_000 + (${op.targetLine} - ${op.targetSignal})`);
+      lines.push(`${p}} else {`);
+      lines.push(`${p}    let diff = ${op.targetSignal} - ${op.targetLine};`);
+      lines.push(`${p}    if (diff >= 100_000_000_000_000) { 1 } else { 100_000_000_000_000 - diff }`);
+      lines.push(`${p}};`);
       lines.push(`${p}state.${op.targetLine} = ${op.targetLine};`);
       lines.push(`${p}state.${op.targetSignal} = ${op.targetSignal};`);
+      lines.push(`${p}state.${op.targetHist} = ${op.targetHist};`);
       break;
     }
 

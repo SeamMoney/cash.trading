@@ -194,12 +194,10 @@ export const MOVE_TA_FUNCTIONS: Record<string, MoveTAFunction> = {
     name: "compute_bollinger_bands",
     signature:
       "fun compute_bollinger_bands(\n        prices: &vector<u64>,\n        period: u64,\n        mid: u64,\n        multiplier_x10: u64,\n    ): (u64, u64)",
-    body: `fun compute_bollinger_bands(
-        prices: &vector<u64>,
-        period: u64,
-        mid: u64,
-        multiplier_x10: u64,
-    ): (u64, u64) {
+    // Keep the signature on one line. renderTAFunctions normalizes indentation
+    // after the first line as function-body indentation, so a multiline
+    // signature would be rewritten into invalid Move source.
+    body: `fun compute_bollinger_bands(prices: &vector<u64>, period: u64, mid: u64, multiplier_x10: u64): (u64, u64) {
         let len   = vector::length(prices);
         let start = len - period;
         // Sum of squared deviations (u128 prevents overflow for BTC-scale prices)

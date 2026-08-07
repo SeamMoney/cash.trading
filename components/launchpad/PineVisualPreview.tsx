@@ -12,6 +12,7 @@ import {
 import { buildIndicatorVisualEffects } from "@/lib/launchpad/indicator-effects";
 import { runOwnRuntime, runPineTS, type PineTSPlot, type PineTSResult } from "@/lib/launchpad/pinets-runner";
 import type { Candle } from "@/lib/launchpad/types";
+import { cn } from "@/lib/utils";
 
 import { LaunchpadIndicatorPane, type LaunchpadIndicatorLine } from "./LaunchpadIndicatorPane";
 
@@ -339,9 +340,11 @@ interface Props {
   asset?: string;
   /** The marketplace title improves visual-family detection for complex public scripts. */
   title?: string;
+  /** Removes the outer frame when the chart already sits in a product panel. */
+  embedded?: boolean;
 }
 
-export function PineVisualPreview({ pineScript, trades, asset: assetOverride, title }: Props) {
+export function PineVisualPreview({ pineScript, trades, asset: assetOverride, title, embedded = false }: Props) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(false);
   const [pineTSResult, setPineTSResult] = useState<PineTSResult | null>(null);
@@ -467,8 +470,11 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
 
   const latestPrice = candles.at(-1)?.close ?? 0;
   return (
-    <div className="overflow-hidden rounded-lg border border-[#2a2a2a]">
-      <div className="flex items-center justify-between gap-2 border-b border-[#2a2a2a] bg-[#181818] px-3 py-1.5">
+    <div className={cn(
+      "overflow-hidden",
+      !embedded && "rounded-[var(--radius)] border border-card-border bg-background-secondary",
+    )}>
+      <div className="flex items-center justify-between gap-2 border-b border-card-border bg-card-solid px-3 py-1.5">
         <span className="truncate text-[9px] font-mono uppercase tracking-widest text-zinc-500">
           {pineTSResult?.indicatorTitle ?? "Indicator Preview"}
         </span>
@@ -482,7 +488,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       </div>
 
       {layers.legend.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#2a2a2a] bg-[#111] px-3 py-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-card-border bg-background-secondary px-3 py-1.5">
           {layers.legend.map((item) => (
             <span key={`${item.pane}-${item.title}`} className="flex items-center gap-1.5 font-mono text-[9px] text-zinc-400">
               <span className="h-[2px] w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -524,11 +530,11 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
           />
         )}
         {layers.dashboard.length > 0 && (
-          <div className="pointer-events-none absolute right-3 top-3 hidden min-w-[190px] overflow-hidden rounded-[10px] border border-white/[0.1] bg-[#0b0f16]/90 shadow-xl backdrop-blur md:block">
-            <div className="border-b border-white/[0.08] px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+          <div className="pointer-events-none absolute right-3 top-3 hidden min-w-[190px] overflow-hidden rounded-[var(--radius-sm)] border border-card-border bg-background-elevated/90 shadow-xl backdrop-blur md:block">
+            <div className="border-b border-card-border px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-300">
               {title ?? pineTSResult?.indicatorTitle ?? "Indicator state"}
             </div>
-            <dl className="divide-y divide-white/[0.05] px-3 py-1.5">
+            <dl className="divide-y divide-card-border px-3 py-1.5">
               {layers.dashboard.map((item) => (
                 <div className="flex items-center justify-between gap-4 py-1.5 font-mono text-[9px]" key={item.label}>
                   <dt className="text-zinc-500">{item.label}</dt>
@@ -551,12 +557,12 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       ))}
 
       {(pineTSResult?.logs.length ?? 0) > 0 && (
-        <details className="group border-t border-white/[0.06] bg-[#0d0d0d]">
+        <details className="group border-t border-card-border bg-background-secondary">
           <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-mono text-[10px] text-zinc-400 hover:text-white">
             <span>Pine logs</span>
             <span className="text-zinc-600">{pineTSResult!.logs.length}</span>
           </summary>
-          <div className="max-h-44 overflow-y-auto overscroll-contain border-t border-white/[0.06] px-3 py-2">
+          <div className="max-h-44 overflow-y-auto overscroll-contain border-t border-card-border px-3 py-2">
             {pineTSResult!.logs.slice(-200).map((entry, index) => (
               <div
                 key={`${entry.time}-${entry.barIndex}-${index}`}

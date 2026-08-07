@@ -21,6 +21,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CodeBlock } from "@/components/ui/agent";
+import {
+  PRODUCT_CONTROL_CLASS,
+  PRODUCT_MODAL_CLASS,
+  ProductBadge,
+  ProductPanel,
+  ProductSegmented,
+  ProductSelectorButton,
+} from "@/components/ui/product-surface";
 import type { TradingViewPopularScript } from "@/lib/launchpad/tradingview-popular";
 import type {
   TradingViewSourceMeta,
@@ -144,11 +152,11 @@ function PopularCard({
   compact?: boolean;
 }) {
   return (
-    <article className="group min-w-0 rounded-[12px] border border-white/[0.07] bg-[#111] transition-colors hover:border-white/[0.14] hover:bg-[#151515]">
+    <article className={cn(PRODUCT_CONTROL_CLASS, "group min-w-0 transition-colors hover:border-border-strong hover:bg-card-hover")}>
       <button
         type="button"
         onClick={onOpen}
-        className="block w-full rounded-[12px] p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 sm:p-4"
+        className="block w-full rounded-[var(--radius-sm)] p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
       >
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
@@ -157,14 +165,12 @@ function PopularCard({
             </span>
             <span className="mt-1 block truncate font-mono text-[10px] text-zinc-600">by {item.author}</span>
           </span>
-          <span className="shrink-0 rounded-[6px] border border-white/10 bg-white/[0.035] px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
-            {item.scriptType}
-          </span>
+          <ProductBadge>{item.scriptType}</ProductBadge>
         </span>
         <span className={cn("mt-3 block text-[12px] leading-relaxed text-zinc-400", compact ? "line-clamp-2" : "line-clamp-3")}>
           {item.description}
         </span>
-        <span className="mt-3 flex min-w-0 items-center gap-4 border-t border-white/[0.05] pt-2.5 font-mono text-[10px] text-zinc-600">
+        <span className="mt-3 flex min-w-0 items-center gap-4 border-t border-card-border pt-2.5 font-mono text-[10px] text-muted-foreground">
           <span className="inline-flex items-center gap-1"><MessageSquare className="h-3 w-3" aria-hidden />{item.comments}</span>
           <span className="inline-flex items-center gap-1"><Rocket className="h-3 w-3" aria-hidden />{item.boosts.toLocaleString()}</span>
           <span className="ml-auto text-zinc-400 group-hover:text-white">Open →</span>
@@ -172,10 +178,6 @@ function PopularCard({
       </button>
     </article>
   );
-}
-
-function ChevronIndicator() {
-  return <span aria-hidden className="shrink-0 font-mono text-[16px] text-zinc-600">⌄</span>;
 }
 
 export function PineMarketplace({
@@ -321,28 +323,22 @@ export function PineMarketplace({
 
   return (
     <>
-      <section className="mb-4 overflow-hidden rounded-[16px] border border-white/[0.07] bg-[#0d0d0d]">
-        <div className="flex flex-col gap-3 border-b border-white/[0.07] p-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-          <button
-            type="button"
+      <ProductPanel className="mb-4 overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-card-border p-3 sm:flex-row sm:items-center sm:justify-between">
+          <ProductSelectorButton
             onClick={showGallery}
             disabled={disabled || items.length === 0}
-            className="flex min-w-0 items-center gap-3 rounded-[12px] border border-white/[0.09] bg-[#171717] px-3 py-2.5 text-left transition-colors hover:border-accent/35 hover:bg-[#1b1b1b] disabled:opacity-40 sm:max-w-[520px] sm:flex-1"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-accent/10 text-accent">
+            className="w-full sm:max-w-[520px] sm:flex-1"
+            icon={(
+              <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-xs)] bg-accent/10 text-accent">
               <CandlestickChart className="h-4 w-4" aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Indicator</span>
-              <span className="mt-0.5 block truncate font-display text-[13px] font-semibold text-white">
-                {activeSelection?.title ?? "Choose a public Pine strategy"}
               </span>
-              <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">
-                {activeSelection ? `by ${activeSelection.author} · source loaded` : `${items.length || "Popular"} TradingView scripts`}
-              </span>
-            </span>
-            <ChevronIndicator />
-          </button>
+            )}
+            label="Indicator"
+            value={activeSelection?.title ?? "Choose a public Pine strategy"}
+            detail={activeSelection ? `by ${activeSelection.author} · source loaded` : `${items.length || "Popular"} public scripts`}
+            trailing={<ChevronDownIcon />}
+          />
           {marketControl}
         </div>
         {preview ?? (
@@ -350,20 +346,15 @@ export function PineMarketplace({
             {loadingFeed ? "Loading public scripts…" : feedError ?? "Choose an indicator to preview it"}
           </div>
         )}
-        <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] bg-[#101010] px-3 py-2.5 sm:px-4">
-          <p className="min-w-0 truncate font-mono text-[9px] text-zinc-600">
-            Decibel history · trade chart renderer · Pine overlays
-          </p>
-          <button type="button" onClick={showGallery} className="shrink-0 font-display text-[11px] font-semibold text-zinc-300 hover:text-white">
-            Browse indicators
-          </button>
-        </div>
-      </section>
+      </ProductPanel>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton={false}
-          className="!block h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-white/[0.1] bg-[#090909] !p-0 shadow-2xl sm:h-[calc(100dvh-32px)] sm:w-[calc(100vw-32px)] sm:max-w-none sm:rounded-[18px] 2xl:max-w-[1560px]"
+          className={cn(
+            PRODUCT_MODAL_CLASS,
+            "!bottom-0 !top-auto !block h-[calc(100dvh-12px)] w-full !max-w-none !translate-y-0 rounded-b-none rounded-t-[var(--radius)] shadow-2xl sm:!bottom-auto sm:!top-1/2 sm:h-[min(760px,calc(100dvh-32px))] sm:w-[min(1040px,calc(100vw-32px))] sm:!translate-y-[-50%] sm:rounded-[var(--radius)]",
+          )}
         >
           <DialogTitle className="sr-only">
             {selected?.title ?? "Popular TradingView scripts"}
@@ -374,48 +365,47 @@ export function PineMarketplace({
 
           {!selected ? (
             <div className="flex h-full min-h-0 flex-col">
-              <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-4 sm:px-7 sm:py-5">
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">TradingView community</p>
-                  <h2 className="mt-1 font-display text-[24px] font-semibold tracking-tight text-white sm:text-[34px]">Indicators and strategies</h2>
+              <header className="flex shrink-0 items-center justify-between border-b border-card-border px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Select indicator</p>
+                  <h2 className="mt-0.5 truncate font-display text-[17px] font-semibold text-foreground">Popular Pine scripts</h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close script marketplace"
-                  className="rounded-full p-3 text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-card-hover hover:text-foreground"
                 >
-                  <X className="h-6 w-6" aria-hidden />
+                  <X className="h-5 w-5" aria-hidden />
                 </button>
               </header>
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3 sm:px-7">
-                <span className="rounded-full bg-white px-4 py-2 font-display text-[12px] font-semibold text-black">Popular</span>
-                <span className="rounded-[10px] border border-white/[0.12] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-300">Public scripts</span>
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-card-border px-4 py-2.5">
+                <span className="font-display text-[12px] font-semibold text-foreground">Popular</span>
+                <ProductBadge className="text-accent">Public source</ProductBadge>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {items.map((item) => (
-                    <PopularCard key={item.id} item={item} onOpen={() => openScript(item)} />
+                    <PopularCard compact key={item.id} item={item} onOpen={() => openScript(item)} />
                   ))}
                 </div>
-                <div className="h-8" aria-hidden />
               </div>
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col">
-              <header className="shrink-0 border-b border-white/[0.08] px-3 pt-3 sm:px-6 sm:pt-4">
+              <header className="shrink-0 border-b border-card-border px-3 pt-3 sm:px-4">
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
                     aria-label="Back to popular scripts"
-                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-zinc-400 hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-card-border bg-background-tertiary text-muted-foreground transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground"
                   >
                     <ArrowLeft className="h-5 w-5" aria-hidden />
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-sky-300">Public Pine script · {relativeDate(selected.publishedAt)}</p>
-                    <h2 className="mt-1 max-w-5xl break-words font-display text-[20px] font-semibold leading-tight text-white sm:text-[28px]">{selected.title}</h2>
+                    <p className="font-mono text-[9px] uppercase text-muted-foreground">Public Pine script · {relativeDate(selected.publishedAt)}</p>
+                    <h2 className="mt-0.5 truncate font-display text-[16px] font-semibold text-foreground sm:text-[18px]">{selected.title}</h2>
                     <a
                       href={selected.authorUrl ?? selected.url}
                       target="_blank"
@@ -430,7 +420,7 @@ export function PineMarketplace({
                     target="_blank"
                     rel="noreferrer"
                     aria-label="Open this script on TradingView"
-                    className="flex h-9 shrink-0 items-center gap-2 rounded-[10px] border border-white/[0.1] px-2.5 text-[12px] text-zinc-300 hover:border-white/20 hover:text-white sm:px-3"
+                    className={cn(PRODUCT_CONTROL_CLASS, "flex h-9 shrink-0 items-center gap-2 px-2.5 text-[12px] text-foreground-secondary transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground sm:px-3")}
                   >
                     <span className="hidden sm:inline">TradingView</span>
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden />
@@ -439,14 +429,14 @@ export function PineMarketplace({
                     type="button"
                     onClick={() => setOpen(false)}
                     aria-label="Close script"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card-hover hover:text-foreground"
                   >
                     <X className="h-5 w-5" aria-hidden />
                   </button>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.06] py-2.5">
-                  <div role="tablist" aria-label="Script details" className="grid min-w-0 flex-1 grid-cols-3 rounded-[11px] bg-white/[0.06] p-1 sm:max-w-[330px]">
+                <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-card-border py-2.5">
+                  <ProductSegmented role="tablist" aria-label="Script details" className="grid min-w-0 flex-1 grid-cols-3 sm:max-w-[330px]">
                     {([
                       ["chart", "Chart", CandlestickChart],
                       ["source", "Source code", Code2],
@@ -459,21 +449,21 @@ export function PineMarketplace({
                         role="tab"
                         aria-selected={tab === value}
                         className={cn(
-                          "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 py-2 font-display text-[11px] font-semibold",
-                          tab === value ? "bg-white text-black" : "text-zinc-400 hover:text-white",
+                          "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-2 font-display text-[11px] font-semibold",
+                          tab === value ? "bg-card-hover text-foreground" : "text-muted-foreground hover:text-foreground",
                         )}
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         <span className="truncate">{label}</span>
                       </button>
                     ))}
-                  </div>
+                  </ProductSegmented>
                   <div className="hidden items-center gap-2 sm:flex">
                     <button
                       type="button"
                       onClick={checkCompatibility}
                       disabled={!source || compatibility.state === "checking"}
-                      className="h-9 rounded-[10px] border border-white/[0.1] px-3 font-display text-[12px] font-semibold text-zinc-200 hover:border-white/20 disabled:opacity-40"
+                      className={cn(PRODUCT_CONTROL_CLASS, "h-9 px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:text-foreground disabled:opacity-40")}
                     >
                       {compatibility.state === "checking" ? "Checking…" : "Check vault compatibility"}
                     </button>
@@ -481,7 +471,7 @@ export function PineMarketplace({
                       type="button"
                       onClick={useSelected}
                       disabled={!source || loadingSource || disabled}
-                      className="h-9 rounded-[10px] bg-accent px-4 font-display text-[12px] font-semibold text-black shadow-[0_0_0_1px_rgba(116,255,69,0.18)] hover:brightness-95 disabled:cursor-wait disabled:bg-white/10 disabled:text-zinc-500 disabled:shadow-none"
+                      className="h-9 rounded-[var(--radius-sm)] bg-accent px-4 font-display text-[12px] font-semibold text-accent-foreground hover:brightness-95 disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground"
                     >
                       {loadingSource ? "Loading full source…" : "Use in editor"}
                     </button>
@@ -491,14 +481,14 @@ export function PineMarketplace({
 
               <div className={cn(
                 "min-h-0 flex-1 overscroll-contain",
-                tab === "chart" ? "overflow-y-auto p-3 sm:p-5" : "overflow-hidden p-3 sm:p-5",
+                tab === "chart" ? "overflow-y-auto p-3 sm:p-4" : "overflow-hidden p-3 sm:p-4",
               )}>
                 {tab === "chart" && (
-                  <div role="tabpanel" className="mx-auto flex min-h-full w-full max-w-[1480px] flex-col gap-4">
-                    <section className="overflow-hidden rounded-[14px] border border-white/[0.08] bg-black">
+                  <div role="tabpanel" className="mx-auto flex min-h-full w-full flex-col gap-3">
+                    <section className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background">
                       <div className="w-full bg-black">
                         {source ? (
-                          <PineVisualPreview asset={market} pineScript={source} title={selected.title} />
+                          <PineVisualPreview asset={market} embedded pineScript={source} title={selected.title} />
                         ) : (
                           <div className="flex h-[300px] items-center justify-center gap-2 font-mono text-[11px] text-zinc-600 sm:h-[480px]">
                             {loadingSource && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
@@ -506,7 +496,7 @@ export function PineMarketplace({
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 sm:px-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-card-border bg-background-secondary px-3 py-2.5 sm:px-4">
                         <SourceStatus meta={sourceMeta} loading={loadingSource} error={sourceError} />
                         <button
                           type="button"
@@ -519,12 +509,12 @@ export function PineMarketplace({
                       </div>
                     </section>
 
-                    <section className="grid gap-5 border-t border-white/[0.08] pb-5 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.42fr)]">
+                    <section className="grid gap-4 border-t border-card-border pb-3 pt-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
                       <div className="min-w-0">
-                        <span className="rounded-[6px] bg-sky-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-sky-300">{selected.scriptType}</span>
+                        <ProductBadge>{selected.scriptType}</ProductBadge>
                         <p className="mt-3 max-w-4xl text-[13px] leading-relaxed text-zinc-300 sm:text-[14px]">{selected.description}</p>
                       </div>
-                      <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-5">
+                      <aside className="min-w-0 lg:border-l lg:border-card-border lg:pl-5">
                         <dl className="grid grid-cols-2 gap-x-5 gap-y-3 font-mono text-[10px]">
                           <div>
                             <dt className="uppercase tracking-[0.12em] text-zinc-600">Author</dt>
@@ -536,11 +526,11 @@ export function PineMarketplace({
                           </div>
                         </dl>
                         {features.length > 0 && (
-                          <div className="mt-4 border-t border-white/[0.06] pt-3">
+                          <div className="mt-4 border-t border-card-border pt-3">
                             <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Detected features</p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {features.map((feature) => (
-                                <span key={feature.label} className="rounded-full border border-white/[0.08] px-2.5 py-1 font-mono text-[9px] text-zinc-400">{feature.label}</span>
+                                <ProductBadge key={feature.label}>{feature.label}</ProductBadge>
                               ))}
                             </div>
                           </div>
@@ -558,7 +548,7 @@ export function PineMarketplace({
                         <span className="font-mono text-[11px]">Loading public Pine source…</span>
                       </div>
                     ) : sourceError ? (
-                      <div className="rounded-[14px] border border-amber-500/20 bg-amber-500/[0.06] p-4 text-[13px] leading-relaxed text-amber-200/80">{sourceError}</div>
+                      <div className="rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.06] p-4 text-[13px] leading-relaxed text-amber-200/80">{sourceError}</div>
                     ) : (
                       <div className="flex h-full min-h-0 flex-col gap-2.5">
                         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -579,8 +569,8 @@ export function PineMarketplace({
                 )}
 
                 {tab === "logs" && (
-                  <div role="tabpanel" className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0d0d0d]">
-                    <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+                  <div role="tabpanel" className="mx-auto flex h-full w-full flex-col overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary">
+                    <div className="flex items-center justify-between border-b border-card-border px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Terminal className="h-4 w-4 text-zinc-500" aria-hidden />
                         <span className="font-display text-[13px] font-semibold text-white">Pine logs and compatibility</span>
@@ -631,12 +621,12 @@ export function PineMarketplace({
                 )}
               </div>
 
-              <div className="flex shrink-0 gap-2 border-t border-white/[0.08] bg-[#0b0b0b] p-3 sm:hidden">
+              <div className="flex shrink-0 gap-2 border-t border-card-border bg-background-secondary p-3 sm:hidden">
                 <button
                   type="button"
                   onClick={() => { setTab("logs"); void checkCompatibility(); }}
                   disabled={!source || compatibility.state === "checking"}
-                  className="flex-1 rounded-[10px] border border-white/[0.1] px-3 py-2.5 font-display text-[12px] font-semibold text-zinc-200 disabled:opacity-40"
+                  className={cn(PRODUCT_CONTROL_CLASS, "flex-1 px-3 py-2.5 font-display text-[12px] font-semibold text-foreground-secondary disabled:opacity-40")}
                 >
                   Check
                 </button>
@@ -644,7 +634,7 @@ export function PineMarketplace({
                   type="button"
                   onClick={useSelected}
                   disabled={!source || loadingSource || disabled}
-                  className="flex-[1.4] rounded-[10px] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-black shadow-[0_0_0_1px_rgba(116,255,69,0.18)] disabled:cursor-wait disabled:bg-white/10 disabled:text-zinc-500 disabled:shadow-none"
+                  className="flex-[1.4] rounded-[var(--radius-sm)] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-accent-foreground disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground"
                 >
                   {loadingSource ? "Loading full source…" : "Use in editor"}
                 </button>
@@ -657,6 +647,10 @@ export function PineMarketplace({
   );
 }
 
+function ChevronDownIcon() {
+  return <span aria-hidden className="font-mono text-[16px]">⌄</span>;
+}
+
 function LogRow({
   level,
   label,
@@ -667,7 +661,7 @@ function LogRow({
   text: string;
 }) {
   return (
-    <div className="grid grid-cols-[62px_76px_minmax(0,1fr)] gap-2 border-b border-white/[0.04] py-2 last:border-0">
+    <div className="grid grid-cols-[62px_76px_minmax(0,1fr)] gap-2 border-b border-card-border py-2 last:border-0">
       <span className="text-zinc-700">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       <span className={cn(
         level === "error" && "text-red-400",

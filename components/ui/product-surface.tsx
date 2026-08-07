@@ -1,0 +1,156 @@
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+/**
+ * Product-surface primitives for dense cash.trading workflows.
+ *
+ * These components intentionally consume the semantic tokens owned by
+ * `.cash-trade-theme`. Feature code should compose these primitives instead of
+ * choosing its own black, border opacity, radius, or selected-state green.
+ */
+
+export const PRODUCT_PANEL_CLASS =
+  "rounded-[var(--radius)] border border-card-border bg-background-secondary";
+
+export const PRODUCT_CONTROL_CLASS =
+  "rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary";
+
+export const PRODUCT_MODAL_CLASS =
+  "overflow-hidden border-card-border bg-background-secondary p-0 text-foreground";
+
+export function ProductPanel({
+  className,
+  ...props
+}: React.ComponentProps<"section">) {
+  return (
+    <section
+      data-slot="product-panel"
+      className={cn(
+        PRODUCT_PANEL_CLASS,
+        "[&>[data-slot=product-section]+[data-slot=product-section]]:border-t [&>[data-slot=product-section]+[data-slot=product-section]]:border-card-border",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function ProductSection({
+  action,
+  children,
+  className,
+  contentClassName,
+  description,
+  title,
+  ...props
+}: Omit<React.ComponentProps<"section">, "title"> & {
+  action?: React.ReactNode;
+  contentClassName?: string;
+  description?: React.ReactNode;
+  title?: React.ReactNode;
+}) {
+  return (
+    <section
+      data-slot="product-section"
+      className={cn("min-w-0 px-4 py-3.5", className)}
+      {...props}
+    >
+      {(title || description || action) && (
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            {title && (
+              <div className="font-display text-[13px] font-semibold leading-5 text-foreground">
+                {title}
+              </div>
+            )}
+            {description && (
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                {description}
+              </div>
+            )}
+          </div>
+          {action && <div className="shrink-0">{action}</div>}
+        </div>
+      )}
+      <div className={cn((title || description || action) && "mt-2.5", contentClassName)}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+export function ProductSelectorButton({
+  detail,
+  icon,
+  label,
+  trailing,
+  value,
+  className,
+  ...props
+}: Omit<React.ComponentProps<"button">, "children" | "value"> & {
+  detail?: React.ReactNode;
+  icon?: React.ReactNode;
+  label: React.ReactNode;
+  trailing?: React.ReactNode;
+  value: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-slot="product-selector"
+      className={cn(
+        PRODUCT_CONTROL_CLASS,
+        "flex min-h-12 min-w-0 items-center gap-2.5 px-3 py-2 text-left transition-colors hover:border-border-strong hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        className,
+      )}
+      {...props}
+    >
+      {icon && <span className="shrink-0">{icon}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block font-mono text-[9px] uppercase text-muted-foreground">{label}</span>
+        <span className="mt-0.5 block truncate font-display text-[13px] font-semibold text-foreground">
+          {value}
+        </span>
+        {detail && (
+          <span className="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground">
+            {detail}
+          </span>
+        )}
+      </span>
+      {trailing && <span className="shrink-0 text-muted-foreground">{trailing}</span>}
+    </button>
+  );
+}
+
+export function ProductSegmented({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="product-segmented"
+      className={cn(PRODUCT_CONTROL_CLASS, "flex gap-1 p-1", className)}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ProductBadge({
+  className,
+  ...props
+}: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="product-badge"
+      className={cn(
+        "inline-flex items-center rounded-[var(--radius-xs)] border border-card-border bg-card px-2 py-1 font-mono text-[9px] font-semibold uppercase text-foreground-secondary",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

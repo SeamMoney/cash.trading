@@ -1738,6 +1738,10 @@ assert.ok(
 // version asked creators for a Decibel vault address and a raw ed25519 attestor
 // key — neither of which is theirs to decide.
 const launchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+const pineMarketplaceUi = readFileSync("components/launchpad/PineMarketplace.tsx", "utf8");
+const pinePreviewUi = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
+const productSurfaceUi = readFileSync("components/ui/product-surface.tsx", "utf8");
+const surfaceTokens = readFileSync("lib/surface.ts", "utf8");
 assert.ok(
   !/placeholder="0x…"/.test(launchUi),
   "the launch flow must not ask the user to paste raw addresses or keys",
@@ -1788,6 +1792,44 @@ for (const f of [
     `${f} must use border-white/[0.08] like the trade page, not the harder #2a2a2a`,
   );
 }
+
+// New product workflows must be assembled from the same semantic surfaces as
+// the trade page. This catches the exact regression where Launchpad introduced
+// its own blacks, borders, radii, selectors, and full-screen desktop dialog.
+assert.ok(
+  productSurfaceUi.includes("bg-background-secondary")
+    && productSurfaceUi.includes("border-card-border")
+    && productSurfaceUi.includes("rounded-[var(--radius)]"),
+  "product surfaces must consume the cash-trade-theme semantic tokens",
+);
+assert.ok(
+  !/bg-\[#[0-9a-f]{3,8}\]/i.test(productSurfaceUi),
+  "shared product surfaces must not hard-code a private color palette",
+);
+assert.ok(
+  pineMarketplaceUi.includes("ProductSelectorButton")
+    && pineMarketplaceUi.includes("PRODUCT_MODAL_CLASS")
+    && pineMarketplaceUi.includes("ProductPanel"),
+  "the Pine workbench and browser must use the shared product primitives",
+);
+assert.ok(
+  launchUi.includes("ProductPanel")
+    && launchUi.includes("ProductSection")
+    && launchUi.includes("ProductSelectorButton"),
+  "the launch configuration must use the shared product primitives",
+);
+assert.ok(
+  !pineMarketplaceUi.includes("h-[100dvh] w-screen"),
+  "the desktop Pine browser must not regress to a full-screen one-off modal",
+);
+assert.ok(
+  !surfaceTokens.includes('"bg-[#') && !surfaceTokens.includes('"border-white/[0.06]'),
+  "surface constants must stay semantic so theme changes reach every workflow",
+);
+assert.ok(
+  !pinePreviewUi.includes("border-[#2a2a2a]"),
+  "Pine chart chrome must use the same border token as the rest of the product",
+);
 
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
 assert.ok(

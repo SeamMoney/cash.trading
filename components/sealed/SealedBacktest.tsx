@@ -107,7 +107,7 @@ export function SealedBacktest(props: Props) {
 
   return (
     <div className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3">
         <div>
           <h3 className="font-display text-[14px] font-semibold text-white">Backtest</h3>
           <p className="text-[11px] leading-snug text-zinc-500">
@@ -124,8 +124,8 @@ export function SealedBacktest(props: Props) {
                 type="button"
                 onClick={() => setWindowKey(w.key)}
                 className={cn(
-                  "rounded-[7px] px-2 py-1 font-mono text-[10px] transition-colors",
-                  windowKey === w.key ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300",
+                  "rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[10px] transition-colors",
+                  windowKey === w.key ? "bg-card-hover text-foreground" : "text-muted-foreground hover:text-foreground-secondary",
                 )}
               >
                 {w.label}
@@ -137,10 +137,10 @@ export function SealedBacktest(props: Props) {
             onClick={() => void run()}
             disabled={loading || pineScript.trim().length === 0}
             className={cn(
-              "rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition-colors",
+              "rounded-[var(--radius-sm)] px-3 py-1.5 text-[12px] font-semibold transition-colors",
               loading || pineScript.trim().length === 0
-                ? "cursor-not-allowed bg-white/[0.04] text-zinc-600"
-                : "bg-[#39ff14] text-black hover:bg-[#4dff33]",
+                ? "cursor-not-allowed bg-card text-muted-foreground"
+                : "bg-accent text-accent-foreground hover:brightness-95",
             )}
           >
             {loading ? "Running…" : "Run"}
@@ -150,7 +150,7 @@ export function SealedBacktest(props: Props) {
 
       <div className="flex flex-col gap-3 p-4">
         {result && !result.ok && (
-          <div className="rounded-[10px] border border-red-500/20 bg-red-500/10 px-3 py-2">
+          <div className="rounded-[var(--radius-sm)] border border-red-500/20 bg-red-500/10 px-3 py-2">
             <p className="text-[12px] text-red-300">{result.error}</p>
             {result.detail?.slice(0, 4).map((d) => (
               <p key={d} className="mt-0.5 font-mono text-[10px] text-red-400/80">• {d}</p>
@@ -190,9 +190,9 @@ export function SealedBacktest(props: Props) {
                 market, and a creator deciding what to launch needs to see that rather than
                 a single flattering average. */}
             {result.perMarket && result.perMarket.length > 1 && (
-              <div className="overflow-hidden rounded-[10px] border border-white/[0.06]">
+              <div className="overflow-hidden rounded-[var(--radius-sm)] border border-card-border">
                 <table className="w-full font-mono text-[11px]">
-                  <thead className="border-b border-white/[0.06] text-zinc-500">
+                  <thead className="border-b border-card-border text-zinc-500">
                     <tr>
                       <th className="px-2.5 py-1.5 text-left font-normal">Market</th>
                       <th className="px-2 py-1.5 text-right font-normal">Return</th>
@@ -203,9 +203,9 @@ export function SealedBacktest(props: Props) {
                   </thead>
                   <tbody>
                     {result.perMarket.map((m) => (
-                      <tr key={m.asset} className="border-b border-white/[0.04] last:border-0">
+                      <tr key={m.asset} className="border-b border-card-border last:border-0">
                         <td className="px-2.5 py-1.5 text-zinc-300">{m.asset.replace("/USD", "")}</td>
-                        <td className={cn("px-2 py-1.5 text-right", m.returnPct >= 0 ? "text-[#39ff14]" : "text-red-400")}>
+                        <td className={cn("px-2 py-1.5 text-right", m.returnPct >= 0 ? "text-accent" : "text-red-400")}>
                           {m.returnPct >= 0 ? "+" : ""}{m.returnPct}%
                         </td>
                         {/* The hold number, not a verdict. "beat" next to a red -2.34% reads
@@ -226,12 +226,12 @@ export function SealedBacktest(props: Props) {
             {/* Named, not dropped. A market silently missing from a portfolio backtest makes
                 the remaining ones look like the whole answer. */}
             {result.unavailable && result.unavailable.length > 0 && (
-              <p className="rounded-[10px] border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-400/90">
+              <p className="rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-400/90">
                 Not simulated: {result.unavailable.map((u) => u.asset).join(", ")} — {result.unavailable[0].error}
               </p>
             )}
 
-            <div className="grid gap-1 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2 font-mono text-[10px] text-zinc-500">
+            <div className="grid gap-1 rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2 font-mono text-[10px] text-muted-foreground">
               <span>
                 {s.barsSimulated.toLocaleString()} bars simulated · {s.warmupBars} bar warmup skipped ·
                 {" "}{s.timeInMarketPct}% of bars in a position
@@ -258,7 +258,7 @@ export function SealedBacktest(props: Props) {
             </div>
 
             {result.assumptions && (
-              <details className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+              <details className="rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2">
                 <summary className="cursor-pointer text-[11px] text-zinc-400">
                   What this number assumes — and cannot tell you
                 </summary>
@@ -294,12 +294,12 @@ function Stat({
   note?: string;
 }) {
   return (
-    <div className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+    <div className="rounded-[var(--radius-sm)] border border-card-border bg-card px-2.5 py-2">
       <p className="text-[10px] text-zinc-500">{label}</p>
       <p
         className={cn(
           "font-mono text-[15px] font-semibold",
-          tone === "up" ? "text-[#39ff14]" : tone === "down" ? "text-red-400" : "text-zinc-200",
+          tone === "up" ? "text-accent" : tone === "down" ? "text-red-400" : "text-zinc-200",
         )}
       >
         {value}

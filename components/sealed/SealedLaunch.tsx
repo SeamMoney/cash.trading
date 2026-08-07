@@ -25,7 +25,7 @@
  * Every step is resumable. If a signature is rejected or a transaction fails, the completed
  * steps are kept and the button restarts from the first incomplete one.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
@@ -43,6 +43,13 @@ import {
   type PineMarketplaceSelection,
 } from "@/components/launchpad/PineMarketplace";
 import { SealedBacktest } from "@/components/sealed/SealedBacktest";
+import {
+  MarketLogo,
+  MarketModal,
+  apiMarketToMarket,
+  type DecibelApiMarket,
+  type Market,
+} from "@/components/trade/BTCChart";
 
 interface SealedConfig {
   packageAddress: string | null;
@@ -162,6 +169,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [strategyId, setStrategyId] = useState(SEALED_CATALOG[0].id);
   const [customPine, setCustomPine] = useState("");
   const [importedScript, setImportedScript] = useState<PineMarketplaceSelection | null>(null);
+  const [editingSource, setEditingSource] = useState(false);
   const [tvUrl, setTvUrl] = useState("");
   const [tvBusy, setTvBusy] = useState(false);
   const [vaultName, setVaultName] = useState(SEALED_CATALOG[0].label);
@@ -179,6 +187,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   // vault — there is no separate mode switch, because "which markets" and "single or
   // portfolio" are the same question asked twice.
   const [markets, setMarkets] = useState<string[]>([]);
+  const [marketOptions, setMarketOptions] = useState<Market[]>([]);
+  const [previewMarket, setPreviewMarket] = useState("BTC/USD");
+  const [previewMarketOpen, setPreviewMarketOpen] = useState(false);
+  const [executionMarketOpen, setExecutionMarketOpen] = useState(false);
+  const workbenchRef = useRef<HTMLDivElement>(null);
 
   // Progress. Each address is the receipt for a completed step, so a retry resumes.
   const [step, setStep] = useState<StepId | null>(null);
@@ -209,9 +222,23 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         setMinBarIntervalS(cfg.defaults?.minBarIntervalS ?? 60);
         setSeedUsdc(cfg.economics?.minFundingUsdc ?? 100);
         setMarkets(cfg.markets?.[0]?.name ? [cfg.markets[0].name] : []);
+        setPreviewMarket(cfg.markets?.[0]?.name ?? "BTC/USD");
       })
       .catch(() => setConfig(null));
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const network = config?.network === "testnet" ? "testnet" : "mainnet";
+    fetch(`/api/decibel/markets?network=${network}`, { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload: { markets?: DecibelApiMarket[] }) => {
+        if (controller.signal.aborted || !Array.isArray(payload.markets)) return;
+        setMarketOptions(payload.markets.map(apiMarketToMarket));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [config?.network]);
 
   // Preflight: the one prerequisite we cannot create for the user is USDC sitting in their
   // Decibel subaccount. Check it up front so the cost panel states fact, not requirement.
@@ -239,6 +266,27 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   );
   const usingCustom = customPine.trim().length > 0;
   const effectivePine = usingCustom ? customPine : (selected?.script ?? "");
+  const activeMarketplaceSelection = useMemo<PineMarketplaceSelection | null>(() => {
+    if (importedScript) return importedScript;
+    if (!selected) return null;
+    return {
+      source: selected.script,
+      title: selected.label,
+      url: selected.source?.url ?? "",
+      author: selected.source?.label ?? "cash.trading",
+    };
+  }, [importedScript, selected]);
+  const executionMarketOptions = useMemo<Market[]>(() => {
+    const byName = new Map(marketOptions.map((market) => [market.id, market]));
+    return (config?.markets ?? []).map((market) => byName.get(market.name) ?? {
+      id: market.name,
+      label: market.name.replace("/USD", ""),
+      pair: market.name,
+      leverage: 0,
+      category: "crypto" as const,
+      color: "#27272a",
+    });
+  }, [config?.markets, marketOptions]);
   // What the SCRIPT asks for, if anything. Shown so a creator whose strategy declares its own
   // size or leverage is not left thinking the controls below decided them — and so one whose
   // script declares nothing knows the controls are the whole answer.
@@ -261,11 +309,28 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const useMarketplaceScript = useCallback((script: PineMarketplaceSelection) => {
     setCustomPine(script.source);
     setImportedScript(script);
+    setEditingSource(false);
     setTvUrl(script.url);
     setCommitInfo(null);
     setError(null);
     if (!nameTouched) setVaultName(script.title);
   }, [nameTouched]);
+
+  useEffect(() => {
+    if (!importedScript) return;
+    // Two frames let the marketplace dialog unmount and restore body scrolling before the
+    // mobile page is repositioned. A single immediate scroll was swallowed by iOS Safari.
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        workbenchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [importedScript]);
 
   const importTradingView = useCallback(async () => {
     if (!tvUrl.trim()) return;
@@ -291,6 +356,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         url: tvUrl.trim(),
         author: "TradingView author",
       });
+      setEditingSource(false);
       setCommitInfo(null);
       if (!nameTouched) setVaultName(title);
     } catch (err) {
@@ -599,10 +665,77 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       )}
 
-      <PineMarketplace
-        disabled={busy}
-        market={primaryMarket}
-        onUse={useMarketplaceScript}
+      <div ref={workbenchRef} className="scroll-mt-4">
+        <PineMarketplace
+          activeSelection={activeMarketplaceSelection}
+          disabled={busy}
+          market={previewMarket}
+          marketControl={(
+            <button
+              type="button"
+              onClick={() => setPreviewMarketOpen(true)}
+              disabled={busy}
+              className="flex min-w-0 items-center gap-2.5 rounded-[12px] border border-white/[0.09] bg-[#171717] px-3 py-2.5 text-left transition-colors hover:border-accent/35 hover:bg-[#1b1b1b] disabled:opacity-40 sm:min-w-[220px]"
+            >
+              <MarketLogo market={previewMarket} size={28} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Preview market</span>
+                <span className="mt-0.5 block truncate font-display text-[13px] font-semibold text-white">{previewMarket}</span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
+            </button>
+          )}
+          onUse={useMarketplaceScript}
+          preview={effectivePine ? (
+            <PineVisualPreview
+              asset={previewMarket}
+              pineScript={effectivePine}
+              title={activeMarketplaceSelection?.title}
+            />
+          ) : undefined}
+        />
+      </div>
+
+      <MarketModal
+        description="Crypto, stocks, and commodities"
+        markets={marketOptions.length > 0 ? marketOptions : executionMarketOptions}
+        onClose={() => setPreviewMarketOpen(false)}
+        onSelect={setPreviewMarket}
+        network={config?.network === "testnet" ? "testnet" : "mainnet"}
+        open={previewMarketOpen}
+        selected={previewMarket}
+        title="Preview market"
+      />
+
+      <MarketModal
+        allDescription="Select every market with a verified live executor"
+        allLabel="All launch-ready markets"
+        description="Every Decibel market is visible; verified executors can be selected"
+        disabledIds={marketOptions
+          .filter((market) => !executionMarketOptions.some((ready) => ready.id === market.id))
+          .map((market) => market.id)}
+        markets={marketOptions.length > 0 ? marketOptions : executionMarketOptions}
+        multiple
+        onClose={() => setExecutionMarketOpen(false)}
+        onSelect={() => undefined}
+        onSelectAll={() => {
+          const all = executionMarketOptions.map((market) => market.id);
+          setMarkets(markets.length === all.length ? [all[0]].filter(Boolean) : all);
+          setCommitInfo(null);
+        }}
+        onToggle={(id) => {
+          setMarkets((prev) => {
+            if (!prev.includes(id)) return [...prev, id];
+            if (prev.length === 1) return prev;
+            return prev.filter((market) => market !== id);
+          });
+          setCommitInfo(null);
+        }}
+        network={config?.network === "testnet" ? "testnet" : "mainnet"}
+        open={executionMarketOpen}
+        selected={primaryMarket}
+        selectedIds={markets}
+        title="Markets to trade"
       />
 
       {/*
@@ -640,7 +773,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               <span>Vault-ready examples</span>
               <ChevronDown className="h-4 w-4 text-zinc-600 transition-transform group-open:rotate-180" aria-hidden />
             </summary>
-            <div className="grid grid-cols-1 gap-1.5 border-t border-white/[0.06] p-2 sm:grid-cols-2">
+            <div className="flex gap-1.5 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap overscroll-x-contain border-t border-white/[0.06] py-2 sm:overflow-x-visible">
               {SEALED_CATALOG.map((strategy) => {
                 const active = !usingCustom && strategy.id === strategyId;
                 return (
@@ -654,7 +787,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                     disabled={busy}
                     aria-pressed={active}
                     className={cn(
-                      "rounded-[10px] border px-3 py-2 text-left disabled:opacity-40",
+                      "w-[210px] shrink-0 rounded-[10px] border px-3 py-2 text-left disabled:opacity-40 sm:w-[calc(50%-0.1875rem)]",
                       active
                         ? "border-accent/35 bg-accent/[0.06]"
                         : "border-transparent bg-white/[0.02] hover:border-white/[0.08]",
@@ -704,10 +837,15 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
           {/* The code window — the centrepiece, at full width. */}
           {usingCustom ? (
-            <div>
+            <div className="min-w-0">
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="font-display text-[12px] font-semibold text-zinc-300">
-                  {importedScript ? importedScript.title : "Your PineScript"}
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-[12px] font-semibold text-zinc-300">
+                    {importedScript ? importedScript.title : "Your PineScript"}
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[9px] text-zinc-600">
+                    {customPine.replace(/\n$/, "").split("\n").length.toLocaleString()} lines · {customPine.length.toLocaleString()} characters
+                  </span>
                 </span>
                 <div className="flex items-center gap-3">
                   {importedScript && (
@@ -722,9 +860,17 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   )}
                   <button
                     type="button"
+                    onClick={() => setEditingSource((value) => !value)}
+                    className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
+                  >
+                    {editingSource ? "Done" : "Edit"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       setCustomPine("");
                       setImportedScript(null);
+                      setEditingSource(false);
                     }}
                     className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
                   >
@@ -732,18 +878,26 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   </button>
                 </div>
               </div>
-              <textarea
-                value={customPine}
-                onChange={(e) => {
-                  setCustomPine(e.target.value);
-                  setCommitInfo(null);
-                }}
-                disabled={busy}
-                spellCheck={false}
-                rows={20}
-                aria-label="PineScript source"
-                className="w-full resize-y rounded-[16px] border border-white/[0.06] bg-[#0d0d0d] p-4 font-mono text-[12px] leading-[1.7] text-zinc-200 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
-              />
+              {editingSource ? (
+                <textarea
+                  value={customPine}
+                  onChange={(e) => {
+                    setCustomPine(e.target.value);
+                    setCommitInfo(null);
+                  }}
+                  disabled={busy}
+                  spellCheck={false}
+                  rows={24}
+                  aria-label="PineScript source"
+                  className="w-full resize-y rounded-[16px] border border-white/[0.06] bg-[#0d0d0d] p-4 font-mono text-[12px] leading-[1.7] text-zinc-200 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
+                />
+              ) : (
+                <CodeBlock
+                  code={customPine}
+                  filename={`${importedScript?.title ?? "custom"}.pine`}
+                  maxHeight={520}
+                />
+              )}
             </div>
           ) : (
             selected && (
@@ -790,21 +944,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               </Reveal>
             )}
           </AnimatePresence>
-
-          {/* Behaviour preview — what this strategy does on real candles. */}
-          {effectivePine && (
-            <div className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
-              {/* The chart sizes itself down on a phone rather than being cropped — see
-                  PineVisualPreview. Cropping removed the time axis, which is the part that
-                  makes the candles mean anything. */}
-              <div>
-                <PineVisualPreview
-                  asset={primaryMarket}
-                  pineScript={effectivePine}
-                />
-              </div>
-            </div>
-          )}
 
           {/* Measure it before paying to launch it. Runs the same evaluator the
               attestor uses, priced with the same fees the vault will be charged. */}
@@ -859,59 +998,35 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 changes which contract the vault runs on and what it can do. */}
             {config && config.markets.length > 0 && (
               <div className={cn(SURFACE_CARD_SOLID, "p-3.5")}>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="font-display text-[13px] font-semibold text-white">
-                    Markets to trade
-                  </h3>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const all = config.markets.map((m) => m.name);
-                      // Toggle, so the shortcut can undo itself. Never empty — a vault with no
-                      // market cannot be created, and an empty selection would fail at the
-                      // signature rather than here.
-                      setMarkets(markets.length === all.length ? [all[0]] : all);
-                      setCommitInfo(null);
-                    }}
-                    className="text-[12px] text-zinc-400 transition-colors hover:text-white disabled:opacity-40"
-                  >
-                    {markets.length === config.markets.length ? "Just one" : "Select all"}
-                  </button>
+                <div>
+                  <h3 className="font-display text-[13px] font-semibold text-white">Markets to trade</h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                    Choose one market or build a portfolio bot. Preview every Decibel market above.
+                  </p>
                 </div>
-
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {config.markets.map((m) => {
-                    const on = markets.includes(m.name);
-                    return (
-                      <button
-                        key={m.addr}
-                        type="button"
-                        role="checkbox"
-                        aria-checked={on}
-                        disabled={busy}
-                        onClick={() => {
-                          setMarkets((prev) => {
-                            if (!prev.includes(m.name)) return [...prev, m.name];
-                            // Refuse to deselect the last one rather than allowing an
-                            // unlaunchable state and explaining it afterwards.
-                            if (prev.length === 1) return prev;
-                            return prev.filter((x) => x !== m.name);
-                          });
-                          setCommitInfo(null);
-                        }}
-                        className={cn(
-                          "rounded-[10px] border px-2.5 py-1.5 font-mono text-[12px] transition-colors disabled:opacity-40",
-                          on
-                            ? "border-accent/60 bg-accent/10 text-accent"
-                            : "border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:text-white",
-                        )}
-                      >
-                        {m.name.replace("/USD", "")}
-                      </button>
-                    );
-                  })}
-                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setExecutionMarketOpen(true)}
+                  className="mt-3 flex w-full items-center gap-2.5 rounded-[11px] border border-white/[0.08] bg-[#171717] px-3 py-2.5 text-left transition-colors hover:border-white/[0.16] hover:bg-[#1b1b1b] disabled:opacity-40"
+                >
+                  <span className="flex -space-x-1.5">
+                    {markets.slice(0, 3).map((market) => (
+                      <span className="rounded-full border-2 border-[#171717]" key={market}>
+                        <MarketLogo market={market} size={24} />
+                      </span>
+                    ))}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-display text-[12px] font-semibold text-zinc-100">
+                      {markets.length === 1 ? markets[0] : `${markets.length} markets selected`}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-[9px] text-zinc-600">
+                      {executionMarketOptions.length} launch-ready · crypto
+                    </span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
+                </button>
 
                 {isPortfolio ? (
                   <div className="mt-2.5 border-t border-white/[0.06] pt-2.5">

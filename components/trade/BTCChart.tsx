@@ -148,7 +148,7 @@ function getLiquidationLinePosition(price: number, range: { min: number; max: nu
 
 /* ─── Market data ───────────────────────────────────── */
 
-interface Market {
+export interface Market {
   id: string;
   label: string;
   pair: string;
@@ -368,7 +368,7 @@ const CRYPTO_SYMBOLS = new Set([
   "ZRO",
 ]);
 
-interface DecibelApiMarket {
+export interface DecibelApiMarket {
   name: string;
   address: string;
   markPrice: number | null;
@@ -466,7 +466,7 @@ function toPerpMarketData(market: DecibelApiMarket): PerpMarketData {
   };
 }
 
-function apiMarketToMarket(market: DecibelApiMarket): Market {
+export function apiMarketToMarket(market: DecibelApiMarket): Market {
   const perpData = toPerpMarketData(market);
   return {
     id: market.name,
@@ -533,7 +533,7 @@ function mergeMarketsWithFallback(apiMarkets: Market[], network: DecibelPublicNe
     : sortMarkets([...getFallbackMarketsForNetwork(network)]);
 }
 
-function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
+export function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
   const logo = TOKEN_LOGOS[market] ?? TOKEN_LOGOS[getBaseSymbol(market)];
   if (logo) {
     return (
@@ -554,22 +554,40 @@ function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
 
 /* ─── Market selector modal ────────────────────────── */
 
-function MarketModal({
+export function MarketModal({
   open,
   selected,
+  selectedIds,
+  multiple = false,
   onSelect,
+  onToggle,
+  onSelectAll,
   onClose,
   markets: marketsList = MARKETS,
   categories: categoriesList = CATEGORIES,
+  disabledIds = [],
+  title = "Select market",
+  description,
+  allLabel = "All Decibel markets",
+  allDescription = "Crypto, stocks, and commodities",
   loading = false,
   network,
 }: {
   open: boolean;
   selected: string;
+  selectedIds?: string[];
+  multiple?: boolean;
   onSelect: (id: string) => void;
+  onToggle?: (id: string) => void;
+  onSelectAll?: () => void;
   onClose: () => void;
   markets?: Market[];
   categories?: readonly { key: MarketCategory; label: string }[];
+  disabledIds?: string[];
+  title?: string;
+  description?: string;
+  allLabel?: string;
+  allDescription?: string;
   loading?: boolean;
   network: DecibelPublicNetwork;
 }) {
@@ -593,6 +611,9 @@ function MarketModal({
     () => categoriesList.find((category) => category.key === activeCategory)?.label ?? "Markets",
     [activeCategory, categoriesList],
   );
+  const activeIds = multiple ? (selectedIds ?? []) : [selected];
+  const selectableMarkets = marketsList.filter((market) => !disabledIds.includes(market.id));
+  const allSelected = selectableMarkets.length > 0 && selectableMarkets.every((market) => activeIds.includes(market.id));
 
   // Lock body scroll + escape key
   useEffect(() => {
@@ -633,6 +654,25 @@ function MarketModal({
 
   const marketContent = (
     <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
+      {multiple && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={allSelected}
+          onClick={onSelectAll}
+          className="mb-3 flex w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left transition-colors hover:border-white/[0.16] hover:bg-white/[0.045]"
+        >
+          <span>
+            <span className="block font-display text-[13px] font-semibold text-zinc-100">{allLabel}</span>
+            <span className="mt-0.5 block text-[10px] text-zinc-500">{allDescription}</span>
+          </span>
+          <span className={`flex h-5 w-5 items-center justify-center rounded-[5px] border ${
+            allSelected ? "border-accent bg-accent text-black" : "border-white/[0.18] bg-black text-transparent"
+          }`}>
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        </button>
+      )}
       <div className="flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
         {categoriesList.map((tab) => (
           <button
@@ -673,7 +713,8 @@ function MarketModal({
           </div>
           <div className="flex flex-col gap-0.5">
             {filteredMarkets.map((market) => {
-              const isActive = market.id === selected;
+              const isActive = activeIds.includes(market.id);
+              const isDisabled = disabledIds.includes(market.id);
               const mark = market.perpData?.seedPrice ?? 0;
               const fundingText =
                 market.fundingRateBps == null
@@ -684,12 +725,19 @@ function MarketModal({
                   key={market.id}
                   type="button"
                   aria-pressed={isActive}
+                  disabled={isDisabled}
                   onClick={() => {
-                    onSelect(market.id);
-                    onClose();
+                    if (multiple) {
+                      onToggle?.(market.id);
+                    } else {
+                      onSelect(market.id);
+                      onClose();
+                    }
                   }}
                   className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
-                    isActive
+                    isDisabled
+                      ? "cursor-not-allowed text-[#444] opacity-55"
+                      : isActive
                       ? "bg-white/[0.05] text-white"
                       : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
                   }`}
@@ -706,6 +754,9 @@ function MarketModal({
                     </span>
                     {isActive && (
                       <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
+                    )}
+                    {isDisabled && (
+                      <span className="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-600">Preview only</span>
                     )}
                   </span>
                   <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
@@ -741,6 +792,17 @@ function MarketModal({
         )}
         <div className="h-3" />
       </div>
+      {multiple && (
+        <div className="sticky bottom-0 border-t border-white/[0.07] bg-[#101010] pt-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-[10px] bg-accent px-4 py-2.5 font-display text-[13px] font-semibold text-black"
+          >
+            Done · {activeIds.length} selected
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -749,8 +811,8 @@ function MarketModal({
       <MobileModalSheet
         open={open}
         onClose={onClose}
-        title="Select market"
-        description={`${network} markets`}
+        title={title}
+        description={description ?? `${network} markets`}
         titleId="market-selector-title"
       >
         {marketContent}
@@ -773,7 +835,7 @@ function MarketModal({
           <header className="flex items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
-              <span id="market-selector-title-desktop">SELECT MARKET</span>
+              <span id="market-selector-title-desktop">{title.toUpperCase()}</span>
               <span className="rounded bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-400">
                 {network}
               </span>
@@ -801,7 +863,6 @@ function MarketModal({
 /* ─── Chart component ──────────────────────────────── */
 
 export { MARKETS as DEFAULT_MARKETS, CATEGORIES as DEFAULT_CATEGORIES };
-export type { Market };
 
 export function BTCChart({
   initialHistory = EMPTY_HISTORY,

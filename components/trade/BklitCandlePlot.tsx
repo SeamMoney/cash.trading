@@ -44,6 +44,17 @@ export type BklitPlotFill = {
   lowerData: Array<{ time: number; value: number }>;
 };
 
+export type BklitPlotZone = {
+  id: string;
+  startTime: number;
+  endTime: number;
+  low: number;
+  high: number;
+  color: string;
+  label?: string;
+  opacity?: number;
+};
+
 type BklitCandlePlotProps = {
   candles: BklitPlotCandle[];
   currentPrice?: number;
@@ -53,6 +64,7 @@ type BklitCandlePlotProps = {
   lines?: BklitPlotLine[];
   markers?: BklitPlotMarker[];
   priceDecimals: number;
+  zones?: BklitPlotZone[];
 };
 
 type PlotPoint = BklitPlotCandle & { date: Date };
@@ -210,6 +222,49 @@ function PlotFills({ fills }: { fills: BklitPlotFill[] }) {
   );
 }
 
+function PlotZones({ zones }: { zones: BklitPlotZone[] }) {
+  const { innerHeight, innerWidth, xScale, yScale } = useChartStable();
+  return (
+    <g aria-hidden="true" className="pointer-events-none font-mono">
+      {zones.map((zone) => {
+        const rawX1 = xScale(new Date(zone.startTime * 1000));
+        const rawX2 = xScale(new Date(zone.endTime * 1000));
+        const rawY1 = yScale(zone.high);
+        const rawY2 = yScale(zone.low);
+        if ([rawX1, rawX2, rawY1, rawY2].some((value) => value == null)) return null;
+        const x1 = Math.max(0, Math.min(innerWidth, rawX1!));
+        const x2 = Math.max(0, Math.min(innerWidth, rawX2!));
+        const y1 = Math.max(0, Math.min(innerHeight, rawY1!));
+        const y2 = Math.max(0, Math.min(innerHeight, rawY2!));
+        const x = Math.min(x1, x2);
+        const y = Math.min(y1, y2);
+        const width = Math.max(1, Math.abs(x2 - x1));
+        const height = Math.max(1, Math.abs(y2 - y1));
+        return (
+          <g key={zone.id}>
+            <rect
+              fill={zone.color}
+              fillOpacity={zone.opacity ?? 0.1}
+              height={height}
+              stroke={zone.color}
+              strokeDasharray="3 3"
+              strokeOpacity={0.45}
+              width={width}
+              x={x}
+              y={y}
+            />
+            {zone.label && width > 42 && (
+              <text fill={zone.color} fontSize={8} fontWeight={700} x={x + 5} y={y + 12}>
+                {zone.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
   const { innerHeight, xScale, yScale } = useChartStable();
   return (
@@ -333,6 +388,7 @@ function BklitCandlePlotComponent({
   lines = [],
   markers = [],
   priceDecimals,
+  zones = [],
 }: BklitCandlePlotProps) {
   const points = useMemo<PlotPoint[]>(() => candles.map((candle) => ({
     ...candle,
@@ -387,6 +443,7 @@ function BklitCandlePlotComponent({
       >
         <Background pattern="dots" opacity={0.85} extendTop={40} />
         <PlotVolume />
+        <PlotZones zones={zones} />
         <PlotFills fills={fills} />
         <Candlestick
           bodyStrokeWidth={1.25}

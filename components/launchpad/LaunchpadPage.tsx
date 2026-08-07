@@ -590,7 +590,7 @@ export function LaunchpadPage() {
                     ? "border-white text-white"
                     : "border-transparent text-[#888] hover:text-zinc-300",
                 )}>
-                {t === "launch" ? "Launch a Bot" : t === "vaults" ? "Invest" : "Manage"}
+                {t === "launch" ? "Build a Bot" : t === "vaults" ? "Invest in Bots" : "Manage"}
               </button>
             ))}
           </div>
@@ -600,7 +600,7 @@ export function LaunchpadPage() {
             <div className="animate-enter-delay-1">
               <div className="mb-4">
                 <h2 className="font-display text-[18px] font-bold text-white sm:text-[22px]">
-                  Launch a strategy as an automated bot
+                  Build your own automated trading bot
                 </h2>
                 {/* The full pitch is desktop-only: on a phone it pushed the first real control
                     below the fold to restate what the tab already said. */}

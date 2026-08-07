@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CandlestickChart,
@@ -27,6 +27,7 @@ import type {
   TradingViewSourceResponse,
 } from "@/lib/launchpad/tradingview-source";
 import { cn } from "@/lib/utils";
+import { PineVisualPreview } from "./PineVisualPreview";
 
 export interface PineMarketplaceSelection {
   source: string;
@@ -36,9 +37,12 @@ export interface PineMarketplaceSelection {
 }
 
 interface Props {
+  activeSelection?: PineMarketplaceSelection | null;
   disabled?: boolean;
   market: string;
+  marketControl?: ReactNode;
   onUse: (selection: PineMarketplaceSelection) => void;
+  preview?: ReactNode;
 }
 
 type DetailTab = "chart" | "source" | "logs";
@@ -140,66 +144,48 @@ function PopularCard({
   compact?: boolean;
 }) {
   return (
-    <article className="group min-w-0">
+    <article className="group min-w-0 rounded-[12px] border border-white/[0.07] bg-[#111] transition-colors hover:border-white/[0.14] hover:bg-[#151515]">
       <button
         type="button"
         onClick={onOpen}
-        className="block w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+        className="block w-full rounded-[12px] p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 sm:p-4"
       >
-        <span className="relative block aspect-video overflow-hidden rounded-[12px] border border-white/[0.08] bg-[#080808]">
-          {item.imageUrl ? (
-            // TradingView serves these public preview assets from its own image host.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.imageUrl}
-              alt={`${item.title} chart preview`}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.015] group-hover:opacity-90"
-            />
-          ) : (
-            <span className="flex h-full items-center justify-center text-zinc-700">
-              <CandlestickChart className="h-8 w-8" aria-hidden />
+        <span className="flex items-start justify-between gap-3">
+          <span className="min-w-0">
+            <span className="block font-display text-[14px] font-semibold leading-snug text-white group-hover:text-accent">
+              {item.title}
             </span>
-          )}
-          <span className="absolute right-2 top-2 rounded-[6px] border border-white/10 bg-black/75 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-200 backdrop-blur">
+            <span className="mt-1 block truncate font-mono text-[10px] text-zinc-600">by {item.author}</span>
+          </span>
+          <span className="shrink-0 rounded-[6px] border border-white/10 bg-white/[0.035] px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
             {item.scriptType}
           </span>
         </span>
-        <span className="mt-2.5 block font-display text-[14px] font-semibold leading-snug text-white group-hover:text-accent">
-          {item.title}
+        <span className={cn("mt-3 block text-[12px] leading-relaxed text-zinc-400", compact ? "line-clamp-2" : "line-clamp-3")}>
+          {item.description}
         </span>
-        {!compact && (
-          <span className="mt-1 line-clamp-2 block text-[12px] leading-relaxed text-zinc-400">
-            {item.description}
-          </span>
-        )}
+        <span className="mt-3 flex min-w-0 items-center gap-4 border-t border-white/[0.05] pt-2.5 font-mono text-[10px] text-zinc-600">
+          <span className="inline-flex items-center gap-1"><MessageSquare className="h-3 w-3" aria-hidden />{item.comments}</span>
+          <span className="inline-flex items-center gap-1"><Rocket className="h-3 w-3" aria-hidden />{item.boosts.toLocaleString()}</span>
+          <span className="ml-auto text-zinc-400 group-hover:text-white">Open →</span>
+        </span>
       </button>
-      <div className="mt-2 flex min-w-0 items-center justify-between gap-3 font-mono text-[10px] text-zinc-600">
-        <a
-          href={item.authorUrl ?? item.url}
-          target="_blank"
-          rel="noreferrer"
-          className="truncate hover:text-zinc-300"
-        >
-          by {item.author}
-        </a>
-        <span className="flex shrink-0 items-center gap-2.5">
-          <span className="inline-flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" aria-hidden />
-            {item.comments}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Rocket className="h-3 w-3" aria-hidden />
-            {item.boosts.toLocaleString()}
-          </span>
-        </span>
-      </div>
     </article>
   );
 }
 
-export function PineMarketplace({ disabled, market, onUse }: Props) {
+function ChevronIndicator() {
+  return <span aria-hidden className="shrink-0 font-mono text-[16px] text-zinc-600">⌄</span>;
+}
+
+export function PineMarketplace({
+  activeSelection,
+  disabled,
+  market,
+  marketControl,
+  onUse,
+  preview,
+}: Props) {
   const [items, setItems] = useState<TradingViewPopularScript[]>([]);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(true);
@@ -324,67 +310,54 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
 
   const useSelected = useCallback(() => {
     if (!selected || !source) return;
-    onUse({ source, title: selected.title, url: selected.url, author: selected.author });
     setOpen(false);
+    // Radix restores the document scroll lock after the dialog closes. Hand the selection
+    // back on the next frame so the Launchpad can scroll to the workbench instead of trying
+    // while the page is still fixed in place on mobile Safari.
+    requestAnimationFrame(() => {
+      onUse({ source, title: selected.title, url: selected.url, author: selected.author });
+    });
   }, [onUse, selected, source]);
-
-  const featured = items.slice(0, 3);
 
   return (
     <>
-      <section className="mb-4 overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#101010]">
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/[0.06] px-4 py-3.5">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-accent shadow-[0_0_12px_rgba(57,255,20,0.5)]" />
-              <h2 className="font-display text-[15px] font-semibold text-white">Popular Pine scripts</h2>
-            </div>
-            <p className="mt-1 text-[12px] text-zinc-500">Live from TradingView · source stays credited to its author</p>
-          </div>
+      <section className="mb-4 overflow-hidden rounded-[16px] border border-white/[0.07] bg-[#0d0d0d]">
+        <div className="flex flex-col gap-3 border-b border-white/[0.07] p-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <button
             type="button"
             onClick={showGallery}
             disabled={disabled || items.length === 0}
-            className="rounded-[10px] border border-white/[0.1] bg-white/[0.04] px-3 py-2 font-display text-[12px] font-semibold text-zinc-200 hover:border-white/20 hover:bg-white/[0.07] disabled:opacity-40"
+            className="flex min-w-0 items-center gap-3 rounded-[12px] border border-white/[0.09] bg-[#171717] px-3 py-2.5 text-left transition-colors hover:border-accent/35 hover:bg-[#1b1b1b] disabled:opacity-40 sm:max-w-[520px] sm:flex-1"
           >
-            Browse all {items.length || ""}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-accent/10 text-accent">
+              <CandlestickChart className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Indicator</span>
+              <span className="mt-0.5 block truncate font-display text-[13px] font-semibold text-white">
+                {activeSelection?.title ?? "Choose a public Pine strategy"}
+              </span>
+              <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">
+                {activeSelection ? `by ${activeSelection.author} · source loaded` : `${items.length || "Popular"} TradingView scripts`}
+              </span>
+            </span>
+            <ChevronIndicator />
+          </button>
+          {marketControl}
+        </div>
+        {preview ?? (
+          <div className="flex h-[300px] items-center justify-center font-mono text-[11px] text-zinc-600">
+            {loadingFeed ? "Loading public scripts…" : feedError ?? "Choose an indicator to preview it"}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] bg-[#101010] px-3 py-2.5 sm:px-4">
+          <p className="min-w-0 truncate font-mono text-[9px] text-zinc-600">
+            Decibel history · trade chart renderer · Pine overlays
+          </p>
+          <button type="button" onClick={showGallery} className="shrink-0 font-display text-[11px] font-semibold text-zinc-300 hover:text-white">
+            Browse indicators
           </button>
         </div>
-
-        {items.length > 0 && (
-          <div className="relative border-b border-white/[0.06]">
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain px-4 py-2.5 pr-16">
-              {items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => openScript(item)}
-                  className="shrink-0 rounded-full border border-white/[0.08] bg-[#171717] px-3 py-1.5 font-display text-[11px] font-semibold text-zinc-300 hover:border-accent/35 hover:text-white disabled:opacity-40"
-                >
-                  {item.title}
-                </button>
-              ))}
-            </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-[#101010] to-transparent" />
-          </div>
-        )}
-
-        {loadingFeed ? (
-          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
-            {[0, 1, 2].map((key) => (
-              <div key={key} className="aspect-video animate-pulse rounded-[12px] bg-white/[0.04]" />
-            ))}
-          </div>
-        ) : feedError ? (
-          <p className="px-4 py-3 font-mono text-[11px] text-amber-300/80">{feedError}</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
-            {featured.map((item) => (
-              <PopularCard key={item.id} item={item} onOpen={() => openScript(item)} compact />
-            ))}
-          </div>
-        )}
       </section>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -420,7 +393,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                 <span className="rounded-[10px] border border-white/[0.12] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-300">Public scripts</span>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7">
-                <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {items.map((item) => (
                     <PopularCard key={item.id} item={item} onOpen={() => openScript(item)} />
                   ))}
@@ -508,9 +481,9 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                       type="button"
                       onClick={useSelected}
                       disabled={!source || loadingSource || disabled}
-                      className="h-9 rounded-[10px] bg-accent px-4 font-display text-[12px] font-semibold text-black hover:brightness-95 disabled:opacity-40"
+                      className="h-9 rounded-[10px] bg-accent px-4 font-display text-[12px] font-semibold text-black shadow-[0_0_0_1px_rgba(116,255,69,0.18)] hover:brightness-95 disabled:cursor-wait disabled:bg-white/10 disabled:text-zinc-500 disabled:shadow-none"
                     >
-                      Use in editor
+                      {loadingSource ? "Loading full source…" : "Use in editor"}
                     </button>
                   </div>
                 </div>
@@ -523,17 +496,14 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                 {tab === "chart" && (
                   <div role="tabpanel" className="mx-auto flex min-h-full w-full max-w-[1480px] flex-col gap-4">
                     <section className="overflow-hidden rounded-[14px] border border-white/[0.08] bg-black">
-                      <div className="flex h-[42dvh] min-h-[240px] max-h-[360px] w-full items-center justify-center bg-black sm:h-[58dvh] sm:min-h-[420px] sm:max-h-[680px]">
-                        {selected.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={selected.imageUrl}
-                            alt={`${selected.title} TradingView chart`}
-                            referrerPolicy="no-referrer"
-                            className="h-full w-full object-contain"
-                          />
+                      <div className="w-full bg-black">
+                        {source ? (
+                          <PineVisualPreview asset={market} pineScript={source} title={selected.title} />
                         ) : (
-                          <CandlestickChart className="h-12 w-12 text-zinc-700" aria-hidden />
+                          <div className="flex h-[300px] items-center justify-center gap-2 font-mono text-[11px] text-zinc-600 sm:h-[480px]">
+                            {loadingSource && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                            {sourceError ?? "Loading full Pine source…"}
+                          </div>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 sm:px-4">
@@ -674,9 +644,9 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                   type="button"
                   onClick={useSelected}
                   disabled={!source || loadingSource || disabled}
-                  className="flex-[1.4] rounded-[10px] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-black disabled:opacity-40"
+                  className="flex-[1.4] rounded-[10px] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-black shadow-[0_0_0_1px_rgba(116,255,69,0.18)] disabled:cursor-wait disabled:bg-white/10 disabled:text-zinc-500 disabled:shadow-none"
                 >
-                  Use in editor
+                  {loadingSource ? "Loading full source…" : "Use in editor"}
                 </button>
               </div>
             </div>

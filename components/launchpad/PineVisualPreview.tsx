@@ -7,7 +7,9 @@ import {
   type BklitPlotFill,
   type BklitPlotLine,
   type BklitPlotMarker,
+  type BklitPlotZone,
 } from "@/components/trade/BklitCandlePlot";
+import { buildIndicatorVisualEffects } from "@/lib/launchpad/indicator-effects";
 import { runOwnRuntime, runPineTS, type PineTSPlot, type PineTSResult } from "@/lib/launchpad/pinets-runner";
 import type { Candle } from "@/lib/launchpad/types";
 
@@ -73,15 +75,28 @@ interface PaneSpec {
 }
 
 interface Layers {
+  adapted: boolean;
+  dashboard: Array<{ label: string; value: string; tone?: "positive" | "negative" | "neutral" }>;
   fills: BklitPlotFill[];
   lines: BklitPlotLine[];
   markers: BklitPlotMarker[];
   levels: Array<{ id: string; price: number; color: string }>;
   panes: PaneSpec[];
   legend: Array<{ title: string; color: string; pane: string }>;
+  zones: BklitPlotZone[];
 }
 
-const EMPTY: Layers = { fills: [], lines: [], markers: [], levels: [], panes: [], legend: [] };
+const EMPTY: Layers = {
+  adapted: false,
+  dashboard: [],
+  fills: [],
+  lines: [],
+  markers: [],
+  levels: [],
+  panes: [],
+  legend: [],
+  zones: [],
+};
 
 /** A vault fill, so the chart shows what the strategy actually did with real money. */
 export interface PreviewTrade {
@@ -95,6 +110,8 @@ function buildLayers(
   result: PineTSResult | null,
   candles: Candle[],
   trades: PreviewTrade[],
+  source: string,
+  title?: string,
 ): Layers {
   if (candles.length === 0) return EMPTY;
 
@@ -171,6 +188,28 @@ function buildLayers(
       opacity: 0.14,
       upperData: pairs.map((p) => ({ time: p.time, value: Math.max(p.first, p.second) })),
       lowerData: pairs.map((p) => ({ time: p.time, value: Math.min(p.first, p.second) })),
+    }];
+  });
+
+  // Pine `box.new()` objects are price/time regions, not screenshots. Keeping them as live
+  // chart geometry means order blocks, liquidity zones and risk/reward areas move and scale
+  // with the same candles as every other overlay.
+  const zones: BklitPlotZone[] = (result?.boxes ?? []).slice(-80).flatMap((box, index) => {
+    const startTime = Math.min(box.left, box.right);
+    const endTime = Math.max(box.left, box.right);
+    const low = Math.min(box.top, box.bottom);
+    const high = Math.max(box.top, box.bottom);
+    if (![startTime, endTime, low, high].every(Number.isFinite)
+      || startTime <= 0 || endTime <= startTime || low <= 0 || high <= low) return [];
+    return [{
+      id: `pine-box-${startTime}-${index}`,
+      startTime,
+      endTime,
+      low,
+      high,
+      color: colorString(box.borderColor) ?? colorString(box.backgroundColor) ?? "#4da3ff",
+      label: box.text || undefined,
+      opacity: 0.09,
     }];
   });
 
@@ -262,7 +301,34 @@ function buildLayers(
     });
   }
 
-  return { fills, lines, markers, levels, panes, legend };
+  const visual = buildIndicatorVisualEffects({ candles, source, title: title ?? result?.indicatorTitle });
+  const runtimeMarks = lines.length + fills.length + markers.length
+    + zones.length
+    + panes.reduce((count, pane) => count + pane.lines.length + (pane.histogram ? 1 : 0), 0);
+  const enrich = visual.family === "liquidity"
+    || visual.family === "structure"
+    || runtimeMarks < 2;
+
+  if (enrich) {
+    lines.push(...visual.lines);
+    fills.push(...visual.fills);
+    markers.push(...visual.markers);
+    panes.push(...visual.panes);
+    zones.push(...visual.zones);
+    legend.push(...visual.legend.map((item) => ({ ...item, pane: "price" })));
+  }
+
+  return {
+    adapted: enrich,
+    dashboard: enrich ? visual.dashboard : [],
+    fills,
+    lines,
+    markers,
+    levels,
+    panes,
+    legend,
+    zones,
+  };
 }
 
 interface Props {
@@ -271,9 +337,11 @@ interface Props {
   trades?: PreviewTrade[];
   /** Override the auto-detected feed — a vault knows its own market. */
   asset?: string;
+  /** The marketplace title improves visual-family detection for complex public scripts. */
+  title?: string;
 }
 
-export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: Props) {
+export function PineVisualPreview({ pineScript, trades, asset: assetOverride, title }: Props) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(false);
   const [pineTSResult, setPineTSResult] = useState<PineTSResult | null>(null);
@@ -295,23 +363,34 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
     setCandles([]);
     setPineTSResult(null);
 
-    void fetch(
-      `/api/launchpad/candles?asset=${encodeURIComponent(asset)}&resolution=60&days=7`,
-      { signal: controller.signal },
-    )
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Candle history returned ${response.status}`);
-        return response.json() as Promise<{ candles?: Array<Record<string, number>> }>;
-      })
+    const fetchHistory = async () => {
+      const decibel = await fetch(
+        `/api/decibel/candlesticks?market=${encodeURIComponent(asset)}&interval=1h&bars=168`,
+        { signal: controller.signal },
+      );
+      if (decibel.ok) {
+        const payload = await decibel.json() as { candles?: Array<Record<string, number>> };
+        if (Array.isArray(payload.candles) && payload.candles.length > 0) return payload;
+      }
+      const fallback = await fetch(
+        `/api/launchpad/candles?asset=${encodeURIComponent(asset)}&resolution=60&days=7`,
+        { signal: controller.signal },
+      );
+      if (!fallback.ok) throw new Error(`Candle history returned ${fallback.status}`);
+      return fallback.json() as Promise<{ candles?: Array<Record<string, number>> }>;
+    };
+
+    void fetchHistory()
       .then((data) => {
         if (controller.signal.aborted || !Array.isArray(data.candles)) return;
         const valid = data.candles.flatMap((candle) => {
-          const timestamp = Number(candle.timestamp ?? candle.time);
-          const open = Number(candle.open);
-          const high = Number(candle.high);
-          const low = Number(candle.low);
-          const close = Number(candle.close);
-          const volume = Number(candle.volume ?? 0);
+          const rawTimestamp = Number(candle.timestamp ?? candle.time ?? candle.t);
+          const timestamp = rawTimestamp > 10_000_000_000 ? Math.floor(rawTimestamp / 1_000) : Math.floor(rawTimestamp);
+          const open = Number(candle.open ?? candle.o);
+          const high = Number(candle.high ?? candle.h);
+          const low = Number(candle.low ?? candle.l);
+          const close = Number(candle.close ?? candle.c);
+          const volume = Number(candle.volume ?? candle.v ?? 0);
           if (
             !Number.isSafeInteger(timestamp)
             || timestamp <= 0
@@ -381,15 +460,12 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
   }, [candles, pineScript]);
 
   const layers = useMemo(
-    () => buildLayers(pineTSResult, candles, trades ?? []),
-    [candles, pineTSResult, trades],
+    () => buildLayers(pineTSResult, candles, trades ?? [], pineScript, title),
+    [candles, pineScript, pineTSResult, title, trades],
   );
   if (!hasScript) return null;
 
   const latestPrice = candles.at(-1)?.close ?? 0;
-  const drewNothing = !loading && candles.length > 0 && pineTSResult !== null
-    && layers.lines.length === 0 && layers.panes.length === 0 && layers.markers.length === 0;
-
   return (
     <div className="overflow-hidden rounded-lg border border-[#2a2a2a]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2a2a2a] bg-[#181818] px-3 py-1.5">
@@ -399,6 +475,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
         <div className="flex shrink-0 items-center gap-2 font-mono text-[9px] text-zinc-600">
           <span>{asset}</span>
           <span>7d · 1h</span>
+          {layers.adapted && <span className="text-sky-300">visual adapter</span>}
           {loading && <span className="text-amber-400">loading…</span>}
           {error && <span className="text-red-400">error</span>}
         </div>
@@ -443,7 +520,23 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
             lines={layers.lines}
             markers={layers.markers}
             priceDecimals={displayPriceDecimals(latestPrice)}
+            zones={layers.zones}
           />
+        )}
+        {layers.dashboard.length > 0 && (
+          <div className="pointer-events-none absolute right-3 top-3 hidden min-w-[190px] overflow-hidden rounded-[10px] border border-white/[0.1] bg-[#0b0f16]/90 shadow-xl backdrop-blur md:block">
+            <div className="border-b border-white/[0.08] px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+              {title ?? pineTSResult?.indicatorTitle ?? "Indicator state"}
+            </div>
+            <dl className="divide-y divide-white/[0.05] px-3 py-1.5">
+              {layers.dashboard.map((item) => (
+                <div className="flex items-center justify-between gap-4 py-1.5 font-mono text-[9px]" key={item.label}>
+                  <dt className="text-zinc-500">{item.label}</dt>
+                  <dd className={item.tone === "positive" ? "text-accent" : item.tone === "negative" ? "text-red-400" : "text-zinc-200"}>{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         )}
       </div>
 
@@ -456,14 +549,6 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride }: 
           lines={pane.lines}
         />
       ))}
-
-      {drewNothing && (
-        <div className="border-t border-[#2a2a2a] bg-[#111] px-3 py-2 font-mono text-[9px] leading-relaxed text-zinc-500">
-          This script computes its signal but never calls <span className="text-zinc-300">plot()</span>, so
-          there is nothing to draw. Add <span className="text-zinc-300">plot(mySeries, title=&quot;…&quot;)</span> to
-          see it on the chart — plotting is inert to the trading logic and does not change the commitment&apos;s behaviour.
-        </div>
-      )}
 
       {(pineTSResult?.logs.length ?? 0) > 0 && (
         <details className="group border-t border-white/[0.06] bg-[#0d0d0d]">

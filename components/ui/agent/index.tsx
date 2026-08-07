@@ -73,7 +73,13 @@ export function CodeBlock({
     const viewport = viewportRef.current;
     if (!viewport) return;
 
+    // Safari exposes elastic negative scrollLeft while the code pane is pulled past its
+    // starting edge. Clamp it so source always opens at column one and can only travel
+    // toward later columns.
+    viewport.scrollLeft = 0;
+
     const update = () => {
+      if (viewport.scrollLeft < 0) viewport.scrollLeft = 0;
       const next = {
         top: viewport.scrollTop > 2,
         right: viewport.scrollLeft + viewport.clientWidth < viewport.scrollWidth - 2,
@@ -148,10 +154,11 @@ export function CodeBlock({
       <div className="relative">
         <div
           ref={viewportRef}
+          dir="ltr"
           tabIndex={0}
           aria-label={filename ? `${filename} source code` : `${language} source code`}
-          className="overflow-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/20"
-          style={{ maxHeight }}
+          className="overflow-auto overscroll-y-contain overscroll-x-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/20"
+          style={{ maxHeight, overscrollBehaviorX: "none" }}
         >
           <pre className="min-w-full w-max p-3 pb-5 font-mono text-[11px] leading-[1.65] text-zinc-300">
             <code>

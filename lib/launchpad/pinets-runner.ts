@@ -52,11 +52,23 @@ export interface PineTSLine {
   style: string;
 }
 
+/** A Pine `box.new()` drawing projected onto the candle chart. */
+export interface PineTSBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  backgroundColor: string;
+  borderColor: string;
+  text: string;
+}
+
 export interface PineTSResult {
   plots: PineTSPlot[];
   fills: PineTSFill[];
   labels: PineTSLabel[];
   lines: PineTSLine[];
+  boxes: PineTSBox[];
   guides: PineTSGuide[];
   indicatorTitle: string;
   overlay: boolean;
@@ -123,6 +135,7 @@ export function runOwnRuntime(
       fills: pineTSFills,
       labels,
       lines: [],
+      boxes: [],
       guides,
       indicatorTitle,
       overlay,
@@ -166,6 +179,18 @@ export async function runPineTS(
     const fills: PineTSFill[] = [];
     const labels: PineTSLabel[] = [];
     const lines: PineTSLine[] = [];
+    const boxes: PineTSBox[] = [];
+
+    // Pine drawing APIs accept either bar indices or timestamps. Convert both forms into
+    // Unix seconds here so every renderer downstream receives one unambiguous coordinate.
+    const drawingTime = (raw: unknown): number => {
+      const value = Number(raw);
+      if (!Number.isFinite(value)) return 0;
+      if (value > 10_000_000_000) return Math.floor(value / 1_000);
+      if (value > 1_000_000_000) return Math.floor(value);
+      const index = Math.max(0, Math.min(candles.length - 1, Math.round(value)));
+      return candles[index]?.timestamp ?? 0;
+    };
 
     let indicatorTitle = ctx.indicator?.title ?? "Indicator";
     const overlay = ctx.indicator?.overlay ?? true;
@@ -202,15 +227,40 @@ export async function runPineTS(
               if (Array.isArray(bar.value)) {
                 for (const ln of bar.value) {
                   lines.push({
-                    x1: ln.x1 ?? 0,
+                    x1: drawingTime(ln.x1),
                     y1: ln.y1 ?? 0,
-                    x2: ln.x2 ?? 0,
+                    x2: drawingTime(ln.x2),
                     y2: ln.y2 ?? 0,
                     color: ln.color ?? "#ffffff",
                     width: ln.width ?? 1,
                     style: ln.style ?? "solid",
                   });
                 }
+              }
+            }
+          }
+        }
+        if (key === "__boxes__") {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const boxData = (plotObj as any)?.data;
+          if (Array.isArray(boxData)) {
+            for (const bar of boxData) {
+              if (!Array.isArray(bar.value)) continue;
+              for (const bx of bar.value) {
+                const left = drawingTime(bx.left ?? bx.x1);
+                const right = drawingTime(bx.right ?? bx.x2);
+                const top = Number(bx.top ?? bx.y1);
+                const bottom = Number(bx.bottom ?? bx.y2);
+                if (!left || !right || !Number.isFinite(top) || !Number.isFinite(bottom)) continue;
+                boxes.push({
+                  left,
+                  right,
+                  top,
+                  bottom,
+                  backgroundColor: bx.bgcolor ?? bx.background_color ?? "#4da3ff18",
+                  borderColor: bx.border_color ?? "#4da3ff",
+                  text: bx.text ?? "",
+                });
               }
             }
           }
@@ -255,7 +305,7 @@ export async function runPineTS(
       }
     }
 
-    return { plots, fills, labels, lines, guides: [], indicatorTitle, overlay, logs: [] };
+    return { plots, fills, labels, lines, boxes, guides: [], indicatorTitle, overlay, logs: [] };
   } catch (err) {
     // Expected for scripts the PineTS library can't parse — the caller falls
     // back to our own runtime's result, so this is a soft miss, not an error.

@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 
 type ViewportMode = "mobile" | "desktop" | null;
 
@@ -124,7 +125,10 @@ export function ResponsiveModalSheet({
             <button
               type="button"
               aria-label={`Close ${title}`}
-              className="rounded-md p-2 text-[#666] transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              className={cn(
+                "rounded-[var(--radius-sm)] p-2 text-[#666] hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+                PRESSABLE_CONTROL,
+              )}
             >
               <X className="size-3.5" aria-hidden="true" />
             </button>

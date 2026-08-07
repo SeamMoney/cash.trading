@@ -37,6 +37,10 @@ export const SURFACE_CARD_SOLID =
 export const SURFACE_CONTROL =
   "rounded-[var(--radius-sm)] border border-card-border bg-background-secondary";
 
+/** Direct-manipulation feedback shared by buttons, cards and selector rows. */
+export const PRESSABLE_CONTROL =
+  "select-none transition-[background-color,border-color,color,opacity,filter,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none";
+
 /** Inset region: a header strip or footer inside a card. */
 export const SURFACE_INSET = "border-card-border bg-card";
 

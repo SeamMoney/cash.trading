@@ -26,15 +26,16 @@
  * steps are kept and the button restarts from the first incomplete one.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CodeBlock, ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
-import { ActionButton, Banner, Reveal, ValidatedField } from "@/components/ui/interactions";
+import { ActionButton, Banner, Reveal } from "@/components/ui/interactions";
 import {
   PRODUCT_CONTROL_CLASS,
+  PRODUCT_PRESSABLE_CLASS,
   ProductPanel,
   ProductSection,
   ProductSegmented,
@@ -139,6 +140,7 @@ const SEED_CHOICES = [100, 250, 1000];
 
 /** The launch steps, in order. `done` gates resumption. */
 type StepId = "commit" | "vault" | "bind" | "delegate";
+const LAUNCH_STEPS: readonly StepId[] = ["commit", "vault", "bind", "delegate"];
 
 function asTxData(payload: {
   function: string;
@@ -169,6 +171,7 @@ async function postJson(url: string, body: unknown) {
 
 export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const { connected, account, signAndSubmitTransaction } = useWallet();
+  const reducedMotion = useReducedMotion();
 
   const [config, setConfig] = useState<SealedConfig | null>(null);
   const [preflight, setPreflight] = useState<Preflight | null>(null);
@@ -180,7 +183,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [tvUrl, setTvUrl] = useState("");
   const [tvBusy, setTvBusy] = useState(false);
   const [vaultName, setVaultName] = useState(SEALED_CATALOG[0].label);
-  const [nameTouched, setNameTouched] = useState(false);
+  const nameTouched = useRef(false);
   const [isPrivate, setIsPrivate] = useState(true);
   // Default ON: a bot nobody runs is not a bot. The trade-off is stated in full below.
   const [managed, setManaged] = useState(true);
@@ -195,6 +198,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   // portfolio" are the same question asked twice.
   const [markets, setMarkets] = useState<string[]>([]);
   const [marketOptions, setMarketOptions] = useState<Market[]>([]);
+  const [marketOptionsLoading, setMarketOptionsLoading] = useState(true);
   const [previewMarket, setPreviewMarket] = useState("BTC/USD");
   const [marketAccessOpen, setMarketAccessOpen] = useState(false);
   const workbenchRef = useRef<HTMLDivElement>(null);
@@ -236,13 +240,17 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   useEffect(() => {
     const controller = new AbortController();
     const network = config?.network === "testnet" ? "testnet" : "mainnet";
+    setMarketOptionsLoading(true);
     fetch(`/api/decibel/markets?network=${network}`, { signal: controller.signal, cache: "no-store" })
       .then((response) => response.json())
       .then((payload: { markets?: DecibelApiMarket[] }) => {
         if (controller.signal.aborted || !Array.isArray(payload.markets)) return;
         setMarketOptions(payload.markets.map(apiMarketToMarket));
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!controller.signal.aborted) setMarketOptionsLoading(false);
+      });
     return () => controller.abort();
   }, [config?.network]);
 
@@ -336,9 +344,9 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       setStrategyId(s.id);
       setImportedScript(null);
       setCommitInfo(null);
-      if (!nameTouched) setVaultName(s.label);
+      if (!nameTouched.current) setVaultName(s.label);
     },
-    [nameTouched],
+    [],
   );
 
   const useMarketplaceScript = useCallback((script: PineMarketplaceSelection) => {
@@ -348,8 +356,8 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     setTvUrl(script.url);
     setCommitInfo(null);
     setError(null);
-    if (!nameTouched) setVaultName(script.title);
-  }, [nameTouched]);
+    if (!nameTouched.current) setVaultName(script.title);
+  }, []);
 
   useEffect(() => {
     if (!importedScript) return;
@@ -393,13 +401,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       });
       setEditingSource(false);
       setCommitInfo(null);
-      if (!nameTouched) setVaultName(title);
+      if (!nameTouched.current) setVaultName(title);
     } catch (err) {
       setError(err instanceof Error ? err.message : "TradingView import failed");
     } finally {
       setTvBusy(false);
     }
-  }, [tvUrl, nameTouched]);
+  }, [tvUrl]);
 
   /**
    * The whole launch. Resumable: every completed step is remembered, so pressing the button
@@ -625,7 +633,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   ]);
 
   // ── Task states ────────────────────────────────────────────────────────────
-  const ORDER: StepId[] = ["commit", "vault", "bind", "delegate"];
   const doneThrough = delegated
     ? 4
     : svAddr
@@ -636,7 +643,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           ? 1
           : 0;
   const stateFor = (id: StepId): AgentTask["state"] => {
-    const i = ORDER.indexOf(id);
+    const i = LAUNCH_STEPS.indexOf(id);
     if (i < doneThrough) return "done";
     if (step === id) return "active";
     if (error && i === doneThrough) return "failed";
@@ -702,6 +709,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 
       <MarketPermissionsModal
         busy={busy}
+        loading={marketOptionsLoading && executionMarketOptions.length === 0}
         markets={executionMarketOptions}
         onClose={() => setMarketAccessOpen(false)}
         onPreview={setPreviewMarket}
@@ -730,13 +738,18 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 onClick={() => setMarketAccessOpen(true)}
                 disabled={busy}
                 aria-label="Configure bot market access"
+                aria-haspopup="dialog"
+                aria-expanded={marketAccessOpen}
+                aria-busy={marketOptionsLoading && executionMarketOptions.length === 0}
                 className="max-w-[190px] shrink-0 sm:max-w-[260px]"
                 icon={<MarketLogo market={previewMarket} size={24} />}
                 label="Bot market access"
                 value={previewMarket}
-                detail={markets.length === executionMarketOptions.length && markets.length > 1
-                  ? "All approved"
-                  : `${markets.length} approved`}
+                detail={marketOptionsLoading && executionMarketOptions.length === 0
+                  ? "Loading"
+                  : markets.length === executionMarketOptions.length && markets.length > 1
+                    ? "All approved"
+                    : `${markets.length} approved`}
               />
             )}
             onUse={useMarketplaceScript}
@@ -765,7 +778,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               type="button"
               onClick={importTradingView}
               disabled={busy || tvBusy || !tvUrl.trim()}
-              className={cn(PRODUCT_CONTROL_CLASS, "shrink-0 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground transition-colors hover:border-accent/50 disabled:opacity-40")}
+              className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "shrink-0 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground hover:border-accent/50 disabled:pointer-events-none disabled:opacity-40")}
             >
               {tvBusy ? "Fetching…" : "Import"}
             </button>
@@ -791,6 +804,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                     aria-pressed={active}
                     className={cn(
                       "w-[210px] shrink-0 rounded-[var(--radius-sm)] border px-3 py-2 text-left disabled:opacity-40 sm:w-[calc(50%-0.1875rem)]",
+                      PRODUCT_PRESSABLE_CLASS,
                       active
                         ? "border-accent/35 bg-accent/[0.06]"
                         : "border-transparent bg-card hover:border-border-strong hover:bg-card-hover",
@@ -864,7 +878,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   <button
                     type="button"
                     onClick={() => setEditingSource((value) => !value)}
-                    className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
+                    className={cn("text-[12px] text-zinc-400 underline underline-offset-2 hover:text-white", PRODUCT_PRESSABLE_CLASS)}
                   >
                     {editingSource ? "Done" : "Edit"}
                   </button>
@@ -875,7 +889,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                       setImportedScript(null);
                       setEditingSource(false);
                     }}
-                    className="text-[12px] text-zinc-400 underline underline-offset-2 transition-colors hover:text-white"
+                    className={cn("text-[12px] text-zinc-400 underline underline-offset-2 hover:text-white", PRODUCT_PRESSABLE_CLASS)}
                   >
                     Use default
                   </button>
@@ -912,7 +926,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                   <button
                     type="button"
                     onClick={() => setCustomPine(selected.script)}
-                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-white"
+                    className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 hover:bg-white/[0.06] hover:text-white", PRODUCT_PRESSABLE_CLASS)}
                   >
                     Edit
                   </button>
@@ -976,7 +990,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                 id="vault-name"
                 value={vaultName}
                 onChange={(e) => {
-                  setNameTouched(true);
+                  nameTouched.current = true;
                   setVaultName(e.target.value);
                 }}
                 disabled={busy}
@@ -1130,10 +1144,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             )}
 
             {/* Rules */}
-            <details className="overflow-hidden bg-background-secondary">
-              <summary className="cursor-pointer list-none px-4 py-3.5 font-display text-[13px] font-semibold text-foreground-secondary transition-colors hover:text-foreground">
-                Execution settings
-                <span className="ml-1.5 font-normal text-muted-foreground">· defaults applied</span>
+            <details className="group overflow-hidden bg-background-secondary">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3.5 font-display text-[13px] font-semibold text-foreground-secondary transition-colors hover:text-foreground">
+                <span>Execution settings</span>
+                <span className="font-normal text-muted-foreground">· defaults applied</span>
+                <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
               </summary>
               <div className="space-y-3 border-t border-card-border px-4 py-3.5">
                 <Segmented label="Order size" hint="Share of vault NAV per order." options={ORDER_SIZE_CHOICES} value={pctBps} onChange={setPctBps} disabled={busy} />
@@ -1211,11 +1226,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             <AnimatePresence>
               {(busy || started) && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
+                  initial={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(4px)" }}
+                  animate={{ opacity: 1, transform: "none" }}
+                  exit={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(-4px)" }}
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                  className="space-y-3 overflow-hidden"
+                  className="space-y-3"
                 >
                   {step === "commit" && (
                     <ThinkingState label="Compiling your strategy" steps={thinkSteps} />
@@ -1392,6 +1407,7 @@ function Segmented<T extends string | number>({
             onClick={() => onChange(o.value)}
             className={cn(
               "flex-1 rounded-[var(--radius-xs)] px-2 py-1.5 font-mono text-[11px] tabular-nums transition-colors disabled:opacity-50",
+              PRODUCT_PRESSABLE_CLASS,
               o.value === value
                 ? "bg-accent/15 text-accent"
                 : "text-muted-foreground hover:bg-card-hover hover:text-foreground-secondary",
@@ -1425,7 +1441,8 @@ function RailChoice({
       aria-pressed={active}
       className={cn(
         PRODUCT_CONTROL_CLASS,
-        "min-h-10 p-2.5 text-left transition-colors disabled:opacity-50",
+        PRODUCT_PRESSABLE_CLASS,
+        "min-h-10 p-2.5 text-left disabled:pointer-events-none disabled:opacity-50",
         active
           ? "border-accent/50 bg-accent/[0.06]"
           : "hover:border-border-strong hover:bg-card-hover",

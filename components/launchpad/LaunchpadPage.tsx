@@ -13,6 +13,7 @@ import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
+import { PRODUCT_PRESSABLE_CLASS } from "@/components/ui/product-surface";
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 
@@ -108,12 +109,14 @@ function useFlash(value: number): boolean {
   const [flashing, setFlashing] = useState(false);
   const prev = useRef(value);
   useEffect(() => {
-    if (prev.current !== value && prev.current !== 0) {
+    const previous = prev.current;
+    prev.current = value;
+    if (previous !== value && previous !== 0) {
       setFlashing(true);
       const t = setTimeout(() => setFlashing(false), 800);
       return () => clearTimeout(t);
     }
-    prev.current = value;
+    setFlashing(false);
   }, [value]);
   return flashing;
 }
@@ -130,7 +133,7 @@ function timeAgo(ts: number) {
 }
 
 const SIG_LABEL = ["Neutral", "BUY", "SELL"];
-const SIG_DOT   = ["bg-zinc-600", "bg-emerald-400 animate-pulse", "bg-red-400 animate-pulse"];
+const SIG_DOT   = ["bg-zinc-600", "bg-emerald-400 animate-pulse motion-reduce:animate-none", "bg-red-400 animate-pulse motion-reduce:animate-none"];
 const SIG_TEXT  = ["text-zinc-500", "text-emerald-400", "text-red-400"];
 const SIG_CHIP  = [
   "border-[#2a2a2a] text-[#888]",
@@ -140,7 +143,7 @@ const SIG_CHIP  = [
 
 // ─── Left panel: indicator list item ─────────────────────────────────────────
 
-function IndicatorItem({ ind, selected, onClick, index }: { ind: Indicator; selected: boolean; onClick: () => void; index: number }) {
+function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: boolean; onClick: () => void }) {
   // Live strategies read the SAME on-chain state the detail header shows —
   // the seed lastSignal drifted ("SELL 42d ago" row vs "LAST BUY · 94d ago"
   // detail) and contradicted it in both direction and age.
@@ -154,10 +157,11 @@ function IndicatorItem({ ind, selected, onClick, index }: { ind: Indicator; sele
 
   return (
     <button
+      type="button"
       onClick={onClick}
-      style={{ animationDelay: `${Math.min(index, 8) * 0.04}s` }}
       className={cn(
-        "animate-enter w-full text-left px-3 py-2.5 rounded-lg transition-all group",
+        "group w-full rounded-lg px-3 py-2.5 text-left",
+        PRODUCT_PRESSABLE_CLASS,
         selected
           ? "bg-[#202020] border border-[#2a2a2a]"
           : "border border-transparent hover:bg-[#181818] hover:border-[#2a2a2a]",
@@ -240,8 +244,14 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
           </div>
         ))}
       </div>
-      <button onClick={onDeploy}
-        className="mt-8 px-4 py-2.5 rounded-[12px] bg-purple-500 text-white font-display font-bold text-[13px] hover:bg-purple-400 transition-colors tracking-wide">
+      <button
+        type="button"
+        onClick={onDeploy}
+        className={cn(
+          "mt-8 rounded-[var(--radius-sm)] bg-accent px-4 py-2.5 font-display text-[13px] font-bold tracking-wide text-accent-foreground hover:brightness-95",
+          PRODUCT_PRESSABLE_CLASS,
+        )}
+      >
         Deploy your own strategy →
       </button>
     </div>
@@ -273,8 +283,10 @@ function BacktestBar({ ind }: { ind: Indicator }) {
     <>
       <div className="flex items-center justify-between px-5 py-3 border-t border-[#1e1e1e]">
         <button
+          type="button"
           onClick={() => setShowBacktest((v) => !v)}
-          className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 font-mono transition-colors"
+          aria-expanded={showBacktest}
+          className={cn("flex items-center gap-1.5 rounded-[var(--radius-xs)] font-mono text-[11px] text-zinc-500 hover:text-zinc-300", PRODUCT_PRESSABLE_CLASS)}
         >
           <span style={{
             display: "inline-block",
@@ -346,10 +358,11 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
             <p className="text-[12px] text-zinc-600 mt-1 max-w-lg leading-relaxed">{ind.description}</p>
           )}
           <button
+            type="button"
             onClick={onDeployOwn}
-            className="mt-2 text-[11px] font-mono text-emerald-400/80 hover:text-emerald-400 transition-colors"
+            className={cn("mt-2 rounded-[var(--radius-xs)] font-mono text-[11px] text-accent/80 hover:text-accent", PRODUCT_PRESSABLE_CLASS)}
           >
-            Deploy your own strategy from PineScript →
+            Deploy your own strategy from Pine Script →
           </button>
           {/* On-chain provenance — trustless means you can inspect it. Shown
               only for real on-chain vaults (testnet); links are explicit
@@ -377,7 +390,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
         {/* Inline signal — no border box */}
         {sig !== 0 && (
           <div className={cn(
-            "shrink-0 flex flex-col items-end gap-0.5 transition-all duration-200",
+            "flex shrink-0 flex-col items-end gap-0.5 transition-opacity duration-150",
             flashing && "opacity-80",
           )}>
             {(() => {
@@ -568,7 +581,7 @@ export function LaunchpadPage() {
         <main className="relative z-10 mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 
           {/* ── Hero ── */}
-          <div className="mb-4 animate-enter flex items-center justify-between gap-4">
+          <div className="mb-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <h1 className="text-balance font-display text-[20px] font-bold text-foreground sm:text-[24px]">
                 Strategy Marketplace
@@ -583,7 +596,7 @@ export function LaunchpadPage() {
 
           {/* ── Tab bar ── */}
           <Tabs.Root
-            className="mb-6 animate-enter-delay-1"
+            className="mb-6"
             value={tab}
             onValueChange={(value) => setTab(value as Tab)}
           >
@@ -602,7 +615,7 @@ export function LaunchpadPage() {
 
           {/* ── Launch: pick a strategy, name it, ship it ── */}
           {tab === "launch" && (
-            <div className="animate-enter-delay-1">
+            <div>
               <div className="mb-4">
                 <h2 className="text-balance font-display text-[18px] font-bold text-foreground sm:text-[22px]">
                   Build your own automated trading bot
@@ -621,7 +634,7 @@ export function LaunchpadPage() {
 
           {/* ── Sealed Vaults (trader) ── */}
           {tab === "vaults" && (
-            <div className="animate-enter-delay-1 space-y-4">
+            <div className="space-y-4">
               <div className="rounded-[16px] border border-white/[0.06] bg-[#141414] px-5 py-4">
                 <h2 className="font-display text-sm font-semibold text-white">
                   Invest in a private strategy
@@ -639,7 +652,7 @@ export function LaunchpadPage() {
 
           {/* Public indicator feed — lives under Invest, below sealed vaults. */}
           {tab === "vaults" && (
-            <div className="animate-enter-delay-2">
+            <div>
               <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
 
                 {/* Left: list panel — relative wrapper so the panel doesn't inflate the grid row height */}
@@ -654,9 +667,11 @@ export function LaunchpadPage() {
                     <div className="shrink-0 px-3 py-2.5 border-b border-[#2a2a2a] bg-[#181818] space-y-2">
                       <div className="flex gap-0.5 bg-[#111] border border-[#2a2a2a] rounded-lg p-0.5">
                         {(["all", "live", "testing"] as Array<"all" | "live" | "testing">).map((f) => (
-                          <button key={f} onClick={() => setFilter(f)}
+                          <button type="button" key={f} onClick={() => setFilter(f)}
+                            aria-pressed={filter === f}
                             className={cn(
-                              "flex-1 py-1 rounded text-[11px] font-display font-medium transition-colors",
+                              "flex-1 rounded py-1 font-display text-[11px] font-medium",
+                              PRODUCT_PRESSABLE_CLASS,
                               filter === f ? "bg-[#202020] text-white" : "text-[#888] hover:text-zinc-300",
                             )}>
                             {f === "all" ? "All" : f === "live" ? "Live" : "Testing"}
@@ -665,9 +680,12 @@ export function LaunchpadPage() {
                       </div>
                       <div className="flex flex-wrap gap-1">
                         <button
+                          type="button"
                           onClick={() => setShowSignals((v) => !v)}
+                          aria-pressed={showSignals}
                           className={cn(
-                            "px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border transition-colors",
+                            "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                            PRODUCT_PRESSABLE_CLASS,
                             showSignals
                               ? "bg-white text-black border-white"
                               : "border-[#2a2a2a] text-[#888] hover:text-zinc-300",
@@ -675,9 +693,12 @@ export function LaunchpadPage() {
                           LIVE SIGNALS
                         </button>
                         <button
+                          type="button"
                           onClick={() => setShowGraduated((v) => !v)}
+                          aria-pressed={showGraduated}
                           className={cn(
-                            "px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border transition-colors",
+                            "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                            PRODUCT_PRESSABLE_CLASS,
                             showGraduated
                               ? "bg-white text-black border-white"
                               : "border-[#2a2a2a] text-[#888] hover:text-zinc-300",
@@ -688,9 +709,11 @@ export function LaunchpadPage() {
                       <div className="flex items-center gap-1 text-[11px]">
                         <span className="text-[#888] shrink-0 font-mono">Sort:</span>
                         {(["robustness", "sharpe", "raised"] as Sort[]).map((s) => (
-                          <button key={s} onClick={() => setSort(s)}
+                          <button type="button" key={s} onClick={() => setSort(s)}
+                            aria-pressed={sort === s}
                             className={cn(
-                              "flex-1 py-1 rounded border text-center transition-colors font-mono text-[10px]",
+                              "flex-1 rounded border py-1 text-center font-mono text-[10px]",
+                              PRODUCT_PRESSABLE_CLASS,
                               sort === s
                                 ? "border-[#2a2a2a] bg-[#202020] text-white"
                                 : "border-[#1e1e1e] text-[#555] hover:text-[#888]",
@@ -706,23 +729,22 @@ export function LaunchpadPage() {
                       {loading ? (
                         <>
                           {[...Array(5)].map((_, i) => (
-                            <div key={i} className="h-14 rounded-lg bg-[#181818] animate-pulse mx-1" />
+                            <div key={i} className="mx-1 h-14 animate-pulse rounded-lg bg-[#181818] motion-reduce:animate-none" />
                           ))}
                         </>
                       ) : indicators.length === 0 ? (
                         <div className="text-center py-8 px-4">
                           <p className="text-xs text-[#888]">No strategies found</p>
-                          <button onClick={() => setTab("launch")}
-                            className="mt-3 text-xs text-zinc-400 hover:text-white underline">
+                          <button type="button" onClick={() => setTab("launch")}
+                            className={cn("mt-3 rounded-[var(--radius-xs)] text-xs text-zinc-400 underline hover:text-white", PRODUCT_PRESSABLE_CLASS)}>
                             Deploy the first one →
                           </button>
                         </div>
                       ) : (
-                        indicators.map((ind, i) => (
+                        indicators.map((ind) => (
                           <IndicatorItem
                             key={ind.address}
                             ind={ind}
-                            index={i}
                             selected={selected?.address === ind.address}
                             onClick={() => setSelected(ind)}
                           />
@@ -753,7 +775,7 @@ export function LaunchpadPage() {
 
           {/* ── Manage: your bots & earnings ── */}
           {tab === "manage" && (
-            <div className="animate-enter-delay-1 space-y-8">
+            <div className="space-y-8">
               <SealedSwap creatorAddr={account?.address?.toString()} />
               <CreatorDashboard creatorAddr={account?.address?.toString()} />
             </div>

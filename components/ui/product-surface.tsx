@@ -3,6 +3,7 @@ import { Badge, Button, Card } from "frosted-ui";
 import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 
 /**
  * Product-surface primitives for dense cash.trading workflows.
@@ -17,6 +18,14 @@ export const PRODUCT_PANEL_CLASS =
 
 export const PRODUCT_CONTROL_CLASS =
   "rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary";
+
+/**
+ * Shared tactile feedback for product controls. Keep this transform-only so a
+ * press never changes layout, and keep the duration short enough to feel like
+ * direct manipulation rather than an entrance animation.
+ */
+export const PRODUCT_PRESSABLE_CLASS =
+  PRESSABLE_CONTROL;
 
 export const PRODUCT_MODAL_CLASS =
   "overflow-hidden border-card-border bg-background-secondary p-0 text-foreground";
@@ -107,7 +116,8 @@ export function ProductSelectorButton({
       variant="ghost"
       data-slot="product-selector"
       className={cn(
-        "!inline-flex !h-10 min-w-0 !justify-start gap-2 !rounded-[8px] !border !border-transparent !bg-transparent !px-2 !py-1.5 text-left transition-colors hover:!bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        "!inline-flex !h-10 min-w-0 !justify-start gap-2 !rounded-[8px] !border !border-transparent !bg-transparent !px-2 !py-1.5 text-left hover:!border-card-border hover:!bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        PRODUCT_PRESSABLE_CLASS,
         className,
       )}
       {...props}

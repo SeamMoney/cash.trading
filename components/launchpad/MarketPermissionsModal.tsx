@@ -5,6 +5,7 @@ import { Badge, Button, Card, Switch } from "frosted-ui";
 import { Eye } from "lucide-react";
 
 import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
+import { PRODUCT_PRESSABLE_CLASS } from "@/components/ui/product-surface";
 import { MarketLogo, type Market } from "@/components/trade/BTCChart";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ const CATEGORY_LABELS: Array<{ id: MarketCategory; label: string }> = [
 
 interface MarketPermissionsModalProps {
   busy?: boolean;
+  loading?: boolean;
   markets: Market[];
   onClose: () => void;
   onPreview: (market: string) => void;
@@ -42,6 +44,7 @@ function normalizedCategory(category: string): Exclude<MarketCategory, "all"> {
  */
 export function MarketPermissionsModal({
   busy = false,
+  loading = false,
   markets,
   onClose,
   onPreview,
@@ -69,7 +72,7 @@ export function MarketPermissionsModal({
 
   return (
     <ResponsiveModalSheet
-      badge={`${selectedIds.length}/${markets.length || 0} approved`}
+      badge={loading ? "Loading markets" : `${selectedIds.length}/${markets.length} approved`}
       desktopClassName="h-[min(720px,calc(100dvh-2rem))]"
       desktopContentClassName="p-0"
       desktopMaxWidthClassName="sm:!max-w-[760px]"
@@ -99,7 +102,7 @@ export function MarketPermissionsModal({
             aria-label="Allow all launch-ready markets"
             checked={allSelected}
             color="lime"
-            disabled={busy || markets.length === 0}
+            disabled={busy || loading || markets.length === 0}
             onCheckedChange={onToggleAll}
             size="3"
           />
@@ -116,7 +119,7 @@ export function MarketPermissionsModal({
                 color={category === item.id ? "lime" : "gray"}
                 highContrast={category === item.id}
                 onClick={() => setCategory(item.id)}
-                className="shrink-0"
+                className={cn("shrink-0", PRODUCT_PRESSABLE_CLASS)}
               >
                 {item.label}
               </Button>
@@ -125,8 +128,20 @@ export function MarketPermissionsModal({
         ) : null}
       </div>
 
-      <div className="space-y-2 p-3 sm:p-4">
-        {visibleMarkets.map((market) => {
+      <div className="space-y-2 p-3 sm:p-4" aria-busy={loading} aria-live="polite">
+        {loading ? (
+          <output className="block space-y-2" aria-label="Loading launch-ready markets">
+            {Array.from({ length: 6 }, (_, index) => (
+              <Card
+                key={index}
+                aria-hidden="true"
+                size="2"
+                variant="surface"
+                className="!h-16 !animate-pulse !rounded-[var(--radius-sm)] !border !border-card-border !bg-background-tertiary motion-reduce:!animate-none"
+              />
+            ))}
+          </output>
+        ) : visibleMarkets.map((market) => {
           const approved = selected.has(market.id);
           const isPreview = previewMarket === market.id;
           const cannotRemove = approved && selectedIds.length === 1;
@@ -168,7 +183,7 @@ export function MarketPermissionsModal({
                   onClick={() => onPreview(market.id)}
                   size="1"
                   variant="ghost"
-                  className="shrink-0"
+                  className={cn("shrink-0", PRODUCT_PRESSABLE_CLASS)}
                 >
                   <Eye className="size-3.5" aria-hidden="true" />
                   <span className="hidden sm:inline">Preview</span>
@@ -187,7 +202,7 @@ export function MarketPermissionsModal({
           );
         })}
 
-        {visibleMarkets.length === 0 ? (
+        {!loading && visibleMarkets.length === 0 ? (
           <Card size="3" variant="outline" className="!py-10 text-center text-[12px] text-muted-foreground">
             No launch-ready markets in this category.
           </Card>
@@ -206,9 +221,9 @@ export function MarketPermissionsModal({
             onClick={onClose}
             size="2"
             variant="solid"
-            className="shrink-0"
+            className={cn("shrink-0", PRODUCT_PRESSABLE_CLASS)}
           >
-            Done
+            Save access
           </Button>
         </div>
       </div>

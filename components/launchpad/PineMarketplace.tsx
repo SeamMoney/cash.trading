@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Rocket,
   Terminal,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { CodeBlock } from "@/components/ui/agent";
 import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import {
   PRODUCT_CONTROL_CLASS,
+  PRODUCT_PRESSABLE_CLASS,
   ProductBadge,
   ProductPanel,
   ProductSegmented,
@@ -149,7 +151,10 @@ function PopularCard({
       <button
         type="button"
         onClick={onOpen}
-        className="block w-full rounded-[var(--radius-sm)] p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+        className={cn(
+          "block w-full rounded-[var(--radius-sm)] p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
+          PRODUCT_PRESSABLE_CLASS,
+        )}
       >
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
@@ -192,13 +197,17 @@ export function PineMarketplace({
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [loadingSource, setLoadingSource] = useState(false);
   const [compatibility, setCompatibility] = useState<Compatibility>({ state: "idle" });
-  const sourceCache = useRef(new Map<string, CachedSource>());
+  const sourceCache = useMemo(() => new Map<string, CachedSource>(), []);
   const activeSourceUrl = useRef<string | null>(null);
+  const feedController = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const loadFeed = useCallback(() => {
+    feedController.current?.abort();
     const controller = new AbortController();
+    feedController.current = controller;
     setLoadingFeed(true);
-    fetch("/api/launchpad/tv-popular", { signal: controller.signal })
+    setFeedError(null);
+    void fetch("/api/launchpad/tv-popular", { signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as { items?: TradingViewPopularScript[]; error?: string };
         if (!response.ok || !Array.isArray(payload.items)) {
@@ -215,13 +224,17 @@ export function PineMarketplace({
       .finally(() => {
         if (!controller.signal.aborted) setLoadingFeed(false);
       });
-    return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    loadFeed();
+    return () => feedController.current?.abort();
+  }, [loadFeed]);
 
   const loadSource = useCallback(async (item: TradingViewPopularScript) => {
     activeSourceUrl.current = item.url;
     setSourceError(null);
-    const cached = sourceCache.current.get(item.url);
+    const cached = sourceCache.get(item.url);
     if (cached) {
       setSource(cached.source);
       setSourceMeta(cached.sourceMeta);
@@ -240,7 +253,7 @@ export function PineMarketplace({
       const nextSource = payload.source ?? payload.script;
       if (!response.ok || !nextSource) throw new Error(payload.error ?? "Source is unavailable");
       const cachedSource = { source: nextSource, sourceMeta: payload.sourceMeta ?? null };
-      sourceCache.current.set(item.url, cachedSource);
+      sourceCache.set(item.url, cachedSource);
       if (activeSourceUrl.current === item.url) {
         setSource(nextSource);
         setSourceMeta(cachedSource.sourceMeta);
@@ -252,7 +265,7 @@ export function PineMarketplace({
     } finally {
       if (activeSourceUrl.current === item.url) setLoadingSource(false);
     }
-  }, []);
+  }, [sourceCache]);
 
   const openScript = useCallback((item: TradingViewPopularScript) => {
     setSelected(item);
@@ -320,8 +333,11 @@ export function PineMarketplace({
         <div className="flex min-w-0 items-center justify-between gap-2 border-b border-card-border p-2 sm:px-3">
           <ProductSelectorButton
             onClick={showGallery}
-            disabled={disabled || items.length === 0}
+            disabled={disabled}
             aria-label="Browse indicator library"
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-busy={loadingFeed}
             className="min-w-0 flex-1 sm:max-w-[520px]"
             icon={(
               <span className="flex size-7 items-center justify-center rounded-[6px] bg-accent/10 text-accent">
@@ -329,8 +345,21 @@ export function PineMarketplace({
               </span>
             )}
             label="Indicator library"
-            value={activeSelection?.title ?? "Choose indicator"}
-            detail={activeSelection ? "Loaded" : `${items.length || "Popular"} scripts`}
+            value={activeSelection?.title
+              ?? (loadingFeed
+                ? "Loading indicators…"
+                : feedError
+                  ? "Indicators unavailable"
+                  : items.length > 0
+                    ? "Choose indicator"
+                    : "No public indicators")}
+            detail={activeSelection
+              ? "Loaded"
+              : loadingFeed
+                ? "Loading"
+                : feedError
+                  ? "Retry"
+                  : `${items.length} scripts`}
           />
           {marketControl}
         </div>
@@ -359,12 +388,71 @@ export function PineMarketplace({
                 <span className="font-display text-[12px] font-semibold text-foreground">Popular</span>
                 <ProductBadge className="text-accent">Public source</ProductBadge>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {items.map((item) => (
-                    <PopularCard compact key={item.id} item={item} onOpen={() => openScript(item)} />
-                  ))}
-                </div>
+              <div
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4"
+                aria-busy={loadingFeed}
+                aria-live="polite"
+              >
+                {loadingFeed && items.length === 0 ? (
+                  <output className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Loading public indicators">
+                    {Array.from({ length: 6 }, (_, index) => (
+                      <div
+                        key={index}
+                        aria-hidden="true"
+                        className={cn(PRODUCT_CONTROL_CLASS, "h-[148px] animate-pulse bg-card motion-reduce:animate-none")}
+                      />
+                    ))}
+                  </output>
+                ) : feedError && items.length === 0 ? (
+                  <div className="flex min-h-[280px] items-center justify-center">
+                    <div className="max-w-sm text-center">
+                      <span className="mx-auto flex size-10 items-center justify-center rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.06] text-amber-300">
+                        <RefreshCw className="size-4" aria-hidden="true" />
+                      </span>
+                      <p className="mt-3 font-display text-[14px] font-semibold text-foreground">
+                        Indicator library didn&apos;t load
+                      </p>
+                      <p className="mt-1 text-pretty text-[12px] leading-5 text-muted-foreground">
+                        {feedError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={loadFeed}
+                        className={cn(
+                          PRODUCT_CONTROL_CLASS,
+                          PRODUCT_PRESSABLE_CLASS,
+                          "mt-4 px-4 py-2 font-display text-[12px] font-semibold text-foreground hover:border-border-strong hover:bg-card-hover",
+                        )}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                ) : items.length === 0 ? (
+                  <div className="flex min-h-[280px] items-center justify-center text-center font-mono text-[11px] text-muted-foreground">
+                    No public indicators are available right now.
+                  </div>
+                ) : (
+                  <>
+                    {feedError ? (
+                      <div className="mb-3 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 text-[11px] text-amber-200/80">
+                        <span>Showing the last loaded indicator list.</span>
+                        <button
+                          type="button"
+                          onClick={loadFeed}
+                          className={cn("shrink-0 font-display font-semibold text-amber-200", PRODUCT_PRESSABLE_CLASS)}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {items.map((item) => (
+                        <PopularCard compact key={item.id} item={item} onOpen={() => openScript(item)} />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -375,7 +463,10 @@ export function PineMarketplace({
                     type="button"
                     onClick={() => setSelected(null)}
                     aria-label="Back to popular scripts"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary text-muted-foreground transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground"
+                    className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary text-muted-foreground hover:border-border-strong hover:bg-card-hover hover:text-foreground",
+                      PRODUCT_PRESSABLE_CLASS,
+                    )}
                   >
                     <ArrowLeft className="h-4 w-4" aria-hidden />
                   </button>
@@ -387,7 +478,7 @@ export function PineMarketplace({
                     target="_blank"
                     rel="noreferrer"
                     aria-label="Open this script on TradingView"
-                    className={cn(PRODUCT_CONTROL_CLASS, "flex h-9 shrink-0 items-center gap-2 px-2.5 text-[12px] text-foreground-secondary transition-colors hover:border-border-strong hover:bg-card-hover hover:text-foreground sm:px-3")}
+                    className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex h-9 shrink-0 items-center gap-2 px-2.5 text-[12px] text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground sm:px-3")}
                   >
                     <span className="hidden sm:inline">TradingView</span>
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden />
@@ -409,6 +500,7 @@ export function PineMarketplace({
                         aria-selected={tab === value}
                         className={cn(
                           "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-2 font-display text-[11px] font-semibold",
+                          PRODUCT_PRESSABLE_CLASS,
                           tab === value ? "bg-card-hover text-foreground" : "text-muted-foreground hover:text-foreground",
                         )}
                       >
@@ -422,7 +514,7 @@ export function PineMarketplace({
                       type="button"
                       onClick={checkCompatibility}
                       disabled={!source || compatibility.state === "checking"}
-                      className={cn(PRODUCT_CONTROL_CLASS, "h-9 px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:text-foreground disabled:opacity-40")}
+                      className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "h-9 px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40")}
                     >
                       {compatibility.state === "checking" ? "Checking…" : "Check vault compatibility"}
                     </button>
@@ -430,7 +522,7 @@ export function PineMarketplace({
                       type="button"
                       onClick={useSelected}
                       disabled={!source || loadingSource || disabled}
-                      className="h-9 rounded-[var(--radius-sm)] bg-accent px-4 font-display text-[12px] font-semibold text-accent-foreground hover:brightness-95 disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground"
+                      className={cn("h-9 rounded-[var(--radius-sm)] bg-accent px-4 font-display text-[12px] font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
                     >
                       {loadingSource ? "Loading full source…" : "Use in editor"}
                     </button>
@@ -445,7 +537,7 @@ export function PineMarketplace({
                 {tab === "chart" && (
                   <div role="tabpanel" className="mx-auto flex min-h-full w-full flex-col gap-3">
                     <section className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background">
-                      <div className="w-full bg-black">
+                      <div className="w-full bg-background">
                         {source ? (
                           <PineVisualPreview asset={market} embedded pineScript={source} title={selected.title} />
                         ) : (
@@ -461,7 +553,7 @@ export function PineMarketplace({
                           type="button"
                           onClick={() => setTab("source")}
                           disabled={!source}
-                          className="font-mono text-[10px] text-zinc-400 hover:text-white disabled:opacity-40"
+                          className={cn("font-mono text-[10px] text-zinc-400 hover:text-white disabled:pointer-events-none disabled:opacity-40", PRODUCT_PRESSABLE_CLASS)}
                         >
                           View source →
                         </button>
@@ -585,7 +677,7 @@ export function PineMarketplace({
                   type="button"
                   onClick={() => { setTab("logs"); void checkCompatibility(); }}
                   disabled={!source || compatibility.state === "checking"}
-                  className={cn(PRODUCT_CONTROL_CLASS, "flex-1 px-3 py-2.5 font-display text-[12px] font-semibold text-foreground-secondary disabled:opacity-40")}
+                  className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex-1 px-3 py-2.5 font-display text-[12px] font-semibold text-foreground-secondary disabled:pointer-events-none disabled:opacity-40")}
                 >
                   Check
                 </button>
@@ -593,7 +685,7 @@ export function PineMarketplace({
                   type="button"
                   onClick={useSelected}
                   disabled={!source || loadingSource || disabled}
-                  className="flex-[1.4] rounded-[var(--radius-sm)] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-accent-foreground disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground"
+                  className={cn("flex-[1.4] rounded-[var(--radius-sm)] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-accent-foreground disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
                 >
                   {loadingSource ? "Loading full source…" : "Use in editor"}
                 </button>
@@ -615,9 +707,9 @@ function LogRow({
   text: string;
 }) {
   return (
-    <div className="grid grid-cols-[62px_76px_minmax(0,1fr)] gap-2 border-b border-card-border py-2 last:border-0">
-      <span className="text-zinc-700">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+    <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-2 border-b border-card-border py-2 last:border-0">
       <span className={cn(
+        "uppercase tracking-[0.08em]",
         level === "error" && "text-red-400",
         level === "warning" && "text-amber-400",
         level === "success" && "text-accent",

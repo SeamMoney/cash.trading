@@ -19,6 +19,7 @@ import NumberFlow from "@number-flow/react";
 import { AlertTriangle, Check, Info, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 
 export const EASE = [0.16, 1, 0.3, 1] as const;
 export const FAST = 0.16;
@@ -66,14 +67,14 @@ export function ActionButton({
     );
 
   return (
-    <motion.button
+    <button
+      type="button"
       onClick={onClick}
       disabled={disabled || state === "pending"}
-      whileTap={reduced || disabled ? undefined : { scale: 0.985 }}
-      transition={{ duration: FAST, ease: EASE }}
       aria-busy={state === "pending"}
       className={cn(
-        "relative flex w-full items-center justify-center rounded-[16px] px-5 py-3.5 font-display text-[14px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "relative flex w-full items-center justify-center rounded-[var(--radius-sm)] px-5 py-3.5 font-display text-[14px] font-bold disabled:cursor-not-allowed disabled:opacity-40",
+        PRESSABLE_CONTROL,
         variant === "primary"
           ? "bg-accent text-accent-foreground hover:opacity-90"
           : "border border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/50",
@@ -84,15 +85,15 @@ export function ActionButton({
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={state}
-          initial={{ opacity: 0, y: reduced ? 0 : 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: reduced ? 0 : -4 }}
+          initial={{ opacity: 0, transform: reduced ? "none" : "translateY(4px)" }}
+          animate={{ opacity: 1, transform: "none" }}
+          exit={{ opacity: 0, transform: reduced ? "none" : "translateY(-4px)" }}
           transition={{ duration: FAST, ease: EASE }}
         >
           {content}
         </motion.span>
       </AnimatePresence>
-    </motion.button>
+    </button>
   );
 }
 
@@ -141,28 +142,34 @@ export function ValidatedField({
         disabled={disabled}
         aria-invalid={Boolean(err)}
         aria-describedby={err ? `${fieldId}-err` : undefined}
-        animate={err && !reduced ? { x: [0, -3, 3, -2, 0] } : { x: 0 }}
+        animate={err && !reduced
+          ? { transform: ["translateX(0px)", "translateX(-3px)", "translateX(3px)", "translateX(-2px)", "translateX(0px)"] }
+          : { transform: "translateX(0px)" }}
         transition={{ duration: 0.24, ease: EASE }}
         className={cn(
           "w-full rounded-[10px] border bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
           err ? "border-red-500/60" : "border-white/[0.06] focus:border-accent/40",
         )}
       />
-      <AnimatePresence>
-        {err && (
-          <motion.p
-            id={`${fieldId}-err`}
-            role="alert"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: FAST, ease: EASE }}
-            className="mt-1 text-[11px] text-red-400"
-          >
-            {err}
-          </motion.p>
-        )}
-      </AnimatePresence>
+      {validate && (
+        <div className="min-h-4">
+          <AnimatePresence initial={false}>
+            {err && (
+              <motion.p
+                id={`${fieldId}-err`}
+                role="alert"
+                initial={{ opacity: 0, transform: reduced ? "none" : "translateY(-2px)" }}
+                animate={{ opacity: 1, transform: "none" }}
+                exit={{ opacity: 0, transform: reduced ? "none" : "translateY(-2px)" }}
+                transition={{ duration: FAST, ease: EASE }}
+                className="mt-1 text-[11px] text-red-400"
+              >
+                {err}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
@@ -174,7 +181,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={cn("animate-pulse rounded-[10px] border border-white/[0.06] bg-[#141414]", className)}
+      className={cn("animate-pulse rounded-[10px] border border-white/[0.06] bg-[#141414] motion-reduce:animate-none", className)}
     />
   );
 }
@@ -236,15 +243,16 @@ export function Banner({
   onDismiss?: () => void;
 }) {
   const Icon = tone === "success" ? Check : tone === "warn" ? AlertTriangle : tone === "error" ? X : Info;
+  const reduced = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
+      initial={{ opacity: 0, transform: reduced ? "none" : "translateY(-6px)" }}
+      animate={{ opacity: 1, transform: "none" }}
+      exit={{ opacity: 0, transform: reduced ? "none" : "translateY(-6px)" }}
       transition={{ duration: MED, ease: EASE }}
       role={tone === "error" || tone === "warn" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-[16px] border p-3.5",
+        "flex items-start gap-2.5 rounded-[var(--radius)] border p-3.5",
         tone === "info" && "border-white/[0.06] bg-[#141414]",
         tone === "success" && "border-accent/40 bg-accent/5",
         tone === "warn" && "border-amber-500/30 bg-amber-500/5",
@@ -277,7 +285,7 @@ export function Banner({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="shrink-0 rounded p-0.5 text-zinc-600 transition-colors hover:text-white"
+          className={cn("shrink-0 rounded p-0.5 text-zinc-600 hover:text-white", PRESSABLE_CONTROL)}
         >
           <X className="h-3 w-3" />
         </button>
@@ -302,6 +310,7 @@ export function Modal({
   children: React.ReactNode;
 }) {
   const restoreTo = useRef<HTMLElement | null>(null);
+  const reduced = useReducedMotion();
   useEffect(() => {
     if (open) {
       restoreTo.current = document.activeElement as HTMLElement;
@@ -324,16 +333,21 @@ export function Modal({
           exit={{ opacity: 0 }}
           transition={{ duration: FAST, ease: EASE }}
         >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={onClose}
+          />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            initial={{ opacity: 0, transform: reduced ? "none" : "translateY(8px) scale(0.98)" }}
+            animate={{ opacity: 1, transform: "none" }}
+            exit={{ opacity: 0, transform: reduced ? "none" : "translateY(8px) scale(0.98)" }}
             transition={{ duration: MED, ease: EASE }}
-            className="relative w-full max-w-lg overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#111] shadow-2xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-[var(--radius)] border border-white/[0.06] bg-[#111] shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
               <h2 className="font-display text-[14px] font-bold text-white">{title}</h2>
@@ -341,7 +355,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="rounded p-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-white"
+                className={cn("rounded p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-white", PRESSABLE_CONTROL)}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -397,9 +411,9 @@ export function Reveal({
   const reduced = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, y: reduced ? 0 : 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: MED, ease: EASE, delay: reduced ? 0 : Math.min(index * 0.035, 0.25) }}
+      initial={{ opacity: 0, transform: reduced ? "none" : "translateY(6px)" }}
+      animate={{ opacity: 1, transform: "none" }}
+      transition={{ duration: MED, ease: EASE, delay: reduced ? 0 : Math.min(index * 0.025, 0.12) }}
       className={className}
     >
       {children}
@@ -422,18 +436,15 @@ export function Pressable({
   disabled?: boolean;
   ariaPressed?: boolean;
 }) {
-  const reduced = useReducedMotion();
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-pressed={ariaPressed}
-      whileTap={reduced || disabled ? undefined : { scale: 0.99 }}
-      transition={{ duration: FAST, ease: EASE }}
-      className={className}
+      className={cn(className, PRESSABLE_CONTROL)}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }

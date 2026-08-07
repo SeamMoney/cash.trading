@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 
+import { tokenizePineLine } from "../lib/launchpad/pine-highlight";
 import { parsePine } from "../lib/launchpad/pine-parser";
 import { executeRuntime } from "../lib/launchpad/pine-runtime";
 import { parseTradingViewPopularPage } from "../lib/launchpad/tradingview-popular";
+import { getPineSourceStats } from "../lib/launchpad/tradingview-source";
 
 const cards = parseTradingViewPopularPage(`
   <article>
@@ -25,6 +27,23 @@ assert.equal(cards[0].scriptType, "Indicator");
 assert.equal(cards[0].comments, 2);
 assert.equal(cards[0].boosts, 701);
 assert.ok(cards[0].imageUrl?.startsWith("https://s3.tradingview.com/"));
+
+const highlighted = tokenizePineLine("float atr = ta.atr(14) // volatility");
+assert.deepEqual(
+  highlighted.filter((token) => token.kind !== "plain").map((token) => [token.kind, token.text]),
+  [
+    ["type", "float"],
+    ["operator", "="],
+    ["builtin", "ta"],
+    ["function", "atr"],
+    ["number", "14"],
+    ["comment", "// volatility"],
+  ],
+);
+assert.deepEqual(getPineSourceStats("//@version=6\nindicator('Complete')"), {
+  lineCount: 2,
+  characterCount: 34,
+});
 
 const ast = parsePine(`
 //@version=6
@@ -52,4 +71,3 @@ assert.deepEqual(
 );
 
 console.log("pine marketplace self-test passed");
-

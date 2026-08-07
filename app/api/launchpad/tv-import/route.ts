@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
+import {
+  getPineSourceStats,
+  type TradingViewSourceIntegrity,
+  type TradingViewSourceProvider,
+} from "@/lib/launchpad/tradingview-source";
 
 /**
  * GET /api/launchpad/tv-import?url=<tradingview_script_url>
@@ -145,10 +150,13 @@ export async function GET(req: NextRequest) {
                 await readTextWithinLimit(apiRes, MAX_API_BYTES),
               ) as { source?: string; scriptName?: string; description?: string };
               if (data.source && data.source.length > 30) {
-                return NextResponse.json({
-                  source: cleanSource(data.source),
-                  title: data.scriptName || data.description || "TradingView Indicator",
-                });
+                return sourceResponse(
+                  data.source,
+                  data.scriptName || data.description || "TradingView Indicator",
+                  "pine-facade",
+                  "full",
+                  pubId,
+                );
               }
             }
           }
@@ -201,7 +209,7 @@ export async function GET(req: NextRequest) {
         const json = JSON.parse(nextDataMatch[1]);
         const source = findSourceInObject(json);
         if (source && source.length > 30) {
-          return NextResponse.json({ source: cleanSource(source), title });
+          return sourceResponse(source, title, "next-data", "extracted");
         }
       } catch {
         // JSON parse failed, continue to other strategies
@@ -224,7 +232,7 @@ export async function GET(req: NextRequest) {
           .replace(/\\t/g, "\t")
           .replace(/\\"/g, '"')
           .replace(/\\\\/g, "\\");
-        return NextResponse.json({ source: cleanSource(decoded), title });
+        return sourceResponse(decoded, title, "embedded-json", "extracted");
       }
     }
 
@@ -234,7 +242,7 @@ export async function GET(req: NextRequest) {
       const inner = block.replace(/<\/?[^>]+>/g, "");
       const decoded = decodeHtmlEntities(inner);
       if (decoded.includes("//@version") || decoded.includes("strategy(") || decoded.includes("indicator(")) {
-        return NextResponse.json({ source: cleanSource(decoded), title });
+        return sourceResponse(decoded, title, "preformatted-html", "extracted");
       }
     }
 
@@ -244,30 +252,7 @@ export async function GET(req: NextRequest) {
       const inner = block.replace(/<\/?[^>]+>/g, "");
       const decoded = decodeHtmlEntities(inner);
       if (decoded.includes("//@version") || decoded.includes("strategy(") || decoded.includes("indicator(")) {
-        return NextResponse.json({ source: cleanSource(decoded), title });
-      }
-    }
-
-    // ── Strategy 5: Broad regex for anything that looks like PineScript ───────
-    const broadMatch = html.match(/\/\/@version=\d[\s\S]{50,5000}?(?:strategy\.(?:entry|close)|plot\(|alertcondition\()/);
-    if (broadMatch) {
-      // Try to extract a clean block around it
-      const start = html.indexOf(broadMatch[0]);
-      // Find the enclosing quotes or tag
-      let end = start + broadMatch[0].length;
-      // Extend to the next quote boundary or tag close
-      const remaining = html.slice(end, end + 5000);
-      const endBoundary = remaining.search(/["'<]/);
-      if (endBoundary > 0) {
-        end += endBoundary;
-      }
-      const raw = html.slice(start, end)
-        .replace(/\\n/g, "\n")
-        .replace(/\\t/g, "\t")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-      if (raw.length > 50) {
-        return NextResponse.json({ source: cleanSource(raw), title });
+        return sourceResponse(decoded, title, "code-html", "extracted");
       }
     }
 
@@ -275,8 +260,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Could not extract PineScript source from this page. " +
-          "The script may be private or require login. " +
+          "TradingView did not expose complete public Pine source for this script. " +
+          "It may be protected, private, or require login. " +
           "Try opening the indicator page in TradingView, click the source code icon (</>), " +
           "copy the PineScript, and paste it directly into the editor.",
       },
@@ -327,6 +312,26 @@ function cleanSource(source: string): string {
   const cleaned = source.trim().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (cleaned.length > MAX_SOURCE_CHARS) throw new Error("pine_source_too_large");
   return cleaned;
+}
+
+function sourceResponse(
+  source: string,
+  title: string,
+  provider: TradingViewSourceProvider,
+  integrity: TradingViewSourceIntegrity,
+  publicId?: string,
+) {
+  const cleaned = cleanSource(source);
+  return NextResponse.json({
+    source: cleaned,
+    title,
+    sourceMeta: {
+      integrity,
+      provider,
+      ...getPineSourceStats(cleaned),
+      ...(publicId ? { publicId } : {}),
+    },
+  });
 }
 
 /**

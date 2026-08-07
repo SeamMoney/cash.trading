@@ -22,6 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import { CodeBlock } from "@/components/ui/agent";
 import type { TradingViewPopularScript } from "@/lib/launchpad/tradingview-popular";
+import type {
+  TradingViewSourceMeta,
+  TradingViewSourceResponse,
+} from "@/lib/launchpad/tradingview-source";
 import { cn } from "@/lib/utils";
 
 export interface PineMarketplaceSelection {
@@ -48,6 +52,11 @@ interface SourceFeature {
   label: string;
   detail: string;
   blocksVault?: boolean;
+}
+
+interface CachedSource {
+  source: string;
+  sourceMeta: TradingViewSourceMeta | null;
 }
 
 function featureReport(source: string): SourceFeature[] {
@@ -78,6 +87,47 @@ function relativeDate(value: string | null): string {
   if (days === 1) return "1 day ago";
   if (days < 30) return `${days} days ago`;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function SourceStatus({
+  meta,
+  loading,
+  error,
+  compact = false,
+}: {
+  meta: TradingViewSourceMeta | null;
+  loading: boolean;
+  error: string | null;
+  compact?: boolean;
+}) {
+  if (loading) {
+    return (
+      <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Fetching source
+      </span>
+    );
+  }
+  if (error) {
+    return <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-400">Source unavailable</span>;
+  }
+  if (!meta) return null;
+
+  const full = meta.integrity === "full";
+  return (
+    <span
+      title={full
+        ? `Complete public source from TradingView (${meta.publicId ?? "public script"})`
+        : `Source extracted from ${meta.provider}; compare it with TradingView before use`}
+      className={cn(
+        "inline-flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.1em]",
+        full ? "text-accent" : "text-amber-300",
+      )}
+    >
+      {full ? <CheckCircle2 className="h-3 w-3" aria-hidden /> : <Code2 className="h-3 w-3" aria-hidden />}
+      {full ? "Full public source" : "Extracted source"}
+      {!compact && <span className="font-normal text-zinc-600">· {meta.lineCount.toLocaleString()} lines</span>}
+    </span>
+  );
 }
 
 function PopularCard({
@@ -157,10 +207,11 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
   const [selected, setSelected] = useState<TradingViewPopularScript | null>(null);
   const [tab, setTab] = useState<DetailTab>("chart");
   const [source, setSource] = useState("");
+  const [sourceMeta, setSourceMeta] = useState<TradingViewSourceMeta | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [loadingSource, setLoadingSource] = useState(false);
   const [compatibility, setCompatibility] = useState<Compatibility>({ state: "idle" });
-  const sourceCache = useRef(new Map<string, string>());
+  const sourceCache = useRef(new Map<string, CachedSource>());
   const activeSourceUrl = useRef<string | null>(null);
 
   useEffect(() => {
@@ -188,21 +239,31 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
 
   const loadSource = useCallback(async (item: TradingViewPopularScript) => {
     activeSourceUrl.current = item.url;
+    setSourceError(null);
     const cached = sourceCache.current.get(item.url);
     if (cached) {
-      setSource(cached);
+      setSource(cached.source);
+      setSourceMeta(cached.sourceMeta);
+      setLoadingSource(false);
       return;
     }
     setLoadingSource(true);
     setSource("");
-    setSourceError(null);
+    setSourceMeta(null);
     try {
       const response = await fetch(`/api/launchpad/tv-import?url=${encodeURIComponent(item.url)}`);
-      const payload = await response.json() as { source?: string; script?: string; error?: string };
+      const payload = await response.json() as Partial<TradingViewSourceResponse> & {
+        script?: string;
+        error?: string;
+      };
       const nextSource = payload.source ?? payload.script;
       if (!response.ok || !nextSource) throw new Error(payload.error ?? "Source is unavailable");
-      sourceCache.current.set(item.url, nextSource);
-      if (activeSourceUrl.current === item.url) setSource(nextSource);
+      const cachedSource = { source: nextSource, sourceMeta: payload.sourceMeta ?? null };
+      sourceCache.current.set(item.url, cachedSource);
+      if (activeSourceUrl.current === item.url) {
+        setSource(nextSource);
+        setSourceMeta(cachedSource.sourceMeta);
+      }
     } catch (error) {
       if (activeSourceUrl.current === item.url) {
         setSourceError(error instanceof Error ? error.message : "Source is unavailable");
@@ -227,7 +288,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
   }, []);
 
   const features = useMemo(() => featureReport(source), [source]);
-  const lineCount = source ? source.replace(/\n$/, "").split("\n").length : 0;
+  const lineCount = sourceMeta?.lineCount ?? (source ? source.replace(/\n$/, "").split("\n").length : 0);
   const logCalls = source.match(/\blog\.(?:info|warning|error)\s*\(/g)?.length ?? 0;
 
   const checkCompatibility = useCallback(async () => {
@@ -329,7 +390,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton={false}
-          className="!block h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-none overflow-hidden rounded-[18px] border-white/[0.1] bg-[#090909] !p-0 shadow-2xl sm:h-[calc(100dvh-40px)] sm:w-[calc(100vw-40px)]"
+          className="!block h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-white/[0.1] bg-[#090909] !p-0 shadow-2xl sm:h-[calc(100dvh-32px)] sm:w-[calc(100vw-32px)] sm:max-w-none sm:rounded-[18px] 2xl:max-w-[1560px]"
         >
           <DialogTitle className="sr-only">
             {selected?.title ?? "Popular TradingView scripts"}
@@ -369,41 +430,50 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col">
-              <header className="shrink-0 border-b border-white/[0.08] px-4 pb-0 pt-4 sm:px-7 sm:pt-5">
+              <header className="shrink-0 border-b border-white/[0.08] px-3 pt-3 sm:px-6 sm:pt-4">
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
                     aria-label="Back to popular scripts"
-                    className="mt-0.5 rounded-full p-2 text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-zinc-400 hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
                   >
                     <ArrowLeft className="h-5 w-5" aria-hidden />
                   </button>
                   <div className="min-w-0 flex-1">
                     <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-sky-300">Public Pine script · {relativeDate(selected.publishedAt)}</p>
-                    <h2 className="mt-1 truncate font-display text-[21px] font-semibold text-white sm:text-[30px]">{selected.title}</h2>
-                    <p className="mt-1 truncate font-mono text-[10px] text-zinc-500">by {selected.author}</p>
+                    <h2 className="mt-1 max-w-5xl break-words font-display text-[20px] font-semibold leading-tight text-white sm:text-[28px]">{selected.title}</h2>
+                    <a
+                      href={selected.authorUrl ?? selected.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-block font-mono text-[10px] text-zinc-500 hover:text-zinc-300"
+                    >
+                      by {selected.author}
+                    </a>
                   </div>
                   <a
                     href={selected.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="hidden shrink-0 items-center gap-2 rounded-[10px] border border-white/[0.1] px-3 py-2 text-[12px] text-zinc-300 hover:border-white/20 hover:text-white sm:flex"
+                    aria-label="Open this script on TradingView"
+                    className="flex h-9 shrink-0 items-center gap-2 rounded-[10px] border border-white/[0.1] px-2.5 text-[12px] text-zinc-300 hover:border-white/20 hover:text-white sm:px-3"
                   >
-                    TradingView <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                    <span className="hidden sm:inline">TradingView</span>
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                   </a>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
                     aria-label="Close script"
-                    className="shrink-0 rounded-full p-2 text-zinc-400 hover:bg-white/[0.06] hover:text-white"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-white/[0.06] hover:text-white"
                   >
                     <X className="h-5 w-5" aria-hidden />
                   </button>
                 </div>
 
-                <div className="mt-4 flex items-end justify-between gap-3">
-                  <div className="flex rounded-full bg-white/[0.08] p-1">
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.06] py-2.5">
+                  <div role="tablist" aria-label="Script details" className="grid min-w-0 flex-1 grid-cols-3 rounded-[11px] bg-white/[0.06] p-1 sm:max-w-[330px]">
                     {([
                       ["chart", "Chart", CandlestickChart],
                       ["source", "Source code", Code2],
@@ -413,14 +483,15 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                         key={value}
                         type="button"
                         onClick={() => setTab(value)}
-                        aria-pressed={tab === value}
+                        role="tab"
+                        aria-selected={tab === value}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full px-3 py-2 font-display text-[11px] font-semibold",
+                          "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 py-2 font-display text-[11px] font-semibold",
                           tab === value ? "bg-white text-black" : "text-zinc-400 hover:text-white",
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" aria-hidden />
-                        {label}
+                        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        <span className="truncate">{label}</span>
                       </button>
                     ))}
                   </div>
@@ -429,7 +500,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                       type="button"
                       onClick={checkCompatibility}
                       disabled={!source || compatibility.state === "checking"}
-                      className="rounded-[10px] border border-white/[0.1] px-3 py-2 font-display text-[12px] font-semibold text-zinc-200 hover:border-white/20 disabled:opacity-40"
+                      className="h-9 rounded-[10px] border border-white/[0.1] px-3 font-display text-[12px] font-semibold text-zinc-200 hover:border-white/20 disabled:opacity-40"
                     >
                       {compatibility.state === "checking" ? "Checking…" : "Check vault compatibility"}
                     </button>
@@ -437,7 +508,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                       type="button"
                       onClick={useSelected}
                       disabled={!source || loadingSource || disabled}
-                      className="rounded-[10px] bg-accent px-4 py-2 font-display text-[12px] font-semibold text-black hover:brightness-95 disabled:opacity-40"
+                      className="h-9 rounded-[10px] bg-accent px-4 font-display text-[12px] font-semibold text-black hover:brightness-95 disabled:opacity-40"
                     >
                       Use in editor
                     </button>
@@ -445,64 +516,100 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                 </div>
               </header>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+              <div className={cn(
+                "min-h-0 flex-1 overscroll-contain",
+                tab === "chart" ? "overflow-y-auto p-3 sm:p-5" : "overflow-hidden p-3 sm:p-5",
+              )}>
                 {tab === "chart" && (
-                  <div className="grid min-h-full grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-                    <div className="flex min-h-[300px] items-center justify-center overflow-hidden rounded-[14px] border border-white/[0.08] bg-black sm:min-h-[520px]">
-                      {selected.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={selected.imageUrl}
-                          alt={`${selected.title} TradingView chart`}
-                          referrerPolicy="no-referrer"
-                          className="max-h-[72dvh] w-full object-contain"
-                        />
-                      ) : (
-                        <CandlestickChart className="h-12 w-12 text-zinc-700" aria-hidden />
-                      )}
-                    </div>
-                    <aside className="min-w-0 rounded-[14px] border border-white/[0.08] bg-[#111] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="rounded-[6px] bg-sky-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-sky-300">{selected.scriptType}</span>
-                        <span className="font-mono text-[10px] text-zinc-600">{lineCount ? `${lineCount} lines` : "Loading source"}</span>
+                  <div role="tabpanel" className="mx-auto flex min-h-full w-full max-w-[1480px] flex-col gap-4">
+                    <section className="overflow-hidden rounded-[14px] border border-white/[0.08] bg-black">
+                      <div className="flex h-[42dvh] min-h-[240px] max-h-[360px] w-full items-center justify-center bg-black sm:h-[58dvh] sm:min-h-[420px] sm:max-h-[680px]">
+                        {selected.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={selected.imageUrl}
+                            alt={`${selected.title} TradingView chart`}
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <CandlestickChart className="h-12 w-12 text-zinc-700" aria-hidden />
+                        )}
                       </div>
-                      <p className="mt-4 text-[13px] leading-relaxed text-zinc-300">{selected.description}</p>
-                      {features.length > 0 && (
-                        <div className="mt-5 border-t border-white/[0.06] pt-4">
-                          <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Detected features</p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {features.map((feature) => (
-                              <span key={feature.label} className="rounded-full border border-white/[0.08] px-2.5 py-1 font-mono text-[9px] text-zinc-400">{feature.label}</span>
-                            ))}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] bg-[#0d0d0d] px-3 py-2.5 sm:px-4">
+                        <SourceStatus meta={sourceMeta} loading={loadingSource} error={sourceError} />
+                        <button
+                          type="button"
+                          onClick={() => setTab("source")}
+                          disabled={!source}
+                          className="font-mono text-[10px] text-zinc-400 hover:text-white disabled:opacity-40"
+                        >
+                          View source →
+                        </button>
+                      </div>
+                    </section>
+
+                    <section className="grid gap-5 border-t border-white/[0.08] pb-5 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.42fr)]">
+                      <div className="min-w-0">
+                        <span className="rounded-[6px] bg-sky-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-sky-300">{selected.scriptType}</span>
+                        <p className="mt-3 max-w-4xl text-[13px] leading-relaxed text-zinc-300 sm:text-[14px]">{selected.description}</p>
+                      </div>
+                      <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-5">
+                        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 font-mono text-[10px]">
+                          <div>
+                            <dt className="uppercase tracking-[0.12em] text-zinc-600">Author</dt>
+                            <dd className="mt-1 truncate text-zinc-300">{selected.author}</dd>
                           </div>
-                        </div>
-                      )}
-                    </aside>
+                          <div>
+                            <dt className="uppercase tracking-[0.12em] text-zinc-600">Source</dt>
+                            <dd className="mt-1 text-zinc-300">{lineCount ? `${lineCount.toLocaleString()} lines` : "Loading"}</dd>
+                          </div>
+                        </dl>
+                        {features.length > 0 && (
+                          <div className="mt-4 border-t border-white/[0.06] pt-3">
+                            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Detected features</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {features.map((feature) => (
+                                <span key={feature.label} className="rounded-full border border-white/[0.08] px-2.5 py-1 font-mono text-[9px] text-zinc-400">{feature.label}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </aside>
+                    </section>
                   </div>
                 )}
 
                 {tab === "source" && (
-                  <div className="min-h-full">
+                  <div role="tabpanel" className="mx-auto h-full min-h-0 w-full max-w-[1480px]">
                     {loadingSource ? (
-                      <div className="flex min-h-[420px] items-center justify-center gap-2 text-zinc-500">
+                      <div className="flex h-full min-h-[280px] items-center justify-center gap-2 text-zinc-500">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                         <span className="font-mono text-[11px]">Loading public Pine source…</span>
                       </div>
                     ) : sourceError ? (
                       <div className="rounded-[14px] border border-amber-500/20 bg-amber-500/[0.06] p-4 text-[13px] leading-relaxed text-amber-200/80">{sourceError}</div>
                     ) : (
-                      <CodeBlock
-                        code={source}
-                        filename={`${selected.id}.pine`}
-                        maxHeight={680}
-                        actions={<span className="mr-1 font-mono text-[9px] text-zinc-600">{lineCount} lines</span>}
-                      />
+                      <div className="flex h-full min-h-0 flex-col gap-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                          <SourceStatus meta={sourceMeta} loading={false} error={null} />
+                          <span className="font-mono text-[9px] text-zinc-600">
+                            {sourceMeta ? `${sourceMeta.characterCount.toLocaleString()} characters` : `${lineCount.toLocaleString()} lines`}
+                          </span>
+                        </div>
+                        <CodeBlock
+                          code={source}
+                          filename={`${selected.id}.pine`}
+                          maxHeight="calc(100dvh - 300px)"
+                          actions={<span className="mr-1 font-mono text-[9px] text-zinc-600">{lineCount.toLocaleString()} lines</span>}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
 
                 {tab === "logs" && (
-                  <div className="mx-auto max-w-5xl overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0d0d0d]">
+                  <div role="tabpanel" className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[14px] border border-white/[0.08] bg-[#0d0d0d]">
                     <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Terminal className="h-4 w-4 text-zinc-500" aria-hidden />
@@ -510,10 +617,16 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                       </div>
                       <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-600">{market}</span>
                     </div>
-                    <div className="max-h-[62dvh] overflow-y-auto overscroll-contain p-4 font-mono text-[11px] leading-relaxed">
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 font-mono text-[11px] leading-relaxed">
                       <LogRow level="info" label="marketplace" text={`Loaded ${selected.title} by ${selected.author}.`} />
                       {source ? (
-                        <LogRow level="info" label="source" text={`Imported ${lineCount} lines of Pine source. Author and license comments are preserved.`} />
+                        <LogRow
+                          level={sourceMeta?.integrity === "full" ? "success" : "warning"}
+                          label="source"
+                          text={sourceMeta?.integrity === "full"
+                            ? `Verified ${lineCount.toLocaleString()} lines of complete public Pine source from TradingView.`
+                            : `Extracted ${lineCount.toLocaleString()} lines from page markup; compare with TradingView before using it.`}
+                        />
                       ) : loadingSource ? (
                         <LogRow level="info" label="source" text="Fetching public source…" />
                       ) : (
@@ -548,7 +661,7 @@ export function PineMarketplace({ disabled, market, onUse }: Props) {
                 )}
               </div>
 
-              <div className="flex shrink-0 gap-2 border-t border-white/[0.08] p-3 sm:hidden">
+              <div className="flex shrink-0 gap-2 border-t border-white/[0.08] bg-[#0b0b0b] p-3 sm:hidden">
                 <button
                   type="button"
                   onClick={() => { setTab("logs"); void checkCompatibility(); }}

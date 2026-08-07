@@ -12,10 +12,11 @@
  * Motion follows interior.dev's rules: every transition is short (≤ 200ms),
  * eased with a single curve, and disabled under `prefers-reduced-motion`.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronRight, Copy, Loader2, X } from "lucide-react";
 
+import { tokenizePineLine, type PineTokenKind } from "@/lib/launchpad/pine-highlight";
 import { cn } from "@/lib/utils";
 
 /** One easing curve across the whole kit — interior.dev's core discipline is
@@ -24,6 +25,18 @@ export const EASE = [0.16, 1, 0.3, 1] as const;
 export const DUR = 0.18;
 
 // ─── Code block ──────────────────────────────────────────────────────────────
+
+const PINE_TOKEN_CLASS: Record<PineTokenKind, string> = {
+  plain: "text-zinc-300",
+  comment: "text-[#6f9f72]",
+  string: "text-[#a5cf7c]",
+  number: "text-[#d7a36e]",
+  keyword: "text-[#78a9f4]",
+  type: "text-[#58c4c7]",
+  builtin: "text-[#c49ae8]",
+  function: "text-[#e4cf83]",
+  operator: "text-[#8fb7e8]",
+};
 
 export function CodeBlock({
   code,
@@ -36,11 +49,13 @@ export function CodeBlock({
   code: string;
   language?: string;
   filename?: string;
-  maxHeight?: number;
+  maxHeight?: number | string;
   lineNumbers?: boolean;
   actions?: React.ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ top: false, right: false, bottom: false, left: false });
   const copy = useCallback(() => {
     void navigator.clipboard?.writeText(code).then(() => {
       setCopied(true);
@@ -48,7 +63,40 @@ export function CodeBlock({
     });
   }, [code]);
 
-  const lines = code.replace(/\n$/, "").split("\n");
+  const isPine = language === "pine" || language === "pinescript";
+  const lines = useMemo(() => code.replace(/\n$/, "").split("\n").map((line) => ({
+    line,
+    tokens: isPine && line ? tokenizePineLine(line) : null,
+  })), [code, isPine]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const update = () => {
+      const next = {
+        top: viewport.scrollTop > 2,
+        right: viewport.scrollLeft + viewport.clientWidth < viewport.scrollWidth - 2,
+        bottom: viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - 2,
+        left: viewport.scrollLeft > 2,
+      };
+      setScrollEdges((current) => (
+        current.top === next.top && current.right === next.right
+        && current.bottom === next.bottom && current.left === next.left
+          ? current
+          : next
+      ));
+    };
+
+    update();
+    viewport.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(viewport);
+    return () => {
+      viewport.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, [code, maxHeight]);
 
   return (
     <div className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0d0d0d]">
@@ -97,27 +145,43 @@ export function CodeBlock({
           </button>
         </div>
       </div>
-      {/* A hard cut through the middle of a line of code reads as a rendering bug rather than
-          as "there is more below". The mask fades the last few pixels so the clip is legible
-          as a scroll affordance; `overflow-auto` still does the actual scrolling. */}
-      <div
-        className="overflow-auto [mask-image:linear-gradient(to_bottom,black_calc(100%-18px),transparent)]"
-        style={{ maxHeight }}
-      >
-        <pre className="min-w-full p-3 pb-5 font-mono text-[11px] leading-[1.65] text-zinc-300">
-          <code>
-            {lines.map((l, i) => (
-              <div key={i} className="flex">
-                {lineNumbers && (
-                  <span className="mr-3 w-6 shrink-0 select-none text-right text-zinc-700 tabular-nums">
-                    {i + 1}
+      <div className="relative">
+        <div
+          ref={viewportRef}
+          tabIndex={0}
+          aria-label={filename ? `${filename} source code` : `${language} source code`}
+          className="overflow-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/20"
+          style={{ maxHeight }}
+        >
+          <pre className="min-w-full w-max p-3 pb-5 font-mono text-[11px] leading-[1.65] text-zinc-300">
+            <code>
+              {lines.map(({ line, tokens }, lineIndex) => (
+                <div key={lineIndex} className="flex min-h-[1.65em]">
+                  {lineNumbers && (
+                    <span className="mr-4 w-8 shrink-0 select-none text-right text-zinc-700 tabular-nums">
+                      {lineIndex + 1}
+                    </span>
+                  )}
+                  <span className="whitespace-pre pr-5">
+                    {line
+                      ? tokens
+                        ? tokens.map((token, tokenIndex) => (
+                            <span key={`${lineIndex}-${tokenIndex}`} className={PINE_TOKEN_CLASS[token.kind]}>
+                              {token.text}
+                            </span>
+                          ))
+                        : line
+                      : " "}
                   </span>
-                )}
-                <span className="whitespace-pre">{l || " "}</span>
-              </div>
-            ))}
-          </code>
-        </pre>
+                </div>
+              ))}
+            </code>
+          </pre>
+        </div>
+        {scrollEdges.top && <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.right && <div className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.bottom && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.left && <div className="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-[#0d0d0d] to-transparent" />}
       </div>
     </div>
   );

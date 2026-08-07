@@ -28,7 +28,7 @@ const lastTickTime = new Map();
 const executingBots = new Set();
 
 console.log('🚀 cash.trading Bot Runner starting...');
-console.log(`   Database: ${process.env.DATABASE_URL?.slice(0, 30)}...`);
+console.log(`   Database: ${process.env.DATABASE_URL ? 'configured' : 'missing'}`);
 
 /**
  * Execute a single trade for a bot

@@ -1200,7 +1200,7 @@ for (const removedDependency of [
   );
 }
 
-assert.equal(packageJson.dependencies.next, "^16.2.10");
+assert.equal(packageJson.dependencies.next, "16.2.11");
 assert.equal(packageJson.dependencies.ws, "^8.21.0");
 assert.equal(packageJson.dependencies["@noble/hashes"], "1.8.0");
 assert.equal(packageJson.dependencies.pg, "^8.22.0");

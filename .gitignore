@@ -58,6 +58,9 @@ Thumbs.db
 # Development documentation (kept locally only)
 docs/archive/
 
+# Team-only onboarding packets (never publish operational/contact details)
+docs/DECIBEL-BUILDER-CODE-REQUEST.md
+
 /lib/generated/prisma
 
 # Agent skills

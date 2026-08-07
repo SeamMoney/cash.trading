@@ -1,0 +1,27 @@
+title = "cash.trading secret scanning"
+
+[extend]
+useDefault = true
+
+# These exact shapes are public blockchain addresses or documentation-only
+# format markers. Do not allowlist 64-hex strings: Aptos private keys can use
+# that length and must continue to fail the scan.
+[[allowlists]]
+description = "Public EVM contract addresses"
+regexTarget = "secret"
+regexes = ['''^0x[0-9A-Fa-f]{40}$''']
+
+[[allowlists]]
+description = "Aptos key format marker without key material"
+regexTarget = "secret"
+regexes = ['''^ed25519-priv-0x\.\.\.$''']
+
+[[allowlists]]
+description = "Documentation placeholders"
+regexTarget = "secret"
+stopwords = [
+  "YOUR_API_KEY",
+  "YOUR_CLIENT_API_KEY",
+  "YOUR_NODE_API_KEY",
+  "YOUR_GEOMI_API_KEY",
+]

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Badge, Button, Card } from "frosted-ui";
 
 import { cn } from "@/lib/utils";
 
@@ -22,12 +23,15 @@ export const PRODUCT_MODAL_CLASS =
 export function ProductPanel({
   className,
   ...props
-}: React.ComponentProps<"section">) {
+}: React.ComponentProps<typeof Card>) {
   return (
-    <section
+    <Card
       data-slot="product-panel"
+      size="1"
+      variant="surface"
       className={cn(
         PRODUCT_PANEL_CLASS,
+        "!p-0",
         "[&>[data-slot=product-section]+[data-slot=product-section]]:border-t [&>[data-slot=product-section]+[data-slot=product-section]]:border-card-border",
         className,
       )}
@@ -88,7 +92,7 @@ export function ProductSelectorButton({
   value,
   className,
   ...props
-}: Omit<React.ComponentProps<"button">, "children" | "value"> & {
+}: Omit<React.ComponentProps<typeof Button>, "children" | "value"> & {
   detail?: React.ReactNode;
   icon?: React.ReactNode;
   label: React.ReactNode;
@@ -96,12 +100,14 @@ export function ProductSelectorButton({
   value: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      size="3"
+      variant="surface"
       data-slot="product-selector"
       className={cn(
         PRODUCT_CONTROL_CLASS,
-        "flex min-h-12 min-w-0 items-center gap-2.5 px-3 py-2 text-left transition-colors hover:border-border-strong hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        "!flex !h-auto min-h-12 min-w-0 !justify-start gap-2.5 !px-3 !py-2 text-left transition-colors hover:border-border-strong hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
         className,
       )}
       {...props}
@@ -119,7 +125,7 @@ export function ProductSelectorButton({
         )}
       </span>
       {trailing && <span className="shrink-0 text-muted-foreground">{trailing}</span>}
-    </button>
+    </Button>
   );
 }
 
@@ -127,25 +133,29 @@ export function ProductSegmented({
   className,
   children,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<typeof Card>) {
   return (
-    <div
+    <Card
       data-slot="product-segmented"
-      className={cn(PRODUCT_CONTROL_CLASS, "flex gap-1 p-1", className)}
+      size="1"
+      variant="soft"
+      className={cn(PRODUCT_CONTROL_CLASS, "flex gap-1 !p-1", className)}
       {...props}
     >
       {children}
-    </div>
+    </Card>
   );
 }
 
 export function ProductBadge({
   className,
   ...props
-}: React.ComponentProps<"span">) {
+}: React.ComponentProps<typeof Badge>) {
   return (
-    <span
+    <Badge
       data-slot="product-badge"
+      size="1"
+      variant="surface"
       className={cn(
         "inline-flex items-center rounded-[var(--radius-xs)] border border-card-border bg-card px-2 py-1 font-mono text-[9px] font-semibold uppercase text-foreground-secondary",
         className,

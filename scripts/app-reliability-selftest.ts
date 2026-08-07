@@ -1745,7 +1745,10 @@ assert.ok(
 const launchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
 const pineMarketplaceUi = readFileSync("components/launchpad/PineMarketplace.tsx", "utf8");
 const pinePreviewUi = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
+const marketPermissionsUi = readFileSync("components/launchpad/MarketPermissionsModal.tsx", "utf8");
 const productSurfaceUi = readFileSync("components/ui/product-surface.tsx", "utf8");
+const launchpadRoute = readFileSync("app/launchpad/page.tsx", "utf8");
+const rootLayout = readFileSync("app/layout.tsx", "utf8");
 const surfaceTokens = readFileSync("lib/surface.ts", "utf8");
 assert.ok(
   !/placeholder="0x…"/.test(launchUi),
@@ -1807,6 +1810,30 @@ assert.ok(
     && productSurfaceUi.includes("rounded-[var(--radius)]"),
   "product surfaces must consume the cash-trade-theme semantic tokens",
 );
+assert.equal(
+  packageJson.dependencies["frosted-ui"],
+  "0.0.1-canary.155",
+  "Frosted UI must stay exactly pinned while its public API is canary-only",
+);
+assert.ok(
+  rootLayout.includes('import "frosted-ui/styles.css"'),
+  "Frosted UI styles must load before launchpad components render",
+);
+assert.ok(
+  launchpadRoute.includes('from "frosted-ui"')
+    && launchpadRoute.includes("<Theme")
+    && launchpadRoute.includes('appearance="dark"')
+    && launchpadRoute.includes('accentColor="lime"')
+    && launchpadRoute.includes('className="cash-trade-theme"'),
+  "the launchpad route must scope Frosted UI to the cash.trading theme",
+);
+assert.ok(
+  productSurfaceUi.includes('from "frosted-ui"')
+    && productSurfaceUi.includes("<Card")
+    && productSurfaceUi.includes("<Button")
+    && productSurfaceUi.includes("<Badge"),
+  "shared launchpad surfaces must be backed by Frosted UI primitives",
+);
 assert.ok(
   !/bg-\[#[0-9a-f]{3,8}\]/i.test(productSurfaceUi),
   "shared product surfaces must not hard-code a private color palette",
@@ -1822,6 +1849,26 @@ assert.ok(
     && launchUi.includes("ProductSection")
     && launchUi.includes("ProductSelectorButton"),
   "the launch configuration must use the shared product primitives",
+);
+assert.ok(
+  marketPermissionsUi.includes('from "frosted-ui"')
+    && marketPermissionsUi.includes("<ResponsiveModalSheet")
+    && marketPermissionsUi.includes("<Switch")
+    && marketPermissionsUi.includes("Allow all launch-ready markets")
+    && marketPermissionsUi.includes("onToggleAll"),
+  "market access must be a responsive Frosted UI permission sheet with a master switch",
+);
+assert.ok(
+  launchUi.includes("<MarketPermissionsModal")
+    && !launchUi.includes("<MarketModal")
+    && !launchUi.includes("previewMarketOpen"),
+  "launchpad market access must use one permission picker, not trade-page dropdowns",
+);
+assert.ok(
+  pineMarketplaceUi.includes('label="Indicator library"')
+    && pineMarketplaceUi.includes("Browse")
+    && !pineMarketplaceUi.includes("function ChevronDownIcon"),
+  "the indicator selector must communicate a library action instead of a generic dropdown",
 );
 assert.ok(
   !pineMarketplaceUi.includes("h-[100dvh] w-screen"),
@@ -1938,7 +1985,8 @@ assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-h
   // The last market cannot be deselected — an empty selection is unlaunchable, and failing at
   // the signature instead of at the click is the worse of the two.
   assert.ok(
-    /if \(prev\.length === 1\) return prev;/.test(launchUi),
+    /if \(markets\.length === 1\) return;/.test(launchUi)
+      && /const cannotRemove = approved && selectedIds\.length === 1/.test(marketPermissionsUi),
     "the market picker must refuse to deselect the last market",
   );
 

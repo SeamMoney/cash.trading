@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { Tabs } from "frosted-ui";
 import { cn } from "@/lib/utils";
 import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
@@ -581,19 +582,23 @@ export function LaunchpadPage() {
           </div>
 
           {/* ── Tab bar ── */}
-          <div className="mb-6 flex items-center gap-1 border-b border-card-border animate-enter-delay-1">
-            {(["launch", "vaults", "manage"] as Tab[]).map((t) => (
-              <button key={t} onClick={() => setTab(t)}
-                className={cn(
-                  "-mb-px border-b-2 px-4 py-2.5 font-display text-[13px] font-semibold transition-colors",
-                  tab === t
-                    ? "border-foreground text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground-secondary",
-                )}>
-                {t === "launch" ? "Build a Bot" : t === "vaults" ? "Invest in Bots" : "Manage"}
-              </button>
-            ))}
-          </div>
+          <Tabs.Root
+            className="mb-6 animate-enter-delay-1"
+            value={tab}
+            onValueChange={(value) => setTab(value as Tab)}
+          >
+            <Tabs.List
+              aria-label="Strategy marketplace"
+              color="lime"
+              highContrast
+              size="2"
+              className="border-b border-card-border"
+            >
+              <Tabs.Trigger value="launch">Build a Bot</Tabs.Trigger>
+              <Tabs.Trigger value="vaults">Invest in Bots</Tabs.Trigger>
+              <Tabs.Trigger value="manage">Manage</Tabs.Trigger>
+            </Tabs.List>
+          </Tabs.Root>
 
           {/* ── Launch: pick a strategy, name it, ship it ── */}
           {tab === "launch" && (

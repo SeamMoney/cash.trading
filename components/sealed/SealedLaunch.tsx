@@ -49,10 +49,10 @@ import {
   PineMarketplace,
   type PineMarketplaceSelection,
 } from "@/components/launchpad/PineMarketplace";
+import { MarketPermissionsModal } from "@/components/launchpad/MarketPermissionsModal";
 import { SealedBacktest } from "@/components/sealed/SealedBacktest";
 import {
   MarketLogo,
-  MarketModal,
   apiMarketToMarket,
   type DecibelApiMarket,
   type Market,
@@ -196,8 +196,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const [markets, setMarkets] = useState<string[]>([]);
   const [marketOptions, setMarketOptions] = useState<Market[]>([]);
   const [previewMarket, setPreviewMarket] = useState("BTC/USD");
-  const [previewMarketOpen, setPreviewMarketOpen] = useState(false);
-  const [executionMarketOpen, setExecutionMarketOpen] = useState(false);
+  const [marketAccessOpen, setMarketAccessOpen] = useState(false);
   const workbenchRef = useRef<HTMLDivElement>(null);
 
   // Progress. Each address is the receipt for a completed step, so a retry resumes.
@@ -294,6 +293,35 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       color: "#27272a",
     });
   }, [config?.markets, marketOptions]);
+  const toggleMarketAccess = useCallback((id: string) => {
+    if (!executionMarketOptions.some((market) => market.id === id)) return;
+
+    if (markets.includes(id)) {
+      if (markets.length === 1) return;
+      const next = markets.filter((market) => market !== id);
+      setMarkets(next);
+      if (previewMarket === id) setPreviewMarket(next[0]);
+    } else {
+      setMarkets([...markets, id]);
+      setPreviewMarket(id);
+    }
+    setCommitInfo(null);
+  }, [executionMarketOptions, markets, previewMarket]);
+
+  const toggleAllMarketAccess = useCallback((checked: boolean) => {
+    const all = executionMarketOptions.map((market) => market.id);
+    if (all.length === 0) return;
+
+    if (checked) {
+      setMarkets(all);
+      if (!all.includes(previewMarket)) setPreviewMarket(all[0]);
+    } else {
+      const retained = all.includes(previewMarket) ? previewMarket : all[0];
+      setMarkets([retained]);
+      setPreviewMarket(retained);
+    }
+    setCommitInfo(null);
+  }, [executionMarketOptions, previewMarket]);
   // What the SCRIPT asks for, if anything. Shown so a creator whose strategy declares its own
   // size or leverage is not left thinking the controls below decided them — and so one whose
   // script declares nothing knows the controls are the whole answer.
@@ -672,46 +700,16 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
       )}
 
-      <MarketModal
-        description="Crypto, stocks, and commodities"
-        markets={marketOptions.length > 0 ? marketOptions : executionMarketOptions}
-        onClose={() => setPreviewMarketOpen(false)}
-        onSelect={setPreviewMarket}
-        network={config?.network === "testnet" ? "testnet" : "mainnet"}
-        open={previewMarketOpen}
-        selected={previewMarket}
-        title="Preview market"
-      />
-
-      <MarketModal
-        allDescription="Select every market with a verified live executor"
-        allLabel="All launch-ready markets"
-        description="Every Decibel market is visible; verified executors can be selected"
-        disabledIds={marketOptions
-          .filter((market) => !executionMarketOptions.some((ready) => ready.id === market.id))
-          .map((market) => market.id)}
-        markets={marketOptions.length > 0 ? marketOptions : executionMarketOptions}
-        multiple
-        onClose={() => setExecutionMarketOpen(false)}
-        onSelect={() => undefined}
-        onSelectAll={() => {
-          const all = executionMarketOptions.map((market) => market.id);
-          setMarkets(markets.length === all.length ? [all[0]].filter(Boolean) : all);
-          setCommitInfo(null);
-        }}
-        onToggle={(id) => {
-          setMarkets((prev) => {
-            if (!prev.includes(id)) return [...prev, id];
-            if (prev.length === 1) return prev;
-            return prev.filter((market) => market !== id);
-          });
-          setCommitInfo(null);
-        }}
-        network={config?.network === "testnet" ? "testnet" : "mainnet"}
-        open={executionMarketOpen}
-        selected={primaryMarket}
+      <MarketPermissionsModal
+        busy={busy}
+        markets={executionMarketOptions}
+        onClose={() => setMarketAccessOpen(false)}
+        onPreview={setPreviewMarket}
+        onToggle={toggleMarketAccess}
+        onToggleAll={toggleAllMarketAccess}
+        open={marketAccessOpen}
+        previewMarket={previewMarket}
         selectedIds={markets}
-        title="Markets to trade"
       />
 
       {/* One workbench: the preview, source, backtest, and launch decisions begin on the same
@@ -729,14 +727,28 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             market={previewMarket}
             marketControl={(
               <ProductSelectorButton
-                onClick={() => setPreviewMarketOpen(true)}
+                onClick={() => setMarketAccessOpen(true)}
                 disabled={busy}
-                className="w-full sm:min-w-[220px] sm:max-w-[260px]"
-                icon={<MarketLogo market={previewMarket} size={28} />}
-                label="Preview market"
-                value={previewMarket}
-                detail="Decibel history"
-                trailing={<ChevronDown className="h-4 w-4" aria-hidden />}
+                className="w-full sm:min-w-[260px] sm:max-w-[320px]"
+                icon={(
+                  <span className="flex -space-x-1.5">
+                    {markets.slice(0, 3).map((market) => (
+                      <span className="rounded-full border-2 border-background-tertiary" key={market}>
+                        <MarketLogo market={market} size={26} />
+                      </span>
+                    ))}
+                  </span>
+                )}
+                label="Bot market access"
+                value={markets.length === executionMarketOptions.length && markets.length > 1
+                  ? `All ${markets.length} markets approved`
+                  : `${markets.length} ${markets.length === 1 ? "market" : "markets"} approved`}
+                detail={`Previewing ${previewMarket}`}
+                trailing={(
+                  <span className="font-display text-[11px] font-semibold text-accent">
+                    Configure
+                  </span>
+                )}
               />
             )}
             onUse={useMarketplaceScript}
@@ -985,70 +997,36 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               />
             </ProductSection>
 
-            {/* Markets. A primary decision, not an execution setting: picking a second one
-                changes which contract the vault runs on and what it can do. */}
-            {config && config.markets.length > 0 && (
+            {/* Market permissions live beside the chart, where creators can see the visual
+                effect immediately. The rail only explains the extra safeguards that become
+                active when more than one market is approved. */}
+            {config && isPortfolio && (
               <ProductSection
-                title="Markets to trade"
-                description="Choose one market or run the same strategy across several."
+                title="Portfolio safeguards"
+                description={`${markets.length} markets approved for this bot.`}
               >
-                <ProductSelectorButton
-                  disabled={busy}
-                  onClick={() => setExecutionMarketOpen(true)}
-                  className="w-full"
-                  icon={<span className="flex -space-x-1.5">
-                    {markets.slice(0, 3).map((market) => (
-                      <span className="rounded-full border-2 border-background-tertiary" key={market}>
-                        <MarketLogo market={market} size={24} />
-                      </span>
-                    ))}
-                  </span>}
-                  label="Execution"
-                  value={markets.length === 1 ? markets[0] : `${markets.length} markets selected`}
-                  detail={`${executionMarketOptions.length} launch-ready markets`}
-                  trailing={<ChevronDown className="h-4 w-4" aria-hidden />}
-                />
-
-                {isPortfolio ? (
-                  <div className="mt-2.5 border-t border-card-border pt-2.5">
-                    <p className="text-[12px] leading-relaxed text-zinc-300">
-                      <span className="font-semibold text-white">Portfolio mode.</span> Your
-                      strategy is evaluated on each market separately and can hold up to{" "}
-                      {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)}{" "}
-                      positions at once, long or short.
-                    </p>
-                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
-                      <Review
-                        k="Total exposure cap"
-                        v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
-                      />
-                      <Review
-                        k="Per position"
-                        v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
-                      />
-                      <Review
-                        k="Auto-close after"
-                        v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
-                      />
-                      <Review
-                        k="Funding stop-out"
-                        v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
-                      />
-                    </dl>
-                    {/* These two are the point of portfolio mode and are easy to miss in a
-                        table of caps, so they get a sentence. */}
-                    <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
-                      The contract closes any position held past the limit, or whose funding
-                      cost passes the stop-out — whether or not your strategy asks. Anyone can
-                      trigger that, so a stalled attestor cannot leave money in the market.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mt-2.5 text-[12px] leading-relaxed text-zinc-400">
-                    One market, one position at a time, long or short. Pick a second market to
-                    run the same strategy across several at once.
-                  </p>
-                )}
+                <p className="text-pretty text-[12px] leading-relaxed text-zinc-300">
+                  The strategy is evaluated separately on each approved market and can hold up
+                  to {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)} positions.
+                </p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                  <Review
+                    k="Total exposure cap"
+                    v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
+                  />
+                  <Review
+                    k="Per position"
+                    v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
+                  />
+                  <Review
+                    k="Auto-close after"
+                    v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
+                  />
+                  <Review
+                    k="Funding stop-out"
+                    v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
+                  />
+                </dl>
               </ProductSection>
             )}
 

@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/react"
 import { Toaster } from "@/components/ui/sonner"
 import { ClientProviders } from "@/components/client-providers"
 import { ChunkReload } from "@/components/chunk-reload"
+import "frosted-ui/styles.css"
 import "./globals.css"
 
 const inter = Inter({

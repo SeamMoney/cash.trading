@@ -327,10 +327,14 @@ export function PineMarketplace({
               <CandlestickChart className="h-4 w-4" aria-hidden />
               </span>
             )}
-            label="Indicator"
+            label="Indicator library"
             value={activeSelection?.title ?? "Choose a public Pine strategy"}
             detail={activeSelection ? `by ${activeSelection.author} · source loaded` : `${items.length || "Popular"} public scripts`}
-            trailing={<ChevronDownIcon />}
+            trailing={(
+              <span className="font-display text-[11px] font-semibold text-accent">
+                Browse
+              </span>
+            )}
           />
           {marketControl}
         </div>
@@ -603,10 +607,6 @@ export function PineMarketplace({
       </ResponsiveModalSheet>
     </>
   );
-}
-
-function ChevronDownIcon() {
-  return <span aria-hidden className="font-mono text-[16px]">⌄</span>;
 }
 
 function LogRow({

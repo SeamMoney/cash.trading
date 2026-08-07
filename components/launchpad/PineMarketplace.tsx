@@ -317,24 +317,20 @@ export function PineMarketplace({
   return (
     <>
       <ProductPanel className="overflow-hidden">
-        <div className="flex flex-col gap-2 border-b border-card-border p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-card-border p-2 sm:px-3">
           <ProductSelectorButton
             onClick={showGallery}
             disabled={disabled || items.length === 0}
-            className="w-full sm:max-w-[520px] sm:flex-1"
+            aria-label="Browse indicator library"
+            className="min-w-0 flex-1 sm:max-w-[520px]"
             icon={(
-              <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-xs)] bg-accent/10 text-accent">
-              <CandlestickChart className="h-4 w-4" aria-hidden />
+              <span className="flex size-7 items-center justify-center rounded-[6px] bg-accent/10 text-accent">
+                <CandlestickChart className="size-3.5" aria-hidden="true" />
               </span>
             )}
             label="Indicator library"
-            value={activeSelection?.title ?? "Choose a public Pine strategy"}
-            detail={activeSelection ? `by ${activeSelection.author} · source loaded` : `${items.length || "Popular"} public scripts`}
-            trailing={(
-              <span className="font-display text-[11px] font-semibold text-accent">
-                Browse
-              </span>
-            )}
+            value={activeSelection?.title ?? "Choose indicator"}
+            detail={activeSelection ? "Loaded" : `${items.length || "Popular"} scripts`}
           />
           {marketControl}
         </div>

@@ -729,26 +729,14 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               <ProductSelectorButton
                 onClick={() => setMarketAccessOpen(true)}
                 disabled={busy}
-                className="w-full sm:min-w-[260px] sm:max-w-[320px]"
-                icon={(
-                  <span className="flex -space-x-1.5">
-                    {markets.slice(0, 3).map((market) => (
-                      <span className="rounded-full border-2 border-background-tertiary" key={market}>
-                        <MarketLogo market={market} size={26} />
-                      </span>
-                    ))}
-                  </span>
-                )}
+                aria-label="Configure bot market access"
+                className="max-w-[190px] shrink-0 sm:max-w-[260px]"
+                icon={<MarketLogo market={previewMarket} size={24} />}
                 label="Bot market access"
-                value={markets.length === executionMarketOptions.length && markets.length > 1
-                  ? `All ${markets.length} markets approved`
-                  : `${markets.length} ${markets.length === 1 ? "market" : "markets"} approved`}
-                detail={`Previewing ${previewMarket}`}
-                trailing={(
-                  <span className="font-display text-[11px] font-semibold text-accent">
-                    Configure
-                  </span>
-                )}
+                value={previewMarket}
+                detail={markets.length === executionMarketOptions.length && markets.length > 1
+                  ? "All approved"
+                  : `${markets.length} approved`}
               />
             )}
             onUse={useMarketplaceScript}

@@ -1866,9 +1866,22 @@ assert.ok(
 );
 assert.ok(
   pineMarketplaceUi.includes('label="Indicator library"')
-    && pineMarketplaceUi.includes("Browse")
+    && pineMarketplaceUi.includes('aria-label="Browse indicator library"')
     && !pineMarketplaceUi.includes("function ChevronDownIcon"),
-  "the indicator selector must communicate a library action instead of a generic dropdown",
+  "the indicator selector must expose a labelled compact library trigger",
+);
+assert.ok(
+  productSurfaceUi.includes("<ChevronDown")
+    && productSurfaceUi.includes("!h-10")
+    && productSurfaceUi.includes("hover:!bg-white/[0.05]")
+    && productSurfaceUi.includes('<span className="sr-only">{label}</span>'),
+  "launchpad selectors must share the trade page's compact icon/value/chevron contract",
+);
+assert.ok(
+  !pineMarketplaceUi.includes("flex flex-col gap-2 border-b")
+    && !pineMarketplaceUi.includes("source loaded")
+    && !launchUi.includes("All ${markets.length} markets approved"),
+  "launchpad selectors must not regress to oversized multi-line action cards",
 );
 assert.ok(
   !pineMarketplaceUi.includes("h-[100dvh] w-screen"),

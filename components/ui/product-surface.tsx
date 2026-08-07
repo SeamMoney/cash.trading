@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Badge, Button, Card } from "frosted-ui";
+import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -102,29 +103,28 @@ export function ProductSelectorButton({
   return (
     <Button
       type="button"
-      size="3"
-      variant="surface"
+      size="2"
+      variant="ghost"
       data-slot="product-selector"
       className={cn(
-        PRODUCT_CONTROL_CLASS,
-        "!flex !h-auto min-h-12 min-w-0 !justify-start gap-2.5 !px-3 !py-2 text-left transition-colors hover:border-border-strong hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        "!inline-flex !h-10 min-w-0 !justify-start gap-2 !rounded-[8px] !border !border-transparent !bg-transparent !px-2 !py-1.5 text-left transition-colors hover:!bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
         className,
       )}
       {...props}
     >
       {icon && <span className="shrink-0">{icon}</span>}
-      <span className="min-w-0 flex-1">
-        <span className="block font-mono text-[9px] uppercase text-muted-foreground">{label}</span>
-        <span className="mt-0.5 block truncate font-display text-[13px] font-semibold text-foreground">
-          {value}
-        </span>
-        {detail && (
-          <span className="mt-0.5 block truncate font-mono text-[9px] text-muted-foreground">
-            {detail}
-          </span>
-        )}
+      <span className="sr-only">{label}</span>
+      <span className="min-w-0 truncate font-display text-[13px] font-semibold text-foreground">
+        {value}
       </span>
-      {trailing && <span className="shrink-0 text-muted-foreground">{trailing}</span>}
+      {detail && (
+        <span className="hidden shrink-0 rounded-[6px] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-muted-foreground sm:inline-flex">
+          {detail}
+        </span>
+      )}
+      <span className="ml-auto shrink-0 text-muted-foreground">
+        {trailing ?? <ChevronDown className="size-3" aria-hidden="true" />}
+      </span>
     </Button>
   );
 }

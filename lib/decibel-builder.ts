@@ -42,10 +42,15 @@ function configuredFeeBps() {
 export function getDecibelBuilderConfig(network: DecibelNetwork) {
   const rawAddress =
     process.env.DECIBEL_BUILDER_ADDRESS?.trim() || rewardConfig.managerAddress
+  const enabled =
+    network === 'mainnet' && process.env.DECIBEL_BUILDER_ENABLED === 'true'
   return {
-    enabled:
-      network === 'mainnet' && process.env.DECIBEL_BUILDER_ENABLED === 'true',
-    enrollmentOpen: network === 'mainnet' && rewardConfig.status === 'live',
+    enabled,
+    // Builder Codes are permissionless on Decibel. The selected trading account
+    // authorizes this address and fee on-chain before any order includes it.
+    // CASH reward claims have a separate launch gate and must not prevent that
+    // approval from being created or revoked.
+    enrollmentOpen: enabled,
     builderAddress: normalizeAptosAddress(rawAddress, 'builderAddress'),
     feeBps: configuredFeeBps(),
   }
@@ -154,9 +159,6 @@ export function buildDecibelBuilderApprovalPayload(args: {
 }): DecibelEntryPayload {
   const config = getDecibelBuilderConfig(args.network)
   if (!config.enabled) throw new Error('cash.trading Builder routing is not enabled')
-  if (args.action === 'approve' && !config.enrollmentOpen) {
-    throw new Error('CASH rewards enrollment is not live yet')
-  }
   const subaccount = normalizeAptosAddress(args.subaccount, 'subaccount')
   return {
     function:

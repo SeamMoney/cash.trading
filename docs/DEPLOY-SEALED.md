@@ -15,7 +15,7 @@ This document assumes you do and only covers getting it live.
 |---|---|
 | Contract on **testnet** | Published & exercised end-to-end — `0xacc35ae1a8a692d2070e0f6f4b7e0969752789300e055f6973f0ec8287f1740c` |
 | Contract on **mainnet** | **Not published.** Nothing below has run on mainnet. |
-| Builder code (2 bps revenue) | **BLOCKED — see §8.5b.** Decibel must register our builder address; until then `init_platform` MUST use `builder_fee_bps = 0` or every vault is unable to trade. |
+| Builder code (2 bps revenue) | Implemented. Each strategy-vault trading identity must approve the Builder address before its first fee-bearing order; see §8.5b. |
 | Prod database | 4 sealed migrations pending (§3) |
 | Prod env vars | None of the sealed vars are set — `/api/sealed/config` returns `ready:false` |
 | Tick cron | Committed to `vercel.json`, never run in prod |
@@ -69,7 +69,7 @@ transcripts. **Treat all of them as burned.** Generate four new ones for mainnet
 | Role | Where it lives | What it does | Compromise means |
 |---|---|---|---|
 | **Deployer / admin** | cold — signs a handful of times, ever | Publishes the package (its address **is** `@cash_strategy`), and is the only account `init_platform` / `set_platform_config` accept | Attacker can redirect the treasury and builder addresses for **future** vaults. Existing vaults snapshot their terms at creation and are unaffected. Cannot change bytecode: the mainnet publish is immutable (§1.2) |
-| **Builder / treasury** | cold, ideally hardware | Receives the 2 bps builder fee and the launch fee. Registered with Decibel (`docs/DECIBEL-BUILDER-CODE-REQUEST.md`) | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
+| **Builder / treasury** | cold, ideally hardware | Receives the 2 bps builder fee and the launch fee. The strategy-vault trading identity approves it on-chain at creation. | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
 | **Attestor** | hot — Vercel env, `SEALED_ATTESTOR_PRIVATE_KEY` | Signs one bounded action per bar. Its public key is sealed into every vault at birth | Attacker can steer trades **within** the frozen bounds: market allowlist, per-leg and aggregate leverage, max positions, bar cadence, max-hold. Cannot withdraw, cannot exceed caps, cannot unseal |
 | **Cranker** | hot — Vercel env, `SEALED_CRANK_PRIVATE_KEY` | Submits the tick transaction and pays gas. No authority whatsoever | Attacker gets a gas wallet. Signals are verified against the attestor pubkey on chain |
 
@@ -78,8 +78,8 @@ Rules that follow from the table:
 - **Never reuse one key for two roles.** Deployer = admin is already a doubling-up the contract
   forces on us; don't add more. Attestor ≠ cranker is enforced by §4.2's guidance and is the
   reason a stolen gas wallet can't forge signals.
-- **Builder ≠ deployer.** The builder address is the one Decibel registers and the one that
-  accumulates revenue; it should never be an account whose key ever touched a server.
+- **Builder ≠ deployer.** The builder address accumulates revenue; it should never be an
+  account whose key ever touched a server.
 - The deployer is cold **but not disposable** — losing it means no future `set_platform_config`,
   so back it up the way you back up the attestor key.
 - The two hot keys are the only ones that go in Vercel. If either leaks, rotating the cranker is
@@ -509,43 +509,30 @@ across many bars), gas per tick at 16 markets, and the funding sign convention (
 
 ---
 
-### 8.5b 🚨 LAUNCH BLOCKER — the builder code bricks every order
+### 8.5b Builder-code approval invariant
 
-**A vault created while `builder_fee_bps > 0` cannot place a single trade.** Every order aborts:
+Decibel requires the trading identity that places an order to approve the Builder address and
+maximum fee first. A fee-bearing order without that `(trading account, builder address)` approval
+aborts with:
 
 ```
 Move abort in …::builder_code_registry: EBUILDER_NOT_REGISTERED(0x2)
 ```
 
-Proven by isolation on the clean-room stack: identical code and vault config, `builder_fee_bps
-= 2` → every order aborts; `set_platform_config` to `0`, new vault → four orders fill. This is
-not portfolio-specific — **`sealed_vault` attaches the same builder code to every order**, so
-the single-market path is affected identically. It has never surfaced because no live vault has
-ever produced a non-neutral signal.
+That error name means the approval pair is absent. It does not refer to a Decibel-admin builder
+allowlist. The current mainnet registry stores the global fee cap and per-account approvals; it
+does not store a separate list of registered builders. Decibel's current Builder Code guide also
+describes the flow as permissionless.
 
-**Becoming a Decibel builder is not permissionless.** `builder_code_registry::initialize` is
-`friend`-visible, there is no public or entry wrapper anywhere in the package, and
-`admin_apis::set_global_max_builder_fee` is Decibel-admin only. Our `approve_max_fee` call at
-vault creation is necessary but **not sufficient** — it records the payer's approval; it does
-not register the builder.
+Both `sealed_vault` and `portfolio_vault` call the public
+`perp_engine_api::approve_max_fee` function from their own object signer during creation. Keep
+that call immediately before the first order can run. A normal user-controlled Decibel account
+uses `dex_accounts_entry::approve_max_builder_fee_for_subaccount` instead and must explicitly
+sign the approval in its wallet.
 
-**The registration request is written and ready to send:**
-[`docs/DECIBEL-BUILDER-CODE-REQUEST.md`](./DECIBEL-BUILDER-CODE-REQUEST.md). It has one
-placeholder — the mainnet builder address — which cannot be filled until the mainnet package is
-published. Do not send it with the placeholder in it.
-
-Before mainnet, one of these must be true:
-
-1. **Decibel registers our builder address** (ask them; this is the revenue path — 2 bps on
-   notional is the whole volume-based business model), **or**
-2. **`init_platform` runs with `builder_fee_bps = 0`.** Vaults snapshot builder terms at
-   creation, so vaults launched at 0 stay at 0 forever and a later config change does not
-   retroactively fix or break them. Launching at 0 and turning it on after registration is the
-   safe order.
-
-Do **not** publish with a non-zero builder fee and assume it will start working — every vault
-created in the meantime is permanently unable to trade, and the failure is a Move abort on the
-tick, which the cron records as a retryable error and retries forever.
+If the fee is zero, omit the Builder Code. If the fee is positive, verify the approval on-chain
+before sending the first real order. This protects a new deployment from retrying a permanently
+invalid order because its approval transaction was skipped or reverted.
 
 ### 8.5c 🚨 Two strategy vaults on one Decibel vault corrupt each other
 

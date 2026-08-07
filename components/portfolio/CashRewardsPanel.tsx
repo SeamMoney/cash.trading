@@ -316,15 +316,14 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
 
   const updateBuilderRouting = useCallback(async (action: "approve" | "revoke") => {
     if (builderAction || !builderStatus?.enabled) return;
-    if (action === "approve" && snapshot?.contract.status !== "live") return;
     setBuilderAction(action);
     setClaimStatus(null);
     setBuilderActionStatus({
       tone: "pending",
       message:
         action === "approve"
-          ? "Confirm the optional CASH rewards routing approval in your wallet..."
-          : "Confirm that you want to disable CASH rewards routing...",
+          ? "Confirm the optional cash.trading Builder fee in your wallet..."
+          : "Confirm that you want to revoke the cash.trading Builder fee...",
     });
     try {
       const response = await fetch("/api/decibel/builder", {
@@ -355,8 +354,8 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
         tone: "success",
         message:
           action === "approve"
-            ? `CASH rewards routing is on. A ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) Builder fee will be added to orders placed through cash.trading.`
-            : "CASH rewards routing is off. New cash.trading orders will not include a Builder fee.",
+            ? `The cash.trading Builder fee is on. A ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) fee will be added to orders placed through cash.trading.`
+            : "The cash.trading Builder fee is off. New orders will not include it.",
         hash: submitted.hash,
       });
       await refreshBuilder(true);
@@ -374,7 +373,6 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     network,
     refreshBuilder,
     signAndSubmitDecibelTransaction,
-    snapshot?.contract.status,
     subaccount,
   ]);
 
@@ -393,7 +391,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
     builderApproved && builderStatus?.enrollmentOpen,
   );
   const builderCanEnable = Boolean(
-    builderStatus?.enrollmentOpen && snapshot?.contract.status === "live",
+    builderStatus?.enrollmentOpen,
   );
   const visibleStatus = builderActionStatus ?? claimStatus;
 
@@ -555,7 +553,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
               </div>
               <div className="mt-4 border-t border-[#1a1a1a] pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-medium text-zinc-300">CASH rewards routing</span>
+                  <span className="text-[11px] font-medium text-zinc-300">cash.trading Builder fee</span>
                   <span className={cn(
                     "rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide",
                     builderRoutingActive
@@ -569,14 +567,14 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                       : builderRoutingActive
                         ? "On"
                         : builderApproved
-                          ? "Paused"
+                          ? "Approved"
                           : "Off"}
                   </span>
                 </div>
                 <p className="mt-2 text-pretty text-[10px] leading-4 text-zinc-600">
                   {builderStatus?.enabled
                     ? `Optional ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) Builder fee per order. Decibel protocol fees still apply. This approval is on-chain and revocable any time.`
-                    : "Builder routing is available on mainnet only. No cash.trading Builder fee is being added."}
+                    : "Builder fees are unavailable. No cash.trading fee is being added."}
                 </p>
                 {builderStatus?.enabled && !builderStatus.approval.readable && (
                   <p className="mt-2 text-[10px] leading-4 text-yellow-300">
@@ -597,10 +595,10 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                   {builderAction
                     ? "Confirming..."
                     : builderApproved
-                      ? "Disable routing"
+                      ? "Revoke Builder fee"
                       : builderCanEnable
-                        ? "Enable CASH rewards routing"
-                        : "Available after rewards funding"}
+                        ? `Approve ${builderStatus?.feeBps ?? 1} bp Builder fee`
+                        : "Builder fee unavailable"}
                 </button>
               </div>
               <button

@@ -1,6 +1,6 @@
 # cash.trading Builder and CASH incentive strategy
 
-Status: implementation-ready, launch-gated. Last reviewed July 18, 2026.
+Status: Builder routing ready for mainnet; CASH claims remain launch-gated. Last reviewed August 6, 2026.
 
 ## The product advantage
 
@@ -8,11 +8,16 @@ cash.trading should win on account clarity, points intelligence, vault automatio
 cross-chain onboarding, and responsive charts. CASH rewards are an acquisition and
 retention layer for those useful workflows; they are not a substitute for them.
 
-The first production program uses Decibel Builder Codes. A user may opt in by
+The production integration uses Decibel Builder Codes. A user may opt in by
 approving a maximum fee for the isolated cash.trading Builder address on a specific
 Decibel subaccount. Approved orders placed through cash.trading include a 1 bp
 (0.01%) Builder fee. The approval is shown clearly and can be revoked at any time.
 Accounts that do not opt in pay no cash.trading Builder fee.
+
+Builder Code enrollment is permissionless and independent of the CASH claim contract.
+`EBUILDER_NOT_REGISTERED` means the selected trading account has not recorded an approval for
+the selected Builder address. It does not mean the Decibel team must add the address to an
+admin allowlist.
 
 Official mechanics:
 

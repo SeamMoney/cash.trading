@@ -20,6 +20,7 @@ import { buildDepositDecibelVaultPayload } from "@/lib/decibel-vaults";
 interface SealedVault {
   strategyVaultAddr: string;
   packageAddress: string;
+  network: string;
   creatorAddr: string;
   decibelVaultAddr: string;
   marketName: string | null;
@@ -100,7 +101,8 @@ export function SealedVaultFeed() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/sealed/vaults?network=testnet", { cache: "no-store" });
+      const network = process.env.NEXT_PUBLIC_DECIBEL_NETWORK === "mainnet" ? "mainnet" : "testnet";
+      const res = await fetch(`/api/sealed/vaults?network=${network}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? "Could not load sealed vaults");
@@ -186,7 +188,7 @@ export function SealedVaultFeed() {
         vaultAddress: active.decibelVaultAddr,
         owner: account.address.toString(),
         amountUsdc: usdc,
-        network: "testnet",
+        network: active.network === "mainnet" ? "mainnet" : "testnet",
       });
       const submitted = await signAndSubmitTransaction({
         data: {
@@ -212,7 +214,7 @@ export function SealedVaultFeed() {
       <h3 className="mb-1.5 font-display text-sm font-semibold text-white">No bots live yet</h3>
       <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">
         A sealed bot keeps its strategy private while the chain enforces what it can trade.
-        Launch one from the Launch a Bot tab.
+        Deploy one from the Deploy tab.
       </p>
     </div>
   );

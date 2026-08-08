@@ -1,4 +1,5 @@
 {
+  "buildCommand": "pnpm vercel-build",
   "build": {
     "env": {
       "NODE_VERSION": "22",

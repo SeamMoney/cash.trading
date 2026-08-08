@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "prisma generate && next build",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "db:migrate:deploy": "prisma migrate deploy",
     "doctor": "react-doctor --full --no-score",
     "dev": "next dev",

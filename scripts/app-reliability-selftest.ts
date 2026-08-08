@@ -193,6 +193,17 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 };
 const nextConfig = readFileSync("next.config.mjs", "utf8");
 
+assert.match(
+  packageJson.scripts?.["vercel-build"] ?? "",
+  /prisma migrate deploy/,
+  "Vercel builds must apply checked-in migrations before starting the app",
+);
+assert.equal(
+  (vercelConfig as { buildCommand?: string }).buildCommand,
+  "pnpm vercel-build",
+  "Vercel must use the migration-aware production build command",
+);
+
 assert.match(vaultRoute, /const VAULT_PAGE_SIZE = 1_000;/);
 assert.match(vaultRoute, /status: "active"/);
 assert.match(vaultRoute, /remainingOffsets\.map\(fetchPage\)/);
@@ -1800,6 +1811,12 @@ for (const f of [
     `${f} must use border-white/[0.08] like the trade page, not the harder #2a2a2a`,
   );
 }
+const sealedVaultFeed = readFileSync("components/sealed/SealedVaultFeed.tsx", "utf8");
+assert.ok(
+  !sealedVaultFeed.includes("network=testnet") &&
+    sealedVaultFeed.includes("NEXT_PUBLIC_DECIBEL_NETWORK"),
+  "the sealed-vault marketplace must follow the configured Decibel network",
+);
 
 // New product workflows must be assembled from the same semantic surfaces as
 // the trade page. This catches the exact regression where Launchpad introduced

@@ -5,7 +5,6 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Tabs } from "frosted-ui";
 import { cn } from "@/lib/utils";
 import { BacktestViewer } from "./BacktestViewer";
-import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
 import { SealedSwap } from "@/components/sealed/SealedSwap";
@@ -43,8 +42,9 @@ interface Indicator {
   creatorEarningsUsdt?: number;
 }
 
-// Three tabs, one job each: make a bot, invest in one, manage yours.
-type Tab    = "launch" | "vaults" | "manage";
+// Restore the original Whop marketplace map. Each destination has one job and the labels
+// match the product model users already learned there.
+type Tab    = "explore" | "deploy" | "bots" | "creator";
 type Sort   = "robustness" | "sharpe" | "raised";
 type Filter = "all" | "live" | "testing";
 
@@ -498,7 +498,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function LaunchpadPage() {
-  const [tab,        setTab]        = useState<Tab>("launch");
+  const [tab,        setTab]        = useState<Tab>("explore");
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [selected,   setSelected]   = useState<Indicator | null>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -559,26 +559,12 @@ export function LaunchpadPage() {
     if (fresh) setSelected(fresh);
   }, [indicators]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleDeployed(addr: string) {
-    setTab("vaults");
-    void (async () => {
-      let latest = await fetchIndicators(true);
-      let found = latest.find((indicator) => indicator.address === addr);
-      if (!found) {
-        await new Promise((resolve) => setTimeout(resolve, 1_500));
-        latest = await fetchIndicators(true);
-        found = latest.find((indicator) => indicator.address === addr);
-      }
-      if (found) setSelected(found);
-    })();
-  }
-
   return (
     <div className="min-h-screen pb-24 md:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <AmbientBlobs variant="launchpad" />
-        <main className="relative z-10 mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
+        <main className="relative z-10 mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 
           {/* ── Hero ── */}
           <div className="mb-4 flex items-center justify-between gap-4">
@@ -607,51 +593,22 @@ export function LaunchpadPage() {
               size="2"
               className="border-b border-card-border"
             >
-              <Tabs.Trigger value="launch">Build a Bot</Tabs.Trigger>
-              <Tabs.Trigger value="vaults">Invest in Bots</Tabs.Trigger>
-              <Tabs.Trigger value="manage">Manage</Tabs.Trigger>
+              <Tabs.Trigger value="explore">Explore</Tabs.Trigger>
+              <Tabs.Trigger value="deploy">Deploy</Tabs.Trigger>
+              <Tabs.Trigger value="bots">My Bots</Tabs.Trigger>
+              <Tabs.Trigger value="creator">Creator</Tabs.Trigger>
             </Tabs.List>
           </Tabs.Root>
 
-          {/* ── Launch: pick a strategy, name it, ship it ── */}
-          {tab === "launch" && (
-            <div>
-              <div className="mb-4">
-                <h2 className="text-balance font-display text-[18px] font-bold text-foreground sm:text-[22px]">
-                  Build your own automated trading bot
-                </h2>
-                {/* The full pitch is desktop-only: on a phone it pushed the first real control
-                    below the fold to restate what the tab already said. */}
-                <p className="mt-1 hidden max-w-2xl text-pretty text-[13px] leading-relaxed text-foreground-secondary sm:block">
-                  Import a TradingView script or start from a template. It deploys as a vault
-                  that trades on-chain under rules the contract enforces, and your source can
-                  stay private.
-                </p>
-              </div>
-              <SealedLaunch onLaunched={() => setTab("vaults")} />
+          {/* ── Deploy: the original Whop workbench, upgraded with sealed-vault controls ── */}
+          {tab === "deploy" && (
+            <div className="animate-enter-delay-1">
+              <SealedLaunch onLaunched={() => setTab("explore")} />
             </div>
           )}
 
-          {/* ── Sealed Vaults (trader) ── */}
-          {tab === "vaults" && (
-            <div className="space-y-4">
-              <div className="rounded-[16px] border border-white/[0.06] bg-[#141414] px-5 py-4">
-                <h2 className="font-display text-sm font-semibold text-white">
-                  Invest in a private strategy
-                </h2>
-                <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                  You can&apos;t see the algorithm. You can verify what it is unable to do: one
-                  market, a fixed percent of NAV per order, a hard leverage cap, a minimum interval
-                  between trades, and no authority to move your funds. Deposits sit in a Decibel
-                  vault; withdrawals follow Decibel&apos;s redemption queue.
-                </p>
-              </div>
-              <SealedVaultFeed />
-            </div>
-          )}
-
-          {/* Public indicator feed — lives under Invest, below sealed vaults. */}
-          {tab === "vaults" && (
+          {/* ── Explore: restore Whop's strategy list/detail split as the primary view. ── */}
+          {tab === "explore" && (
             <div>
               <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
 
@@ -735,7 +692,7 @@ export function LaunchpadPage() {
                       ) : indicators.length === 0 ? (
                         <div className="text-center py-8 px-4">
                           <p className="text-xs text-[#888]">No strategies found</p>
-                          <button type="button" onClick={() => setTab("launch")}
+                          <button type="button" onClick={() => setTab("deploy")}
                             className={cn("mt-3 rounded-[var(--radius-xs)] text-xs text-zinc-400 underline hover:text-white", PRODUCT_PRESSABLE_CLASS)}>
                             Deploy the first one →
                           </button>
@@ -761,22 +718,49 @@ export function LaunchpadPage() {
                       <IndicatorDetail
                         key={selected.address}
                         ind={selected}
-                        onDeployOwn={() => setTab("launch")}
+                        onDeployOwn={() => setTab("deploy")}
                       />
                     ) : (
-                      <EmptyState onDeploy={() => setTab("launch")} />
+                      <EmptyState onDeploy={() => setTab("deploy")} />
                     )}
                   </div>
                 </div>
 
               </div>
+
+              {/* Sealed vaults did not exist in the original Whop build. Keep them as a
+                  secondary marketplace section instead of letting them replace the proven
+                  strategy-list/detail flow above. */}
+              <section className="mt-8 border-t border-card-border pt-6">
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-3 px-1">
+                  <div>
+                    <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
+                      On-chain vaults
+                    </p>
+                    <h2 className="mt-1 font-display text-[18px] font-semibold text-foreground">
+                      Invest in live strategies
+                    </h2>
+                  </div>
+                  <p className="max-w-xl text-[11px] leading-relaxed text-muted-foreground">
+                    Review the rules enforced by each sealed strategy, inspect its recorded
+                    trades, and deposit directly into its Decibel vault.
+                  </p>
+                </div>
+                <SealedVaultFeed />
+              </section>
             </div>
           )}
 
-          {/* ── Manage: your bots & earnings ── */}
-          {tab === "manage" && (
-            <div className="space-y-8">
+          {/* ── My Bots: operational controls for vaults this wallet launched ── */}
+          {tab === "bots" && (
+            <div className="animate-enter-delay-1">
               <SealedSwap creatorAddr={account?.address?.toString()} />
+            </div>
+          )}
+
+          {/* ── Creator: publishing history and earnings stay separate from bot controls. ── */}
+          {tab === "creator" && (
+            <div className="animate-enter-delay-1">
               <CreatorDashboard creatorAddr={account?.address?.toString()} />
             </div>
           )}

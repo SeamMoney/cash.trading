@@ -42,6 +42,9 @@ export interface PineMarketplaceSelection {
 interface Props {
   activeSelection?: PineMarketplaceSelection | null;
   disabled?: boolean;
+  /** Render a compact library launcher for use beside the TradingView URL importer. The
+   *  deploy workbench owns the surrounding panel and the visual preview. */
+  launcherOnly?: boolean;
   market: string;
   marketControl?: ReactNode;
   onUse: (selection: PineMarketplaceSelection) => void;
@@ -181,6 +184,7 @@ function PopularCard({
 export function PineMarketplace({
   activeSelection,
   disabled,
+  launcherOnly = false,
   market,
   marketControl,
   onUse,
@@ -327,10 +331,8 @@ export function PineMarketplace({
     });
   }, [onUse, selected, source]);
 
-  return (
-    <>
-      <ProductPanel className="overflow-hidden">
-        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-card-border p-2 sm:px-3">
+  const selector = (
+    <div className="flex min-w-0 items-center justify-between gap-2 border-b border-card-border p-2 sm:px-3">
           <ProductSelectorButton
             onClick={showGallery}
             disabled={disabled}
@@ -362,13 +364,44 @@ export function PineMarketplace({
                   : `${items.length} scripts`}
           />
           {marketControl}
-        </div>
+    </div>
+  );
+
+  const launcher = (
+    <button
+      type="button"
+      onClick={showGallery}
+      disabled={disabled}
+      aria-label="Browse indicator library"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-busy={loadingFeed}
+      className={cn(
+        PRODUCT_CONTROL_CLASS,
+        PRODUCT_PRESSABLE_CLASS,
+        "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+      )}
+    >
+      <CandlestickChart className="size-3.5 text-accent" aria-hidden="true" />
+      <span>{activeSelection ? "Change script" : "Browse scripts"}</span>
+      <span className="font-mono text-[9px] text-muted-foreground">
+        {loadingFeed ? "…" : items.length}
+      </span>
+    </button>
+  );
+
+  return (
+    <>
+      {launcherOnly ? launcher : (
+        <ProductPanel className="overflow-hidden">
+          {selector}
         {preview ?? (
           <div className="flex h-[300px] items-center justify-center font-mono text-[11px] text-zinc-600">
             {loadingFeed ? "Loading public scripts…" : feedError ?? "Choose an indicator to preview it"}
           </div>
         )}
-      </ProductPanel>
+        </ProductPanel>
+      )}
 
       <ResponsiveModalSheet
         badge={selected?.scriptType ?? "Public scripts"}

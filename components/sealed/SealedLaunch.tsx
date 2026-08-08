@@ -720,51 +720,30 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         selectedIds={markets}
       />
 
-      {/* One workbench: the preview, source, backtest, and launch decisions begin on the same
-          row. Separating the chart above this grid made desktop feel like two stacked pages and
-          left an empty half-screen beside the sticky rail. */}
-      <div
-        ref={workbenchRef}
-        className="grid scroll-mt-4 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_400px]"
-      >
+      {/* The original Whop launchpad worked because this was one bounded workbench: source on
+          the left, deployment decisions on the right, and the visual result attached below.
+          Keep every newer cash.trading capability, but restore that information architecture. */}
+      <div ref={workbenchRef} className="scroll-mt-4">
+        <ProductPanel className="overflow-hidden">
+          <header className="flex items-center justify-between gap-3 border-b border-card-border bg-card px-4 py-3 sm:px-5">
+            <div className="min-w-0">
+              <h2 className="font-display text-[14px] font-semibold text-foreground sm:text-[15px]">
+                Deploy a Strategy
+              </h2>
+              <p className="mt-0.5 hidden text-[11px] text-muted-foreground sm:block">
+                Import Pine, verify the chart, then bind the strategy to a Decibel vault.
+              </p>
+            </div>
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+              Pine → Aptos
+            </span>
+          </header>
+
+          <div className="grid grid-cols-1 gap-3 p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         {/* ══ LEFT: source ══ */}
         <div className="flex min-w-0 flex-col gap-3">
-          <PineMarketplace
-            activeSelection={activeMarketplaceSelection}
-            disabled={busy}
-            market={previewMarket}
-            marketControl={(
-              <ProductSelectorButton
-                onClick={() => setMarketAccessOpen(true)}
-                disabled={busy}
-                aria-label="Configure bot market access"
-                aria-haspopup="dialog"
-                aria-expanded={marketAccessOpen}
-                aria-busy={marketOptionsLoading && executionMarketOptions.length === 0}
-                className="max-w-[190px] shrink-0 sm:max-w-[260px]"
-                icon={<MarketLogo market={previewMarket} size={24} />}
-                label="Bot market access"
-                value={previewMarket}
-                detail={marketOptionsLoading && executionMarketOptions.length === 0
-                  ? "Loading"
-                  : markets.length === executionMarketOptions.length && markets.length > 1
-                    ? "All approved"
-                    : `${markets.length} approved`}
-              />
-            )}
-            onUse={useMarketplaceScript}
-            preview={effectivePine ? (
-              <PineVisualPreview
-                asset={previewMarket}
-                embedded
-                pineScript={effectivePine}
-                title={activeMarketplaceSelection?.title}
-              />
-            ) : undefined}
-          />
-
           {/* Import is a first-class path, not a footnote under the code block. */}
-          <div className="flex gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
             <input
               value={tvUrl}
               onChange={(e) => setTvUrl(e.target.value)}
@@ -772,7 +751,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               placeholder="Paste a TradingView script URL"
               disabled={busy}
               aria-label="TradingView indicator URL"
-              className={inputCls}
+              className={cn(inputCls, "col-span-2 sm:col-span-1")}
             />
             <button
               type="button"
@@ -782,6 +761,13 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             >
               {tvBusy ? "Fetching…" : "Import"}
             </button>
+            <PineMarketplace
+              activeSelection={activeMarketplaceSelection}
+              disabled={busy}
+              launcherOnly
+              market={previewMarket}
+              onUse={useMarketplaceScript}
+            />
           </div>
 
           <details className={cn(SURFACE_CARD_SOLID, "group overflow-hidden")}>
@@ -962,19 +948,6 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             )}
           </AnimatePresence>
 
-          {/* Measure it before paying to launch it. Runs the same evaluator the
-              attestor uses, priced with the same fees the vault will be charged. */}
-          {effectivePine && (
-            <SealedBacktest
-              asset={primaryMarket}
-              markets={markets}
-              initialCapital={seedUsdc}
-              maxLeverageX100={maxLeverageX100}
-              pctBps={pctBps}
-              pineScript={effectivePine}
-              slippageBps={config?.defaults?.slippageBps ?? 30}
-            />
-          )}
         </div>
 
         {/* ══ RIGHT: decisions + action, sticky ══ */}
@@ -999,9 +972,36 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               />
             </ProductSection>
 
-            {/* Market permissions live beside the chart, where creators can see the visual
-                effect immediately. The rail only explains the extra safeguards that become
-                active when more than one market is approved. */}
+            <ProductSection
+              title="Markets to trade"
+              description={
+                markets.length === executionMarketOptions.length && markets.length > 1
+                  ? `All ${markets.length} supported markets are approved.`
+                  : `${markets.length} market${markets.length === 1 ? "" : "s"} approved for this bot.`
+              }
+            >
+              <ProductSelectorButton
+                onClick={() => setMarketAccessOpen(true)}
+                disabled={busy}
+                aria-label="Configure bot market access"
+                aria-haspopup="dialog"
+                aria-expanded={marketAccessOpen}
+                aria-busy={marketOptionsLoading && executionMarketOptions.length === 0}
+                className="w-full"
+                icon={<MarketLogo market={previewMarket} size={24} />}
+                label="Bot market access"
+                value={previewMarket}
+                detail={
+                  marketOptionsLoading && executionMarketOptions.length === 0
+                    ? "Loading"
+                    : markets.length === executionMarketOptions.length && markets.length > 1
+                      ? "All approved"
+                      : `${markets.length} approved`
+                }
+              />
+            </ProductSection>
+
+            {/* Only show portfolio-specific rules when several markets are approved. */}
             {config && isPortfolio && (
               <ProductSection
                 title="Portfolio safeguards"
@@ -1316,6 +1316,38 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           </div>
           </ProductPanel>
         </div>
+          </div>
+
+          {/* Whop's deploy screen put the rendered strategy after the editor and rail. It lets
+              creators understand the source first, then inspect the full-width visual result
+              without sacrificing half of the chart to form controls. */}
+          {effectivePine && (
+            <section className="border-t border-card-border">
+              <PineVisualPreview
+                asset={previewMarket}
+                embedded
+                pineScript={effectivePine}
+                title={activeMarketplaceSelection?.title ?? selected?.label}
+              />
+            </section>
+          )}
+
+          {/* Keep cash.trading's real evaluator beneath the visual preview. This is additive to
+              the original Whop workbench, not a second disconnected page. */}
+          {effectivePine && (
+            <section className="border-t border-card-border p-2 sm:p-3">
+              <SealedBacktest
+                asset={primaryMarket}
+                markets={markets}
+                initialCapital={seedUsdc}
+                maxLeverageX100={maxLeverageX100}
+                pctBps={pctBps}
+                pineScript={effectivePine}
+                slippageBps={config?.defaults?.slippageBps ?? 30}
+              />
+            </section>
+          )}
+        </ProductPanel>
       </div>
 
       {/*

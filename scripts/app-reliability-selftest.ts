@@ -1898,8 +1898,12 @@ assert.ok(
 
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
 assert.ok(
-  /type Tab\s*=\s*"launch" \| "vaults" \| "manage";/.test(launchPage),
-  "the launchpad must stay at three tabs",
+  /type Tab\s*=\s*"explore" \| "deploy" \| "bots" \| "creator";/.test(launchPage)
+    && launchPage.includes('<Tabs.Trigger value="explore">Explore</Tabs.Trigger>')
+    && launchPage.includes('<Tabs.Trigger value="deploy">Deploy</Tabs.Trigger>')
+    && launchPage.includes('<Tabs.Trigger value="bots">My Bots</Tabs.Trigger>')
+    && launchPage.includes('<Tabs.Trigger value="creator">Creator</Tabs.Trigger>'),
+  "the launchpad must preserve the original Whop four-job navigation map",
 );
 assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-honesty-selftest.ts");
 

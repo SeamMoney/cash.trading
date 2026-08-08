@@ -393,7 +393,9 @@ function structureEffects(candles: Candle[], source: string): IndicatorVisualEff
       if (breakIndex <= pivotIndex) continue;
       const broken = candles[breakIndex];
       markers.push({
-        id: `visual-bos-${side}-${broken.timestamp}`,
+        // Several pivots can break on the same candle. Include the originating pivot so React
+        // never receives duplicate keys when those structure signals share a timestamp.
+        id: `visual-bos-${side}-${pivot.timestamp}-${broken.timestamp}`,
         time: broken.timestamp,
         price: bullish ? broken.low : broken.high,
         side: bullish ? "buy" : "sell",
@@ -409,7 +411,7 @@ function structureEffects(candles: Candle[], source: string): IndicatorVisualEff
       const orderBlock = candles[orderBlockIndex];
       const padding = Math.max(atrValues[orderBlockIndex] * 0.08, orderBlock.close * 0.00008);
       zones.push({
-        id: `visual-order-block-${side}-${orderBlock.timestamp}`,
+        id: `visual-order-block-${side}-${pivot.timestamp}-${orderBlock.timestamp}`,
         startTime: orderBlock.timestamp,
         endTime: candles[Math.min(candles.length - 1, breakIndex + 28)].timestamp,
         low: Math.min(orderBlock.open, orderBlock.close) - padding,

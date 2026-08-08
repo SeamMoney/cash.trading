@@ -40,6 +40,8 @@ const keeperRoute = readFileSync("app/api/launchpad/keeper/route.ts", "utf8");
 const launchpadExecuteRoute = readFileSync("app/api/launchpad/execute/route.ts", "utf8");
 const launchpadCrankRoute = readFileSync("app/api/launchpad/crank/route.ts", "utf8");
 const launchpadDeployForm = readFileSync("components/launchpad/DeployForm.tsx", "utf8");
+const sealedLaunch = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
+const strategySourceEditor = readFileSync("components/launchpad/StrategySourceEditor.tsx", "utf8");
 const testTradeRoute = readFileSync("app/api/bot/test-trade/route.ts", "utf8");
 const statsRoute = readFileSync("app/api/stats/route.ts", "utf8");
 const decibelCore = readFileSync("lib/decibel.ts", "utf8");
@@ -543,6 +545,20 @@ assert.ok(
   "the launchpad crank must use the connected wallet instead of spending server gas",
 );
 assert.match(launchpadDeployForm, /::indicator::tick_oracle/);
+assert.match(
+  sealedLaunch,
+  /<StrategySourceEditor/,
+  "the sealed launch flow must use the shared Pine and Move source workbench",
+);
+assert.ok(
+  strategySourceEditor.includes('type SourceTab = "pine" | "move"')
+    && strategySourceEditor.includes('target: "vault"')
+    && strategySourceEditor.includes('lineNumbers: "on"')
+    && strategySourceEditor.includes('wordWrap: "off"')
+    && strategySourceEditor.includes("scrollBeyondLastLine: false")
+    && strategySourceEditor.includes("alwaysConsumeMouseWheel: false"),
+  "the strategy IDE must retain Pine/Move tabs, exact vault codegen, line numbers, and page-scroll handoff",
+);
 assert.match(testTradeRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.ok(!testTradeRoute.includes("PRIVATE_KEY preview"), "private-key fragments must never be logged");
 assert.ok(!testTradeRoute.includes("error.stack"), "API responses must not expose server stacks");

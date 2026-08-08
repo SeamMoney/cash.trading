@@ -31,7 +31,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { CodeBlock, ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
+import { ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
 import { ActionButton, Banner, Reveal } from "@/components/ui/interactions";
 import {
   PRODUCT_CONTROL_CLASS,
@@ -46,6 +46,7 @@ import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations"
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { SURFACE_CARD_SOLID } from "@/lib/surface";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
+import { StrategySourceEditor } from "@/components/launchpad/StrategySourceEditor";
 import {
   PineMarketplace,
   type PineMarketplaceSelection,
@@ -220,6 +221,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const isPortfolio = markets.length > 1;
   /** The market the preview chart and the commitment manifest are built against. */
   const primaryMarket = markets[0] ?? config?.markets[0]?.name ?? "BTC/USD";
+  const primaryMarketAddress = config?.markets.find((market) => market.name === primaryMarket)?.addr;
 
   useEffect(() => {
     fetch("/api/sealed/config", { cache: "no-store" })
@@ -278,7 +280,10 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
     () => SEALED_CATALOG.find((s) => s.id === strategyId) ?? null,
     [strategyId],
   );
-  const usingCustom = customPine.trim().length > 0;
+  // Keep an intentionally blank editor mounted while the creator is editing. Falling back to
+  // the catalog source as soon as the last character is deleted makes the editor look haunted
+  // and can commit a different program than the one on screen.
+  const usingCustom = editingSource || importedScript !== null || customPine.trim().length > 0;
   const effectivePine = usingCustom ? customPine : (selected?.script ?? "");
   const activeMarketplaceSelection = useMemo<PineMarketplaceSelection | null>(() => {
     if (importedScript) return importedScript;
@@ -838,87 +843,37 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
             </div>
           )}
 
-          {/* The code window — the centrepiece, at full width. */}
-          {usingCustom ? (
-            <div className="min-w-0">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="min-w-0">
-                  <span className="block truncate font-display text-[12px] font-semibold text-zinc-300">
-                    {importedScript ? importedScript.title : "Your PineScript"}
-                  </span>
-                  <span className="mt-0.5 block font-mono text-[9px] text-zinc-600">
-                    {customPine.replace(/\n$/, "").split("\n").length.toLocaleString()} lines · {customPine.length.toLocaleString()} characters
-                  </span>
-                </span>
-                <div className="flex items-center gap-3">
-                  {importedScript && (
-                    <a
-                      href={importedScript.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-zinc-500 underline decoration-white/15 underline-offset-2 hover:text-zinc-300"
-                    >
-                      Original source
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setEditingSource((value) => !value)}
-                    className={cn("text-[12px] text-zinc-400 underline underline-offset-2 hover:text-white", PRODUCT_PRESSABLE_CLASS)}
-                  >
-                    {editingSource ? "Done" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomPine("");
-                      setImportedScript(null);
-                      setEditingSource(false);
-                    }}
-                    className={cn("text-[12px] text-zinc-400 underline underline-offset-2 hover:text-white", PRODUCT_PRESSABLE_CLASS)}
-                  >
-                    Use default
-                  </button>
-                </div>
-              </div>
-              {editingSource ? (
-                <textarea
-                  value={customPine}
-                  onChange={(e) => {
-                    setCustomPine(e.target.value);
-                    setCommitInfo(null);
-                  }}
-                  disabled={busy}
-                  spellCheck={false}
-                  rows={18}
-                  aria-label="PineScript source"
-                  className="w-full resize-y rounded-[var(--radius)] border border-card-border bg-background-secondary p-4 font-mono text-[12px] leading-[1.7] text-foreground-secondary placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none"
-                />
-              ) : (
-                <CodeBlock
-                  code={customPine}
-                  filename={`${importedScript?.title ?? "custom"}.pine`}
-                  maxHeight="min(420px, 44vh)"
-                />
-              )}
-            </div>
-          ) : (
-            selected && (
-              <CodeBlock
-                code={selected.script}
-                filename={`${selected.id}.pine`}
-                maxHeight={260}
-                actions={
-                  <button
-                    type="button"
-                    onClick={() => setCustomPine(selected.script)}
-                    className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 hover:bg-white/[0.06] hover:text-white", PRODUCT_PRESSABLE_CLASS)}
-                  >
-                    Edit
-                  </button>
+          {/* The old Whop deployer felt like an IDE because Pine and its generated Move source
+              shared one stable, full-height workbench. Keep that density and preserve the exact
+              vault-target transpilation used by the sealed commitment. */}
+          {(selected || usingCustom) && (
+            <StrategySourceEditor
+              pineScript={effectivePine}
+              sourceName={importedScript?.title ?? selected?.id ?? "strategy"}
+              originalUrl={importedScript?.url || selected?.source?.url}
+              editing={editingSource}
+              canReset={usingCustom}
+              disabled={busy}
+              creatorAddress={account?.address.toString()}
+              marketAddress={primaryMarketAddress}
+              onEditingChange={(nextEditing) => {
+                if (nextEditing && !usingCustom && selected) {
+                  setCustomPine(selected.script);
+                  setImportedScript(null);
                 }
-              />
-            )
+                setEditingSource(nextEditing);
+              }}
+              onPineChange={(source) => {
+                setCustomPine(source);
+                setCommitInfo(null);
+              }}
+              onReset={() => {
+                setCustomPine("");
+                setImportedScript(null);
+                setEditingSource(false);
+                setCommitInfo(null);
+              }}
+            />
           )}
 
           {/* Compile result */}
@@ -951,7 +906,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         </div>
 
         {/* ══ RIGHT: decisions + action, sticky ══ */}
-        <div className="min-w-0 lg:self-start">
+        <div className="min-w-0 lg:self-start" aria-label="Launch settings">
           <ProductPanel className="overflow-hidden">
           <div className="flex flex-col divide-y divide-card-border">
             {/* Name */}
@@ -1316,7 +1271,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
           </div>
           </ProductPanel>
         </div>
-          </div>
+      </div>
 
           {/* Whop's deploy screen put the rendered strategy after the editor and rail. It lets
               creators understand the source first, then inspect the full-width visual result

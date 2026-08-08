@@ -69,32 +69,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }
 
-  const attestorKey = process.env.SEALED_ATTESTOR_PRIVATE_KEY;
-  const crankKey = process.env.SEALED_CRANK_PRIVATE_KEY;
-  if (!attestorKey || !crankKey) {
-    return NextResponse.json(
-      { error: "SEALED_ATTESTOR_PRIVATE_KEY and SEALED_CRANK_PRIVATE_KEY must both be set" },
-      { status: 501, headers: NO_STORE },
-    );
-  }
-  // Fail the whole run loudly rather than letting every vault abort on-chain one at a time.
-  const mismatch = attestorKeyMismatch(
-    attestorKey,
-    process.env.SEALED_ATTESTOR_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY,
-  );
-  if (mismatch) {
-    return NextResponse.json({ error: mismatch }, { status: 500, headers: NO_STORE });
-  }
   if (!sealedRegistryAvailable()) {
     return NextResponse.json({ error: "registry unavailable" }, { status: 503, headers: NO_STORE });
-  }
-  if (!sourceVaultAvailable()) {
-    return NextResponse.json(
-      {
-        error: `${keyProblem() ?? "SEALED_SOURCE_KEY unusable"} — managed strategies cannot be decrypted`,
-      },
-      { status: 501, headers: NO_STORE },
-    );
   }
 
   const network = sealedNetwork();
@@ -113,6 +89,50 @@ export async function GET(request: NextRequest) {
     },
     take: 200,
   });
+
+  // Preview deployments legitimately have no launched managed vaults and therefore need no
+  // signing or source-custody keys. Check the work queue first so the scheduled health signal
+  // is an honest no-op instead of a permanent 501. Once even one managed vault exists, every
+  // execution secret below remains mandatory and a missing key still fails the whole run.
+  if (rows.length === 0) {
+    return NextResponse.json(
+      {
+        ok: true,
+        network,
+        considered: 0,
+        ticked: 0,
+        failed: 0,
+        results: [],
+        skipped: "no managed sealed vaults",
+      },
+      { status: 200, headers: NO_STORE },
+    );
+  }
+
+  const attestorKey = process.env.SEALED_ATTESTOR_PRIVATE_KEY;
+  const crankKey = process.env.SEALED_CRANK_PRIVATE_KEY;
+  if (!attestorKey || !crankKey) {
+    return NextResponse.json(
+      { error: "SEALED_ATTESTOR_PRIVATE_KEY and SEALED_CRANK_PRIVATE_KEY must both be set" },
+      { status: 501, headers: NO_STORE },
+    );
+  }
+  // Fail the whole run loudly rather than letting every vault abort on-chain one at a time.
+  const mismatch = attestorKeyMismatch(
+    attestorKey,
+    process.env.SEALED_ATTESTOR_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY,
+  );
+  if (mismatch) {
+    return NextResponse.json({ error: mismatch }, { status: 500, headers: NO_STORE });
+  }
+  if (!sourceVaultAvailable()) {
+    return NextResponse.json(
+      {
+        error: `${keyProblem() ?? "SEALED_SOURCE_KEY unusable"} — managed strategies cannot be decrypted`,
+      },
+      { status: 501, headers: NO_STORE },
+    );
+  }
 
   const now = Date.now();
   const results: Array<Record<string, unknown>> = [];

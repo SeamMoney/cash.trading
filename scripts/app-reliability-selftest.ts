@@ -1473,6 +1473,17 @@ assert.ok(
   sealedTickCron.includes("backoffMs(row.tickFailures)"),
   "a persistently failing vault must back off rather than burn gas every minute",
 );
+const managedRowsLookup = sealedTickCron.indexOf("const rows = await prisma.sealedVault.findMany");
+const emptyManagedQueue = sealedTickCron.indexOf("if (rows.length === 0)");
+const executionKeyGate = sealedTickCron.indexOf("if (!attestorKey || !crankKey)");
+assert.ok(
+  managedRowsLookup >= 0 &&
+    emptyManagedQueue > managedRowsLookup &&
+    executionKeyGate > emptyManagedQueue &&
+    sealedTickCron.includes('skipped: "no managed sealed vaults"'),
+  "the cron must inspect its queue before demanding execution keys: an empty preview deployment " +
+    "is a healthy no-op, while keys remain mandatory before any live managed vault can tick",
+);
 const vercelJson = readFileSync("vercel.json", "utf8");
 assert.ok(
   vercelJson.includes("/api/cron/sealed-tick"),

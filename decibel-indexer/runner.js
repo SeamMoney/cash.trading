@@ -1,10 +1,13 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import {
   DecibelReadDex,
   MAINNET_CONFIG,
   TESTNET_CONFIG,
 } from "@decibeltrade/sdk";
+import { getDecibelBuilderConfig } from "../lib/decibel-builder.ts";
+import { extractDecibelBuilderFills } from "../lib/decibel-builder-receipt.ts";
 
 const prisma = new PrismaClient();
 
@@ -18,6 +21,38 @@ const runOnce = process.env.DECIBEL_INDEXER_RUN_ONCE === "true";
 const backfillIntervalMs = Number(process.env.DECIBEL_INDEXER_BACKFILL_INTERVAL_MS || 30_000);
 const accountRefreshMs = Number(process.env.DECIBEL_INDEXER_ACCOUNT_REFRESH_MS || 3_000);
 const instanceId = process.env.DECIBEL_INDEXER_INSTANCE_ID || `local-${process.pid}`;
+const receiptBatchSize = boundedInteger(
+  process.env.DECIBEL_INDEXER_RECEIPT_BATCH_SIZE,
+  200,
+  1,
+  1_000
+);
+const receiptConcurrency = boundedInteger(
+  process.env.DECIBEL_INDEXER_RECEIPT_CONCURRENCY,
+  8,
+  1,
+  32
+);
+const tradeRetentionDays = boundedInteger(
+  process.env.DECIBEL_INDEXER_TRADE_RETENTION_DAYS,
+  7,
+  1,
+  90
+);
+const orderRetentionDays = boundedInteger(
+  process.env.DECIBEL_INDEXER_ORDER_RETENTION_DAYS,
+  30,
+  1,
+  365
+);
+const config = network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG;
+let lastRetentionCleanupMs = 0;
+
+function boundedInteger(raw, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(raw || "", 10);
+  if (!Number.isSafeInteger(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
 
 function cleanApiKey(value) {
   return value?.replace(/\\n/g, "").replace(/\n/g, "").trim() || undefined;
@@ -44,7 +79,7 @@ function getApiKey() {
   );
 }
 
-const dex = new DecibelReadDex(network === "mainnet" ? MAINNET_CONFIG : TESTNET_CONFIG, {
+const dex = new DecibelReadDex(config, {
   nodeApiKey: getApiKey(),
   onWsError: (error) => console.error("[decibel-indexer] ws error", error),
 });
@@ -85,8 +120,50 @@ function pick(row, keys) {
   return null;
 }
 
-function marketNameForSubscription(name) {
+function marketNameAlias(name) {
   return String(name || "").replace("/", "-");
+}
+
+function normalizeAddress(value) {
+  const candidate = str(value);
+  if (!candidate || !/^0x[0-9a-fA-F]{1,64}$/.test(candidate)) return null;
+  return `0x${candidate.slice(2).toLowerCase().padStart(64, "0")}`;
+}
+
+function configuredBuilderAddresses() {
+  const configured = (process.env.DECIBEL_INDEXER_BUILDER_ADDRESSES || "")
+    .split(",")
+    .map(normalizeAddress)
+    .filter(Boolean);
+  const appBuilder = normalizeAddress(getDecibelBuilderConfig(network).builderAddress);
+  if (appBuilder) configured.push(appBuilder);
+  return new Set(configured);
+}
+
+function stableTradeKey(trade, marketAddress, occurrence) {
+  const version = str(pick(trade, ["transaction_version", "version"])) || "no-version";
+  const payload = JSON.stringify({
+    marketAddress,
+    account: pick(trade, ["account", "subaccount", "sub_addr"]),
+    action: pick(trade, ["action", "side", "direction"]),
+    size: pick(trade, ["size", "sz", "fill_size"]),
+    price: pick(trade, ["price", "px", "fill_price"]),
+    timestamp: pick(trade, ["transaction_unix_ms", "unix_ms", "timestamp"]),
+  });
+  const digest = createHash("sha256").update(payload).digest("hex").slice(0, 24);
+  return `${version}:${digest}:${occurrence}`;
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
 }
 
 async function checkpoint(source, data = {}) {
@@ -199,7 +276,7 @@ async function indexMarketTrades(markets) {
   const shouldIndex = (name) =>
     requested.includes("ALL") ||
     requested.includes(name) ||
-    requested.includes(marketNameForSubscription(name));
+    requested.includes(marketNameAlias(name));
 
   for (const market of markets) {
     const marketAddress = str(pick(market, ["market_addr", "market", "marketAddress", "address"]));
@@ -207,41 +284,189 @@ async function indexMarketTrades(markets) {
     if (!marketAddress || !marketName || !shouldIndex(marketName)) continue;
 
     try {
-      const trades = await dex.marketTrades.getByName(marketNameForSubscription(marketName), 50);
+      const trades = await dex.marketTrades.getByName({
+        // SDK 0.7 derives the market object address from this exact on-chain name.
+        // Replacing `/` with `-` silently queries a different object and returns no trades.
+        marketName,
+        limit: 50,
+      });
       const items = Array.isArray(trades?.items) ? trades.items : Array.isArray(trades) ? trades : [];
+      const occurrences = new Map();
+      const rows = [];
       for (const trade of items) {
         const tradeId = str(pick(trade, ["trade_id", "tradeId", "id"]));
         const version = bigint(pick(trade, ["transaction_version", "version"]));
         const timestamp = bigint(pick(trade, ["transaction_unix_ms", "unix_ms", "timestamp"]));
-        const eventKey = tradeId || `${marketAddress}:${version || timestamp || Date.now()}:${str(pick(trade, ["order_id", "orderId"])) || ""}`;
-        await prisma.decibelMarketTrade.upsert({
-          where: { network_eventKey: { network, eventKey } },
-          update: {},
-          create: {
-            network,
-            eventKey,
-            marketAddress,
-            marketName,
-            account: str(pick(trade, ["account", "subaccount", "sub_addr"])),
-            side: str(pick(trade, ["side", "direction", "action"])),
-            size: num(pick(trade, ["size", "sz", "fill_size"])),
-            price: num(pick(trade, ["price", "px", "fill_price"])),
-            pnl: num(pick(trade, ["pnl", "realized_pnl"])),
-            funding: num(pick(trade, ["funding", "funding_payment"])),
-            fee: num(pick(trade, ["fee", "fees"])),
-            orderId: str(pick(trade, ["order_id", "orderId"])),
-            tradeId,
-            transactionVersion: version,
-            transactionUnixMs: timestamp,
-            raw: safeJson(trade),
-          },
+        const signature = stableTradeKey(trade, marketAddress, 0).replace(/:0$/, "");
+        const occurrence = occurrences.get(signature) || 0;
+        occurrences.set(signature, occurrence + 1);
+        const eventKey = tradeId || stableTradeKey(trade, marketAddress, occurrence);
+        rows.push({
+          network,
+          eventKey,
+          marketAddress,
+          marketName,
+          account: str(pick(trade, ["account", "subaccount", "sub_addr"])),
+          side: str(pick(trade, ["action", "side", "direction"])),
+          size: num(pick(trade, ["size", "sz", "fill_size"])),
+          price: num(pick(trade, ["price", "px", "fill_price"])),
+          pnl: num(pick(trade, ["realized_pnl_amount", "realized_pnl", "pnl"])),
+          funding: num(pick(trade, ["realized_funding_amount", "funding_payment", "funding"])),
+          fee: num(pick(trade, ["fee_amount", "fees", "fee"])),
+          orderId: str(pick(trade, ["order_id", "orderId"])),
+          tradeId,
+          transactionVersion: version,
+          transactionUnixMs: timestamp,
+          raw: safeJson(trade),
         });
+      }
+      if (rows.length > 0) {
+        await prisma.decibelMarketTrade.createMany({ data: rows, skipDuplicates: true });
       }
     } catch (error) {
       await recordError(`market-trades:${marketName}`, error);
     }
   }
   await checkpoint("market-trades", { lastUnixMs: BigInt(Date.now()) });
+}
+
+async function fetchTransactionByVersion(version) {
+  const apiKey = getApiKey();
+  const url = `${config.fullnodeUrl}/transactions/by_version/${version.toString()}`;
+  const request = (key) =>
+    fetch(url, {
+      headers: {
+        "x-aptos-client": "cash-trading/decibel-indexer",
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      },
+      signal: AbortSignal.timeout(7_500),
+    });
+
+  let response = await request(apiKey);
+  if (apiKey && (response.status === 401 || response.status === 403)) {
+    response = await request();
+  }
+  if (!response.ok) {
+    throw new Error(`fullnode receipt ${response.status}`);
+  }
+  return response.json();
+}
+
+async function persistBuilderReceipt(transaction, version, allowedBuilders) {
+  const fills = extractDecibelBuilderFills({ transaction, network }).filter((fill) =>
+    allowedBuilders.has(fill.builderAddress)
+  );
+  const scannedAt = new Date();
+  const operations = [
+    prisma.decibelMarketTrade.updateMany({
+      where: { network, transactionVersion: version },
+      data: { receiptScannedAt: scannedAt },
+    }),
+  ];
+  if (fills.length > 0) {
+    operations.unshift(
+      prisma.decibelBuilderFill.createMany({
+        data: fills.map((fill) => ({
+          ...fill,
+          transactionVersion: BigInt(fill.transactionVersion),
+          transactionUnixMs:
+            fill.transactionUnixMs === null ? null : BigInt(fill.transactionUnixMs),
+          priceRaw: BigInt(fill.priceRaw),
+          sizeRaw: BigInt(fill.sizeRaw),
+          feeRaw: fill.feeRaw === null ? null : BigInt(fill.feeRaw),
+          builderFeeRaw: BigInt(fill.builderFeeRaw),
+          builderFeeChainUnits: BigInt(fill.builderFeeChainUnits),
+        })),
+        skipDuplicates: true,
+      })
+    );
+  }
+  await prisma.$transaction(operations);
+  return fills.length;
+}
+
+async function backfillBuilderReceipts() {
+  const candidates = await prisma.decibelMarketTrade.findMany({
+    where: {
+      network,
+      receiptScannedAt: null,
+      transactionVersion: { not: null },
+    },
+    select: { transactionVersion: true },
+    distinct: ["transactionVersion"],
+    orderBy: { transactionVersion: "desc" },
+    take: receiptBatchSize,
+  });
+  const versions = candidates
+    .map((row) => row.transactionVersion)
+    .filter((version) => version !== null);
+  if (versions.length === 0) {
+    await checkpoint("builder-receipts", { lastUnixMs: BigInt(Date.now()) });
+    return;
+  }
+
+  const allowedBuilders = configuredBuilderAddresses();
+  let failures = 0;
+  let fills = 0;
+  let highestVersion = null;
+  await mapWithConcurrency(versions, receiptConcurrency, async (version) => {
+    try {
+      const transaction = await fetchTransactionByVersion(version);
+      fills += await persistBuilderReceipt(transaction, version, allowedBuilders);
+      if (highestVersion === null || version > highestVersion) highestVersion = version;
+    } catch (error) {
+      failures += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[decibel-indexer] builder receipt ${version}: ${message}`);
+    }
+  });
+
+  await checkpoint("builder-receipts", {
+    status: failures > 0 ? "degraded" : "ok",
+    error: failures > 0 ? `${failures}/${versions.length} receipt fetches failed` : null,
+    lastTransactionVersion: highestVersion,
+    lastUnixMs: BigInt(Date.now()),
+  });
+  console.log(
+    `[decibel-indexer] receipts scanned=${versions.length - failures} failed=${failures} builder_fills=${fills}`
+  );
+}
+
+async function cleanupRetention({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && now - lastRetentionCleanupMs < 60 * 60 * 1_000) return;
+  lastRetentionCleanupMs = now;
+
+  const tradeCutoff = new Date(now - tradeRetentionDays * 24 * 60 * 60 * 1_000);
+  const orderCutoff = new Date(now - orderRetentionDays * 24 * 60 * 60 * 1_000);
+  const tradeCutoffMs = BigInt(tradeCutoff.getTime());
+  const orderCutoffMs = BigInt(orderCutoff.getTime());
+  const [trades, orders] = await prisma.$transaction([
+    prisma.decibelMarketTrade.deleteMany({
+      where: {
+        network,
+        OR: [
+          { transactionUnixMs: { lt: tradeCutoffMs } },
+          { transactionUnixMs: null, createdAt: { lt: tradeCutoff } },
+        ],
+      },
+    }),
+    prisma.decibelOrderEvent.deleteMany({
+      where: {
+        network,
+        OR: [
+          { timestampUnixMs: { lt: orderCutoffMs } },
+          { timestampUnixMs: null, createdAt: { lt: orderCutoff } },
+        ],
+      },
+    }),
+  ]);
+  await checkpoint("retention", { lastUnixMs: BigInt(now) });
+  if (trades.count > 0 || orders.count > 0) {
+    console.log(
+      `[decibel-indexer] retention deleted trades=${trades.count} order_events=${orders.count}`
+    );
+  }
 }
 
 async function watchedSubaccounts() {
@@ -490,6 +715,8 @@ async function tickMarkets() {
   const markets = await indexMarkets();
   await indexMarketPrices();
   await indexMarketTrades(markets);
+  await backfillBuilderReceipts();
+  await cleanupRetention({ force: runOnce });
 }
 
 async function main() {

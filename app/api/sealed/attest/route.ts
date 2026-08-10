@@ -14,8 +14,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
+import { persistDecibelBuilderFills } from "@/lib/decibel-builder-revenue";
 import { performTick } from "@/lib/sealed-tick";
-import { getSealedVault, isHexAddress, sealedRegistryAvailable } from "@/lib/sealed-vaults";
+import {
+  derivePrimarySubaccount,
+  getSealedVault,
+  isHexAddress,
+  sealedRegistryAvailable,
+} from "@/lib/sealed-vaults";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -102,13 +108,39 @@ export async function POST(request: NextRequest) {
     manifestJson: row.manifestJson,
     pineScript: body.pineScript,
     asset: typeof body.asset === "string" ? body.asset : (vault.marketName ?? "BTC/USD"),
+    expectedDecibelSubaccount: derivePrimarySubaccount(
+      row.decibelVaultAddr,
+      vault.network === "mainnet" ? "mainnet" : "testnet",
+    ),
     attestorPrivateKey: attestorKeyRaw,
     crankPrivateKey: crankKeyRaw,
   });
 
   if (result.ok) {
+    let accountingWarning: string | undefined;
+    try {
+      await persistDecibelBuilderFills({
+        fills: result.builderFills,
+        strategyVaultAddr: row.strategyVaultAddr,
+        decibelVaultAddr: row.decibelVaultAddr,
+      });
+    } catch (err) {
+      accountingWarning = "builder fee persistence failed; reconcile from transaction hash";
+      console.error("[sealed-attest] builder revenue persistence failed", {
+        transactionHash: result.txHash,
+        strategyVaultAddr: row.strategyVaultAddr,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
     return NextResponse.json(
-      { ok: true, seq: result.seq, signal: result.signal, txHash: result.txHash },
+      {
+        ok: true,
+        seq: result.seq,
+        signal: result.signal,
+        txHash: result.txHash,
+        builderFills: result.builderFills.length,
+        ...(accountingWarning ? { accountingWarning } : {}),
+      },
       { status: 200, headers: NO_STORE },
     );
   }

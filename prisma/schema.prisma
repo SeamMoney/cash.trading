@@ -393,7 +393,7 @@ model DecibelMarketPrice {
 }
 
 model DecibelMarketTrade {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   network            String
   eventKey           String
   marketAddress      String
@@ -409,12 +409,54 @@ model DecibelMarketTrade {
   tradeId            String?
   transactionVersion BigInt?
   transactionUnixMs  BigInt?
+  /// Set only after the Aptos receipt has been fetched and inspected for exact builder fees.
+  receiptScannedAt   DateTime?
   raw                Json?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
 
   @@unique([network, eventKey])
   @@index([network, marketAddress, transactionUnixMs])
+  @@index([network, receiptScannedAt, transactionVersion])
   @@index([account])
+}
+
+/// Exact builder fees credited by confirmed Decibel TradeEvents.
+///
+/// Unlike the order route's pre-trade estimate, every row here is an actual on-chain fee
+/// distribution. Raw integer units are retained so revenue totals never depend on floats.
+model DecibelBuilderFill {
+  id                   String   @id @default(cuid())
+  network              String
+  eventKey             String
+  transactionHash      String
+  transactionVersion   BigInt
+  eventIndex           Int
+  transactionUnixMs    BigInt?
+  account              String
+  marketAddress        String
+  fillId               String
+  orderId              String?
+  clientOrderId        String?
+  isTaker              Boolean
+  side                 String?
+  source               String?
+  priceRaw             BigInt
+  sizeRaw              BigInt
+  feeRaw               BigInt?
+  builderAddress       String
+  /// USDC micro-units actually distributed to the builder.
+  builderFeeRaw        BigInt
+  /// Fee encoded in the BuilderCode. Decibel uses hundredths of one basis point.
+  builderFeeChainUnits BigInt
+  strategyVaultAddr    String?
+  decibelVaultAddr     String?
+  createdAt            DateTime @default(now())
+
+  @@unique([network, eventKey])
+  @@index([network, builderAddress, transactionUnixMs])
+  @@index([network, account, transactionUnixMs])
+  @@index([network, transactionHash])
+  @@index([strategyVaultAddr, transactionUnixMs])
 }
 
 model DecibelAccountOverview {

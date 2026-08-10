@@ -40,6 +40,7 @@
     "test:portfolio-maxhold": "tsx scripts/portfolio-maxhold-testnet.ts",
     "decibel:funding-canary": "tsx scripts/decibel-funding-canary.ts",
     "test:economics": "tsx scripts/vault-economics-selftest.ts",
+    "test:builder-revenue": "tsx scripts/decibel-builder-revenue-selftest.ts",
     "test:source-vault": "tsx scripts/sealed-source-vault-selftest.ts",
     "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish"
   },

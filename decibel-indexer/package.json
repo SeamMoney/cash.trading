@@ -10,7 +10,7 @@
     "once": "DECIBEL_INDEXER_RUN_ONCE=true tsx runner.js"
   },
   "dependencies": {
-    "@decibeltrade/sdk": "^0.4.0",
+    "@decibeltrade/sdk": "^0.7.0",
     "@prisma/client": "^5.22.0",
     "dotenv": "^16.3.1",
     "tsx": "^4.20.6"

@@ -1,5 +1,57 @@
-import { explorerTxUrl } from "./constants";
+import { APTOS_NETWORK, explorerTxUrl } from "./constants";
 import { aptos } from "./aptos";
+
+const BUILDER_RECEIPT_REPORT_TIMEOUT_MS = 3_000;
+
+function isReportableBuilderTrade(transaction: unknown): boolean {
+  if (!transaction || typeof transaction !== "object") return false;
+  const events = (transaction as { events?: unknown }).events;
+  if (!Array.isArray(events)) return false;
+
+  return events.some((rawEvent) => {
+    if (!rawEvent || typeof rawEvent !== "object") return false;
+    const event = rawEvent as { type?: unknown; data?: unknown };
+    if (
+      typeof event.type !== "string" ||
+      !event.type.endsWith("::perp_positions::TradeEvent") ||
+      !event.data ||
+      typeof event.data !== "object"
+    ) {
+      return false;
+    }
+    const builderCode = (event.data as { builder_code?: unknown }).builder_code;
+    if (!builderCode || typeof builderCode !== "object") return false;
+    return Array.isArray((builderCode as { vec?: unknown }).vec) &&
+      ((builderCode as { vec: unknown[] }).vec.length > 0);
+  });
+}
+
+async function reportBuilderReceipt(hash: string, transaction: unknown) {
+  if (typeof window === "undefined" || !isReportableBuilderTrade(transaction)) {
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    BUILDER_RECEIPT_REPORT_TIMEOUT_MS,
+  );
+  try {
+    await fetch("/api/decibel/builder/receipt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactionHash: hash, network: APTOS_NETWORK }),
+      cache: "no-store",
+      keepalive: true,
+      signal: controller.signal,
+    });
+  } catch {
+    // Receipt indexing must never turn a confirmed trade into a client-visible failure.
+    // The standalone reconciler can safely replay the same receipt later.
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 /**
  * Shared transaction utility for the payload-builder pattern.
@@ -51,6 +103,9 @@ export async function waitForTransactionConfirmation(hash: string) {
   if ("success" in tx && tx.success === false) {
     throw new Error(tx.vm_status || "Transaction failed on-chain");
   }
+  // A confirmed trade should return to the user immediately. The report uses keepalive and
+  // handles its own failures, while the server-side reconciler can replay the receipt later.
+  void reportBuilderReceipt(hash, tx);
   return tx;
 }
 

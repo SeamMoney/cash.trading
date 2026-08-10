@@ -31,7 +31,13 @@ import {
   secretMatches,
   sourceVaultAvailable,
 } from "@/lib/sealed-source-vault";
-import { findSealedMarket, sealedNetwork, sealedRegistryAvailable } from "@/lib/sealed-vaults";
+import {
+  derivePrimarySubaccount,
+  findSealedMarket,
+  sealedNetwork,
+  sealedRegistryAvailable,
+} from "@/lib/sealed-vaults";
+import { persistDecibelBuilderFills } from "@/lib/decibel-builder-revenue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -178,6 +184,10 @@ export async function GET(request: NextRequest) {
     // portfolio vault ticked as a single one calls a function its module does not have, and
     // the abort would read as a transient failure and be retried every minute forever.
     const isPortfolio = row.vaultKind === "portfolio";
+    const expectedDecibelSubaccount = derivePrimarySubaccount(
+      row.decibelVaultAddr,
+      row.network === "mainnet" ? "mainnet" : "testnet",
+    );
 
     if (isPortfolio) {
       // The allowlist, in stored order. Index i here MUST be market_idx i on-chain; the tick
@@ -210,6 +220,7 @@ export async function GET(request: NextRequest) {
         pineScript: pine,
         defaultPctBps: row.pctBps,
         leverageX100: row.maxLeverageX100,
+        expectedDecibelSubaccount,
         attestorPrivateKey: attestorKey,
         crankPrivateKey: crankKey,
       }).catch((err) => ({
@@ -220,6 +231,21 @@ export async function GET(request: NextRequest) {
       }));
 
       if (pr.ok) {
+        let accountingWarning: string | undefined;
+        try {
+          await persistDecibelBuilderFills({
+            fills: pr.builderFills,
+            strategyVaultAddr: row.strategyVaultAddr,
+            decibelVaultAddr: row.decibelVaultAddr,
+          });
+        } catch (err) {
+          accountingWarning = "builder fee persistence failed; reconcile from transaction hash";
+          console.error("[sealed-tick] builder revenue persistence failed", {
+            transactionHash: pr.txHash,
+            strategyVaultAddr: row.strategyVaultAddr,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        }
         await prisma.sealedVault.update({
           where: { strategyVaultAddr: row.strategyVaultAddr },
           data: {
@@ -237,6 +263,8 @@ export async function GET(request: NextRequest) {
           seq: pr.seq,
           actions: pr.actions.length,
           skipped: pr.skipped.length,
+          builderFills: pr.builderFills.length,
+          ...(accountingWarning ? { accountingWarning } : {}),
           tx: pr.txHash,
         });
       } else if (isPortfolioTooSoon(pr)) {
@@ -263,6 +291,7 @@ export async function GET(request: NextRequest) {
       manifestJson: row.manifestJson,
       pineScript: pine,
       asset: row.marketName ?? "BTC/USD",
+      expectedDecibelSubaccount,
       attestorPrivateKey: attestorKey,
       crankPrivateKey: crankKey,
     }).catch((err): ReturnType<typeof performTick> extends Promise<infer T> ? T : never => ({
@@ -273,6 +302,21 @@ export async function GET(request: NextRequest) {
     }));
 
     if (r.ok) {
+      let accountingWarning: string | undefined;
+      try {
+        await persistDecibelBuilderFills({
+          fills: r.builderFills,
+          strategyVaultAddr: row.strategyVaultAddr,
+          decibelVaultAddr: row.decibelVaultAddr,
+        });
+      } catch (err) {
+        accountingWarning = "builder fee persistence failed; reconcile from transaction hash";
+        console.error("[sealed-tick] builder revenue persistence failed", {
+          transactionHash: r.txHash,
+          strategyVaultAddr: row.strategyVaultAddr,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
       // Persist the fills from our own receipt. createMany + skipDuplicates so a re-run of the
       // same seq is idempotent rather than doubling a vault's trade count.
       if (r.trades.length > 0) {
@@ -307,6 +351,8 @@ export async function GET(request: NextRequest) {
         seq: r.seq,
         signal: r.signal,
         fills: r.trades.length,
+        builderFills: r.builderFills.length,
+        ...(accountingWarning ? { accountingWarning } : {}),
         tx: r.txHash,
       });
     } else if (isTooSoon(r)) {

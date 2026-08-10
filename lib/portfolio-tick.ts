@@ -50,6 +50,10 @@ import {
   type Action,
 } from "@/lib/portfolio-attestor";
 import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
+import {
+  extractDecibelBuilderFills,
+  type DecibelBuilderFillReceipt,
+} from "@/lib/decibel-builder-receipt";
 
 // Re-exported so the attestor, the backtester and the launch UI all read the same two
 // functions. Three implementations of "what did the script ask for" is how a preview starts
@@ -77,12 +81,21 @@ export interface PortfolioTickInput {
   defaultPctBps: number;
   /** Leverage per leg, ×100. */
   leverageX100: number;
+  /** Exact Decibel account whose fills this vault owns. Counterparty events are ignored. */
+  expectedDecibelSubaccount?: string;
   attestorPrivateKey: string;
   crankPrivateKey: string;
 }
 
 export type PortfolioTickResult =
-  | { ok: true; seq: string; actions: Action[]; txHash: string; skipped: string[] }
+  | {
+      ok: true;
+      seq: string;
+      actions: Action[];
+      txHash: string;
+      skipped: string[];
+      builderFills: DecibelBuilderFillReceipt[];
+    }
   | { ok: false; stage: string; error: string; detail?: string[]; retryable: boolean };
 
 export async function performPortfolioTick(
@@ -338,8 +351,20 @@ export async function performPortfolioTick(
       },
     });
     const res = await aptos.signAndSubmitTransaction({ signer: cranker, transaction: txn });
-    await aptos.waitForTransaction({ transactionHash: res.hash });
-    return { ok: true, seq: seq.toString(), actions, txHash: res.hash, skipped };
+    const committed = await aptos.waitForTransaction({ transactionHash: res.hash });
+    const builderFills = extractDecibelBuilderFills({
+      transaction: committed,
+      network: input.network === "mainnet" ? "mainnet" : "testnet",
+      expectedAccount: input.expectedDecibelSubaccount,
+    });
+    return {
+      ok: true,
+      seq: seq.toString(),
+      actions,
+      txHash: res.hash,
+      skipped,
+      builderFills,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "submit failed";
     // E_BAR_TOO_SOON is the normal state of a vault ticked more often than its cadence allows,

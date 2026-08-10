@@ -23,6 +23,10 @@ import { createStrategyRunner } from "@/lib/strategy-equivalence";
 import { canonicalizePine } from "@/lib/sealed-presets";
 import { fetchPythCandles } from "@/lib/launchpad/pyth";
 import {
+  extractDecibelBuilderFills,
+  type DecibelBuilderFillReceipt,
+} from "@/lib/decibel-builder-receipt";
+import {
   buildTickAttestedPayload,
   computeProgramCommitment,
   fromHex,
@@ -43,6 +47,8 @@ export interface TickInput {
   pineScript: string;
   /** Price feed symbol. Defaults to the vault's market name. */
   asset?: string;
+  /** Exact Decibel account whose fills this vault owns. Counterparty events are ignored. */
+  expectedDecibelSubaccount?: string;
   attestorPrivateKey: string;
   crankPrivateKey: string;
 }
@@ -60,7 +66,14 @@ export interface TickTrade {
 }
 
 export type TickResult =
-  | { ok: true; seq: string; signal: Signal; txHash: string; trades: TickTrade[] }
+  | {
+      ok: true;
+      seq: string;
+      signal: Signal;
+      txHash: string;
+      trades: TickTrade[];
+      builderFills: DecibelBuilderFillReceipt[];
+    }
   | { ok: false; stage: string; error: string; seq?: string; signal?: Signal; retryable: boolean };
 
 /**
@@ -239,7 +252,19 @@ export async function performTick(input: TickInput): Promise<TickResult> {
         timestamp: Number(ev.data.timestamp),
       });
     }
-    return { ok: true, seq: seq.toString(), signal, txHash: res.hash, trades };
+    const builderFills = extractDecibelBuilderFills({
+      transaction: committed,
+      network: input.network === "mainnet" ? "mainnet" : "testnet",
+      expectedAccount: input.expectedDecibelSubaccount,
+    });
+    return {
+      ok: true,
+      seq: seq.toString(),
+      signal,
+      txHash: res.hash,
+      trades,
+      builderFills,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "submit failed";
     // E_BAR_TOO_SOON is the normal state of a vault ticked more often than its cadence allows,

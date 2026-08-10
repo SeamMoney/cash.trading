@@ -15,7 +15,7 @@ This document assumes you do and only covers getting it live.
 |---|---|
 | Contract on **testnet** | Published & exercised end-to-end — `0xacc35ae1a8a692d2070e0f6f4b7e0969752789300e055f6973f0ec8287f1740c` |
 | Contract on **mainnet** | **Not published.** Nothing below has run on mainnet. |
-| Builder code (2 bps revenue) | Implemented. Each strategy-vault trading identity must approve the Builder address before its first fee-bearing order; see §8.5b. |
+| Builder code (1 bp revenue) | Implemented. Each strategy-vault trading identity must approve the Builder address before its first fee-bearing order; see §8.5b. |
 | Prod database | 4 sealed migrations pending (§3) |
 | Prod env vars | None of the sealed vars are set — `/api/sealed/config` returns `ready:false` |
 | Tick cron | Committed to `vercel.json`, never run in prod |
@@ -69,7 +69,7 @@ transcripts. **Treat all of them as burned.** Generate four new ones for mainnet
 | Role | Where it lives | What it does | Compromise means |
 |---|---|---|---|
 | **Deployer / admin** | cold — signs a handful of times, ever | Publishes the package (its address **is** `@cash_strategy`), and is the only account `init_platform` / `set_platform_config` accept | Attacker can redirect the treasury and builder addresses for **future** vaults. Existing vaults snapshot their terms at creation and are unaffected. Cannot change bytecode: the mainnet publish is immutable (§1.2) |
-| **Builder / treasury** | cold, ideally hardware | Receives the 2 bps builder fee and the launch fee. The strategy-vault trading identity approves it on-chain at creation. | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
+| **Builder / treasury** | cold, ideally hardware | Receives the 1 bp builder fee and the launch fee. The strategy-vault trading identity approves it on-chain at creation. | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
 | **Attestor** | hot — Vercel env, `SEALED_ATTESTOR_PRIVATE_KEY` | Signs one bounded action per bar. Its public key is sealed into every vault at birth | Attacker can steer trades **within** the frozen bounds: market allowlist, per-leg and aggregate leverage, max positions, bar cadence, max-hold. Cannot withdraw, cannot exceed caps, cannot unseal |
 | **Cranker** | hot — Vercel env, `SEALED_CRANK_PRIVATE_KEY` | Submits the tick transaction and pays gas. No authority whatsoever | Attacker gets a gas wallet. Signals are verified against the attestor pubkey on chain |
 
@@ -116,7 +116,7 @@ cd contracts/strategy-vaults
 "$APTOS_BIN" move test --skip-fetch-latest-git-deps \
   --named-addresses cash_strategy=0xCA54,decibel=0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06,order_book=0x5
 cd ../..
-# Expect: Test result: OK. Total tests: 10; passed: 10; failed: 0
+# Expect: Test result: OK. Total tests: 20; passed: 20; failed: 0
 ```
 
 ### 2.2 Deployer key and funding
@@ -126,10 +126,23 @@ The package address **is** the deployer address, and it is permanent.
 ```bash
 # Generate a dedicated deployer, or set SEALED_DEPLOYER_PRIVATE_KEY to an existing funded key.
 export SEALED_DEPLOYER_PRIVATE_KEY=ed25519-priv-0x...
+
+# Required on mainnet. This is the cold Aptos address that receives the builder fee.
+# The deployer is intentionally never used as an implicit mainnet revenue recipient.
+export DECIBEL_BUILDER_ADDRESS=0x...
+export DECIBEL_BUILDER_FEE_BPS=1
+
+# Optional. Receives the one-time 50 USDC launch fee. When omitted it uses the
+# explicit builder address above, never the deployer address.
+export SEALED_TREASURY_ADDRESS=0x...
 ```
 
 The publish costs well under 1 APT. Fund the deployer with **~1 APT on mainnet**. The script
 gates on 0.4 APT and prints the address to fund if short.
+
+The deploy tool passes the publisher key through a temporary mode-`0600` file and removes it
+after the CLI exits. It never places the mainnet key in the process argument list. Its state
+directory and files are also forced to mode `0700` and `0600` respectively.
 
 ### 2.3 Publish
 
@@ -139,6 +152,10 @@ pnpm sealed:publish --network mainnet
 
 This publishes and calls `init_platform`, then **stops**. It does not create a vault and
 spends no USDC.
+
+If this package address already has platform terms, the tool verifies the launch fee, treasury,
+builder address and builder fee exactly. A mismatch aborts the deployment; it never continues
+with stale terms or silently redirects revenue.
 
 > Do **not** use `pnpm sealed:e2e run --network mainnet` for this. `run` continues into the
 > full pipeline: it creates a real Decibel vault, paying Decibel's 100 USDC protocol fee, the
@@ -168,8 +185,8 @@ Then confirm the platform config landed, substituting your package address:
 curl -s https://api.mainnet.aptoslabs.com/v1/view \
   -H 'content-type: application/json' \
   -d '{"function":"<PKG>::sealed_vault::platform_terms","type_arguments":[],"arguments":[]}'
-# Expect: ["50000000","<treasury>","<builder>","2"]
-#          launch fee (50 USDC)          builder fee (2 bps)
+# Expect: ["50000000","<treasury>","<builder>","1"]
+#          launch fee (50 USDC)          builder fee (1 bp)
 ```
 
 If this 404s, the package didn't publish. If it aborts, `init_platform` didn't run.
@@ -460,7 +477,7 @@ table. Vaults we don't attest have no rows, reported as *unavailable* — never 
 ### 8.4 Performance numbers are pre-cost
 
 `cumulativeReturnPct` compounds per-trade price moves. It excludes leverage, Decibel's
-maker/taker fees, our 2 bp builder fee and slippage. The UI labels it as such. It is **not** a
+maker/taker fees, our 1 bp builder fee and slippage. The UI labels it as such. It is **not** a
 depositor's net return, and shouldn't be presented as one in marketing.
 
 ### 8.5 One market in the single-market path

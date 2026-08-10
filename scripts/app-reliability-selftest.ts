@@ -32,6 +32,10 @@ import {
 } from "../lib/decibel-vault-display";
 import type { DecibelTrade } from "../lib/decibel-api";
 import { extractConfirmedDecibelFill } from "../lib/decibel-trade-fill";
+import {
+  DEFAULT_DECIBEL_BUILDER_FEE_BPS,
+  DEFAULT_DECIBEL_BUILDER_FEE_RATE,
+} from "../lib/decibel-builder-config";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
@@ -88,6 +92,9 @@ const cashRewardsPanel = readFileSync("components/portfolio/CashRewardsPanel.tsx
 const cashRewardsLib = readFileSync("lib/cash-rewards.ts", "utf8");
 const decibelBuilderLib = readFileSync("lib/decibel-builder.ts", "utf8");
 const decibelBuilderRoute = readFileSync("app/api/decibel/builder/route.ts", "utf8");
+const decibelBuilderConfig = readFileSync("lib/decibel-builder-config.ts", "utf8");
+const sealedDeployScript = readFileSync("scripts/sealed-e2e-deploy.ts", "utf8");
+const vaultEconomics = readFileSync("lib/vault-economics.ts", "utf8");
 const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "utf8")) as {
   formulaVersion: number;
   formulaEffectiveEpoch: number;
@@ -1203,6 +1210,25 @@ assert.equal(
 assert.equal(builderFeeBpsToChainUnits(1), "100");
 assert.equal(builderFeeBpsToChainUnits(10), "1000");
 assert.throws(() => builderFeeBpsToChainUnits(0), /positive whole basis-point/);
+assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_BPS, 1);
+assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_RATE, 0.0001);
+assert.match(
+  decibelBuilderConfig,
+  /DEFAULT_DECIBEL_BUILDER_FEE_RATE\s*=\s*\n?\s*DEFAULT_DECIBEL_BUILDER_FEE_BPS \/ 10_000/,
+);
+assert.match(vaultEconomics, /builderFeeBps: DEFAULT_DECIBEL_BUILDER_FEE_BPS/);
+assert.match(
+  sealedDeployScript,
+  /DECIBEL_BUILDER_ADDRESS is required for an immutable mainnet publish/,
+);
+assert.match(sealedDeployScript, /state network mismatch/);
+assert.match(sealedDeployScript, /--private-key-file/);
+assert.doesNotMatch(
+  sealedDeployScript,
+  /"--private-key",\s*deployerKey\.toString\(\)/,
+);
+assert.match(sealedDeployScript, /assertPlatformTerms\(terms, platformEconomics\)/);
+assert.match(sealedDeployScript, /refusing to continue or silently redirect revenue/);
 const builderOrderConfig = {
   address: "0x2",
   maxLeverage: 10,
@@ -2018,8 +2044,8 @@ assert.ok(
   "the visible launchpad tab bar must be Explore / My Bots / Creator (Deploy merged into Explore)",
 );
 assert.ok(
-  launchPage.includes('+ Deploy Strategy') && launchPage.includes('setTab("deploy")'),
-  "the deploy workbench must be reachable via the + Deploy Strategy CTA",
+  launchPage.includes('Deploy Strategy') && launchPage.includes('setTab("deploy")'),
+  "the deploy workbench must be reachable via the Deploy Strategy CTA",
 );
 assert.ok(
   !launchPage.includes("<Tabs.Trigger") && !launchPage.includes('from "frosted-ui"'),

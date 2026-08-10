@@ -8,9 +8,11 @@ import {
   type DecibelEntryPayload,
   type DecibelNetwork,
 } from '@/lib/decibel'
+import {
+  DEFAULT_DECIBEL_BUILDER_FEE_BPS,
+  MAX_DECIBEL_BUILDER_FEE_BPS,
+} from '@/lib/decibel-builder-config'
 
-const DEFAULT_BUILDER_FEE_BPS = 1
-const MAX_APP_BUILDER_FEE_BPS = 10
 const BUILDER_APPROVAL_READ_TIMEOUT_MS = 2_000
 
 export type DecibelBuilderStatus = {
@@ -35,8 +37,8 @@ function getFullnodeUrl(network: DecibelNetwork) {
 
 function configuredFeeBps() {
   const parsed = Number.parseInt(process.env.DECIBEL_BUILDER_FEE_BPS ?? '', 10)
-  if (!Number.isSafeInteger(parsed) || parsed < 1) return DEFAULT_BUILDER_FEE_BPS
-  return Math.min(parsed, MAX_APP_BUILDER_FEE_BPS)
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return DEFAULT_DECIBEL_BUILDER_FEE_BPS
+  return Math.min(parsed, MAX_DECIBEL_BUILDER_FEE_BPS)
 }
 
 export function getDecibelBuilderConfig(network: DecibelNetwork) {

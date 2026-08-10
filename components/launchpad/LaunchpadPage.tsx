@@ -578,58 +578,79 @@ export function LaunchpadPage() {
         <AmbientBlobs variant="launchpad" />
         <main className="relative z-10 mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 
-          {/* ── Hero — Whop's original marketplace header ── */}
-          <div className="mb-4 animate-enter flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <h1 className="font-display font-bold text-[20px] sm:text-[24px] tracking-tight text-white">
+          {/* ── Hero — title + subtitle stack keeps the counter from crowding
+               the CTA on narrow screens and reads more editorial on wide ── */}
+          <div className="mb-5 animate-enter flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="font-display font-bold text-[22px] sm:text-[26px] leading-none tracking-tight text-white">
                 Strategy Marketplace
               </h1>
               {!loading && (
-                <span className="text-[10px] font-mono text-[#555]">
-                  {meta.total} strategies · {meta.graduated} live
+                <span className="mt-2 block text-[11px] font-mono tabular-nums text-[#6a6a6a]">
+                  {meta.total} strategies · <span className="text-accent/80">{meta.graduated} live</span>
                 </span>
               )}
             </div>
             {tab !== "deploy" && (
               <button
                 onClick={() => setTab("deploy")}
-                className="shrink-0 px-4 py-2 rounded-[10px] text-[13px] font-display font-semibold bg-accent text-black hover:brightness-95 transition-[filter] active:scale-[0.98]"
+                className="group shrink-0 inline-flex items-center gap-1.5 rounded-[11px] bg-accent px-3.5 py-2 text-[13px] font-display font-semibold text-black shadow-[0_2px_14px_-2px_rgba(57,255,20,0.35)] transition-all duration-200 hover:shadow-[0_4px_20px_-2px_rgba(57,255,20,0.5)] hover:brightness-[1.03] active:scale-[0.97] sm:px-4"
               >
-                + Deploy Strategy
+                <span className="text-[15px] leading-none opacity-80 transition-opacity group-hover:opacity-100">+</span>
+                <span className="hidden sm:inline">Deploy Strategy</span>
+                <span className="sm:hidden">Deploy</span>
               </button>
             )}
           </div>
 
-          {/* ── Tab bar — Whop's underline tabs ── */}
-          <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
-            {(["explore", "bots", "creator"] as Tab[]).map((t) => (
-              <button key={t} onClick={() => setTab(t)}
-                className={cn(
-                  "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
-                  // Deploy lives under Explore now, so the workbench keeps Explore lit.
-                  tab === t || (t === "explore" && tab === "deploy")
-                    ? "border-white text-white"
-                    : "border-transparent text-[#888] hover:text-zinc-300",
-                )}>
-                {t === "explore" ? "Explore" : t === "bots" ? "My Bots" : "Creator"}
-              </button>
-            ))}
+          {/* ── Tab bar — refined underline: rounded, inset, brand-tinted glow on
+               active, a fade-in hint on hover, and comfortable touch targets ── */}
+          <div className="relative flex items-center gap-0.5 sm:gap-1 border-b border-white/[0.08] mb-6 animate-enter-delay-1">
+            {(["explore", "bots", "creator"] as Tab[]).map((t) => {
+              // Deploy lives under Explore now, so the workbench keeps Explore lit.
+              const active = tab === t || (t === "explore" && tab === "deploy");
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "group relative -mb-px px-3.5 py-3 text-[13px] font-display font-semibold transition-colors duration-200 sm:px-4",
+                    active ? "text-white" : "text-[#7a7a7a] hover:text-zinc-200",
+                  )}
+                >
+                  {t === "explore" ? "Explore" : t === "bots" ? "My Bots" : "Creator"}
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute inset-x-2.5 -bottom-px h-[2px] rounded-full transition-all duration-300 ease-out sm:inset-x-3",
+                      active
+                        ? "bg-white opacity-100 shadow-[0_0_10px_rgba(57,255,20,0.45)]"
+                        : "bg-white/50 opacity-0 group-hover:opacity-40",
+                    )}
+                  />
+                </button>
+              );
+            })}
           </div>
 
           {/* ── Deploy — Whop's original workbench: paste Pine → transpile → deploy ── */}
           {tab === "deploy" && (
             <div className="animate-enter-delay-1">
-              <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-                <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center justify-between px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
-                  Deploy a Strategy
+              <div className="w-full overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)]">
+                <header className="flex items-center justify-between border-b border-white/[0.06] bg-gradient-to-b from-[#232323] to-[#1c1c1c] px-5 py-4 font-mono text-sm font-semibold tabular-nums text-zinc-300 sm:px-8 sm:py-5">
+                  <span className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
+                    Deploy a Strategy
+                  </span>
                   <button
                     onClick={() => setTab("explore")}
-                    className="text-[11px] font-mono font-medium text-zinc-500 hover:text-white transition-colors"
+                    className="group flex items-center gap-1 text-[11px] font-mono font-medium text-zinc-500 transition-colors hover:text-white"
                   >
-                    ← Back to marketplace
+                    <span className="transition-transform group-hover:-translate-x-0.5">←</span>
+                    Back to marketplace
                   </button>
                 </header>
-                <div className="bg-[#111] px-2 sm:px-4 py-3">
+                <div className="bg-[#111] px-2 py-3 sm:px-4">
                   <DeployForm onDeployed={handleDeployed} />
                 </div>
               </div>

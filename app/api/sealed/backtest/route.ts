@@ -17,6 +17,7 @@ import { fetchPythCandles } from "@/lib/launchpad/pyth";
 import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
 import { runSealedBacktest } from "@/lib/sealed-backtest";
 import { SEALED_MARKETS, readPlatformTerms } from "@/lib/sealed-vaults";
+import { PLATFORM_LAUNCH } from "@/lib/vault-economics";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
 
   // Quote our own builder fee from the chain rather than a constant, so the cost
   // side of the backtest matches what the vault will really be charged.
-  let builderFeeBps = 2;
+  let builderFeeBps: number = PLATFORM_LAUNCH.builderFeeBps;
   try {
     builderFeeBps = (await readPlatformTerms()).builderFeeBps;
   } catch {

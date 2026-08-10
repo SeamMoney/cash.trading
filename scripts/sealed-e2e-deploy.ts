@@ -22,7 +22,16 @@
  * scripts/install-aptos-cli.sh (pins v8.1.0) or set APTOS_BIN.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import {
   Account,
@@ -47,6 +56,10 @@ import {
 import { SEALED_PRESETS, buildManifest, canonicalizePine } from "../lib/sealed-presets";
 import { derivePrimarySubaccount } from "../lib/sealed-vaults";
 import { fetchPythCandles } from "../lib/launchpad/pyth";
+import {
+  DEFAULT_DECIBEL_BUILDER_FEE_BPS,
+  MAX_DECIBEL_BUILDER_FEE_BPS,
+} from "../lib/decibel-builder-config";
 
 // ─── Network config (authoritative, verified on-chain 2026-07-30) ────────────
 
@@ -92,7 +105,12 @@ const USDC_MINT_UNITS = 500_000_000n; // 500 USDC — covers the 100 USDC creati
                                       // + 100 USDC activation minimum with headroom
 const VAULT_FUND_UNITS = 100_000_000n; // 100 USDC into the Decibel vault
 const LAUNCH_FEE_UNITS = 50_000_000n;  // 50 USDC — our fee, on top of Decibel's 100
-const BUILDER_FEE_BPS = 2;             // 0.02% of notional on every fill the vault makes
+
+interface PlatformEconomics {
+  treasuryAddress: string;
+  builderAddress: string;
+  builderFeeBps: number;
+}
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -135,12 +153,47 @@ const stateDir = resolve(flags.state ?? `.sealed-e2e-${network}`);
 const statePath = join(stateDir, "state.json");
 
 function loadState(): E2EState {
-  if (existsSync(statePath)) return JSON.parse(readFileSync(statePath, "utf8")) as E2EState;
+  if (existsSync(statePath)) {
+    ensureStateDir();
+    // Lock down an older or user-created state file before parsing or rejecting it. A network
+    // mismatch must not leave a manifest-bearing file world-readable merely because execution
+    // stopped early.
+    chmodSync(statePath, 0o600);
+    const parsed = JSON.parse(readFileSync(statePath, "utf8")) as E2EState;
+    if (parsed.network !== network) {
+      throw new Error(
+        `state network mismatch: ${statePath} belongs to ${parsed.network}, not ${network}`,
+      );
+    }
+    return parsed;
+  }
   return { network };
 }
+
+function ensureStateDir() {
+  mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  chmodSync(stateDir, 0o700);
+}
+
+function writePrivateFile(path: string, contents: string) {
+  ensureStateDir();
+  writeFileSync(path, contents, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
 function saveState(s: E2EState) {
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(statePath, JSON.stringify(s, null, 2));
+  if (s.network !== network) {
+    throw new Error(`refusing to write ${s.network} state into the ${network} state directory`);
+  }
+  ensureStateDir();
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  try {
+    writePrivateFile(temporary, JSON.stringify(s, null, 2));
+    renameSync(temporary, statePath);
+    chmodSync(statePath, 0o600);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }
 
 const aptos = new Aptos(new AptosConfig({ network: cfg.aptosNetwork }));
@@ -149,13 +202,76 @@ function loadOrCreateKey(file: string, envVar: string): Ed25519PrivateKey {
   const fromEnv = process.env[envVar];
   if (fromEnv) return new Ed25519PrivateKey(fromEnv);
   const path = join(stateDir, file);
-  if (existsSync(path)) return new Ed25519PrivateKey(readFileSync(path, "utf8").trim());
-  mkdirSync(stateDir, { recursive: true });
+  if (existsSync(path)) {
+    ensureStateDir();
+    chmodSync(path, 0o600);
+    return new Ed25519PrivateKey(readFileSync(path, "utf8").trim());
+  }
   const key = Ed25519PrivateKey.generate();
-  writeFileSync(path, key.toString());
-  chmodSync(path, 0o600);
+  writePrivateFile(path, key.toString());
   console.log(`  generated ${file} (chmod 600) — set ${envVar} to override`);
   return key;
+}
+
+function normalizeAddress(raw: string, label: string): string {
+  try {
+    return AccountAddress.fromString(raw.trim()).toString();
+  } catch {
+    throw new Error(`${label} must be a valid Aptos address`);
+  }
+}
+
+function resolvePlatformEconomics(deployerAddress: string): PlatformEconomics {
+  const configuredBuilder = process.env.DECIBEL_BUILDER_ADDRESS?.trim();
+  if (network === "mainnet" && !configuredBuilder) {
+    throw new Error(
+      "DECIBEL_BUILDER_ADDRESS is required for an immutable mainnet publish; " +
+        "the deployer key must not silently become the revenue recipient",
+    );
+  }
+
+  const builderAddress = normalizeAddress(
+    configuredBuilder || deployerAddress,
+    "DECIBEL_BUILDER_ADDRESS",
+  );
+  const treasuryAddress = normalizeAddress(
+    process.env.SEALED_TREASURY_ADDRESS?.trim() || builderAddress,
+    "SEALED_TREASURY_ADDRESS",
+  );
+
+  const rawFee = process.env.DECIBEL_BUILDER_FEE_BPS?.trim();
+  const builderFeeBps = rawFee
+    ? Number(rawFee)
+    : DEFAULT_DECIBEL_BUILDER_FEE_BPS;
+  if (
+    !Number.isSafeInteger(builderFeeBps) ||
+    builderFeeBps < 1 ||
+    builderFeeBps > MAX_DECIBEL_BUILDER_FEE_BPS
+  ) {
+    throw new Error(
+      `DECIBEL_BUILDER_FEE_BPS must be a whole number from 1 to ${MAX_DECIBEL_BUILDER_FEE_BPS}`,
+    );
+  }
+
+  return { treasuryAddress, builderAddress, builderFeeBps };
+}
+
+function assertPlatformTerms(terms: unknown[], intended: PlatformEconomics) {
+  const actualLaunchFee = BigInt(String(terms[0]));
+  const actualTreasury = normalizeAddress(String(terms[1]), "on-chain treasury");
+  const actualBuilder = normalizeAddress(String(terms[2]), "on-chain builder address");
+  const actualFeeBps = Number(terms[3]);
+  const matches =
+    actualLaunchFee === LAUNCH_FEE_UNITS &&
+    actualTreasury === intended.treasuryAddress &&
+    actualBuilder === intended.builderAddress &&
+    actualFeeBps === intended.builderFeeBps;
+  if (!matches) {
+    throw new Error(
+      "existing on-chain platform terms do not match the requested deployment config; " +
+        "refusing to continue or silently redirect revenue",
+    );
+  }
 }
 
 const explorer = (tx: string) => `https://explorer.aptoslabs.com/txn/${tx}${cfg.explorerSuffix}`;
@@ -221,6 +337,7 @@ async function run() {
   const attestorAcct = Account.fromPrivateKey({ privateKey: attestorKey });
   state.deployerAddr = deployer.accountAddress.toString();
   state.attestorPub = attestorAcct.publicKey.toString();
+  const platformEconomics = resolvePlatformEconomics(state.deployerAddr);
   saveState(state);
 
   console.log(`\nSEALED VAULT E2E — ${network.toUpperCase()}`);
@@ -254,7 +371,9 @@ async function run() {
     // (docs/SEALED-INDICATOR.md §5). Testnet stays compatible for iteration.
     if (network === "mainnet") {
       const tmp = join(stateDir, "pkg-immutable");
-      execFileSync("cp", ["-r", pkgDir, tmp]);
+      ensureStateDir();
+      rmSync(tmp, { recursive: true, force: true });
+      cpSync(pkgDir, tmp, { recursive: true });
       const tomlPath = join(tmp, "Move.toml");
       const toml = readFileSync(tomlPath, "utf8");
       if (!toml.includes("upgrade_policy")) {
@@ -283,21 +402,30 @@ async function run() {
     };
     runCli(["move", "compile", "--named-addresses", named]);
     runCli(["move", "test", "--named-addresses", named]);
-    const out = runCli([
-      "move", "publish",
-      "--named-addresses", named,
-      "--url", cfg.nodeUrl,
-      "--private-key", deployerKey.toString(),
-      "--assume-yes",
-      // The package vendors the Decibel + order_book deps, so the publish writeset is large.
-      // 200k units ran out of gas on testnet; 2M is the protocol's per-transaction ceiling.
-      "--max-gas", "2000000",
-      // Ship bytecode only. With the default `sparse` artifacts the package is 62KB, over
-      // Aptos's 60KB single-transaction limit. Source verifiability does not depend on this:
-      // the module source is in this repo, and a vault's guarantee rests on the program
-      // commitment and the on-chain trace, not on the explorer rendering our Move.
-      "--included-artifacts", "none",
-    ]);
+    const publishKeyPath = join(stateDir, `.publish-key-${process.pid}`);
+    writePrivateFile(publishKeyPath, deployerKey.toString());
+    let out: string;
+    try {
+      out = runCli([
+        "move", "publish",
+        "--named-addresses", named,
+        "--url", cfg.nodeUrl,
+        // Never put a mainnet private key in the process argument list. The temporary file is
+        // mode 0600 and is removed whether publishing succeeds or fails.
+        "--private-key-file", publishKeyPath,
+        "--assume-yes",
+        // The package vendors the Decibel + order_book deps, so the publish writeset is large.
+        // 200k units ran out of gas on testnet; 2M is the protocol's per-transaction ceiling.
+        "--max-gas", "2000000",
+        // Ship bytecode only. With the default `sparse` artifacts the package is 62KB, over
+        // Aptos's 60KB single-transaction limit. Source verifiability does not depend on this:
+        // the module source is in this repo, and a vault's guarantee rests on the program
+        // commitment and the on-chain trace, not on the explorer rendering our Move.
+        "--included-artifacts", "none",
+      ]);
+    } finally {
+      rmSync(publishKeyPath, { force: true });
+    }
     const tx = out.match(/"transaction_hash":\s*"(0x[0-9a-f]+)"/)?.[1];
     // The CLI exits 0 for a transaction that COMMITTED but reverted (e.g. "Out of gas"), and
     // recording that as a successful publish makes every later step fail with a confusing
@@ -321,28 +449,30 @@ async function run() {
     console.log(`[publish] already at ${state.packageAddress}`);
   }
   const pkg = state.packageAddress;
+  if (!pkg) throw new Error("publish completed without a package address");
 
   // ── platform economics ──
   // init_platform is idempotent-by-abort: publishing a new version keeps the resource, so we
   // only call it when it is genuinely absent.
   {
-    let hasConfig = false;
+    let terms: unknown[] | null = null;
     try {
-      await aptos.view({ payload: { function: `${pkg}::sealed_vault::platform_terms`, functionArguments: [] } });
-      hasConfig = true;
+      terms = (await aptos.view({
+        payload: { function: `${pkg}::sealed_vault::platform_terms`, functionArguments: [] },
+      })) as unknown[];
     } catch { /* not initialized yet */ }
-    if (!hasConfig) {
-      console.log(`[platform] init_platform (launch fee ${Number(LAUNCH_FEE_UNITS) / 1e6} USDC, builder ${BUILDER_FEE_BPS}bps)…`);
+    if (!terms) {
+      console.log(`[platform] init_platform (launch fee ${Number(LAUNCH_FEE_UNITS) / 1e6} USDC, builder ${platformEconomics.builderFeeBps}bps)…`);
       const committed = await submit(deployer, `${pkg}::sealed_vault::init_platform`, [
-        state.deployerAddr,          // treasury
-        LAUNCH_FEE_UNITS.toString(), // one-time launch fee
-        cfg.usdcMetadata,            // fee asset
-        state.deployerAddr,          // builder code recipient
-        BUILDER_FEE_BPS.toString(),  // builder fee, bps of notional
+        platformEconomics.treasuryAddress,
+        LAUNCH_FEE_UNITS.toString(),
+        cfg.usdcMetadata,
+        platformEconomics.builderAddress,
+        platformEconomics.builderFeeBps.toString(),
       ]);
       console.log(`  ${explorer(committed.hash)}`);
     } else {
-      const terms = await aptos.view({ payload: { function: `${pkg}::sealed_vault::platform_terms`, functionArguments: [] } });
+      assertPlatformTerms(terms, platformEconomics);
       console.log(`[platform] fee=${Number(terms[0]) / 1e6} USDC treasury=${String(terms[1]).slice(0, 10)}… builder=${String(terms[2]).slice(0, 10)}… ${terms[3]}bps`);
     }
   }
@@ -656,7 +786,8 @@ async function attestTicks(
 
 async function status() {
   const state = loadState();
-  console.log(JSON.stringify(state, null, 2));
+  const { manifestJson, ...publicState } = state;
+  console.log(JSON.stringify({ ...publicState, manifestStored: Boolean(manifestJson) }, null, 2));
   if (state.deployerAddr) {
     console.log(`\nbalance: ${Number(await balanceOctas(state.deployerAddr)) / 1e8} APT`);
   }

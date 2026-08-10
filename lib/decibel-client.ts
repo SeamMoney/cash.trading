@@ -4,6 +4,7 @@
  * This file contains only constants that can be safely imported in browser environments.
  * The DecibelClient class (for server-side trading) is in a separate file.
  */
+import { DEFAULT_DECIBEL_BUILDER_FEE_RATE } from './decibel-builder-config';
 
 // ============================================================
 // TESTNET constants (updated Feb 11, 2026 - testnet reset)
@@ -36,7 +37,7 @@ export const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3
 export const MAKER_FEE = 0.00011;
 export const MAKER_REBATE = -MAKER_FEE; // legacy automation compatibility
 export const TAKER_FEE = 0.00034; // tier-0 taker fee: 0.0340%
-export const BUILDER_FEE = 0.0002; // 0.02%
+export const BUILDER_FEE = DEFAULT_DECIBEL_BUILDER_FEE_RATE; // 1 bp = 0.01%
 
 // ============================================================
 // TESTNET Market addresses (from perp_engine::Global on-chain)

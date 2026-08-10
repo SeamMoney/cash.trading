@@ -1,3 +1,5 @@
+import { DEFAULT_DECIBEL_BUILDER_FEE_BPS } from "@/lib/decibel-builder-config";
+
 /**
  * Decibel vault economics — what it costs to run a vault, and what we charge.
  *
@@ -83,7 +85,7 @@ export const PLATFORM_LAUNCH = {
   /** One-time, per Decibel vault, in whole USDC. Bounded at $500 by the contract. */
   launchFeeUsdc: 50,
   /** Builder fee on notional, in bps. Bounded at 10 bps by the contract. */
-  builderFeeBps: 2,
+  builderFeeBps: DEFAULT_DECIBEL_BUILDER_FEE_BPS,
 } as const;
 
 export const PLATFORM_FEE = {

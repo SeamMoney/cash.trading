@@ -20,7 +20,7 @@
  * Reuses the clean-room stack in `.portfolio-cleanroom-testnet/` — that Decibel vault is
  * already licensed and funded, so this costs gas only.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
 
 import { performPortfolioTick } from "../lib/portfolio-tick";
@@ -34,6 +34,10 @@ import { buildDelegateDecibelVaultPayload } from "../lib/decibel-vaults";
 import { SEALED_CATALOG } from "../lib/sealed-catalog";
 
 const DECIBEL = "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f";
+if (!existsSync(".portfolio-cleanroom-testnet/state.json") || !existsSync(".sealed-e2e-testnet/attestor.key")) {
+  console.log("skipped: needs .portfolio-cleanroom-testnet/state.json and .sealed-e2e-testnet/attestor.key — run the clean-room E2E first");
+  process.exit(0);
+}
 const S = JSON.parse(readFileSync(".portfolio-cleanroom-testnet/state.json", "utf8"));
 const PKG: string = S.addr;
 const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));

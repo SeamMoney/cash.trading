@@ -104,6 +104,11 @@ async function usdc(addr: string): Promise<bigint> {
 (async () => {
   console.log("\nportfolio_vault clean-room — testnet\n");
 
+  if (!existsSync(".sealed-e2e-testnet/deployer.key")) {
+    console.log("skipped: .sealed-e2e-testnet/deployer.key not found — this E2E run needs a funded testnet deployer key");
+    process.exit(0);
+  }
+
   // ── 1. A fresh account, funded from the existing deployer ──────────────────
   if (!state.privateKey) {
     const fresh = Account.generate();

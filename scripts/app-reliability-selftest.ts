@@ -878,9 +878,11 @@ assert.ok(
   "EVM-derived sponsorship must only accept entry-function transactions",
 );
 for (const functionName of [
+  "approve_max_builder_fee_for_subaccount",
   "cancel_order_to_subaccount",
   "deposit_to_subaccount_at",
   "place_order_to_subaccount",
+  "revoke_max_builder_fee_for_subaccount",
   "withdraw_from_subaccount",
 ] as const) {
   assert.ok(

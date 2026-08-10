@@ -28,10 +28,12 @@ const MAX_SPONSORED_GAS_OCTAS = 5_000_000n;
 const MAX_BODY_BYTES = 256_000;
 
 const ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS = new Set([
+  "approve_max_builder_fee_for_subaccount",
   "cancel_order_to_subaccount",
   "create_new_subaccount",
   "deposit_to_subaccount_at",
   "place_order_to_subaccount",
+  "revoke_max_builder_fee_for_subaccount",
   "withdraw_from_subaccount",
 ]);
 

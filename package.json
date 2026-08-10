@@ -19,6 +19,7 @@
     "test:cash-rewards:mainnet-readiness": "tsx scripts/cash-rewards-mainnet-readiness.ts",
     "test:transpiler": "tsx scripts/transpiler-honesty-selftest.ts",
     "test:sealed": "tsx scripts/sealed-attestor-selftest.ts",
+    "test:sealed-registry": "tsx scripts/sealed-registry-proof-selftest.ts",
     "sealed:simulate": "tsx scripts/sealed-attestor-runner.ts simulate",
     "sealed:attest": "tsx scripts/sealed-attestor-runner.ts live",
     "sealed:launch": "tsx scripts/sealed-vault-launch.ts",

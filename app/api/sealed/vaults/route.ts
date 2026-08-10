@@ -11,13 +11,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { prisma } from "@/lib/prisma";
+import {
+  proveSealedVaultRegistration,
+  SealedRegistryProofError,
+} from "@/lib/sealed-registry-proof";
 import { encryptSource, sourceVaultAvailable } from "@/lib/sealed-source-vault";
 import {
   MAX_PINE_BYTES,
+  SEALED_PACKAGE,
   findSealedMarket,
   isHex32,
   isHexAddress,
   listSealedVaults,
+  normalizeAddress,
+  sealedNetwork,
   sealedRegistryAvailable,
   toPublicSealedVault,
   truncateDisplayName,
@@ -28,6 +35,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store" };
+const MAX_MANIFEST_BYTES = 4 * 1024;
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 export async function GET(request: NextRequest) {
   const rate = checkApiRateLimit(request, "sealed-vaults-read", 60, 60_000);
@@ -121,6 +130,149 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: NO_STORE },
     );
   }
+  if (Buffer.byteLength(body.manifestJson, "utf8") > MAX_MANIFEST_BYTES) {
+    return NextResponse.json(
+      { error: `manifestJson exceeds ${MAX_MANIFEST_BYTES} bytes` },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  try {
+    const manifest = JSON.parse(body.manifestJson) as Record<string, unknown>;
+    if (
+      !manifest ||
+      typeof manifest !== "object" ||
+      typeof manifest.transpiler !== "string" ||
+      typeof manifest.module !== "string" ||
+      normalizeAddress(manifest.marketAddr) !== normalizeAddress(market.addr)
+    ) {
+      throw new Error("invalid manifest");
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "manifestJson is not a valid sealed-program manifest" },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  for (const field of ["createTxHash", "sealTxHash"] as const) {
+    if (body[field] !== undefined && body[field] !== null && !TX_HASH.test(String(body[field]))) {
+      return NextResponse.json(
+        { error: `${field} must be a 32-byte transaction hash` },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+  }
+
+  // The registry is an execution allowlist, not a client-authored index. Pin both values to
+  // the server configuration so a caller cannot point the cron at an unrelated package or
+  // smuggle a testnet object into the mainnet working set.
+  const network = sealedNetwork();
+  if (body.network !== network) {
+    return NextResponse.json(
+      { error: `network must match the configured ${network} deployment` },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  const configuredPackage = normalizeAddress(SEALED_PACKAGE);
+  if (!configuredPackage) {
+    return NextResponse.json(
+      { error: "sealed vault module is not configured" },
+      { status: 503, headers: NO_STORE },
+    );
+  }
+  const requestedPackage = normalizeAddress(body.packageAddress);
+  if (requestedPackage !== configuredPackage) {
+    return NextResponse.json(
+      { error: "packageAddress does not match the configured sealed-vault package" },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+
+  // The allowlist, in order. Order is load-bearing — an action's `market_idx` addresses the
+  // on-chain list positionally, so a resolved-but-reordered list could place a real order on
+  // the wrong book.
+  const allowlist: Array<NonNullable<ReturnType<typeof findSealedMarket>>> = [];
+  if (Array.isArray(body.markets)) {
+    for (const n of body.markets) {
+      const m = findSealedMarket(typeof n === "string" ? n : "");
+      if (!m) {
+        return NextResponse.json(
+          { error: `unknown market in allowlist: ${String(n)}` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      if (allowlist.some((listed) => listed.addr === m.addr)) {
+        return NextResponse.json(
+          { error: `market ${m.name} listed twice in the allowlist` },
+          { status: 400, headers: NO_STORE },
+        );
+      }
+      allowlist.push(m);
+    }
+  }
+  if (allowlist.length === 0) allowlist.push(market);
+  const vaultKind = allowlist.length > 1 ? "portfolio" : "single";
+
+  const boundedInteger = (
+    value: unknown,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number | null => {
+    const parsed = value === undefined || value === null ? fallback : Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+  };
+  const pctBps = boundedInteger(body.pctBps, 1000, 1, 10_000);
+  const maxLeverageX100 = boundedInteger(
+    body.maxLeverageX100,
+    200,
+    100,
+    2_000,
+  );
+  const minBarIntervalS = boundedInteger(
+    body.minBarIntervalS,
+    60,
+    1,
+    86_400,
+  );
+  if (pctBps === null || maxLeverageX100 === null || minBarIntervalS === null) {
+    return NextResponse.json(
+      { error: "vault limits are invalid" },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+
+  // This is the authorization boundary. Nothing is encrypted or written until the immutable
+  // creator, vault, commitment, attestor, market list, engine parameters and limits have all
+  // been read from the actual Move resource and matched to this request.
+  let proof: Awaited<ReturnType<typeof proveSealedVaultRegistration>>;
+  try {
+    proof = await proveSealedVaultRegistration({
+      network,
+      packageAddress: configuredPackage,
+      strategyVaultAddr: normalizeAddress(body.strategyVaultAddr)!,
+      creatorAddr: normalizeAddress(body.creatorAddr)!,
+      decibelVaultAddr: normalizeAddress(body.decibelVaultAddr)!,
+      programCommitment: (body.programCommitment as string).toLowerCase(),
+      attestorPubkey: (body.attestorPubkey as string).toLowerCase(),
+      vaultKind,
+      markets: allowlist,
+      pctBps,
+      maxLeverageX100,
+      minBarIntervalS,
+    });
+  } catch (err) {
+    if (err instanceof SealedRegistryProofError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status, headers: NO_STORE },
+      );
+    }
+    console.error("[sealed/vaults] chain proof failed:", err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { error: "could not verify the sealed strategy on-chain" },
+      { status: 503, headers: NO_STORE },
+    );
+  }
 
   // A creator who chose "Public" publishes the source at launch. We do NOT take their word
   // for it: the Pine is re-hashed against the manifest and must reproduce the commitment that
@@ -203,60 +355,29 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  // The allowlist, in order. Order is load-bearing — an action's `market_idx` addresses the
-  // on-chain list positionally, so a resolved-but-reordered list would eventually place a real
-  // order on the wrong book. Unknown names are rejected rather than dropped for the same
-  // reason: dropping one shifts every index after it.
-  const allowlist: string[] = [];
-  if (Array.isArray(body.markets)) {
-    for (const n of body.markets) {
-      const m = findSealedMarket(typeof n === "string" ? n : "");
-      if (!m) {
-        return NextResponse.json(
-          { error: `unknown market in allowlist: ${String(n)}` },
-          { status: 400, headers: NO_STORE },
-        );
-      }
-      if (allowlist.includes(m.name)) {
-        return NextResponse.json(
-          { error: `market ${m.name} listed twice in the allowlist` },
-          { status: 400, headers: NO_STORE },
-        );
-      }
-      allowlist.push(m.name);
-    }
-  }
-  if (allowlist.length === 0) allowlist.push(market.name);
-  // Derived from the allowlist rather than trusted from the body: a record claiming
-  // "portfolio" with one market would send the cron down a tick path the vault's module does
-  // not implement.
-  const vaultKind = allowlist.length > 1 ? "portfolio" : "single";
-
-  const sealed = body.sealed === true;
   const data = {
-    strategyVaultAddr: body.strategyVaultAddr as string,
-    packageAddress: body.packageAddress as string,
-    network: typeof body.network === "string" ? body.network : "testnet",
-    creatorAddr: body.creatorAddr as string,
-    decibelVaultAddr: body.decibelVaultAddr as string,
-    marketAddr: market.addr,
-    marketName: market.name,
+    strategyVaultAddr: proof.strategyVaultAddr,
+    packageAddress: proof.packageAddress,
+    network,
+    creatorAddr: proof.creatorAddr,
+    decibelVaultAddr: proof.decibelVaultAddr,
+    marketAddr: allowlist[0].addr,
+    marketName: allowlist[0].name,
     vaultKind,
-    marketNames: allowlist.length > 1 ? allowlist.join(",") : null,
-    programCommitment: (body.programCommitment as string).toLowerCase(),
-    attestorPubkey: (body.attestorPubkey as string).toLowerCase(),
-    enclaveMeasurement:
-      typeof body.enclaveMeasurement === "string" ? body.enclaveMeasurement : null,
+    marketNames: allowlist.length > 1 ? allowlist.map((listed) => listed.name).join(",") : null,
+    programCommitment: proof.programCommitment,
+    attestorPubkey: proof.attestorPubkey,
+    enclaveMeasurement: proof.enclaveMeasurement,
     name,
     description:
       typeof body.description === "string" ? truncateDisplayName(body.description, 500, 1500) : null,
-    pctBps: Number(body.pctBps ?? 1000),
-    maxLeverageX100: Number(body.maxLeverageX100 ?? 200),
-    minBarIntervalS: Number(body.minBarIntervalS ?? 60),
+    pctBps,
+    maxLeverageX100,
+    minBarIntervalS,
     manifestJson: body.manifestJson,
-    createTxHash: typeof body.createTxHash === "string" ? body.createTxHash : null,
-    sealTxHash: typeof body.sealTxHash === "string" ? body.sealTxHash : null,
-    sealedAt: sealed ? new Date() : null,
+    createTxHash: typeof body.createTxHash === "string" ? body.createTxHash.toLowerCase() : null,
+    sealTxHash: typeof body.sealTxHash === "string" ? body.sealTxHash.toLowerCase() : null,
+    sealedAt: new Date(),
     revealedPine,
     revealedAt: revealedPine ? new Date() : null,
     ...managed,
@@ -325,14 +446,30 @@ export async function POST(request: NextRequest) {
     const write = prisma.sealedVault.upsert({
       where: { strategyVaultAddr: data.strategyVaultAddr },
       create: data,
-      // Re-registering (e.g. after the seal step) updates the lifecycle fields.
-      // The commitment and attestor key are immutable on-chain, so leave them.
+      // Re-registration updates the display and lifecycle fields while refreshing every
+      // immutable execution field from the chain proof above.
       update: {
+        // These fields are immutable on-chain. Writing the verified values on every
+        // registration also repairs any row created before chain-bound registration existed.
+        packageAddress: data.packageAddress,
+        network: data.network,
+        creatorAddr: data.creatorAddr,
+        decibelVaultAddr: data.decibelVaultAddr,
+        marketAddr: data.marketAddr,
+        marketName: data.marketName,
+        vaultKind: data.vaultKind,
+        marketNames: data.marketNames,
+        programCommitment: data.programCommitment,
+        attestorPubkey: data.attestorPubkey,
+        enclaveMeasurement: data.enclaveMeasurement,
+        pctBps: data.pctBps,
+        maxLeverageX100: data.maxLeverageX100,
+        minBarIntervalS: data.minBarIntervalS,
+        manifestJson: data.manifestJson,
         name: data.name,
         description: data.description,
         sealTxHash: data.sealTxHash ?? undefined,
-        sealedAt: sealed ? new Date() : undefined,
-        enclaveMeasurement: data.enclaveMeasurement ?? undefined,
+        sealedAt: new Date(),
         // A reveal is one-way: once published the source stays published, and a later
         // re-registration without it must not silently un-reveal the vault.
         revealedPine: revealedPine ?? undefined,

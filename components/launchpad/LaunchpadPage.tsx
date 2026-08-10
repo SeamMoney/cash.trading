@@ -170,9 +170,15 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
       )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-px", SIG_DOT[sig])} />
-            <span className="text-sm font-medium text-white truncate">{ind.name}</span>
+          {/* No wrapping: a long name used to push itself onto a second line and
+              strand the status dot alone above it, so that row alone broke the
+              list's alignment. The name truncates instead — every row is one line. */}
+          <div className="flex items-center gap-1.5">
+            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", SIG_DOT[sig])} />
+            {/* min-w-0 (not flex-1) so the name shrinks and truncates when long
+                but still sizes to content when short — otherwise it grows and
+                shoves the PROP badge to the far edge, away from its label. */}
+            <span className="min-w-0 truncate text-sm font-medium text-white">{ind.name}</span>
             {ind.isProprietary && (
               <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent shrink-0">
                 <svg className="w-2 h-2" viewBox="0 0 16 16" fill="currentColor">

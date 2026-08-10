@@ -21,6 +21,7 @@
     "test:sealed": "tsx scripts/sealed-attestor-selftest.ts",
     "test:sealed-registry": "tsx scripts/sealed-registry-proof-selftest.ts",
     "test:sealed-payload": "tsx scripts/sealed-payload-policy-selftest.ts",
+    "test:launchpad-execution": "tsx scripts/launchpad-execution-policy-selftest.ts",
     "sealed:simulate": "tsx scripts/sealed-attestor-runner.ts simulate",
     "sealed:attest": "tsx scripts/sealed-attestor-runner.ts live",
     "sealed:launch": "tsx scripts/sealed-vault-launch.ts",

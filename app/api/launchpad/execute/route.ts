@@ -30,12 +30,11 @@ import {
   getDecibelMarketConfigFromRegistry,
   type MarketConfig,
 } from "@/lib/decibel";
-import { indicatorRegistry } from "@/app/api/launchpad/indicators/route";
 import { prisma } from "@/lib/prisma";
+import { legacyBotAutomationUnavailable } from "@/lib/legacy-bot-guard";
 
 export const runtime = "nodejs";
-
-export let platformRevenueUsdt = 0;
+export const dynamic = "force-dynamic";
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 
@@ -197,6 +196,11 @@ function compactJson<T extends Record<string, unknown>>(value: T): Prisma.InputJ
 }
 
 export async function POST(req: Request) {
+  // This is the superseded testnet keeper path. Production automation runs
+  // through the sealed-vault cron, whose policy is enforced on-chain.
+  const unavailable = legacyBotAutomationUnavailable();
+  if (unavailable) return unavailable;
+
   const unauthorized = authorizeKeeperExecution(req);
   if (unauthorized) return unauthorized;
 
@@ -211,7 +215,6 @@ export async function POST(req: Request) {
       sizeUsdt?: number;
       price?: number;
       reduceOnly?: boolean;
-      entryPrice?: number;  // previous entry price (for P&L calc on close)
     };
 
     const { strategyVaultId, decisionId, indicatorAddr, signal, marketName, sizeUsdt } = body;
@@ -356,10 +359,6 @@ export async function POST(req: Request) {
     const orderNotionalUsdt = Number.isFinite(size * orderPrice)
       ? size * orderPrice
       : sizeUsdt;
-    // Platform fee: 10 bps (0.10%) of submitted order notional, recorded only
-    // after policy and live-market checks pass.
-    const platformFee = Math.round((orderNotionalUsdt ?? 0) * 0.001 * 100) / 100;
-    platformRevenueUsdt += platformFee;
 
     // ── Build Decibel order payload ───────────────────────────────────────
     const {
@@ -377,6 +376,25 @@ export async function POST(req: Request) {
       reduceOnly,
       subaccount,
     });
+
+    // Claim the decision before submitting. updateMany turns the nullable
+    // consumedAt field into a compare-and-set lock: concurrent requests cannot
+    // both submit an order for the same signal. A failed submission remains
+    // consumed because the node may have accepted the transaction even when
+    // the client timed out while waiting for confirmation.
+    const claimedAt = new Date();
+    const claimed = await prisma.indicatorSignalDecision.updateMany({
+      where: {
+        id: decision.id,
+        strategyVaultId,
+        consumedAt: null,
+        expiresAt: { gt: claimedAt },
+      },
+      data: { consumedAt: claimedAt },
+    });
+    if (claimed.count !== 1) {
+      return deny("Decision has already been consumed or expired", 409, liveSignal);
+    }
 
     let decibelTxHash: string;
     try {
@@ -410,53 +428,6 @@ export async function POST(req: Request) {
         console.error("[launchpad/execute] audit submit failure failed:", auditErr);
       });
       throw submitErr;
-    }
-    await prisma.indicatorSignalDecision.update({
-      where: { id: decision.id },
-      data: { consumedAt: new Date() },
-    });
-
-    // ── Creator fee collection on profitable close ────────────────────────
-    let creatorFeePaid = 0;
-    let creatorFeeBps = 0;
-
-    if (reduceOnly && body.entryPrice && body.entryPrice > 0) {
-      const exitPrice = orderPrice;
-      const entryPriceVal = body.entryPrice;
-      // Long close P&L: (exit - entry) * size
-      const profitUsdt = (exitPrice - entryPriceVal) * size;
-
-      if (profitUsdt > 0) {
-        // Look up the indicator in the registry to get its fee bps
-        const ind = indicatorRegistry.find(i => i.address === indicatorAddr);
-        creatorFeeBps = ind?.creatorFeeBps ?? 0;
-
-        if (creatorFeeBps > 0) {
-          creatorFeePaid = profitUsdt * creatorFeeBps / 10000;
-          const profitUsdtE6 = Math.round(profitUsdt * 1e6);
-
-          // Update in-memory earnings immediately
-          if (ind) {
-            ind.creatorEarningsUsdt = (ind.creatorEarningsUsdt ?? 0) + creatorFeePaid;
-          }
-
-          // Attempt on-chain record_creator_fee — non-blocking
-          try {
-            await submitTx(aptos, keeper, {
-              function: `${CONTRACT}::indicator::record_creator_fee` as `${string}::${string}::${string}`,
-              typeArguments: [],
-              functionArguments: [indicatorAddr, String(profitUsdtE6)],
-            });
-            console.log(
-              `[launchpad/execute] creator fee recorded: indicatorAddr=${indicatorAddr} ` +
-              `profitUsdt=${profitUsdt.toFixed(4)} feeBps=${creatorFeeBps} feePaid=${creatorFeePaid.toFixed(4)}`,
-            );
-          } catch (feeErr) {
-            // Don't block the trade response — log and continue
-            console.error("[launchpad/execute] record_creator_fee on-chain call failed (non-fatal):", feeErr);
-          }
-        }
-      }
     }
 
     const audit = await auditExecution({
@@ -503,9 +474,6 @@ export async function POST(req: Request) {
       entryPrice: orderPrice,
       reduceOnly,
       explorerUrl: `https://explorer.aptoslabs.com/txn/${decibelTxHash}?network=${net}`,
-      creatorFeePaid,
-      creatorFeeBps,
-      platformFeePaid: platformFee,
       decisionId: decision.id,
       strategyVaultId: strategyVault.id,
       auditId: audit?.id ?? null,

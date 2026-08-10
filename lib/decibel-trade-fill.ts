@@ -53,16 +53,64 @@ export function extractConfirmedDecibelFill(args: {
 
   const subaccountKey = addressKey(args.subaccount);
   const marketKey = addressKey(args.marketAddress);
-  const candidates: Array<{ priceRaw: number; sizeRaw: number; score: number }> = [];
+  const candidates: Array<{
+    priceRaw: number;
+    sizeRaw: number;
+    score: number;
+    source: "trade" | "order" | "bulk";
+    identityMatches: boolean;
+    isTaker: boolean;
+  }> = [];
 
   for (const value of events) {
     if (typeof value !== "object" || value === null) continue;
     const event = value as EventRecord;
-    if (!event.type?.includes("OrderEvent") || !event.data) continue;
+    if (!event.type || !event.data) continue;
     const data = event.data;
-    if (variantName(data.status).toUpperCase() !== "FILLED") continue;
     const eventMarketKey = addressKey(eventMarket(data.market));
     if (marketKey && eventMarketKey && marketKey !== eventMarketKey) continue;
+
+    const identityMatches = [data.parent, data.user, data.account]
+      .some((address) => addressKey(address) === subaccountKey);
+    const isTaker = data.is_taker === true || data.is_taker === "true";
+
+    // TradeEvent is the authoritative executed fill. A market order can cross
+    // several makers, so retain every taker-side event and aggregate them
+    // below instead of reporting the final OrderEvent price for the full size.
+    if (event.type.includes("TradeEvent")) {
+      const sizeRaw = Number(data.size);
+      const priceRaw = Number(data.price);
+      if (Number.isFinite(sizeRaw) && Number.isFinite(priceRaw) && sizeRaw > 0 && priceRaw > 0) {
+        candidates.push({
+          priceRaw,
+          sizeRaw,
+          score: (identityMatches ? 4 : 0) + (isTaker ? 2 : 0) + 4,
+          source: "trade",
+          identityMatches,
+          isTaker,
+        });
+      }
+      continue;
+    }
+
+    if (event.type.includes("BulkOrderFilledEvent")) {
+      const sizeRaw = Number(data.filled_size ?? data.size);
+      const priceRaw = Number(data.price ?? data.avg_price);
+      if (Number.isFinite(sizeRaw) && Number.isFinite(priceRaw) && sizeRaw > 0 && priceRaw > 0) {
+        candidates.push({
+          priceRaw,
+          sizeRaw,
+          score: (identityMatches ? 4 : 0) + 1,
+          source: "bulk",
+          identityMatches,
+          isTaker: false,
+        });
+      }
+      continue;
+    }
+
+    if (!event.type.includes("OrderEvent")) continue;
+    if (variantName(data.status).toUpperCase() !== "FILLED") continue;
 
     const originalSize = Number(data.orig_size);
     const remainingSize = Number(data.remaining_size ?? 0);
@@ -72,14 +120,31 @@ export function extractConfirmedDecibelFill(args: {
       continue;
     }
 
-    const identityMatches = [data.parent, data.user, data.account]
-      .some((address) => addressKey(address) === subaccountKey);
-    const isTaker = data.is_taker === true || data.is_taker === "true";
     candidates.push({
       priceRaw,
       sizeRaw,
       score: (identityMatches ? 4 : 0) + (isTaker ? 2 : 0),
+      source: "order",
+      identityMatches,
+      isTaker,
     });
+  }
+
+  const takerTradeFills = candidates.filter(
+    (candidate) => candidate.source === "trade" && candidate.identityMatches && candidate.isTaker,
+  );
+  if (takerTradeFills.length > 0) {
+    const fills = takerTradeFills.map((fill) => ({
+      price: fill.priceRaw / priceScale,
+      size: fill.sizeRaw / sizeScale,
+    }));
+    const size = fills.reduce((total, fill) => total + fill.size, 0);
+    if (size > 0) {
+      return {
+        price: fills.reduce((total, fill) => total + fill.price * fill.size, 0) / size,
+        size,
+      };
+    }
   }
 
   const fill = candidates.sort((a, b) => b.score - a.score)[0];

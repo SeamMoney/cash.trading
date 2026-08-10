@@ -444,6 +444,53 @@ assert.deepEqual(
   }),
   { price: 85.229, size: 0.04 },
 );
+const multiFill = extractConfirmedDecibelFill({
+    transaction: {
+      events: [
+        {
+          type: "0x1::perp_positions::TradeEvent",
+          data: {
+            account: "0x1234",
+            is_taker: true,
+            market: { inner: "0x731b" },
+            price: "85200000",
+            size: "15000",
+          },
+        },
+        {
+          type: "0x1::perp_positions::TradeEvent",
+          data: {
+            account: "0x1234",
+            is_taker: true,
+            market: { inner: "0x731b" },
+            price: "85300000",
+            size: "25000",
+          },
+        },
+        {
+          type: "0x1::market_types::OrderEvent",
+          data: {
+            is_taker: true,
+            market: "0x731b",
+            orig_size: "40000",
+            parent: "0x1234",
+            price: "85300000",
+            remaining_size: "0",
+            status: { __variant__: "FILLED" },
+          },
+        },
+      ],
+    },
+    subaccount: "0x1234",
+    marketAddress: "0x731b",
+    requestedSize: 0.04,
+    requestedSizeRaw: 40_000,
+    requestedPrice: 85.3,
+    requestedPriceRaw: 85_300_000,
+  });
+assert.ok(multiFill);
+assert.equal(multiFill.size, 0.04);
+assert.ok(Math.abs(multiFill.price - 85.2625) < 1e-9);
 assert.ok(!orderBook.includes("flex-col justify-center"), "book rows must fill the pane instead of floating in the middle");
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);

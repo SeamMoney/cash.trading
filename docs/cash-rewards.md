@@ -34,6 +34,11 @@ boundary so an active week's cumulative entitlement does not change mid-week.
 
 ## Launch sequence
 
+Run `pnpm test:cash-rewards:mainnet-readiness` first. It verifies that the
+ignored offline keys match the public configuration, reads the manager's APT
+balance, and checks publication, initialization, caps, issuer, pause state,
+and vault funding. It is read-only and never prints private-key material.
+
 1. Back up `.cash-rewards/manager.key` offline. It is ignored by git.
 2. Send only enough mainnet APT to the public manager address for package
    publication and initialization.
@@ -60,3 +65,10 @@ transaction hashes are recorded in `config/cash-rewards-testnet.json`.
 Run `pnpm test:cash-rewards:testnet` to repeat the funded testnet canary. It
 uses the ignored local issuer key and the test-only account configured in
 `.env`; it never touches mainnet CASH.
+
+The Move signature fixture is intentionally pinned to the test named address
+`0xCA54`, because the signed voucher includes the module publisher address.
+Run the five-test suite with
+`aptos move test --named-addresses cash_rewards=0xCA54`. Production-address
+compilation is a separate check; changing the named address without
+regenerating the fixture is expected to invalidate that one signature.

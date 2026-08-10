@@ -1659,7 +1659,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
           </div>
 
           {/* Example pills — horizontal scroll on mobile */}
-          <div className="overflow-x-auto pb-1">
+          <div className="overflow-x-auto pb-1 scrollbar-hide">
             <div className="flex flex-nowrap gap-1.5">
               {Object.entries(EXAMPLES).map(([key, ex]) => (
                 <button
@@ -1673,20 +1673,12 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                         : "Chart preview only — uses constructs the on-chain target rejects"
                   }
                   className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap shrink-0",
+                    "px-2.5 py-1 rounded text-[10px] font-medium border transition-colors whitespace-nowrap shrink-0",
                     activeExample === key
                       ? "bg-white/[0.08] border-white/15 text-white"
                       : "border-[#2a2a2a] text-zinc-500 hover:text-zinc-300 hover:border-zinc-600"
                   )}
                 >
-                  {presetDeployable !== null && (
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        presetDeployable[key] ? "bg-emerald-400" : "bg-zinc-700",
-                      )}
-                    />
-                  )}
                   {ex.label}
                 </button>
               ))}
@@ -2136,7 +2128,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 cursor-default"
                   : "text-white hover:opacity-90 active:scale-[0.98]"
               )}
-              style={step !== "done" ? { background: "#39ff14", color: "#050505" } : undefined}
+              style={step !== "done" ? { background: "#FA4616" } : undefined}
             >
               {step === "done" ? "Deployed ✓" : "Transpile & Deploy"}
             </button>

@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { Tabs } from "frosted-ui";
 import { cn } from "@/lib/utils";
 import { BacktestViewer } from "./BacktestViewer";
+import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
 import { SealedSwap } from "@/components/sealed/SealedSwap";
-import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
@@ -559,51 +558,66 @@ export function LaunchpadPage() {
     if (fresh) setSelected(fresh);
   }, [indicators]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // After a deploy completes, jump to Explore and select the new strategy.
+  function handleDeployed(addr: string) {
+    setTab("explore");
+    fetchIndicators();
+    setTimeout(() => {
+      setIndicators((prev) => {
+        const found = prev.find((i) => i.address === addr);
+        if (found) setSelected(found);
+        return prev;
+      });
+    }, 500);
+  }
+
   return (
     <div className="min-h-screen pb-24 md:pb-0">
-      <Header />
+      <Header constrained />
       <div className="relative" style={{ overflow: "clip" }}>
         <AmbientBlobs variant="launchpad" />
         <main className="relative z-10 mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
 
-          {/* ── Hero ── */}
-          <div className="mb-4 flex items-center justify-between gap-4">
+          {/* ── Hero — Whop's original marketplace header ── */}
+          <div className="mb-4 animate-enter flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-balance font-display text-[20px] font-bold text-foreground sm:text-[24px]">
+              <h1 className="font-display font-bold text-[20px] sm:text-[24px] tracking-tight text-white">
                 Strategy Marketplace
               </h1>
               {!loading && (
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="text-[10px] font-mono text-[#555]">
                   {meta.total} strategies · {meta.graduated} live
                 </span>
               )}
             </div>
           </div>
 
-          {/* ── Tab bar ── */}
-          <Tabs.Root
-            className="mb-6"
-            value={tab}
-            onValueChange={(value) => setTab(value as Tab)}
-          >
-            <Tabs.List
-              aria-label="Strategy marketplace"
-              color="lime"
-              highContrast
-              size="2"
-              className="border-b border-card-border"
-            >
-              <Tabs.Trigger value="explore">Explore</Tabs.Trigger>
-              <Tabs.Trigger value="deploy">Deploy</Tabs.Trigger>
-              <Tabs.Trigger value="bots">My Bots</Tabs.Trigger>
-              <Tabs.Trigger value="creator">Creator</Tabs.Trigger>
-            </Tabs.List>
-          </Tabs.Root>
+          {/* ── Tab bar — Whop's underline tabs ── */}
+          <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
+            {(["explore", "deploy", "bots", "creator"] as Tab[]).map((t) => (
+              <button key={t} onClick={() => setTab(t)}
+                className={cn(
+                  "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
+                  tab === t
+                    ? "border-white text-white"
+                    : "border-transparent text-[#888] hover:text-zinc-300",
+                )}>
+                {t === "explore" ? "Explore" : t === "deploy" ? "Deploy" : t === "bots" ? "My Bots" : "Creator"}
+              </button>
+            ))}
+          </div>
 
-          {/* ── Deploy: the original Whop workbench, upgraded with sealed-vault controls ── */}
+          {/* ── Deploy — Whop's original workbench: paste Pine → transpile → deploy ── */}
           {tab === "deploy" && (
             <div className="animate-enter-delay-1">
-              <SealedLaunch onLaunched={() => setTab("explore")} />
+              <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
+                <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
+                  Deploy a Strategy
+                </header>
+                <div className="bg-[#111] px-2 sm:px-4 py-3">
+                  <DeployForm onDeployed={handleDeployed} />
+                </div>
+              </div>
             </div>
           )}
 

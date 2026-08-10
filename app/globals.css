@@ -1,5 +1,11 @@
+/* frosted-ui ships unlayered CSS that would otherwise beat every Tailwind
+   utility (utilities live in @layer utilities). Declaring the layer order up
+   front and importing frosted into its own layer keeps frosted components
+   styled while letting Tailwind utilities win conflicts. */
+@layer theme, base, frosted, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "frosted-ui/styles.css" layer(frosted);
 
 @custom-variant dark (&:is(.dark *));
 
@@ -770,5 +776,15 @@
     33%  { transform: translate(30px, -40px) scale(1.05); }
     66%  { transform: translate(-20px, 20px) scale(0.95); }
     100% { transform: translate(0, 0) scale(1); }
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

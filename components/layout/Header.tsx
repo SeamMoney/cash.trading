@@ -29,7 +29,7 @@ function CashWordmark() {
   );
 }
 
-export function Header() {
+export function Header({ constrained = false }: { constrained?: boolean } = {}) {
   const { connected, wallet } = useWallet();
   const pathname = usePathname();
   const {
@@ -182,7 +182,13 @@ export function Header() {
   return (
     <>
       <header className="relative z-50 isolate border-b border-white/[0.06] bg-[var(--background)]">
-        <div className="mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div
+          className={
+            constrained
+              ? "mx-auto flex h-[72px] w-full max-w-7xl items-center justify-between px-4 sm:px-6"
+              : "mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8"
+          }
+        >
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
             <button

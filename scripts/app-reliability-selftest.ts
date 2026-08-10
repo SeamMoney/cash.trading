@@ -90,6 +90,11 @@ const farmingTips = readFileSync("components/points/farming-tips.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
 const cashRewardsPanel = readFileSync("components/portfolio/CashRewardsPanel.tsx", "utf8");
 const cashRewardsLib = readFileSync("lib/cash-rewards.ts", "utf8");
+const decibelApi = readFileSync("lib/decibel-api.ts", "utf8");
+const cashRewardsCheckpointMigration = readFileSync(
+  "prisma/migrations/20260810000000_add_cash_reward_epoch_checkpoints/migration.sql",
+  "utf8",
+);
 const decibelBuilderLib = readFileSync("lib/decibel-builder.ts", "utf8");
 const decibelBuilderRoute = readFileSync("app/api/decibel/builder/route.ts", "utf8");
 const decibelBuilderConfig = readFileSync("lib/decibel-builder-config.ts", "utf8");
@@ -700,7 +705,9 @@ assert.match(vaultTotalRoute, /vault\.status === 'active'/);
 assert.match(vaultTotalRoute, /protocolTvl/);
 assert.match(vaultUserRoute, /'mainnet', true/);
 assert.match(decibelPoints, /typeof value !== 'number'/);
-assert.match(readFileSync("lib/decibel-api.ts", "utf8"), /VAULT_READ_TIMEOUT_MS = 12_000/);
+assert.match(decibelApi, /DECIBEL_READ_TIMEOUT_MS = 12_000/);
+assert.match(decibelApi, /signal: AbortSignal\.timeout\(DECIBEL_READ_TIMEOUT_MS\)/);
+assert.match(decibelApi, /cache: ['"]no-store['"]/);
 assert.doesNotMatch(cashRewardsRoute, /DATABASE_URL/);
 assert.match(cashRewardsRoute, /checkApiRateLimit\(request, "cash-rewards-read"/);
 assert.match(cashRewardsRoute, /verifyDecibelSubaccountOwnership/);
@@ -726,6 +733,15 @@ assert.match(decibelOrderRoute, /builderStatus\.enrollmentOpen/);
 assert.match(decibelOrderRoute, /estimatedBuilderFee/);
 assert.match(decibelOrderRoute, /builderApplied \? builderStatus\.builderAddress : null/);
 assert.match(cashRewardsLib, /currentCapitalBasisUsd/);
+assert.match(cashRewardsLib, /cashRewardEpochCheckpoint/);
+assert.match(cashRewardsLib, /cursorTimestampMs/);
+assert.match(cashRewardsLib, /sourceTruncated/);
+assert.match(cashRewardsLib, /startTimestamp/);
+assert.doesNotMatch(
+  cashRewardsLib,
+  /safeView/,
+  "Aptos RPC failures must not be converted into fake zero reward balances",
+);
 assert.ok(
   !cashRewardsLib.includes("getDecibelAccountOverview"),
   "the reward stream must not use the stale indexed account-overview margin",
@@ -1668,6 +1684,14 @@ assert.ok(
 assert.ok(
   prismaSchema.includes("@@index([network, retiredAt])"),
   "same for the retirement index the cron's working-set query now filters on",
+);
+assert.ok(
+  prismaSchema.includes("model CashRewardEpochCheckpoint"),
+  "weekly CASH earnings need a monotonic checkpoint instead of a moving 1,000-fill window",
+);
+assert.ok(
+  cashRewardsCheckpointMigration.includes('CREATE TABLE "CashRewardEpochCheckpoint"'),
+  "the monotonic CASH checkpoint must be created in production before the rewards route runs",
 );
 
 // ── Swapping an algo must not leave the vault dark ─────────────────────────

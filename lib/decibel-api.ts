@@ -14,7 +14,7 @@ import { getActiveNetwork } from './decibel-sdk'
 
 const TESTNET_API_URL = 'https://api.testnet.aptoslabs.com/decibel/api/v1'
 const MAINNET_API_URL = 'https://api.mainnet.aptoslabs.com/decibel/api/v1'
-const VAULT_READ_TIMEOUT_MS = 12_000
+const DECIBEL_READ_TIMEOUT_MS = 12_000
 
 export type VolumeWindow = '7d' | '14d' | '30d' | '90d'
 
@@ -181,6 +181,9 @@ export async function getDecibelTradeHistory(
     offset?: number
     market?: string
     orderId?: string
+    startTimestamp?: number
+    endTimestamp?: number
+    sortDir?: 'ASC' | 'DESC'
     strict?: boolean
   } = {}
 ): Promise<DecibelTrade[]> {
@@ -190,6 +193,9 @@ export async function getDecibelTradeHistory(
     offset = 0,
     market,
     orderId,
+    startTimestamp,
+    endTimestamp,
+    sortDir,
     strict = false,
   } = options
 
@@ -198,18 +204,26 @@ export async function getDecibelTradeHistory(
     const apiKey = getApiKey()
 
     const params = new URLSearchParams({
-      user: userAddr,
+      account: userAddr,
       limit: limit.toString(),
       offset: offset.toString(),
     })
 
     if (market) params.set('market', market)
     if (orderId) params.set('order_id', orderId)
+    if (Number.isFinite(startTimestamp)) params.set('start_timestamp', String(startTimestamp))
+    if (Number.isFinite(endTimestamp)) params.set('end_timestamp', String(endTimestamp))
+    if (sortDir) {
+      params.set('sort_key', 'timestamp')
+      params.set('sort_dir', sortDir)
+    }
 
     const response = await fetch(`${baseUrl}/trade_history?${params}`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(DECIBEL_READ_TIMEOUT_MS),
     })
 
     if (!response.ok) {
@@ -396,7 +410,7 @@ export async function getVaults(
     const response = await fetch(`${baseUrl}/vaults?${params}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
       cache: 'no-store',
-      signal: AbortSignal.timeout(VAULT_READ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(DECIBEL_READ_TIMEOUT_MS),
     })
 
     if (!response.ok) {
@@ -439,7 +453,7 @@ export async function getAccountVaultPerformance(
     const response = await fetch(`${baseUrl}/account_vault_performance?${params}`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
       cache: 'no-store',
-      signal: AbortSignal.timeout(VAULT_READ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(DECIBEL_READ_TIMEOUT_MS),
     })
 
     if (!response.ok) {

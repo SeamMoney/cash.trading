@@ -101,6 +101,31 @@ model CashRewardTransfer {
   @@index([createdAt])
 }
 
+/// Compact, monotonic reward accounting for one owner/subaccount/week.
+///
+/// Decibel's trade-history endpoint is paginated. Recomputing an entitlement
+/// from only the newest page(s) makes the visible balance fall once old fills
+/// leave the window. This checkpoint stores cumulative verified totals plus a
+/// small open-position cursor, so new fills can be folded in without retaining
+/// a second copy of the full trade ledger.
+model CashRewardEpochCheckpoint {
+  id                String   @id @default(cuid())
+  network           String
+  ownerAddress      String
+  subaccountAddress String
+  epoch             Int
+  formulaVersion    Int
+  state             Json
+  earnedAtomic      BigInt
+  sourceTruncated   Boolean  @default(false)
+  revision          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([network, ownerAddress, subaccountAddress, epoch])
+  @@index([updatedAt])
+}
+
 model StrategyVault {
   id                String                    @id @default(cuid())
   indicatorAddr     String

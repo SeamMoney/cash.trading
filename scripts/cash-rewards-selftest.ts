@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 import {
+  advanceCashRewardLedgerState,
   calculateCashRewardEntitlement,
+  calculateCashRewardLedgerEntitlement,
+  createCashRewardLedgerState,
   serializeCashRewardVoucher,
   type CashRewardVoucher,
 } from "../lib/cash-rewards";
@@ -100,6 +103,78 @@ const capped = calculateCashRewardEntitlement({
 });
 assert.equal(capped.entitlementAtomic, 2_000_000_000n, "wallet cap must clamp cumulative entitlement");
 
+const rollingHistory = Array.from({ length: 1_200 }, (_, index) =>
+  trade({
+    trade_id: 100 + index,
+    order_id: String(100 + index),
+    transaction_version: 1_000 + index,
+    transaction_unix_ms: epochStartMs + index * 1_000,
+    size: 0.001,
+    price: 100,
+    fee_amount: 0.001,
+  }),
+);
+const firstCheckpoint = advanceCashRewardLedgerState({
+  state: createCashRewardLedgerState({ epochStartMs }),
+  trades: rollingHistory.slice(0, 800),
+  throughMs: rollingHistory[799].transaction_unix_ms,
+  sourceTruncated: true,
+});
+const firstCheckpointEntitlement = calculateCashRewardLedgerEntitlement({
+  state: firstCheckpoint,
+  nowMs: rollingHistory[799].transaction_unix_ms,
+  walletCapAtomic: 1_000_000_000_000_000n,
+});
+const completeCheckpoint = advanceCashRewardLedgerState({
+  state: firstCheckpoint,
+  // The inclusive API cursor repeats the last boundary fill. It must not count twice.
+  trades: [rollingHistory[799], ...rollingHistory.slice(800)],
+  throughMs: rollingHistory[1_199].transaction_unix_ms,
+  sourceTruncated: false,
+});
+const completeCheckpointEntitlement = calculateCashRewardLedgerEntitlement({
+  state: completeCheckpoint,
+  nowMs: rollingHistory[1_199].transaction_unix_ms,
+  walletCapAtomic: 1_000_000_000_000_000n,
+});
+assert.equal(completeCheckpoint.fills, 1_200, "more than 1,000 fills must accumulate across API windows");
+assert.equal(
+  completeCheckpoint.cursorKeys.length,
+  1,
+  "only keys at the inclusive timestamp boundary belong in the replay cursor",
+);
+assert.ok(
+  Math.abs(completeCheckpoint.feeUsd - 1.2) < 1e-9,
+  "a rolling API window must not discard fees from older verified fills",
+);
+assert.ok(
+  completeCheckpointEntitlement.entitlementAtomic > firstCheckpointEntitlement.entitlementAtomic,
+  "advancing the checkpoint must never reset the cumulative entitlement",
+);
+
+const liveStreamState = createCashRewardLedgerState({
+  epochStartMs,
+  seedTrades: [trade({ transaction_unix_ms: epochStartMs - 1_000, fee_amount: 0 })],
+});
+const serializedLiveStreamState = JSON.stringify(liveStreamState);
+const liveAfterOneHour = calculateCashRewardLedgerEntitlement({
+  state: liveStreamState,
+  nowMs: epochStartMs + 3_600_000,
+});
+const liveAfterTwoHours = calculateCashRewardLedgerEntitlement({
+  state: liveStreamState,
+  nowMs: epochStartMs + 2 * 3_600_000,
+});
+assert.ok(
+  liveAfterTwoHours.capitalDollarHours > liveAfterOneHour.capitalDollarHours,
+  "an open position must keep streaming from the persisted cursor",
+);
+assert.equal(
+  JSON.stringify(liveStreamState),
+  serializedLiveStreamState,
+  "rendering the live stream must not mutate the checkpoint or require a database write",
+);
+
 const privateKey = Ed25519PrivateKey.generate();
 const voucher: CashRewardVoucher = {
   chainId: 1,
@@ -123,4 +198,6 @@ assert.equal(
   "the signature must bind the cumulative amount",
 );
 
-console.log("CASH rewards self-test passed: eligibility, caps, liquidation exclusion, and vouchers.");
+console.log(
+  "CASH rewards self-test passed: monotonic checkpoints, rolling history, caps, liquidation exclusion, and vouchers.",
+);

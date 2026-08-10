@@ -1,11 +1,13 @@
 import {
   AccountAddress,
   Aptos,
+  AptosApiError,
   AptosConfig,
   Ed25519PrivateKey,
   Network,
   Serializer,
 } from "@aptos-labs/ts-sdk";
+import type { Prisma } from "@prisma/client";
 import rewardConfig from "@/config/cash-rewards.json";
 import {
   getDecibelTradeHistory,
@@ -24,6 +26,9 @@ const MAINNET_CHAIN_ID = 1;
 const TESTNET_CHAIN_ID = 2;
 const MAX_TRADE_HISTORY = 1_000;
 const TRADE_HISTORY_PAGE_SIZE = 200;
+const MAX_TRADE_HISTORY_OFFSET = 10_000;
+const REWARD_LEDGER_STATE_VERSION = 1;
+const CHECKPOINT_WRITE_RETRIES = 3;
 const FEE_REWARD_CASH_PER_USD = rewardConfig.feeRewardCashPerUsd;
 const REBATE_REWARD_MULTIPLIER = rewardConfig.rebateRewardMultiplier;
 const CAPITAL_HOUR_REWARD_CASH = rewardConfig.capitalHourRewardCash;
@@ -45,6 +50,22 @@ type TradeRewardInput = {
 type PositionAccumulator = {
   size: number;
   lastPrice: number;
+};
+
+export type CashRewardLedgerState = {
+  version: typeof REWARD_LEDGER_STATE_VERSION;
+  epochStartMs: number;
+  cursorTimestampMs: number;
+  cursorKeys: string[];
+  accruedThroughMs: number;
+  positions: Record<string, PositionAccumulator>;
+  activeDays: string[];
+  fills: number;
+  feeUsd: number;
+  actualVolumeUsd: number;
+  capitalDollarHours: number;
+  seedTruncated: boolean;
+  sourceTruncated: boolean;
 };
 
 export type CashRewardContractStatus =
@@ -122,6 +143,7 @@ export type CashRewardSnapshot = {
 
 type ContractState = {
   deployed: boolean;
+  initialized: boolean;
   paused: boolean;
   vaultAtomic: bigint;
   epochEmittedAtomic: bigint;
@@ -237,129 +259,583 @@ function capitalBasis(positions: Map<string, PositionAccumulator>): number {
   return total;
 }
 
-export function calculateCashRewardEntitlement(args: {
-  trades: DecibelTrade[];
-  nowMs: number;
-  epochStartMs: number;
-  walletCapAtomic?: bigint;
-}) {
+function tradeTimestamp(trade: DecibelTrade): number | null {
+  const timestamp = Number(trade.transaction_unix_ms);
+  return Number.isFinite(timestamp) && timestamp >= 0 ? Math.trunc(timestamp) : null;
+}
+
+function tradeCursorKey(trade: DecibelTrade): string {
+  return `${trade.transaction_version}:${trade.trade_id}:${trade.market}:${trade.action}`;
+}
+
+function sortAndDedupeTrades(trades: DecibelTrade[]): DecibelTrade[] {
   const deduped = new Map<string, DecibelTrade>();
-  for (const trade of args.trades) {
-    const timestamp = Number(trade.transaction_unix_ms);
-    if (!Number.isFinite(timestamp) || timestamp > args.nowMs) continue;
-    const key = `${trade.transaction_version}:${trade.trade_id}:${trade.market}:${trade.action}`;
-    deduped.set(key, trade);
+  for (const trade of trades) {
+    const timestamp = tradeTimestamp(trade);
+    if (timestamp === null) continue;
+    deduped.set(tradeCursorKey(trade), trade);
+  }
+  return [...deduped.values()].sort((a, b) => {
+    const timestampDelta = Number(a.transaction_unix_ms) - Number(b.transaction_unix_ms);
+    if (timestampDelta !== 0) return timestampDelta;
+    const versionDelta = Number(a.transaction_version) - Number(b.transaction_version);
+    if (versionDelta !== 0) return versionDelta;
+    const tradeIdDelta = Number(a.trade_id) - Number(b.trade_id);
+    if (tradeIdDelta !== 0) return tradeIdDelta;
+    return tradeCursorKey(a).localeCompare(tradeCursorKey(b));
+  });
+}
+
+function positionMapFromRecord(
+  positions: Record<string, PositionAccumulator>,
+): Map<string, PositionAccumulator> {
+  return new Map(
+    Object.entries(positions).map(([market, position]) => [market, { ...position }]),
+  );
+}
+
+function positionRecordFromMap(
+  positions: Map<string, PositionAccumulator>,
+): Record<string, PositionAccumulator> {
+  return Object.fromEntries(
+    [...positions.entries()]
+      .filter(([, position]) => Number.isFinite(position.size) && Number.isFinite(position.lastPrice))
+      .map(([market, position]) => [market, { ...position }]),
+  );
+}
+
+function applyTradeToPositions(
+  positions: Map<string, PositionAccumulator>,
+  trade: DecibelTrade,
+): { eligible: boolean; size: number; price: number } {
+  const market = String(trade.market ?? "").trim().toLowerCase();
+  const size = Math.abs(Number(trade.size));
+  const price = Math.abs(Number(trade.price));
+  const action = normalizedAction(String(trade.action ?? ""));
+  if (!market || !Number.isFinite(price) || price <= 0) {
+    return { eligible: false, size, price };
   }
 
-  const history = [...deduped.values()].sort(
-    (a, b) => a.transaction_unix_ms - b.transaction_unix_ms || a.trade_id - b.trade_id,
-  );
-  const trades = history.filter((trade) => trade.transaction_unix_ms >= args.epochStartMs);
-  const activeDays = new Set<string>();
-  const positions = new Map<string, PositionAccumulator>();
-  let lastTimestamp = args.epochStartMs;
-  let capitalDollarHours = 0;
-  let feeUsd = 0;
-  let actualVolumeUsd = 0;
-
-  for (const trade of history) {
-    const timestamp = Number(trade.transaction_unix_ms);
-    const size = Math.abs(Number(trade.size));
-    const price = Math.abs(Number(trade.price));
-    if (!Number.isFinite(size) || !Number.isFinite(price) || size <= 0 || price <= 0) continue;
-
-    const inEpoch = timestamp >= args.epochStartMs;
-    if (inEpoch) {
-      const boundedTimestamp = clampNumber(timestamp, lastTimestamp, args.nowMs);
-      capitalDollarHours +=
-        capitalBasis(positions) * ((boundedTimestamp - lastTimestamp) / 3_600_000);
-      lastTimestamp = boundedTimestamp;
-    }
-
-    const market = trade.market.toLowerCase();
-    const current = positions.get(market) ?? { size: 0, lastPrice: price };
-    const action = normalizedAction(trade.action);
-    if (action.includes("liquidat")) {
-      current.size = 0;
-      current.lastPrice = price;
-      positions.set(market, current);
-      continue;
-    }
-    if (!["openlong", "openshort", "closelong", "closeshort"].includes(action)) continue;
-    current.size += actionDelta(trade.action, size, current.size);
-    if (Math.abs(current.size) < 1e-12) current.size = 0;
+  const current = positions.get(market) ?? { size: 0, lastPrice: price };
+  if (action.includes("liquidat")) {
+    current.size = 0;
     current.lastPrice = price;
     positions.set(market, current);
-
-    if (!inEpoch) continue;
-    const fee = Math.abs(Number(trade.fee_amount));
-    if (Number.isFinite(fee)) {
-      feeUsd += fee * (trade.is_rebate ? REBATE_REWARD_MULTIPLIER : 1);
-    }
-    actualVolumeUsd += size * price;
-    activeDays.add(new Date(timestamp).toISOString().slice(0, 10));
+    return { eligible: false, size, price };
+  }
+  if (
+    !Number.isFinite(size) ||
+    size <= 0 ||
+    !["openlong", "openshort", "closelong", "closeshort"].includes(action)
+  ) {
+    return { eligible: false, size, price };
   }
 
-  capitalDollarHours += capitalBasis(positions) * ((args.nowMs - lastTimestamp) / 3_600_000);
-  const currentCapitalBasisUsd = capitalBasis(positions);
+  current.size += actionDelta(action, size, current.size);
+  if (Math.abs(current.size) < 1e-12) current.size = 0;
+  current.lastPrice = price;
+  positions.set(market, current);
+  return { eligible: true, size, price };
+}
 
-  const feeAtomic = cashToAtomic(feeUsd * FEE_REWARD_CASH_PER_USD);
+export function createCashRewardLedgerState(args: {
+  epochStartMs: number;
+  seedTrades?: DecibelTrade[];
+  seedTruncated?: boolean;
+}): CashRewardLedgerState {
+  if (!Number.isFinite(args.epochStartMs) || args.epochStartMs < 0) {
+    throw new Error("Invalid CASH reward epoch boundary");
+  }
+  const epochStartMs = Math.trunc(args.epochStartMs);
+  const positions = new Map<string, PositionAccumulator>();
+  for (const trade of sortAndDedupeTrades(args.seedTrades ?? [])) {
+    const timestamp = tradeTimestamp(trade);
+    if (timestamp === null || timestamp >= epochStartMs) continue;
+    applyTradeToPositions(positions, trade);
+  }
+
+  return {
+    version: REWARD_LEDGER_STATE_VERSION,
+    epochStartMs,
+    cursorTimestampMs: epochStartMs - 1,
+    cursorKeys: [],
+    accruedThroughMs: epochStartMs,
+    positions: positionRecordFromMap(positions),
+    activeDays: [],
+    fills: 0,
+    feeUsd: 0,
+    actualVolumeUsd: 0,
+    capitalDollarHours: 0,
+    seedTruncated: Boolean(args.seedTruncated),
+    sourceTruncated: false,
+  };
+}
+
+export function advanceCashRewardLedgerState(args: {
+  state: CashRewardLedgerState;
+  trades: DecibelTrade[];
+  throughMs: number;
+  sourceTruncated?: boolean;
+}): CashRewardLedgerState {
+  const state = parseCashRewardLedgerState(args.state, args.state.epochStartMs);
+  const throughMs = Math.max(state.epochStartMs, Math.trunc(args.throughMs));
+  const positions = positionMapFromRecord(state.positions);
+  const activeDays = new Set(state.activeDays);
+  let cursorTimestampMs = state.cursorTimestampMs;
+  let cursorKeys = new Set(state.cursorKeys);
+  let accruedThroughMs = state.accruedThroughMs;
+  let fills = state.fills;
+  let feeUsd = state.feeUsd;
+  let actualVolumeUsd = state.actualVolumeUsd;
+  let capitalDollarHours = state.capitalDollarHours;
+
+  for (const trade of sortAndDedupeTrades(args.trades)) {
+    const timestamp = tradeTimestamp(trade);
+    if (timestamp === null || timestamp < state.epochStartMs || timestamp > throughMs) continue;
+    const key = tradeCursorKey(trade);
+    if (timestamp < cursorTimestampMs || (timestamp === cursorTimestampMs && cursorKeys.has(key))) {
+      continue;
+    }
+
+    const boundedTimestamp = clampNumber(timestamp, accruedThroughMs, throughMs);
+    capitalDollarHours +=
+      capitalBasis(positions) * ((boundedTimestamp - accruedThroughMs) / 3_600_000);
+    accruedThroughMs = boundedTimestamp;
+    fills += 1;
+
+    const applied = applyTradeToPositions(positions, trade);
+    if (applied.eligible) {
+      const fee = Math.abs(Number(trade.fee_amount));
+      if (Number.isFinite(fee)) {
+        feeUsd += fee * (trade.is_rebate ? REBATE_REWARD_MULTIPLIER : 1);
+      }
+      actualVolumeUsd += applied.size * applied.price;
+      activeDays.add(new Date(timestamp).toISOString().slice(0, 10));
+    }
+
+    if (timestamp > cursorTimestampMs) {
+      cursorTimestampMs = timestamp;
+      cursorKeys = new Set([key]);
+    } else {
+      cursorKeys.add(key);
+    }
+  }
+
+  return {
+    version: REWARD_LEDGER_STATE_VERSION,
+    epochStartMs: state.epochStartMs,
+    cursorTimestampMs,
+    cursorKeys: [...cursorKeys].sort(),
+    accruedThroughMs,
+    positions: positionRecordFromMap(positions),
+    activeDays: [...activeDays].sort(),
+    fills,
+    feeUsd,
+    actualVolumeUsd,
+    capitalDollarHours,
+    seedTruncated: state.seedTruncated,
+    sourceTruncated: Boolean(args.sourceTruncated),
+  };
+}
+
+export function calculateCashRewardLedgerEntitlement(args: {
+  state: CashRewardLedgerState;
+  nowMs: number;
+  epochEndMs?: number;
+  walletCapAtomic?: bigint;
+}) {
+  const state = parseCashRewardLedgerState(args.state, args.state.epochStartMs);
+  const upperBound = args.epochEndMs ?? args.nowMs;
+  const effectiveNowMs = clampNumber(
+    Math.trunc(args.nowMs),
+    state.accruedThroughMs,
+    Math.max(state.accruedThroughMs, Math.trunc(upperBound)),
+  );
+  const positions = positionMapFromRecord(state.positions);
+  const currentCapitalBasisUsd = capitalBasis(positions);
+  const liveCapitalDollarHours = state.sourceTruncated
+    ? 0
+    : currentCapitalBasisUsd * ((effectiveNowMs - state.accruedThroughMs) / 3_600_000);
+  const capitalDollarHours = state.capitalDollarHours + liveCapitalDollarHours;
+  const feeAtomic = cashToAtomic(state.feeUsd * FEE_REWARD_CASH_PER_USD);
   const capitalAtomic = cashToAtomic(capitalDollarHours * CAPITAL_HOUR_REWARD_CASH);
-  const activeDayAtomic = cashToAtomic(activeDays.size * ACTIVE_DAY_REWARD_CASH);
+  const activeDayAtomic = cashToAtomic(state.activeDays.length * ACTIVE_DAY_REWARD_CASH);
   const rawAtomic = feeAtomic + capitalAtomic + activeDayAtomic;
   const configuredCap = args.walletCapAtomic ?? BigInt(rewardConfig.maxWalletEpochAtomic);
   const entitlementAtomic = rawAtomic > configuredCap ? configuredCap : rawAtomic;
 
   return {
-    trades,
-    activeDays: activeDays.size,
-    feeUsd,
-    actualVolumeUsd,
+    fills: state.fills,
+    activeDays: state.activeDays.length,
+    feeUsd: state.feeUsd,
+    actualVolumeUsd: state.actualVolumeUsd,
     capitalDollarHours,
     currentCapitalBasisUsd,
     feeAtomic,
     capitalAtomic,
     activeDayAtomic,
     entitlementAtomic,
+    truncated: state.seedTruncated || state.sourceTruncated,
+    sourceTruncated: state.sourceTruncated,
   };
 }
 
-async function fetchEpochTrades(
+function finiteNonNegative(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseCashRewardLedgerState(
+  value: unknown,
+  expectedEpochStartMs: number,
+): CashRewardLedgerState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("CASH reward checkpoint is malformed");
+  }
+  const raw = value as Record<string, unknown>;
+  if (raw.version !== REWARD_LEDGER_STATE_VERSION) {
+    throw new Error("CASH reward checkpoint version is unsupported");
+  }
+  const epochStartMs = finiteNonNegative(raw.epochStartMs);
+  const cursorTimestampMs = Number(raw.cursorTimestampMs);
+  const accruedThroughMs = finiteNonNegative(raw.accruedThroughMs);
+  const fills = finiteNonNegative(raw.fills);
+  const feeUsd = finiteNonNegative(raw.feeUsd);
+  const actualVolumeUsd = finiteNonNegative(raw.actualVolumeUsd);
+  const capitalDollarHours = finiteNonNegative(raw.capitalDollarHours);
+  if (
+    epochStartMs === null ||
+    epochStartMs !== expectedEpochStartMs ||
+    !Number.isFinite(cursorTimestampMs) ||
+    accruedThroughMs === null ||
+    accruedThroughMs < epochStartMs ||
+    fills === null ||
+    !Number.isInteger(fills) ||
+    feeUsd === null ||
+    actualVolumeUsd === null ||
+    capitalDollarHours === null ||
+    !Array.isArray(raw.cursorKeys) ||
+    !raw.cursorKeys.every((key) => typeof key === "string") ||
+    !Array.isArray(raw.activeDays) ||
+    !raw.activeDays.every((day) => typeof day === "string") ||
+    !raw.positions ||
+    typeof raw.positions !== "object" ||
+    Array.isArray(raw.positions)
+  ) {
+    throw new Error("CASH reward checkpoint failed validation");
+  }
+
+  const positions: Record<string, PositionAccumulator> = {};
+  for (const [market, candidate] of Object.entries(raw.positions as Record<string, unknown>)) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("CASH reward checkpoint contains an invalid position");
+    }
+    const position = candidate as Record<string, unknown>;
+    const size = Number(position.size);
+    const lastPrice = finiteNonNegative(position.lastPrice);
+    if (!Number.isFinite(size) || lastPrice === null) {
+      throw new Error("CASH reward checkpoint contains an invalid position");
+    }
+    positions[market] = { size, lastPrice };
+  }
+
+  return {
+    version: REWARD_LEDGER_STATE_VERSION,
+    epochStartMs,
+    cursorTimestampMs: Math.trunc(cursorTimestampMs),
+    cursorKeys: [...new Set(raw.cursorKeys as string[])].sort(),
+    accruedThroughMs,
+    positions,
+    activeDays: [...new Set(raw.activeDays as string[])].sort(),
+    fills,
+    feeUsd,
+    actualVolumeUsd,
+    capitalDollarHours,
+    seedTruncated: raw.seedTruncated === true,
+    sourceTruncated: raw.sourceTruncated === true,
+  };
+}
+
+export function calculateCashRewardEntitlement(args: {
+  trades: DecibelTrade[];
+  nowMs: number;
+  epochStartMs: number;
+  walletCapAtomic?: bigint;
+}) {
+  const history = sortAndDedupeTrades(args.trades).filter(
+    (trade) => (tradeTimestamp(trade) ?? Number.POSITIVE_INFINITY) <= args.nowMs,
+  );
+  const trades = history.filter(
+    (trade) => (tradeTimestamp(trade) ?? Number.NEGATIVE_INFINITY) >= args.epochStartMs,
+  );
+  const state = advanceCashRewardLedgerState({
+    state: createCashRewardLedgerState({
+      epochStartMs: args.epochStartMs,
+      seedTrades: history,
+    }),
+    trades,
+    throughMs: args.nowMs,
+  });
+  const entitlement = calculateCashRewardLedgerEntitlement({
+    state,
+    nowMs: args.nowMs,
+    walletCapAtomic: args.walletCapAtomic,
+  });
+
+  return {
+    trades,
+    activeDays: entitlement.activeDays,
+    feeUsd: entitlement.feeUsd,
+    actualVolumeUsd: entitlement.actualVolumeUsd,
+    capitalDollarHours: entitlement.capitalDollarHours,
+    currentCapitalBasisUsd: entitlement.currentCapitalBasisUsd,
+    feeAtomic: entitlement.feeAtomic,
+    capitalAtomic: entitlement.capitalAtomic,
+    activeDayAtomic: entitlement.activeDayAtomic,
+    entitlementAtomic: entitlement.entitlementAtomic,
+  };
+}
+
+async function fetchTradeHistoryWindow(args: {
   subaccount: string,
-  network: DecibelNetwork,
-  epochStartMs: number,
-): Promise<{ trades: DecibelTrade[]; truncated: boolean }> {
+  network: DecibelNetwork;
+  startTimestamp?: number;
+  endTimestamp?: number;
+  sortDir: "ASC" | "DESC";
+  maxRows: number;
+}): Promise<DecibelTrade[]> {
   const trades: DecibelTrade[] = [];
-  for (let offset = 0; offset < MAX_TRADE_HISTORY; offset += TRADE_HISTORY_PAGE_SIZE) {
-    const page = await getDecibelTradeHistory(subaccount, {
-      network,
+  const maxRows = Math.min(Math.max(1, Math.trunc(args.maxRows)), MAX_TRADE_HISTORY_OFFSET);
+  for (let offset = 0; offset < maxRows; offset += TRADE_HISTORY_PAGE_SIZE) {
+    const page = await getDecibelTradeHistory(args.subaccount, {
+      network: args.network,
       limit: TRADE_HISTORY_PAGE_SIZE,
       offset,
+      startTimestamp: args.startTimestamp,
+      endTimestamp: args.endTimestamp,
+      sortDir: args.sortDir,
+      strict: true,
     });
     trades.push(...page);
     if (page.length < TRADE_HISTORY_PAGE_SIZE) break;
-    const oldest = Math.min(...page.map((trade) => trade.transaction_unix_ms));
-    if (Number.isFinite(oldest) && oldest < epochStartMs) break;
   }
-  return { trades, truncated: trades.length >= MAX_TRADE_HISTORY };
+  return trades.slice(0, maxRows);
 }
 
-async function safeView(
+async function seedCashRewardLedger(
+  subaccount: string,
+  network: DecibelNetwork,
+  epochStartMs: number,
+): Promise<CashRewardLedgerState> {
+  const seedTrades = await fetchTradeHistoryWindow({
+    subaccount,
+    network,
+    endTimestamp: epochStartMs - 1,
+    sortDir: "DESC",
+    maxRows: MAX_TRADE_HISTORY,
+  });
+  return createCashRewardLedgerState({
+    epochStartMs,
+    seedTrades,
+    seedTruncated: seedTrades.length >= MAX_TRADE_HISTORY,
+  });
+}
+
+async function fetchIncrementalEpochTrades(args: {
+  subaccount: string;
+  network: DecibelNetwork;
+  state: CashRewardLedgerState;
+  nowMs: number;
+}): Promise<{ trades: DecibelTrade[]; truncated: boolean }> {
+  const boundaryKeys = new Set(args.state.cursorKeys);
+  const rawLimit = Math.min(
+    MAX_TRADE_HISTORY_OFFSET,
+    MAX_TRADE_HISTORY + boundaryKeys.size + 1,
+  );
+  const raw = await fetchTradeHistoryWindow({
+    subaccount: args.subaccount,
+    network: args.network,
+    startTimestamp: Math.max(args.state.epochStartMs, args.state.cursorTimestampMs),
+    endTimestamp: args.nowMs,
+    sortDir: "ASC",
+    maxRows: rawLimit,
+  });
+  const unseen = sortAndDedupeTrades(raw).filter((trade) => {
+    const timestamp = tradeTimestamp(trade);
+    if (timestamp === null || timestamp < args.state.cursorTimestampMs) return false;
+    return timestamp > args.state.cursorTimestampMs || !boundaryKeys.has(tradeCursorKey(trade));
+  });
+  return {
+    trades: unseen.slice(0, MAX_TRADE_HISTORY),
+    truncated: unseen.length > MAX_TRADE_HISTORY || raw.length >= rawLimit,
+  };
+}
+
+type CashRewardCheckpointResult = {
+  state: CashRewardLedgerState;
+  earnedAtomic: bigint;
+};
+
+function checkpointStateJson(state: CashRewardLedgerState): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(state)) as Prisma.InputJsonValue;
+}
+
+function normalizedCheckpointAddress(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002",
+  );
+}
+
+async function getCashRewardCheckpoint(args: {
+  network: DecibelNetwork;
+  owner: string;
+  subaccount: string;
+  epoch: number;
+  epochStartMs: number;
+  epochEndMs: number;
+  nowMs: number;
+  walletCapAtomic: bigint;
+}): Promise<CashRewardCheckpointResult> {
+  const { prisma } = await import("@/lib/prisma");
+  const network = args.network;
+  const ownerAddress = normalizedCheckpointAddress(args.owner);
+  const subaccountAddress = normalizedCheckpointAddress(args.subaccount);
+  const checkpointKey = {
+    network_ownerAddress_subaccountAddress_epoch: {
+      network,
+      ownerAddress,
+      subaccountAddress,
+      epoch: args.epoch,
+    },
+  };
+
+  for (let attempt = 0; attempt < CHECKPOINT_WRITE_RETRIES; attempt += 1) {
+    const existing = await prisma.cashRewardEpochCheckpoint.findUnique({
+      where: checkpointKey,
+    });
+    if (existing && existing.formulaVersion !== rewardConfig.formulaVersion) {
+      throw new Error("CASH reward formula changed during an active epoch");
+    }
+
+    const currentState = existing
+      ? parseCashRewardLedgerState(existing.state, args.epochStartMs)
+      : await seedCashRewardLedger(subaccountAddress, network, args.epochStartMs);
+    const incremental = await fetchIncrementalEpochTrades({
+      subaccount: subaccountAddress,
+      network,
+      state: currentState,
+      nowMs: args.nowMs,
+    });
+    const nextState = advanceCashRewardLedgerState({
+      state: currentState,
+      trades: incremental.trades,
+      throughMs: args.nowMs,
+      sourceTruncated: incremental.truncated,
+    });
+    // Persist only amounts accrued through the last verified fill. The API can
+    // render the open-position stream from this cursor without turning every
+    // 15-second refresh into a Neon write.
+    const entitlement = calculateCashRewardLedgerEntitlement({
+      state: nextState,
+      nowMs: nextState.accruedThroughMs,
+      epochEndMs: args.epochEndMs,
+      walletCapAtomic: args.walletCapAtomic,
+    });
+    const earnedAtomic =
+      existing && existing.earnedAtomic > entitlement.entitlementAtomic
+        ? existing.earnedAtomic
+        : entitlement.entitlementAtomic;
+    const stateChanged = JSON.stringify(currentState) !== JSON.stringify(nextState);
+    const earnedChanged = !existing || existing.earnedAtomic !== earnedAtomic;
+
+    if (!existing) {
+      try {
+        await prisma.cashRewardEpochCheckpoint.create({
+          data: {
+            network,
+            ownerAddress,
+            subaccountAddress,
+            epoch: args.epoch,
+            formulaVersion: rewardConfig.formulaVersion,
+            state: checkpointStateJson(nextState),
+            earnedAtomic,
+            sourceTruncated: nextState.sourceTruncated,
+          },
+        });
+        return { state: nextState, earnedAtomic };
+      } catch (error) {
+        if (isPrismaUniqueConstraintError(error)) continue;
+        throw error;
+      }
+    }
+
+    if (!stateChanged && !earnedChanged) {
+      return { state: nextState, earnedAtomic };
+    }
+    const updated = await prisma.cashRewardEpochCheckpoint.updateMany({
+      where: { id: existing.id, revision: existing.revision },
+      data: {
+        state: checkpointStateJson(nextState),
+        earnedAtomic,
+        sourceTruncated: nextState.sourceTruncated,
+        revision: { increment: 1 },
+      },
+    });
+    if (updated.count === 1) return { state: nextState, earnedAtomic };
+  }
+
+  throw new Error("CASH reward checkpoint changed concurrently; retry the request");
+}
+
+async function requiredView(
   aptos: Aptos,
   functionName: string,
   typeArguments: string[],
   functionArguments: Array<string | number | boolean | number[]>,
-): Promise<unknown[] | null> {
+): Promise<unknown[]> {
+  return (await aptos.view({
+    payload: {
+      function: functionName as `${string}::${string}::${string}`,
+      typeArguments,
+      functionArguments,
+    },
+  })) as unknown[];
+}
+
+function isAptosNotFound(error: unknown): boolean {
+  return error instanceof AptosApiError && error.status === 404;
+}
+
+async function rewardModuleIsPublished(aptos: Aptos): Promise<boolean> {
   try {
-    return (await aptos.view({
-      payload: {
-        function: functionName as `${string}::${string}::${string}`,
-        typeArguments,
-        functionArguments,
-      },
-    })) as unknown[];
-  } catch {
-    return null;
+    await aptos.getAccountModule({
+      accountAddress: CASH_REWARD_MANAGER_ADDRESS,
+      moduleName: "cash_rewards",
+    });
+    return true;
+  } catch (error) {
+    if (isAptosNotFound(error)) return false;
+    throw error;
+  }
+}
+
+async function rewardContractIsInitialized(aptos: Aptos): Promise<boolean> {
+  try {
+    await aptos.getAccountResource({
+      accountAddress: CASH_REWARD_MANAGER_ADDRESS,
+      resourceType: `${CASH_REWARD_MODULE}::Config` as `${string}::${string}::${string}`,
+    });
+    return true;
+  } catch (error) {
+    if (isAptosNotFound(error)) return false;
+    throw error;
   }
 }
 
@@ -370,23 +846,22 @@ async function readContractState(args: {
 }): Promise<ContractState> {
   const configured = getConfiguredCaps();
   const aptos = getAptos(args.network);
-  const walletBalanceResult = await safeView(
-    aptos,
-    "0x1::coin::balance",
-    [CASH_COIN_TYPE],
-    [args.recipient],
-  );
-  const walletBalanceAtomic = BigInt(String(walletBalanceResult?.[0] ?? 0));
-  const state = await safeView(
-    aptos,
-    `${CASH_REWARD_MODULE}::get_state`,
-    [CASH_COIN_TYPE],
-    [],
-  );
+  const [walletBalance, deployed] = await Promise.all([
+    aptos.getAccountCoinAmount({
+      accountAddress: args.recipient,
+      coinType: CASH_COIN_TYPE as `${string}::${string}::${string}`,
+    }),
+    rewardModuleIsPublished(aptos),
+  ]);
+  if (!Number.isSafeInteger(walletBalance) || walletBalance < 0) {
+    throw new Error("Aptos returned an invalid CASH wallet balance");
+  }
+  const walletBalanceAtomic = BigInt(walletBalance);
 
-  if (!state || state.length < 7) {
+  if (!deployed) {
     return {
       deployed: false,
+      initialized: false,
       paused: true,
       vaultAtomic: 0n,
       epochEmittedAtomic: 0n,
@@ -401,21 +876,80 @@ async function readContractState(args: {
     };
   }
 
+  let state: unknown[];
+  try {
+    state = await requiredView(
+      aptos,
+      `${CASH_REWARD_MODULE}::get_state`,
+      [CASH_COIN_TYPE],
+      [],
+    );
+  } catch (error) {
+    const initialized = await rewardContractIsInitialized(aptos);
+    if (initialized) throw error;
+    return {
+      deployed: true,
+      initialized: false,
+      paused: true,
+      vaultAtomic: 0n,
+      epochEmittedAtomic: 0n,
+      claimedAtomic: 0n,
+      walletBalanceAtomic,
+      maxEpochAtomic: configured.maxEpochAtomic,
+      maxWalletAtomic: configured.maxWalletAtomic,
+      epochDurationSeconds: configured.epochDurationSeconds,
+      currentEpoch: args.fallbackEpoch,
+      issuerPublicKey: "",
+      issuerMatches: false,
+    };
+  }
+  if (state.length < 7) {
+    throw new Error("CASH reward contract returned incomplete state");
+  }
+
   const epochDurationSeconds = Number(state[3]);
-  const nowSeconds = Math.floor(Date.now() / 1_000);
-  const currentEpoch = currentEpochAt(nowSeconds, epochDurationSeconds);
+  if (!Number.isSafeInteger(epochDurationSeconds) || epochDurationSeconds <= 0) {
+    throw new Error("CASH reward contract returned an invalid epoch duration");
+  }
+  const currentEpochResult = await requiredView(
+    aptos,
+    `${CASH_REWARD_MODULE}::current_epoch`,
+    [],
+    [],
+  );
+  if (currentEpochResult.length < 1) {
+    throw new Error("CASH reward contract returned an incomplete epoch");
+  }
+  const currentEpoch = Number(currentEpochResult[0]);
+  if (!Number.isSafeInteger(currentEpoch) || currentEpoch < 0) {
+    throw new Error("CASH reward contract returned an invalid epoch");
+  }
   const [claimed, emitted] = await Promise.all([
-    safeView(aptos, `${CASH_REWARD_MODULE}::claimed_by`, [], [args.recipient, String(currentEpoch)]),
-    safeView(aptos, `${CASH_REWARD_MODULE}::emitted_in_epoch`, [], [String(currentEpoch)]),
+    requiredView(
+      aptos,
+      `${CASH_REWARD_MODULE}::claimed_by`,
+      [],
+      [args.recipient, String(currentEpoch)],
+    ),
+    requiredView(
+      aptos,
+      `${CASH_REWARD_MODULE}::emitted_in_epoch`,
+      [],
+      [String(currentEpoch)],
+    ),
   ]);
+  if (claimed.length < 1 || emitted.length < 1) {
+    throw new Error("CASH reward contract returned incomplete claim accounting");
+  }
   const issuerPublicKey = moveBytesToHex(state[1]);
 
   return {
     deployed: true,
+    initialized: true,
     paused: state[2] === true || state[2] === "true",
     vaultAtomic: BigInt(String(state[6])),
-    epochEmittedAtomic: BigInt(String(emitted?.[0] ?? 0)),
-    claimedAtomic: BigInt(String(claimed?.[0] ?? 0)),
+    epochEmittedAtomic: BigInt(String(emitted[0])),
+    claimedAtomic: BigInt(String(claimed[0])),
     walletBalanceAtomic,
     maxEpochAtomic: BigInt(String(state[4])),
     maxWalletAtomic: BigInt(String(state[5])),
@@ -461,8 +995,15 @@ function contractStatus(args: {
   if (!args.state.deployed) {
     return {
       status: "awaiting_manager_gas",
-      label: "Preview · manager awaiting gas",
+      label: "Preview · contract not published",
       reason: "The capped reward contract has not been published yet.",
+    };
+  }
+  if (!args.state.initialized) {
+    return {
+      status: "awaiting_manager_gas",
+      label: "Preview · contract not initialized",
+      reason: "The capped reward contract is published but has not been initialized.",
     };
   }
   if (!args.issuerConfigured) {
@@ -518,22 +1059,38 @@ export async function getCashRewardSnapshot(args: {
   const nowMs = Date.now();
   const configured = getConfiguredCaps();
   const fallbackEpoch = currentEpochAt(Math.floor(nowMs / 1_000), configured.epochDurationSeconds);
-  const fallbackEpochStartMs = fallbackEpoch * configured.epochDurationSeconds * 1_000;
-  const [contract, tradeResult] = await Promise.all([
-    readContractState({ network: args.network, recipient: args.owner, fallbackEpoch }),
-    fetchEpochTrades(args.subaccount, args.network, fallbackEpochStartMs),
-  ]);
-
+  const contract = await readContractState({
+    network: args.network,
+    recipient: args.owner,
+    fallbackEpoch,
+  });
   const epoch = contract.currentEpoch;
   const epochStartMs = epoch * contract.epochDurationSeconds * 1_000;
   const epochEndMs = epochStartMs + contract.epochDurationSeconds * 1_000;
-  const eligibility = calculateCashRewardEntitlement({
-    trades: tradeResult.trades,
-    nowMs,
+  const checkpoint = await getCashRewardCheckpoint({
+    network: args.network,
+    owner: args.owner,
+    subaccount: args.subaccount,
+    epoch,
     epochStartMs,
+    epochEndMs,
+    nowMs,
     walletCapAtomic: contract.maxWalletAtomic,
   });
-  const earnedAtomic = eligibility.entitlementAtomic;
+  const eligibility = calculateCashRewardLedgerEntitlement({
+    state: checkpoint.state,
+    nowMs,
+    epochEndMs,
+    walletCapAtomic: contract.maxWalletAtomic,
+  });
+  const calculatedEarnedAtomic =
+    checkpoint.earnedAtomic > eligibility.entitlementAtomic
+      ? checkpoint.earnedAtomic
+      : eligibility.entitlementAtomic;
+  const earnedAtomic =
+    contract.claimedAtomic > calculatedEarnedAtomic
+      ? contract.claimedAtomic
+      : calculatedEarnedAtomic;
   const claimedAtomic = contract.claimedAtomic > earnedAtomic ? earnedAtomic : contract.claimedAtomic;
   const claimableAtomic = earnedAtomic - claimedAtomic;
   const issuer = getIssuerPrivateKey();
@@ -549,7 +1106,7 @@ export async function getCashRewardSnapshot(args: {
     runtimeIssuerMatches,
     rewardsEnabled,
   });
-  const active = status.status === "live";
+  const active = status.status === "live" && !eligibility.sourceTruncated;
   const expiresAtSeconds = BigInt(Math.floor(nowMs / 1_000) + rewardConfig.voucherTtlSeconds);
   const voucher: CashRewardVoucher = {
     chainId: args.network === "mainnet" ? MAINNET_CHAIN_ID : TESTNET_CHAIN_ID,
@@ -575,12 +1132,12 @@ export async function getCashRewardSnapshot(args: {
     epochEndsAt: new Date(epochEndMs).toISOString(),
     recipient: args.owner,
     verified: {
-      fills: eligibility.trades.length,
+      fills: eligibility.fills,
       activeDays: eligibility.activeDays,
       feeUsd: eligibility.feeUsd,
       actualVolumeUsd: eligibility.actualVolumeUsd,
       capitalDollarHours: eligibility.capitalDollarHours,
-      truncated: tradeResult.truncated,
+      truncated: eligibility.truncated,
     },
     components: {
       feesCash: atomicToCash(eligibility.feeAtomic),
@@ -597,11 +1154,15 @@ export async function getCashRewardSnapshot(args: {
     },
     stream: {
       estimatedCashPerSecond,
-      remainingWalletCapCash: atomicToCash(contract.maxWalletAtomic - earnedAtomic),
+      remainingWalletCapCash: atomicToCash(
+        earnedAtomic >= contract.maxWalletAtomic ? 0n : contract.maxWalletAtomic - earnedAtomic,
+      ),
     },
     config: {
       enabled: active,
-      disabledReason: status.reason,
+      disabledReason: eligibility.sourceTruncated
+        ? "Verified Decibel trade history is still catching up; voucher issuance is paused."
+        : status.reason,
       network: args.network,
       rewardRateCashPerUsd: FEE_REWARD_CASH_PER_USD,
       capitalHourRewardCash: CAPITAL_HOUR_REWARD_CASH,

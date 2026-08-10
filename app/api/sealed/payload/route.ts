@@ -29,6 +29,7 @@ import {
   findSealedMarket,
   isHex32,
   isHexAddress,
+  normalizeAddress,
   PORTFOLIO_DEFAULTS,
   sealedNetwork,
   truncateDisplayName,
@@ -60,19 +61,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400, headers: NO_STORE });
   }
 
-  const pkg = typeof body.packageAddress === "string" ? body.packageAddress : SEALED_PACKAGE;
-  if (!pkg) {
+  if (!SEALED_PACKAGE) {
     return NextResponse.json(
       { error: "sealed vault module is not configured — set SEALED_VAULT_PACKAGE" },
       { status: 501, headers: NO_STORE },
     );
   }
-  if (!isHexAddress(pkg)) {
-    return NextResponse.json({ error: "invalid packageAddress" }, { status: 400, headers: NO_STORE });
+  const pkg = normalizeAddress(SEALED_PACKAGE);
+  if (!pkg) {
+    console.error("[sealed/payload] SEALED_VAULT_PACKAGE is not a valid Aptos address");
+    return NextResponse.json(
+      { error: "sealed vault module configuration is invalid" },
+      { status: 503, headers: NO_STORE },
+    );
   }
 
   const kind = body.kind;
   const network = sealedNetwork();
+  const decibelPackage = DECIBEL_PACKAGE_BY_NETWORK[network];
+
+  // A payload builder is part of the transaction authorization boundary. Client-provided
+  // package or network overrides could make an otherwise familiar signing flow target an
+  // unrelated Move module. Accept the fields only as consistency checks for older clients;
+  // the server configuration remains authoritative.
+  if (
+    body.packageAddress !== undefined &&
+    normalizeAddress(body.packageAddress) !== pkg
+  ) {
+    return NextResponse.json(
+      { error: "packageAddress does not match the configured sealed-vault package" },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  if (
+    body.decibelPackage !== undefined &&
+    normalizeAddress(body.decibelPackage) !== normalizeAddress(decibelPackage)
+  ) {
+    return NextResponse.json(
+      { error: "decibelPackage does not match the configured Decibel deployment" },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  if (body.network !== undefined && body.network !== network) {
+    return NextResponse.json(
+      { error: `network must match the configured ${network} deployment` },
+      { status: 400, headers: NO_STORE },
+    );
+  }
 
   // Step 1 of the launch: the Decibel vault that actually holds depositor capital.
   if (kind === "decibel-vault") {
@@ -103,8 +138,6 @@ export async function POST(request: NextRequest) {
 
     // Both the package and the subaccount are pinned to the sealed rail's own table rather
     // than resolved from lib/decibel.ts, whose TESTNET package is the abandoned 0x952535c3….
-    const decibelPackage =
-      typeof body.decibelPackage === "string" ? body.decibelPackage : DECIBEL_PACKAGE_BY_NETWORK[network];
     const subaccountAddr = derivePrimarySubaccount(body.creatorAddr as string, network);
     const built = buildCreateDecibelVaultPayload({
       packageAddress: decibelPackage,
@@ -382,10 +415,7 @@ export async function POST(request: NextRequest) {
       {
         ok: true,
         payload: buildRevokeDelegationPayload({
-          decibelPackage:
-            typeof body.decibelPackage === "string"
-              ? body.decibelPackage
-              : DECIBEL_PACKAGE_BY_NETWORK[network],
+          decibelPackage,
           decibelVaultAddr: body.decibelVaultAddr as string,
           strategyVaultAddrs: addrs as string[],
         }),
@@ -444,12 +474,15 @@ export async function POST(request: NextRequest) {
     // Always bound the delegation. An unbounded grant on the old Decibel package
     // could never be revoked (docs/CURATOR-RULES.md §2).
     const days = Number(body.expiryDays ?? 365);
-    const expirySecs = Math.floor(Date.now() / 1000) + Math.max(1, days) * 86_400;
+    if (!Number.isSafeInteger(days) || days < 1 || days > 3650) {
+      return NextResponse.json(
+        { error: "expiryDays must be an integer from 1 to 3650" },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    const expirySecs = Math.floor(Date.now() / 1000) + days * 86_400;
     const built = buildDelegateDecibelVaultPayload({
-      packageAddress:
-        typeof body.decibelPackage === "string"
-          ? body.decibelPackage
-          : DECIBEL_PACKAGE_BY_NETWORK[network],
+      packageAddress: decibelPackage,
       vaultAddress: body.decibelVaultAddr,
       delegate: body.strategyVaultAddr,
       expirationTimestampSecs: expirySecs,
@@ -469,7 +502,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       error:
-        'kind must be one of "decibel-vault" | "create" | "delegate" | "revoke" | ' +
+        'kind must be one of "decibel-vault" | "create" | "create-portfolio" | "delegate" | "revoke" | ' +
         '"announce-swap" | "pause"',
     },
     { status: 400, headers: NO_STORE },

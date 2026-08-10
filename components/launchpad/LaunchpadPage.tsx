@@ -159,7 +159,10 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
       type="button"
       onClick={onClick}
       className={cn(
-        "group w-full rounded-lg px-3 py-2.5 text-left",
+        // Concentric with the panel it sits in: the list is inset by the panel
+        // border (1px) + its p-2 padding (8px), so the item's corner must be
+        // 9px tighter than the panel's --radius to keep the curves parallel.
+        "group w-full rounded-[calc(var(--radius)-9px)] px-3 py-2.5 text-left",
         PRODUCT_PRESSABLE_CLASS,
         selected
           ? "bg-[#202020] border border-[#2a2a2a]"
@@ -171,7 +174,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
             <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-px", SIG_DOT[sig])} />
             <span className="text-sm font-medium text-white truncate">{ind.name}</span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent shrink-0">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent shrink-0">
                 <svg className="w-2 h-2" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -261,7 +264,7 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
 
 function StatCard({ label, value, sub, good, warn }: { label: string; value: string; sub: string; good?: boolean; warn?: boolean }) {
   return (
-    <div className="min-w-0 border-b border-[#1e1e1e] px-4 py-4 odd:border-r odd:border-r-[#1e1e1e] sm:border-0 sm:px-5 sm:first:pl-6 sm:last:pr-6">
+    <div className="min-w-0 border-b border-card-border px-4 py-4 odd:border-r odd:border-r-card-border sm:border-0 sm:px-5 sm:first:pl-6 sm:last:pr-6">
       <p className="mb-1.5 truncate text-[10px] font-mono uppercase tracking-[0.15em] text-zinc-600">{label}</p>
       <p className={cn(
         "truncate text-[20px] font-display font-bold tabular-nums leading-none sm:text-[24px]",
@@ -280,7 +283,7 @@ function BacktestBar({ ind }: { ind: Indicator }) {
   const [showBacktest, setShowBacktest] = useState(false);
   return (
     <>
-      <div className="flex items-center justify-between px-5 py-3 border-t border-[#1e1e1e]">
+      <div className="flex items-center justify-between px-5 py-3 border-t border-card-border">
         <button
           type="button"
           onClick={() => setShowBacktest((v) => !v)}
@@ -298,7 +301,7 @@ function BacktestBar({ ind }: { ind: Indicator }) {
           type="button"
           disabled
           title="Persistent, wallet-authorized launchpad automation is not deployed"
-          className="px-4 py-2 rounded-[12px] text-[12px] font-display font-bold flex items-center gap-1.5 border border-[#2a2a2a] bg-[#181818] text-zinc-600 cursor-not-allowed"
+          className="px-4 py-2 rounded-[var(--radius-sm)] text-[12px] font-display font-bold flex items-center gap-1.5 border border-card-border bg-[#181818] text-zinc-600 cursor-not-allowed"
         >
           Automation unavailable
         </button>
@@ -342,7 +345,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               {ind.isGraduated ? "LIVE" : "TESTING"}
             </span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -447,7 +450,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
       {/* 2x2 below sm — four columns at 390px collapse into each other
           (labels crossing dividers, values overflowing cells). */}
       {ind.totalSims > 0 && (
-        <div className="grid grid-cols-2 border-y border-[#1e1e1e] sm:grid-cols-4 sm:divide-x sm:divide-[#1e1e1e]">
+        <div className="grid grid-cols-2 border-y border-card-border sm:grid-cols-4 sm:divide-x sm:divide-card-border">
           <StatCard
             label="Win Rate"
             value={`${ind.profitablePct}%`}
@@ -478,7 +481,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
       {/* The production bonding curve is intentionally unavailable until its
           package and vault handoff are deployed and verifiable. */}
       {!ind.isGraduated && (
-        <div className="px-6 py-5 border-b border-[#1e1e1e]">
+        <div className="px-6 py-5 border-b border-card-border">
           <div className="flex items-center gap-1.5 mb-2 text-[11px] font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-amber-400">TESTNET INDICATOR</span>
@@ -594,7 +597,7 @@ export function LaunchpadPage() {
             {tab !== "deploy" && (
               <button
                 onClick={() => setTab("deploy")}
-                className="group shrink-0 inline-flex items-center gap-1.5 rounded-[11px] bg-accent px-3.5 py-2 text-[13px] font-display font-semibold text-black shadow-[0_2px_14px_-2px_rgba(57,255,20,0.35)] transition-all duration-200 hover:shadow-[0_4px_20px_-2px_rgba(57,255,20,0.5)] hover:brightness-[1.03] active:scale-[0.97] sm:px-4"
+                className="group shrink-0 inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-accent px-3.5 py-2 text-[13px] font-display font-semibold text-black shadow-[0_2px_14px_-2px_rgba(57,255,20,0.35)] transition-all duration-200 hover:shadow-[0_4px_20px_-2px_rgba(57,255,20,0.5)] hover:brightness-[1.03] active:scale-[0.97] sm:px-4"
               >
                 <span className="text-[15px] leading-none opacity-80 transition-opacity group-hover:opacity-100">+</span>
                 <span className="hidden sm:inline">Deploy Strategy</span>
@@ -603,9 +606,9 @@ export function LaunchpadPage() {
             )}
           </div>
 
-          {/* ── Tab bar — refined underline: rounded, inset, brand-tinted glow on
+          {/* ── Tab bar — refined underline: rounded-[var(--radius-xs)], inset, brand-tinted glow on
                active, a fade-in hint on hover, and comfortable touch targets ── */}
-          <div className="relative flex items-center gap-0.5 sm:gap-1 border-b border-white/[0.08] mb-6 animate-enter-delay-1">
+          <div className="relative flex items-center gap-0.5 sm:gap-1 border-b border-card-border mb-6 animate-enter-delay-1">
             {(["explore", "bots", "creator"] as Tab[]).map((t) => {
               // Deploy lives under Explore now, so the workbench keeps Explore lit.
               const active = tab === t || (t === "explore" && tab === "deploy");
@@ -636,8 +639,8 @@ export function LaunchpadPage() {
           {/* ── Deploy — Whop's original workbench: paste Pine → transpile → deploy ── */}
           {tab === "deploy" && (
             <div className="animate-enter-delay-1">
-              <div className="w-full overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)]">
-                <header className="flex items-center justify-between border-b border-white/[0.06] bg-gradient-to-b from-[#232323] to-[#1c1c1c] px-5 py-4 font-mono text-sm font-semibold tabular-nums text-zinc-300 sm:px-8 sm:py-5">
+              <div className="w-full overflow-hidden rounded-[var(--radius)] border border-card-border shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)]">
+                <header className="flex items-center justify-between border-b border-card-border bg-gradient-to-b from-[#232323] to-[#1c1c1c] px-5 py-4 font-mono text-sm font-semibold tabular-nums text-zinc-300 sm:px-8 sm:py-5">
                   <span className="flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
                     Deploy a Strategy
@@ -664,20 +667,20 @@ export function LaunchpadPage() {
 
                 {/* Left: list panel — relative wrapper so the panel doesn't inflate the grid row height */}
                 <div className="relative min-h-[480px]">
-                  <div className="lg:absolute lg:inset-0 w-full overflow-hidden rounded-[16px] border border-white/[0.06] shadow-[0px_0px_1px_rgba(0,0,0,0.50)] flex flex-col">
+                  <div className="lg:absolute lg:inset-0 w-full overflow-hidden rounded-[var(--radius)] border border-card-border shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)] flex flex-col">
                     {/* Filters header */}
-                    <header className="shrink-0 border-b border-[#2a2a2a] bg-[#202020] flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#888]">
+                    <header className="shrink-0 border-b border-card-border bg-[#202020] flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#888]">
                       Strategies
                     </header>
 
                     {/* Filter controls */}
-                    <div className="shrink-0 px-3 py-2.5 border-b border-[#2a2a2a] bg-[#181818] space-y-2">
-                      <div className="flex gap-0.5 bg-[#111] border border-[#2a2a2a] rounded-lg p-0.5">
+                    <div className="shrink-0 px-3 py-2.5 border-b border-card-border bg-[#181818] space-y-2">
+                      <div className="flex gap-0.5 bg-[#111] border border-card-border rounded-[var(--radius-sm)] p-0.5">
                         {(["all", "live", "testing"] as Array<"all" | "live" | "testing">).map((f) => (
                           <button type="button" key={f} onClick={() => setFilter(f)}
                             aria-pressed={filter === f}
                             className={cn(
-                              "flex-1 rounded py-1 font-display text-[11px] font-medium",
+                              "flex-1 rounded-[var(--radius-xs)] py-1 font-display text-[11px] font-medium",
                               PRODUCT_PRESSABLE_CLASS,
                               filter === f ? "bg-[#202020] text-white" : "text-[#888] hover:text-zinc-300",
                             )}>
@@ -719,11 +722,11 @@ export function LaunchpadPage() {
                           <button type="button" key={s} onClick={() => setSort(s)}
                             aria-pressed={sort === s}
                             className={cn(
-                              "flex-1 rounded border py-1 text-center font-mono text-[10px]",
+                              "flex-1 rounded-[var(--radius-xs)] border py-1 text-center font-mono text-[10px]",
                               PRODUCT_PRESSABLE_CLASS,
                               sort === s
                                 ? "border-[#2a2a2a] bg-[#202020] text-white"
-                                : "border-[#1e1e1e] text-[#555] hover:text-[#888]",
+                                : "border-card-border text-[#555] hover:text-[#888]",
                             )}>
                             {s === "robustness" ? "Score" : s === "sharpe" ? "Sharpe" : "Raised"}
                           </button>
@@ -736,7 +739,9 @@ export function LaunchpadPage() {
                       {loading ? (
                         <>
                           {[...Array(5)].map((_, i) => (
-                            <div key={i} className="mx-1 h-14 animate-pulse rounded-lg bg-[#181818] motion-reduce:animate-none" />
+                            // Skeletons must occupy the same box as the rows they stand in for,
+                            // or the list visibly reflows when data lands.
+                            <div key={i} className="h-14 animate-pulse rounded-[calc(var(--radius)-9px)] bg-[#181818] motion-reduce:animate-none" />
                           ))}
                         </>
                       ) : indicators.length === 0 ? (
@@ -762,7 +767,7 @@ export function LaunchpadPage() {
                 </div>
 
                 {/* Right: detail panel */}
-                <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-[16px] border border-white/[0.06] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
+                <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-[var(--radius)] border border-card-border shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)]">
                   <div className="bg-[#111] min-h-[480px]">
                     {selected ? (
                       <IndicatorDetail

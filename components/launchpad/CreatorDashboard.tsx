@@ -72,8 +72,8 @@ export function CreatorDashboard({ creatorAddr }: Props) {
 
   if (!creatorAddr) {
     return (
-      <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-10 text-center">
-        <div className="w-10 h-10 rounded-xl bg-[#39ff14]/10 flex items-center justify-center mx-auto mb-3">
+      <div className="rounded-[var(--radius)] border border-card-border bg-[#0f0f0f] p-10 text-center">
+        <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[#39ff14]/10 flex items-center justify-center mx-auto mb-3">
           <svg className="w-5 h-5 text-[#39ff14]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
@@ -107,7 +107,7 @@ export function CreatorDashboard({ creatorAddr }: Props) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] overflow-hidden">
+      <div className="rounded-[var(--radius)] border border-card-border bg-[#0f0f0f] overflow-hidden">
         <div className="px-5 py-3 border-b border-white/[0.04] flex items-center justify-between gap-3">
           <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest">Your indicators</span>
           {!loading && !error && (
@@ -117,8 +117,8 @@ export function CreatorDashboard({ creatorAddr }: Props) {
 
         {loading ? (
           <div className="p-5 space-y-3" aria-live="polite">
-            <div className="h-14 rounded-lg bg-white/[0.03] animate-pulse" />
-            <div className="h-14 rounded-lg bg-white/[0.03] animate-pulse" />
+            <div className="h-14 rounded-[var(--radius-sm)] bg-white/[0.03] animate-pulse" />
+            <div className="h-14 rounded-[var(--radius-sm)] bg-white/[0.03] animate-pulse" />
           </div>
         ) : error ? (
           <div className="p-8 text-center">
@@ -140,7 +140,7 @@ export function CreatorDashboard({ creatorAddr }: Props) {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[13px] font-bold text-white font-mono">{indicator.symbol}</span>
                       {indicator.isProprietary && (
-                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25 uppercase tracking-wide">
+                        <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[8px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25 uppercase tracking-wide">
                           Proprietary
                         </span>
                       )}

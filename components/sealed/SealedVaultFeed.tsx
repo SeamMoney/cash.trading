@@ -210,7 +210,7 @@ export function SealedVaultFeed() {
   }, [active, connected, account, amount, signAndSubmitTransaction]);
 
   const emptyState = (
-    <div className="rounded-[16px] border border-white/[0.06] bg-[#111] px-8 py-14 text-center">
+    <div className="rounded-[var(--radius)] border border-card-border bg-[#111] px-8 py-14 text-center">
       <h3 className="mb-1.5 font-display text-sm font-semibold text-white">No bots live yet</h3>
       <p className="mx-auto max-w-md text-[12px] leading-relaxed text-zinc-500">
         A sealed bot keeps its strategy private while the chain enforces what it can trade.
@@ -249,7 +249,7 @@ export function SealedVaultFeed() {
             <Pressable
               onClick={() => setSelected(v.strategyVaultAddr)}
               className={cn(
-                "w-full rounded-[16px] border p-4 text-left transition-all",
+                "w-full rounded-[var(--radius)] border p-4 text-left transition-all",
                 selected === v.strategyVaultAddr
                   ? "border-accent/50 bg-accent/[0.04]"
                   : "border-white/[0.06] bg-[#141414] hover:border-white/20",
@@ -283,11 +283,11 @@ export function SealedVaultFeed() {
                 <Stat k="Max lev" v={`${(v.maxLeverageX100 / 100).toFixed(2)}x`} />
               </dl>
               <div className="mt-3 flex items-center gap-2">
-                <span className="rounded bg-[#0d0d0d] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-500">
+                <span className="rounded-[var(--radius-xs)] bg-[#0d0d0d] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-500">
                   {v.attestationTier === "tee" ? "TEE attested" : "Key attested"}
                 </span>
                 {v.revealed && (
-                  <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-400">
+                  <span className="rounded-[var(--radius-xs)] bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-400">
                     Source revealed
                   </span>
                 )}
@@ -299,7 +299,7 @@ export function SealedVaultFeed() {
       </div>
 
       {/* Detail / deposit */}
-      <aside className="rounded-[16px] border border-white/[0.06] bg-[#141414] p-4">
+      <aside className="rounded-[var(--radius)] border border-card-border bg-[#141414] p-4">
         {!active ? (
           <p className="text-[12px] leading-relaxed text-zinc-500">
             Select a vault to see what the chain enforces and to deposit.
@@ -368,7 +368,7 @@ export function SealedVaultFeed() {
 
             {/* Track record. Every number here is derived from what the contract actually did —
                 nothing is self-reported by the creator. */}
-            <div className={cn("rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] p-3")}>
+            <div className={cn("rounded-[var(--radius-sm)] border border-white/[0.06] bg-[#0d0d0d] p-3")}>
               <div className="flex items-baseline justify-between gap-3">
                 <h5 className="font-display text-[13px] font-semibold text-white">Track record</h5>
                 {perfLoading && <span className="text-[11px] text-zinc-500">reading chain…</span>}
@@ -408,7 +408,7 @@ export function SealedVaultFeed() {
             </div>
 
             {detail?.registryMatchesChain === false && (
-              <p role="alert" className="rounded-[10px] border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">
+              <p role="alert" className="rounded-[var(--radius-sm)] border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">
                 On-chain state disagrees with the registry on: {detail.mismatches.join(", ")}. Treat
                 this listing as untrusted.
               </p>
@@ -430,7 +430,7 @@ export function SealedVaultFeed() {
                   onChange={(e) => setAmount(e.target.value)}
                   inputMode="decimal"
                   placeholder="100"
-                  className="w-full rounded-[10px] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:outline-none"
+                  className="w-full rounded-[var(--radius-sm)] border border-white/[0.06] bg-[#0d0d0d] px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-white/30 focus:outline-none"
                 />
                 <div className="w-28 shrink-0">
                   <ActionButton

@@ -22,6 +22,7 @@ import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { ArrowRight, Check, ChevronDown, Clock, Loader2, ShieldAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import { CodeBlock, TaskList, type AgentTask } from "@/components/ui/agent";
 import { ActionButton, Banner } from "@/components/ui/interactions";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
@@ -678,7 +679,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                       <button
                         type="button"
                         onClick={() => setMenuOpen((o) => !o)}
-                        aria-haspopup="listbox"
+                        aria-haspopup="dialog"
                         aria-expanded={menuOpen}
                         disabled={busy}
                         className={cn(
@@ -699,49 +700,45 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                           aria-hidden
                         />
                       </button>
-                      <AnimatePresence>
-                        {menuOpen && (
-                          <motion.ul
-                            role="listbox"
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-                            className="absolute z-30 mt-1.5 max-h-[300px] w-full overflow-y-auto rounded-[16px] border border-white/[0.06] bg-[#141414] p-1 shadow-2xl"
-                          >
-                            {SEALED_CATALOG.map((s: CatalogStrategy) => (
-                              <li key={s.id}>
-                                <button
-                                  type="button"
-                                  role="option"
-                                  aria-selected={s.id === pickId}
-                                  onClick={() => {
-                                    setPickId(s.id);
-                                    setMenuOpen(false);
-                                  }}
-                                  className={cn(
-                                    "flex w-full items-start gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition-colors",
-                                    s.id === pickId ? "bg-accent/10" : "hover:bg-white/[0.04]",
-                                  )}
-                                >
-                                  <Check
-                                    className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", s.id === pickId ? "text-accent" : "text-transparent")}
-                                    aria-hidden
-                                  />
-                                  <span>
-                                    <span className="block font-display text-[13px] font-semibold text-white">
-                                      {s.label}
-                                    </span>
-                                    <span className="mt-0.5 block text-[12px] leading-snug text-zinc-400">
-                                      {s.category} · {s.direction} · {s.blurb}
-                                    </span>
+                      <ResponsiveModalSheet
+                        open={menuOpen}
+                        onClose={() => setMenuOpen(false)}
+                        title="Choose replacement strategy"
+                        titleId="sealed-swap-strategy-title"
+                        initialSnap="mid"
+                        desktopMaxWidthClassName="sm:!max-w-lg"
+                      >
+                        <ul className="space-y-0.5 p-1">
+                          {SEALED_CATALOG.map((s: CatalogStrategy) => (
+                            <li key={s.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPickId(s.id);
+                                  setMenuOpen(false);
+                                }}
+                                className={cn(
+                                  "flex w-full items-start gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition-colors",
+                                  s.id === pickId ? "bg-accent/10" : "hover:bg-white/[0.04]",
+                                )}
+                              >
+                                <Check
+                                  className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", s.id === pickId ? "text-accent" : "text-transparent")}
+                                  aria-hidden
+                                />
+                                <span>
+                                  <span className="block font-display text-[13px] font-semibold text-white">
+                                    {s.label}
                                   </span>
-                                </button>
-                              </li>
-                            ))}
-                          </motion.ul>
-                        )}
-                      </AnimatePresence>
+                                  <span className="mt-0.5 block text-[12px] leading-snug text-zinc-400">
+                                    {s.category} · {s.direction} · {s.blurb}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </ResponsiveModalSheet>
                     </div>
 
                     <CodeBlock code={selected.script} filename={`${selected.id}.pine`} maxHeight={160} />

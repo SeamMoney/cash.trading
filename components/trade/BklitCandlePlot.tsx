@@ -8,7 +8,7 @@
 
 import { curveLinear } from "@visx/curve";
 import { LinePath } from "@visx/shape";
-import { memo, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 
 import { Background } from "@/components/charts/bklit/background";
 import { CandlestickChart } from "@/components/charts/bklit/candlestick-chart";
@@ -24,6 +24,10 @@ export type BklitPlotLine = {
   color: string;
   dash?: string;
   width?: number;
+  /** Neon halo behind the stroke — for the one or two series that carry the signal. */
+  glow?: boolean;
+  /** End-anchored tag rendered at the last point, TradingView structure-label style. */
+  label?: string;
   data: Array<{ time: number; value: number }>;
 };
 
@@ -40,6 +44,8 @@ export type BklitPlotFill = {
   id: string;
   color: string;
   opacity?: number;
+  /** Fade the fill from color at the upper edge to transparent at the lower edge. */
+  gradient?: boolean;
   upperData: Array<{ time: number; value: number }>;
   lowerData: Array<{ time: number; value: number }>;
 };
@@ -169,27 +175,42 @@ function PlotVolume() {
 }
 
 function PlotLines({ lines }: { lines: BklitPlotLine[] }) {
-  const { xScale, yScale } = useChartStable();
+  const { innerHeight, innerWidth, xScale, yScale } = useChartStable();
   return (
-    <g aria-hidden="true" className="pointer-events-none">
-      {lines.map((line) => (
-        <LinePath
-          curve={curveLinear}
-          data={line.data}
-          key={line.id}
-          stroke={line.color}
-          strokeDasharray={line.dash}
-          strokeWidth={line.width ?? 1.25}
-          x={(point) => xScale(new Date(point.time * 1000)) ?? 0}
-          y={(point) => yScale(point.value) ?? 0}
-        />
-      ))}
+    <g aria-hidden="true" className="pointer-events-none font-mono">
+      {lines.map((line) => {
+        const last = line.data[line.data.length - 1];
+        const labelX = last ? Math.min(innerWidth - 2, (xScale(new Date(last.time * 1000)) ?? 0) + 4) : 0;
+        const labelY = last ? Math.max(8, Math.min(innerHeight - 2, yScale(last.value) ?? 0)) : 0;
+        return (
+          <g
+            key={line.id}
+            style={line.glow ? { filter: `drop-shadow(0 0 4px ${line.color})` } : undefined}
+          >
+            <LinePath
+              curve={curveLinear}
+              data={line.data}
+              stroke={line.color}
+              strokeDasharray={line.dash}
+              strokeWidth={line.width ?? 1.25}
+              x={(point) => xScale(new Date(point.time * 1000)) ?? 0}
+              y={(point) => yScale(point.value) ?? 0}
+            />
+            {line.label && last && (
+              <text fill={line.color} fontSize={8} fontWeight={700} x={labelX} y={labelY}>
+                {line.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
     </g>
   );
 }
 
 function PlotFills({ fills }: { fills: BklitPlotFill[] }) {
   const { xScale, yScale } = useChartStable();
+  const gradientScope = useId();
   return (
     <g aria-hidden="true" className="pointer-events-none">
       {fills.map((fill) => {
@@ -209,13 +230,23 @@ function PlotFills({ fills }: { fills: BklitPlotFill[] }) {
           const y = yScale(point.lower) ?? 0;
           return `L${x},${y}`;
         });
+        const gradientId = `${gradientScope}-${fill.id}`;
         return (
-          <path
-            d={`${upperPath.join(" ")} ${lowerPath.join(" ")} Z`}
-            fill={fill.color}
-            fillOpacity={fill.opacity ?? 0.2}
-            key={fill.id}
-          />
+          <g key={fill.id}>
+            {fill.gradient && (
+              <defs>
+                <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor={fill.color} stopOpacity={fill.opacity ?? 0.28} />
+                  <stop offset="100%" stopColor={fill.color} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+            )}
+            <path
+              d={`${upperPath.join(" ")} ${lowerPath.join(" ")} Z`}
+              fill={fill.gradient ? `url(#${gradientId})` : fill.color}
+              fillOpacity={fill.gradient ? 1 : fill.opacity ?? 0.2}
+            />
+          </g>
         );
       })}
     </g>

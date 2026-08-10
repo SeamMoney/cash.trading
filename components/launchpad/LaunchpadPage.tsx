@@ -171,7 +171,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
             <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 mt-px", SIG_DOT[sig])} />
             <span className="text-sm font-medium text-white truncate">{ind.name}</span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-amber-500/30 bg-amber-500/10 text-amber-400 shrink-0">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent shrink-0">
                 <svg className="w-2 h-2" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -342,7 +342,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               {ind.isGraduated ? "LIVE" : "TESTING"}
             </span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono border border-amber-500/30 bg-amber-500/10 text-amber-400">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -590,19 +590,28 @@ export function LaunchpadPage() {
                 </span>
               )}
             </div>
+            {tab !== "deploy" && (
+              <button
+                onClick={() => setTab("deploy")}
+                className="shrink-0 px-4 py-2 rounded-[10px] text-[13px] font-display font-semibold bg-accent text-black hover:brightness-95 transition-[filter] active:scale-[0.98]"
+              >
+                + Deploy Strategy
+              </button>
+            )}
           </div>
 
           {/* ── Tab bar — Whop's underline tabs ── */}
           <div className="flex items-center gap-1 border-b border-[#2a2a2a] mb-6 animate-enter-delay-1">
-            {(["explore", "deploy", "bots", "creator"] as Tab[]).map((t) => (
+            {(["explore", "bots", "creator"] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)}
                 className={cn(
                   "px-4 py-2.5 text-[13px] font-display font-semibold transition-all border-b-2 -mb-px",
-                  tab === t
+                  // Deploy lives under Explore now, so the workbench keeps Explore lit.
+                  tab === t || (t === "explore" && tab === "deploy")
                     ? "border-white text-white"
                     : "border-transparent text-[#888] hover:text-zinc-300",
                 )}>
-                {t === "explore" ? "Explore" : t === "deploy" ? "Deploy" : t === "bots" ? "My Bots" : "Creator"}
+                {t === "explore" ? "Explore" : t === "bots" ? "My Bots" : "Creator"}
               </button>
             ))}
           </div>
@@ -611,8 +620,14 @@ export function LaunchpadPage() {
           {tab === "deploy" && (
             <div className="animate-enter-delay-1">
               <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-                <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
+                <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center justify-between px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
                   Deploy a Strategy
+                  <button
+                    onClick={() => setTab("explore")}
+                    className="text-[11px] font-mono font-medium text-zinc-500 hover:text-white transition-colors"
+                  >
+                    ← Back to marketplace
+                  </button>
                 </header>
                 <div className="bg-[#111] px-2 sm:px-4 py-3">
                   <DeployForm onDeployed={handleDeployed} />

@@ -1114,9 +1114,6 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   const [proprietaryTxHash, setProprietaryTxHash] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ status: "idle" });
 
-  // Mobile preview toggle
-  const [showPreview, setShowPreview] = useState(false);
-
   // Monetization settings
   const [isProprietary, setIsProprietary] = useState(true);
   const [feeBps, setFeeBps] = useState(200);
@@ -1527,13 +1524,13 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
         )}
 
         {proprietaryTxHash && !error && (
-          <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center justify-between">
-            <span className="text-[10px] text-amber-300 font-medium">Algorithm commitment confirmed ✓</span>
+          <div className="bg-accent/10 border border-accent/20 rounded-lg px-3 py-2 flex items-center justify-between">
+            <span className="text-[10px] text-accent font-medium">Algorithm commitment confirmed ✓</span>
             <a
               href={`https://explorer.aptoslabs.com/txn/${proprietaryTxHash}?network=testnet`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-amber-400/70 hover:text-amber-300 font-mono underline"
+              className="text-[10px] text-accent/70 hover:text-accent font-mono underline"
             >
               {proprietaryTxHash.slice(0, 12)}...
             </a>
@@ -1567,7 +1564,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
           </button>
           <button
             onClick={() => result.indicatorAddr && onDeployed?.(result.indicatorAddr)}
-            className="flex-1 py-2 rounded-[10px] text-xs font-medium bg-purple-500 text-white hover:bg-purple-400 transition-colors"
+            className="flex-1 py-2 rounded-[10px] text-xs font-medium bg-accent text-black hover:brightness-95 transition-colors"
           >
             View in Marketplace
           </button>
@@ -1634,7 +1631,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
               />
               {tvLoading && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <svg className="animate-spin h-4 w-4 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-4 w-4 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
@@ -1642,7 +1639,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
               )}
             </div>
             {tvLoading && (
-              <p className="text-[10px] text-purple-400/70 mt-1.5 pl-1">
+              <p className="text-[10px] text-accent/70 mt-1.5 pl-1">
                 Fetching PineScript from TradingView...
               </p>
             )}
@@ -1694,7 +1691,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 className={cn(
                   "flex items-center gap-1 px-2 text-[9px] font-mono transition-colors border-b-2",
                   activeTab === "pine"
-                    ? "bg-[#0d0d0d] text-white border-purple-500"
+                    ? "bg-[#0d0d0d] text-white border-accent"
                     : "bg-[#1e1e1e] text-zinc-500 hover:text-zinc-300 border-transparent"
                 )}
               >
@@ -1706,11 +1703,11 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 className={cn(
                   "flex items-center gap-1 px-2 text-[9px] font-mono transition-colors border-b-2",
                   activeTab === "move"
-                    ? "bg-[#0d0d0d] text-white border-purple-500"
+                    ? "bg-[#0d0d0d] text-white border-accent"
                     : "bg-[#1e1e1e] text-zinc-500 hover:text-zinc-300 border-transparent"
                 )}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4da3ff] shrink-0" />
                 <span className="truncate">{tabFileName}.move</span>
               </button>
               <button
@@ -2004,11 +2001,11 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     onChange={(e) => setNameOverride(e.target.value)}
                     onBlur={() => setEditingName(false)}
                     onKeyDown={(e) => e.key === "Enter" && setEditingName(false)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white focus:outline-none focus:border-purple-500/40"
+                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white focus:outline-none focus:border-accent/40"
                   />
                 ) : (
                   <button onClick={() => setEditingName(true)} className="text-left group">
-                    <div className="text-[13px] font-semibold text-white truncate group-hover:text-purple-300 transition-colors">{name}</div>
+                    <div className="text-[13px] font-semibold text-white truncate group-hover:text-accent transition-colors">{name}</div>
                     <div className="text-[9px] text-zinc-600 font-mono">{symbol} · {asset}</div>
                   </button>
                 )}
@@ -2041,7 +2038,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                   }}
                   className="sr-only"
                 />
-                <div className={cn("w-8 h-4 rounded-full transition-colors duration-200", isProprietary ? "bg-amber-500" : "bg-zinc-700 group-hover:bg-zinc-600")} />
+                <div className={cn("w-8 h-4 rounded-full transition-colors duration-200", isProprietary ? "bg-accent" : "bg-zinc-700 group-hover:bg-zinc-600")} />
                 <div className={cn("absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200", isProprietary ? "translate-x-4" : "translate-x-0")} />
               </div>
             </label>
@@ -2081,9 +2078,9 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
 
                 {/* Algorithm hash */}
                 {algoHash ? (
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-500/6 border border-amber-500/12">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                    <p className="text-[9px] font-mono text-amber-400/80 truncate flex-1">{algoHash.slice(0, 8)}…{algoHash.slice(-6)}</p>
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/5 border border-accent/15">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                    <p className="text-[9px] font-mono text-accent/80 truncate flex-1">{algoHash.slice(0, 8)}…{algoHash.slice(-6)}</p>
                     <button
                       type="button"
                       onClick={() => computeHash(pineScript)}
@@ -2098,7 +2095,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     type="button"
                     onClick={() => computeHash(pineScript)}
                     disabled={isHashing || !pineScript.trim()}
-                    className="w-full text-[10px] text-amber-400/70 hover:text-amber-300 disabled:text-zinc-700 transition-colors font-mono py-1 text-left"
+                    className="w-full text-[10px] text-accent/70 hover:text-accent disabled:text-zinc-700 transition-colors font-mono py-1 text-left"
                   >
                     {isHashing ? "Computing hash…" : "+ Compute SHA3-256 hash"}
                   </button>
@@ -2126,9 +2123,8 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 "w-full py-2.5 rounded-xl text-[13px] font-semibold tracking-wide transition-all duration-200",
                 step === "done"
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 cursor-default"
-                  : "text-white hover:opacity-90 active:scale-[0.98]"
+                  : "bg-accent text-black glow-accent hover:brightness-95 active:scale-[0.98]"
               )}
-              style={step !== "done" ? { background: "#FA4616" } : undefined}
             >
               {step === "done" ? "Deployed ✓" : "Transpile & Deploy"}
             </button>

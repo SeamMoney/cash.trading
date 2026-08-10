@@ -150,7 +150,14 @@ function buildLayers(
         p.value !== null && Number.isFinite(p.value) && Number.isFinite(p.time))
       .map((p) => ({ time: p.time, value: p.value }));
     if (data.length < 2) continue;
-    lines.push({ id: `plot-${plot.title}`, color, width: Math.max(1, Math.min(3, plot.lineWidth ?? 2)), data });
+    lines.push({
+      id: `plot-${plot.title}`,
+      color,
+      width: Math.max(1, Math.min(3, plot.lineWidth ?? 2)),
+      // The first plot is the strategy's headline series — give it the neon halo.
+      glow: index === 0,
+      data,
+    });
     legend.push({ title: plot.title, color, pane: "price" });
   }
 
@@ -186,7 +193,8 @@ function buildLayers(
     return [{
       id: `fill-${index}`,
       color: colorString(fill.options?.color)?.slice(0, 7) ?? "#4da3ff",
-      opacity: 0.14,
+      opacity: 0.2,
+      gradient: true,
       upperData: pairs.map((p) => ({ time: p.time, value: Math.max(p.first, p.second) })),
       lowerData: pairs.map((p) => ({ time: p.time, value: Math.min(p.first, p.second) })),
     }];

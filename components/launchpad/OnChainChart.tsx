@@ -464,7 +464,7 @@ export function OnChainChart({
         },
         {
           id: `${label}-${longPeriod}`,
-          color: "#f97316",
+          color: "#ffb020",
           dash: "4 4",
           width: 1,
           data: toPoints(calculate(prices, longPeriod)),
@@ -491,7 +491,7 @@ export function OnChainChart({
       guides = [{ id: "zero", value: 0, color: "#52525b80" }];
       subLines.push(
         { id: "macd", color: "#22c55e", data: toPoints(result.macd) },
-        { id: "signal", color: "#f97316", data: toPoints(result.signal) },
+        { id: "signal", color: "#ffb020", data: toPoints(result.signal) },
       );
       histogram = toPoints(result.hist);
     } else if (indicatorType === 4) {

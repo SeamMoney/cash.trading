@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { DECIBEL_PACKAGE, MARKETS, MAINNET_MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
+import { MARKETS, MAINNET_MARKETS, BOT_OPERATOR } from '@/lib/decibel-client'
 import { getActiveNetwork, MAINNET_CONFIG, TESTNET_CONFIG } from '@/lib/decibel-sdk'
 import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 

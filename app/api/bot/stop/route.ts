@@ -30,6 +30,44 @@ const MAINNET_SIZE_CONFIG: Record<string, { szDecimals: number }> = {
 }
 const MARKET_CONFIG = net === 'mainnet' ? MAINNET_SIZE_CONFIG : TESTNET_SIZE_CONFIG
 
+/**
+ * Read a subaccount's position for one market through the perp_engine granular
+ * views. `perp_positions::UserPositions` is now an enum, so the old raw
+ * `positions.root.children.entries[].value.value` walk is fragile — these views
+ * return primitives (bool/u64) with no struct nesting to break.
+ */
+async function readPositionViaViews(
+  aptos: any,
+  subaccount: string,
+  market: string,
+): Promise<{ size: number; isLong: boolean; avgPrice: number } | null> {
+  const args = [subaccount, market]
+  const has = await aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::has_position`, functionArguments: args } })
+  if (!(Array.isArray(has) ? has[0] : has)) return null
+  const [sizeRes, longRes, avgRes] = await Promise.all([
+    aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_size`, functionArguments: args } }),
+    aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_is_long`, functionArguments: args } }),
+    aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_avg_price`, functionArguments: args } }),
+  ])
+  const size = Number(Array.isArray(sizeRes) ? sizeRes[0] : sizeRes)
+  if (!Number.isFinite(size) || size === 0) return null
+  return {
+    size,
+    isLong: Boolean(Array.isArray(longRes) ? longRes[0] : longRes),
+    avgPrice: Number(Array.isArray(avgRes) ? avgRes[0] : avgRes) / 1_000_000,
+  }
+}
+
+/** Live size decimals for a market, falling back to the static table. */
+async function readSzDecimals(aptos: any, market: string, marketName: string): Promise<number> {
+  try {
+    const res = await aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::market_sz_decimals`, functionArguments: [market] } })
+    const n = Number(Array.isArray(res) ? res[0] : res)
+    if (Number.isFinite(n) && n >= 0) return n
+  } catch { /* fall through */ }
+  return (MARKET_CONFIG[marketName] || { szDecimals: 8 }).szDecimals
+}
+
 export async function POST(request: NextRequest) {
   const unavailable = legacyBotAutomationUnavailable()
   if (unavailable) return unavailable
@@ -82,59 +120,59 @@ export async function POST(request: NextRequest) {
     if (bot.strategy === 'high_risk') {
       const aptos = createAuthenticatedAptos()
 
-      // First, cancel ALL pending TWAP orders to prevent more position buildup
+      // First, cancel ALL pending TWAP orders to prevent more position buildup.
+      // `cancel_twap_orders_to_subaccount` now REQUIRES the u128 TWAP order id
+      // (a bare subaccount+market call no longer builds), so enumerate the
+      // active TWAPs and cancel each by id via the SDK — matching what
+      // bot-engine's cancelTwapOrderSDK does.
       try {
         console.log('🛑 Cancelling all pending TWAP orders...')
-        const privateKey = new Ed25519PrivateKey(process.env.BOT_OPERATOR_PRIVATE_KEY!)
-        const botAccount = new Ed25519Account({ privateKey })
-
-        const cancelTransaction = await aptos.transaction.build.simple({
-          sender: botAccount.accountAddress,
-          data: {
-            function: `${DECIBEL_PACKAGE}::dex_accounts_entry::cancel_twap_orders_to_subaccount`,
-            typeArguments: [],
-            functionArguments: [
-              bot.userSubaccount,
-              bot.market,
-            ],
-          },
+        const { getReadDex, getWriteDex } = await import('@/lib/decibel-sdk')
+        const readDex = getReadDex()
+        const activeTwaps = await readDex.userActiveTwaps.getByAddr({ subAddr: bot.userSubaccount })
+        const forThisMarket = (activeTwaps || []).filter((t) => {
+          const m = (t.market ?? '').toString().toLowerCase()
+          return !m || m === bot.market.toLowerCase()
         })
-
-        const cancelCommittedTxn = await aptos.signAndSubmitTransaction({
-          signer: botAccount,
-          transaction: cancelTransaction,
-        })
-
-        await aptos.waitForTransaction({ transactionHash: cancelCommittedTxn.hash })
-        console.log(`✅ Cancelled all TWAPs: ${cancelCommittedTxn.hash}`)
-        cancelledTwaps = true
+        if (forThisMarket.length === 0) {
+          console.log('   no active TWAPs to cancel')
+          cancelledTwaps = true
+        } else {
+          const writeDex = getWriteDex()
+          let cancelledCount = 0
+          for (const twap of forThisMarket) {
+            const orderId = twap.order_id?.toString()
+            if (!orderId) continue
+            try {
+              await writeDex.cancelTwapOrder({
+                orderId,
+                marketAddr: bot.market,
+                subaccountAddr: bot.userSubaccount,
+              })
+              cancelledCount++
+              console.log(`   cancelled TWAP ${orderId}`)
+            } catch (inner: any) {
+              console.warn(`   failed to cancel TWAP ${orderId}:`, inner?.message || inner)
+            }
+          }
+          cancelledTwaps = cancelledCount > 0
+          console.log(`✅ Cancelled ${cancelledCount}/${forThisMarket.length} TWAPs`)
+        }
       } catch (e: any) {
         console.error('Error cancelling TWAPs:', e.message || e)
         // Continue - maybe there were no TWAPs to cancel
       }
 
       try {
-        // Check on-chain position
-        const resources = await aptos.getAccountResources({
-          accountAddress: bot.userSubaccount
-        })
-        const positionsResource = resources.find((r: any) =>
-          r.type.includes('perp_positions::UserPositions')
-        )
+        // Check on-chain position via perp_engine views (enum-safe)
+        const position = await readPositionViaViews(aptos, bot.userSubaccount, bot.market)
 
-        if (positionsResource) {
-          const data = positionsResource.data as any
-          const entries = data.positions?.root?.children?.entries || []
-          const marketPosition = entries.find((e: any) =>
-            e.key.inner.toLowerCase() === bot.market.toLowerCase()
-          )
-
-          if (marketPosition && parseInt(marketPosition.value.value.size) > 0) {
-            const pos = marketPosition.value.value
-            const positionSize = parseInt(pos.size)
-            const positionIsLong = pos.is_long
+        if (position && position.size > 0) {
+          {
+            const positionSize = position.size
+            const positionIsLong = position.isLong
             const closeDirection = !positionIsLong
-            const entryPrice = parseInt(pos.avg_acquire_entry_px) / 1e6 // BTC uses 6 decimals for price
+            const entryPrice = position.avgPrice // already scaled to USDC (6dp)
 
             console.log(`📊 Found open ${positionIsLong ? 'LONG' : 'SHORT'} position, closing...`)
             console.log(`   Size: ${positionSize}, Entry: $${entryPrice.toFixed(2)}`)
@@ -183,35 +221,21 @@ export async function POST(request: NextRequest) {
             while (Date.now() - closeStartTime < MAX_WAIT_MS) {
               await new Promise(r => setTimeout(r, 10000)) // Wait 10 seconds
 
-              // Re-fetch position
-              const updatedResources = await aptos.getAccountResources({
-                accountAddress: bot.userSubaccount
-              })
-              const updatedPositionsResource = updatedResources.find((r: any) =>
-                r.type.includes('perp_positions::UserPositions')
-              )
+              // Re-fetch position via views (enum-safe)
+              const updatedPosition = await readPositionViaViews(aptos, bot.userSubaccount, bot.market)
 
-              if (updatedPositionsResource) {
-                const updatedData = updatedPositionsResource.data as any
-                const updatedEntries = updatedData.positions?.root?.children?.entries || []
-                const updatedMarketPosition = updatedEntries.find((e: any) =>
-                  e.key.inner.toLowerCase() === bot.market.toLowerCase()
-                )
-
-                if (!updatedMarketPosition || parseInt(updatedMarketPosition.value.value.size) === 0) {
-                  console.log(`✅ Position fully closed!`)
-                  break
-                }
-
-                const remainingSize = parseInt(updatedMarketPosition.value.value.size)
-                const remainingPct = (remainingSize / positionSize) * 100
-                console.log(`   TWAP filling... ${remainingPct.toFixed(1)}% remaining`)
+              if (!updatedPosition || updatedPosition.size === 0) {
+                console.log(`✅ Position fully closed!`)
+                break
               }
+
+              const remainingPct = (updatedPosition.size / positionSize) * 100
+              console.log(`   TWAP filling... ${remainingPct.toFixed(1)}% remaining`)
             }
 
             // Calculate volume and PnL
-            const marketConfig = MARKET_CONFIG[bot.marketName] || { szDecimals: 8 }
-            const sizeInBaseAsset = positionSize / Math.pow(10, marketConfig.szDecimals)
+            const szDecimals = await readSzDecimals(aptos, bot.market, bot.marketName)
+            const sizeInBaseAsset = positionSize / Math.pow(10, szDecimals)
             const volumeGenerated = sizeInBaseAsset * currentPrice
             const priceChange = positionIsLong
               ? (currentPrice - entryPrice) / entryPrice

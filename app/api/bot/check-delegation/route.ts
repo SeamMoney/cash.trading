@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOT_OPERATOR } from '@/lib/decibel-client'
-import { createAuthenticatedAptos } from '@/lib/decibel-sdk'
+import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork } from '@/lib/decibel-sdk'
 import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 // Use authenticated Aptos client to avoid 429 rate limits
 const aptos = createAuthenticatedAptos()
+
+const DECIBEL_PACKAGE = getActiveNetwork() === 'mainnet'
+  ? MAINNET_CONFIG.deployment.package
+  : (process.env.NEXT_PUBLIC_DECIBEL_PACKAGE || TESTNET_CONFIG.deployment.package)
 
 /**
  * Check if the bot operator has trading permissions for a user's subaccount
@@ -24,42 +28,34 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch the subaccount resources to check delegation permissions
-    const resources = await aptos.getAccountResources({
-      accountAddress: userSubaccount,
+    // The Subaccount type moved to `dex_accounts` and is now an enum whose
+    // delegated_permissions live in a nested BigOrderedMap — the old raw
+    // resource walk (`dex_accounts_entry::Subaccount` → `.delegated_permissions.entries`)
+    // matched nothing and always reported hasDelegation:false. Read the
+    // `view_delegated_permissions` view, which returns an
+    // OrderedMap<address, DelegatedPermissions> deserialized for us.
+    const viewResult = await aptos.view({
+      payload: {
+        function: `${DECIBEL_PACKAGE}::dex_accounts::view_delegated_permissions`,
+        functionArguments: [userSubaccount],
+      },
     })
 
-    // Find the Subaccount resource which contains delegated_permissions
-    const subaccountResource = resources.find(
-      (r) => r.type.includes('dex_accounts_entry::Subaccount')
-    )
-
-    if (!subaccountResource) {
-      return NextResponse.json({
-        hasDelegation: false,
-        reason: 'Subaccount resource not found',
-      })
-    }
-
-    // Check if bot operator is in the delegated_permissions
-    const data = subaccountResource.data as {
-      delegated_permissions?: {
-        entries?: Array<{
-          key: string
-          value: any
-        }>
-      }
-    }
-
-    const entries = data.delegated_permissions?.entries || []
-    const hasDelegation = entries.some(
-      (entry) => entry.key.toLowerCase() === BOT_OPERATOR.toLowerCase()
+    // OrderedMap serializes as { entries: [{ key: address, value: {...} }] }.
+    const map = Array.isArray(viewResult) ? viewResult[0] : viewResult
+    const entries: Array<{ key: string; value: unknown }> =
+      (map as any)?.entries ?? (map as any)?.data ?? []
+    const delegatedTo = entries
+      .map((e) => (typeof e.key === 'string' ? e.key : String(e.key)))
+      .filter(Boolean)
+    const hasDelegation = delegatedTo.some(
+      (key) => key.toLowerCase() === BOT_OPERATOR.toLowerCase()
     )
 
     return NextResponse.json({
       hasDelegation,
       botOperator: BOT_OPERATOR,
-      delegatedTo: entries.map((e) => e.key),
+      delegatedTo,
     })
   } catch (error) {
     console.error('Error checking delegation:', error)

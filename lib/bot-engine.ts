@@ -232,6 +232,57 @@ export class VolumeBotEngine {
   private static readonly RAPID_MONITOR_INTERVAL_MS = 1500 // 1.5 seconds for fast PnL checks
   private lastRapidCheckTime: number = 0
 
+  // Live market params/leverage read from chain at start(). The hardcoded
+  // MARKET_CONFIG / leverageMap tables are stale (5-market Feb snapshot vs the
+  // ~60 markets live today) and are only a last-resort fallback now — reading
+  // truth from chain is what keeps order tick/lot/min sizing from aborting.
+  private chainMarketParams: MarketParams | null = null
+  private chainMaxLeverage: number | null = null
+
+  /**
+   * Read the flow's market params + max leverage straight from the perp_engine
+   * views for this bot's market. Called once at start(); tolerant of failure
+   * (falls back to the static table) so a transient node hiccup can't strand a
+   * running bot with no config.
+   */
+  private async loadMarketParamsFromChain(): Promise<void> {
+    const pkg = DECIBEL_PACKAGE
+    const args = [this.config.market]
+    const num = (v: unknown): bigint | null => {
+      const n = Array.isArray(v) ? v[0] : v
+      if (n === null || n === undefined) return null
+      try { return BigInt(String(n)) } catch { return null }
+    }
+    try {
+      const [ticker, lot, min, szDec, maxLev] = await Promise.all([
+        this.aptos.view({ payload: { function: `${pkg}::perp_engine::market_ticker_size`, functionArguments: args } }).catch(() => null),
+        this.aptos.view({ payload: { function: `${pkg}::perp_engine::market_lot_size`, functionArguments: args } }).catch(() => null),
+        this.aptos.view({ payload: { function: `${pkg}::perp_engine::market_min_size`, functionArguments: args } }).catch(() => null),
+        this.aptos.view({ payload: { function: `${pkg}::perp_engine::market_sz_decimals`, functionArguments: args } }).catch(() => null),
+        this.aptos.view({ payload: { function: `${pkg}::perp_engine::market_max_leverage`, functionArguments: args } }).catch(() => null),
+      ])
+      const tickerSize = num(ticker)
+      const lotSize = num(lot)
+      const minSize = num(min)
+      const szDecimals = num(szDec)
+      if (tickerSize && lotSize && minSize && szDecimals !== null) {
+        this.chainMarketParams = {
+          tickerSize,
+          lotSize,
+          minSize,
+          // Mainnet quotes in USDC (6 dp); pxDecimals is the quote precision, not sz.
+          pxDecimals: 6,
+          szDecimals: Number(szDecimals),
+        }
+        console.log(`📈 [chain] ${this.config.marketName} params: ticker=${tickerSize} lot=${lotSize} min=${minSize} szDec=${szDecimals}`)
+      }
+      const lev = num(maxLev)
+      if (lev && lev > 0n) this.chainMaxLeverage = Number(lev)
+    } catch (error) {
+      console.log('⚠️ [chain] market-params load failed, using static fallback table:', error instanceof Error ? error.message : error)
+    }
+  }
+
   constructor(config: BotConfig) {
     this.config = config
     this.status = {
@@ -311,44 +362,37 @@ export class VolumeBotEngine {
     expectedPackage: string
     error?: string
   }> {
+    // The Subaccount type moved from `dex_accounts_entry` to `dex_accounts` and
+    // is now an enum, so the old resource-type string scan matched nothing and
+    // reported every subaccount incompatible — which silently killed the
+    // high_risk and tx_spammer strategies. Ask the chain directly instead: the
+    // `view_is_subaccount_active` view resolves the subaccount object under the
+    // CURRENT package, so a true answer is proof of compatibility and a stale
+    // or wrong-package object errors out.
     try {
-      const resources = await this.aptos.getAccountResources({
-        accountAddress: this.config.userSubaccount,
+      const res = await this.aptos.view({
+        payload: {
+          function: `${DECIBEL_PACKAGE}::dex_accounts::view_is_subaccount_active`,
+          functionArguments: [this.config.userSubaccount],
+        },
       })
-
-      const subaccountResource = resources.find((r) =>
-        r.type.includes('::dex_accounts_entry::Subaccount')
-      )
-
-      if (!subaccountResource) {
-        return {
-          compatible: false,
-          subaccountPackage: 'unknown',
-          expectedPackage: DECIBEL_PACKAGE,
-          error: 'Subaccount resource not found',
-        }
+      const active = Array.isArray(res) ? Boolean(res[0]) : Boolean(res)
+      if (!active) {
+        console.log(`⚠️ [PACKAGE] Subaccount ${this.config.userSubaccount.slice(0, 20)}… is not active under the current package`)
+        console.log(`   Solution: create/activate a subaccount via the Decibel UI`)
       }
-
-      // Extract package address from type (format: "0x...::dex_accounts_entry::Subaccount")
-      const subaccountPackage = subaccountResource.type.split('::')[0]
-      const compatible = subaccountPackage.toLowerCase() === DECIBEL_PACKAGE.toLowerCase()
-
-      if (!compatible) {
-        console.log(`⚠️ [PACKAGE] Subaccount from old package - IOC orders will fail!`)
-        console.log(`   Subaccount package: ${subaccountPackage.slice(0, 20)}...`)
-        console.log(`   Current package: ${DECIBEL_PACKAGE.slice(0, 20)}...`)
-        console.log(`   Solution: User needs to create new subaccount via Decibel UI`)
-      }
-
       return {
-        compatible,
-        subaccountPackage,
+        compatible: active,
+        subaccountPackage: active ? DECIBEL_PACKAGE : 'inactive',
         expectedPackage: DECIBEL_PACKAGE,
+        error: active ? undefined : 'Subaccount is not active under the current package',
       }
     } catch (error) {
+      // A resolution failure here means the object isn't a Subaccount under this
+      // package (old reset, wrong address) — genuinely incompatible.
       return {
         compatible: false,
-        subaccountPackage: 'error',
+        subaccountPackage: 'unresolved',
         expectedPackage: DECIBEL_PACKAGE,
         error: error instanceof Error ? error.message : 'Unknown error',
       }
@@ -508,47 +552,38 @@ export class VolumeBotEngine {
       console.log('⚠️ [SDK] Price fetch failed, trying on-chain...')
     }
 
-    // Fallback: Get price from market's Price resource on-chain
+    // Fallback: the perp_engine mark/oracle view. `price_management::Price`
+    // became an enum (V1/V2/Transient) with no flat `mark_px` field, so the old
+    // raw-resource scan silently returned nothing on V2 markets and dropped to
+    // MONTHS-OLD hardcoded prices — poisoning every sizing and TP/SL number with
+    // real funds. The view deserializes whichever variant is live for us.
     try {
-      const resources = await this.aptos.getAccountResources({
-        accountAddress: this.config.market
+      const res = await this.aptos.view({
+        payload: {
+          function: `${DECIBEL_PACKAGE}::perp_engine::get_mark_and_oracle_price`,
+          functionArguments: [this.config.market],
+        },
       })
-
-      const priceResource = resources.find(r =>
-        r.type.includes('price_management::Price')
-      )
-
-      if (priceResource && priceResource.data) {
-        const data = priceResource.data as {
-          oracle_px?: string
-          mark_px?: string
-          price?: string
-          last_price?: string
-        }
-        // Price decimals vary by market (BTC=9, APT=6, WLFI=6)
-        const pxDecimals = this.getMarketConfig().pxDecimals
-        const priceRaw = data.oracle_px || data.mark_px || data.price || data.last_price
-        if (priceRaw) {
-          const price = parseInt(priceRaw) / Math.pow(10, pxDecimals)
-          console.log(`📊 [On-chain] Price: $${price.toFixed(2)}`)
+      // returns [mark_px, oracle_px] as strings in quote (USDC, 6dp) units
+      const markRaw = Array.isArray(res) ? res[0] : undefined
+      const oracleRaw = Array.isArray(res) ? res[1] : undefined
+      const raw = markRaw ?? oracleRaw
+      if (raw !== undefined && raw !== null) {
+        const price = Number(raw) / 1_000_000
+        if (Number.isFinite(price) && price > 0) {
+          console.log(`📊 [chain view] Price: $${price}`)
           return price
         }
       }
     } catch (error) {
-      console.log('⚠️ Could not fetch on-chain price, using fallback')
+      console.log('⚠️ [chain view] get_mark_and_oracle_price failed:', error instanceof Error ? error.message : error)
     }
 
-    // Last resort: Fallback prices - ONLY for order sizing, never for PNL calculation
-    // These are approximate and should be updated periodically
-    console.warn('⚠️ Using fallback price - PNL calculation may be inaccurate')
-    const fallbackPrices: Record<string, number> = {
-      'BTC/USD': 96000,
-      'ETH/USD': 3600,
-      'SOL/USD': 230,
-      'APT/USD': 12,
-      'WLFI/USD': 0.000018,
-    }
-    return fallbackPrices[this.config.marketName] || 50000
+    // No usable live price. Refuse to guess: a stale hardcoded number is worse
+    // than a skipped tick because it mis-sizes real orders. 0 signals "unknown"
+    // to callers, which gate order placement on a positive price.
+    console.warn('⚠️ No live price available for', this.config.marketName, '— skipping this action rather than using a stale guess')
+    return 0
   }
 
   /**
@@ -562,62 +597,44 @@ export class VolumeBotEngine {
     leverage: number
     error?: boolean // Indicates if we couldn't check (API error, rate limit, etc.)
   }> {
+    // `perp_positions::UserPositions`/`PerpPosition` are now enums, so walking
+    // the raw resource JSON (`positions.root.children.entries[].value.value`) is
+    // brittle across variants. Read through the granular perp_engine views
+    // instead — each returns a primitive (bool/u64), so there is no struct
+    // nesting to break. Args are (subaccount_address, Object<PerpMarket>).
+    const args = [this.config.userSubaccount, this.config.market]
     try {
-      const resources = await this.aptos.getAccountResources({
-        accountAddress: this.config.userSubaccount
+      const hasRes = await this.aptos.view({
+        payload: { function: `${DECIBEL_PACKAGE}::perp_engine::has_position`, functionArguments: args },
       })
-
-      const positionsResource = resources.find(r =>
-        r.type.includes('perp_positions::UserPositions')
-      )
-
-      if (!positionsResource) {
+      const has = Array.isArray(hasRes) ? Boolean(hasRes[0]) : Boolean(hasRes)
+      if (!has) {
         return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
       }
 
-      // Parse positions map to find this market
-      const data = positionsResource.data as {
-        positions?: {
-          root?: {
-            children?: {
-              entries?: Array<{
-                key: { inner: string }
-                value: {
-                  value: {
-                    size: string
-                    is_long: boolean
-                    avg_acquire_entry_px: string
-                    user_leverage: number
-                  }
-                }
-              }>
-            }
-          }
-        }
-      }
-
-      const entries = data.positions?.root?.children?.entries || []
-      const marketPosition = entries.find(e =>
-        e.key.inner.toLowerCase() === this.config.market.toLowerCase()
-      )
-
-      if (!marketPosition || parseInt(marketPosition.value.value.size) === 0) {
+      const [sizeRes, longRes, avgPxRes] = await Promise.all([
+        this.aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_size`, functionArguments: args } }),
+        this.aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_is_long`, functionArguments: args } }),
+        this.aptos.view({ payload: { function: `${DECIBEL_PACKAGE}::perp_engine::get_position_avg_price`, functionArguments: args } }),
+      ])
+      const size = Number(Array.isArray(sizeRes) ? sizeRes[0] : sizeRes)
+      if (!Number.isFinite(size) || size === 0) {
         return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1 }
       }
-
-      const pos = marketPosition.value.value
-      // Price decimals vary by market (BTC=9, APT=6, WLFI=6)
-      const pxDecimals = this.getMarketConfig().pxDecimals
+      const isLong = Array.isArray(longRes) ? Boolean(longRes[0]) : Boolean(longRes)
+      // Mainnet quotes in USDC (6dp); avg price comes back in those quote units.
+      const avgPxRaw = Number(Array.isArray(avgPxRes) ? avgPxRes[0] : avgPxRes)
       return {
         hasPosition: true,
-        isLong: pos.is_long,
-        size: parseInt(pos.size),
-        entryPrice: parseInt(pos.avg_acquire_entry_px) / Math.pow(10, pxDecimals),
-        leverage: pos.user_leverage
+        isLong,
+        size,
+        entryPrice: Number.isFinite(avgPxRaw) ? avgPxRaw / 1_000_000 : 0,
+        // Position leverage isn't consumed downstream; report the market max.
+        leverage: this.getMarketMaxLeverage(),
       }
     } catch (error) {
-      console.error('Error fetching position:', error)
-      // CRITICAL: Return error flag so we DON'T open a new position when API fails
+      console.error('Error fetching position via perp_engine views:', error)
+      // CRITICAL: Return error flag so we DON'T open a new position when the read fails
       return { hasPosition: false, isLong: true, size: 0, entryPrice: 0, leverage: 1, error: true }
     }
   }
@@ -729,27 +746,24 @@ export class VolumeBotEngine {
    * Fetch user's current USDC balance from their subaccount
    */
   private async getUserBalance(): Promise<number> {
+    // `perp_positions::AccountInfo` became an enum (V1) and its flat `equity`
+    // and `total_collateral_value` fields are gone, so the old resource parse
+    // always fell through to the configured capital. Use the net-asset-value
+    // view, which returns an i64 in USDC micro-units.
     try {
-      const resources = await this.aptos.getAccountResources({
-        accountAddress: this.config.userSubaccount
+      const res = await this.aptos.view({
+        payload: {
+          function: `${DECIBEL_PACKAGE}::perp_engine::get_account_net_asset_value`,
+          functionArguments: [this.config.userSubaccount],
+        },
       })
-
-      // Look for AccountInfo which has equity
-      const accountInfo = resources.find(r =>
-        r.type.includes('perp_positions::AccountInfo')
-      )
-
-      if (accountInfo && accountInfo.data) {
-        const data = accountInfo.data as { equity?: string; total_collateral_value?: string }
-        if (data.equity) {
-          return parseInt(data.equity) / 1_000_000 // USDC has 6 decimals
-        }
-        if (data.total_collateral_value) {
-          return parseInt(data.total_collateral_value) / 1_000_000
-        }
+      const raw = Array.isArray(res) ? res[0] : res
+      if (raw !== undefined && raw !== null) {
+        const nav = Number(raw) / 1_000_000
+        if (Number.isFinite(nav)) return nav
       }
     } catch (error) {
-      console.log('⚠️ Could not fetch on-chain balance')
+      console.log('⚠️ Could not fetch on-chain balance via get_account_net_asset_value:', error instanceof Error ? error.message : error)
     }
 
     return this.config.capitalUSDC
@@ -768,7 +782,9 @@ export class VolumeBotEngine {
    * Get market configuration for price/size rounding
    */
   private getMarketConfig() {
-    return MARKET_CONFIG[this.config.marketName] || MARKET_CONFIG['BTC/USD']
+    // Chain-read params (populated at start) win; the static table is only a
+    // fallback for markets that predate the last snapshot or a failed load.
+    return this.chainMarketParams || MARKET_CONFIG[this.config.marketName] || MARKET_CONFIG['BTC/USD']
   }
 
   /**
@@ -2070,6 +2086,10 @@ export class VolumeBotEngine {
       // ═══════════════════════════════════════════════════════════════════
 
       const entryPrice = await this.getCurrentMarketPrice()
+      if (!entryPrice || entryPrice <= 0) {
+        console.warn('⚠️ [IOC] No live price — skipping entry (never size an order on an unknown price)')
+        return { success: false, txHash: 'no_price', volumeGenerated: 0, direction: isLong ? 'long' : 'short', size: 0, error: 'no live price' }
+      }
 
       // ═══════════════════════════════════════════════════════════════════
       // MOMENTUM CHECK: Log momentum but DON'T block entries
@@ -3011,6 +3031,10 @@ export class VolumeBotEngine {
       console.log(`\n🎰 [HFT] Opening ${isLong ? 'LONG' : 'SHORT'} position with TWAP...`)
 
       const entryPrice = await this.getCurrentMarketPrice()
+      if (!entryPrice || entryPrice <= 0) {
+        console.warn('⚠️ [HFT] No live price — skipping entry (never size an order on an unknown price)')
+        return { success: false, txHash: 'no_price', volumeGenerated: 0, direction: isLong ? 'long' : 'short', size: 0, error: 'no live price' }
+      }
       const maxLeverage = this.getMarketMaxLeverage()
 
       // Use 90% of capital (maximize volume)
@@ -3133,6 +3157,10 @@ export class VolumeBotEngine {
       }
 
       const currentPrice = await this.getCurrentMarketPrice()
+      if (!currentPrice || currentPrice <= 0) {
+        console.warn('⚠️ [tx_spammer] No live price — skipping order (never size on an unknown price)')
+        return { success: false, txHash: 'no_price', volumeGenerated: 0, direction: isLong ? 'long' : 'short', size: 0, error: 'no live price' }
+      }
       const sizeDecimals = this.getMarketSizeDecimals()
       const marketConfig = this.getMarketConfig()
 
@@ -3295,6 +3323,9 @@ export class VolumeBotEngine {
    * Get max leverage for current market
    */
   private getMarketMaxLeverage(): number {
+    // Chain-read leverage (populated at start) wins. The static map is stale
+    // (e.g. HYPE is 5x now, not 3x) and only covers a fraction of live markets.
+    if (this.chainMaxLeverage && this.chainMaxLeverage > 0) return this.chainMaxLeverage
     const leverageMap: Record<string, number> = {
       'BTC/USD': 40,
       'ETH/USD': 20,
@@ -3712,6 +3743,11 @@ export class VolumeBotEngine {
     const intervalMs = this.getStrategyInterval()
     const intervalMins = intervalMs / 60_000
 
+    // Pull this market's tick/lot/min/szDecimals and max leverage from chain up
+    // front so every sizing decision this run uses live params, not the stale
+    // 5-market static table.
+    await this.loadMarketParamsFromChain()
+
     console.log('\n🚀 Starting Volume Bot...')
     console.log(`Strategy: ${this.config.strategy.toUpperCase()}`)
     console.log(`Interval: ${intervalMins} minute(s)`)
@@ -3753,8 +3789,18 @@ export class VolumeBotEngine {
       // Cancel bulk orders so the grid does not keep trading after stop().
       try {
         const marketNames = this.getDlpGridMarketNames()
+        // Resolve addresses via the SDK (live, ~60 markets) with the stale
+        // static MARKETS table only as a last-resort fallback — otherwise
+        // cleanup cancels against testnet addresses that don't exist on mainnet.
+        const sdkAddrByName: Record<string, string> = {}
+        try {
+          const { getAllMarketAddresses } = await import('./decibel-sdk')
+          for (const m of await getAllMarketAddresses()) sdkAddrByName[m.name] = m.address
+        } catch {
+          console.warn('⚠️ [DLP Grid] SDK market lookup failed at stop(); falling back to static table')
+        }
         const markets = marketNames
-          .map((name) => ({ name, addr: MARKETS[name] }))
+          .map((name) => ({ name, addr: sdkAddrByName[name] || MARKETS[name] }))
           .filter((m) => Boolean(m.addr))
 
         console.log(`🧹 [DLP Grid] Cancelling bulk orders for ${markets.length} market(s)...`)

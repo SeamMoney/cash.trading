@@ -1836,6 +1836,7 @@ const marketPermissionsUi = readFileSync("components/launchpad/MarketPermissions
 const productSurfaceUi = readFileSync("components/ui/product-surface.tsx", "utf8");
 const launchpadRoute = readFileSync("app/launchpad/page.tsx", "utf8");
 const rootLayout = readFileSync("app/layout.tsx", "utf8");
+const globalsCss = readFileSync("app/globals.css", "utf8");
 const surfaceTokens = readFileSync("lib/surface.ts", "utf8");
 assert.ok(
   !/placeholder="0x…"/.test(launchUi),
@@ -1908,9 +1909,23 @@ assert.equal(
   "0.0.1-canary.155",
   "Frosted UI must stay exactly pinned while its public API is canary-only",
 );
+// Frosted UI's stylesheet is imported into a `frosted` cascade layer in
+// globals.css (ordered below Tailwind utilities) rather than plainly in the
+// layout — importing it unlayered let its resets beat every Tailwind utility
+// site-wide (borders → 0px, headings → 400). Assert the layered import + the
+// declared layer order so the regression can't silently return.
 assert.ok(
-  rootLayout.includes('import "frosted-ui/styles.css"'),
-  "Frosted UI styles must load before launchpad components render",
+  globalsCss.includes('@import "frosted-ui/styles.css" layer(frosted)'),
+  "Frosted UI styles must load in the `frosted` cascade layer, not unlayered",
+);
+assert.ok(
+  /@layer[^;]*\bframework\b[^;]*;|@layer[^;]*\butilities\b[^;]*;/.test(globalsCss)
+    && globalsCss.indexOf("@layer ") < globalsCss.indexOf('@import "frosted-ui/styles.css"'),
+  "the cascade layer order must be declared before the frosted import so utilities win",
+);
+assert.ok(
+  !rootLayout.includes('import "frosted-ui/styles.css"'),
+  "Frosted UI styles must NOT be imported unlayered in the root layout",
 );
 assert.ok(
   launchpadRoute.includes('from "frosted-ui"')
@@ -1990,13 +2005,25 @@ assert.ok(
 );
 
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
+// Deploy was merged into the browse-first flow: the visible tab bar is
+// Explore / My Bots / Creator, and the deploy workbench opens from a
+// "+ Deploy Strategy" CTA (Explore stays lit while deploying). The `deploy`
+// tab state still exists — it's just reached by button, not a nav tab.
 assert.ok(
-  /type Tab\s*=\s*"explore" \| "deploy" \| "bots" \| "creator";/.test(launchPage)
-    && launchPage.includes('<Tabs.Trigger value="explore">Explore</Tabs.Trigger>')
-    && launchPage.includes('<Tabs.Trigger value="deploy">Deploy</Tabs.Trigger>')
-    && launchPage.includes('<Tabs.Trigger value="bots">My Bots</Tabs.Trigger>')
-    && launchPage.includes('<Tabs.Trigger value="creator">Creator</Tabs.Trigger>'),
-  "the launchpad must preserve the original Whop four-job navigation map",
+  /type Tab\s*=\s*"explore" \| "deploy" \| "bots" \| "creator";/.test(launchPage),
+  "the launchpad Tab union must still model explore/deploy/bots/creator states",
+);
+assert.ok(
+  /\(\["explore", "bots", "creator"\] as Tab\[\]\)\.map/.test(launchPage),
+  "the visible launchpad tab bar must be Explore / My Bots / Creator (Deploy merged into Explore)",
+);
+assert.ok(
+  launchPage.includes('+ Deploy Strategy') && launchPage.includes('setTab("deploy")'),
+  "the deploy workbench must be reachable via the + Deploy Strategy CTA",
+);
+assert.ok(
+  !launchPage.includes("<Tabs.Trigger") && !launchPage.includes('from "frosted-ui"'),
+  "the launchpad nav must use the plain underline tab bar, not frosted-ui Tabs",
 );
 assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-honesty-selftest.ts");
 

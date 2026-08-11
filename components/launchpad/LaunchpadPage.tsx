@@ -204,7 +204,7 @@ function IndicatorItem({ ind, selected, rank, sort, onClick }: { ind: Indicator;
                 shoves the PROP badge to the far edge, away from its label. */}
             <span className="min-w-0 truncate text-sm font-medium text-white">{ind.name}</span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-accent/14 bg-accent/10 text-accent shrink-0">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-white/[0.10] bg-white/[0.06] text-[#c4c4c4] shrink-0">
                 <svg className="w-2 h-2" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -394,7 +394,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               {ind.isGraduated ? "LIVE" : "TESTING"}
             </span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-bold font-mono border border-accent/14 bg-accent/10 text-accent">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-bold font-mono border border-white/[0.10] bg-white/[0.06] text-[#c4c4c4]">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -825,49 +825,55 @@ export function LaunchpadPage() {
                           onClick={() => setShowSignals((v) => !v)}
                           aria-pressed={showSignals}
                           className={cn(
-                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
+                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-display text-[11px] font-medium",
                             PRODUCT_PRESSABLE_CLASS,
                             showSignals
                               ? "border-accent/16 bg-accent/12 text-accent"
                               : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
-                          LIVE SIGNALS
+                          Live signals
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowGraduated((v) => !v)}
                           aria-pressed={showGraduated}
                           className={cn(
-                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
+                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-display text-[11px] font-medium",
                             PRODUCT_PRESSABLE_CLASS,
                             showGraduated
                               ? "border-accent/16 bg-accent/12 text-accent"
                               : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
-                          GRADUATED
+                          Graduated
                         </button>
 
                         {/* Sort joins the same rail on phones — it is the same
                             "narrow the list" job, and a dedicated row cost a
                             whole band of the first screen. It breaks onto its
                             own line again on desktop, where the column is 300px. */}
-                        {/* Kept visible on every size: without it the sort options
-                            are visually identical to the toggle chips beside them,
-                            and nothing tells you they are a different control. */}
-                        <span className="shrink-0 pl-1 font-mono text-[11px] text-[#9a9a9a]">Sort:</span>
-                        {(["robustness", "sharpe", "raised"] as Sort[]).map((s) => (
-                          <button type="button" key={s} onClick={() => setSort(s)}
-                            aria-pressed={sort === s}
-                            className={cn(
-                              "rounded-full border px-3 min-h-[36px] lg:min-h-[24px] lg:flex-1 lg:rounded-[var(--radius-xs)] text-center font-mono text-[10px]",
-                              PRODUCT_PRESSABLE_CLASS,
-                              sort === s
-                                ? "border-accent/16 bg-accent/12 text-accent"
-                                : "border-card-border text-[#9a9a9a] hover:text-zinc-200",
-                            )}>
-                            {s === "robustness" ? "Score" : s === "sharpe" ? "Sharpe" : "Raised"}
-                          </button>
-                        ))}
+                        {/* Label + its options are ONE flex item, so the rail can
+                            only wrap between groups. Loose in the rail, "Sort:"
+                            could end a line with its own options on the next,
+                            reading as a heading for the toggles above it. The
+                            label also has to stay visible: without it these are
+                            pixel-identical to the toggles beside them, and three
+                            radios look like two more independent switches. */}
+                        <div className="flex min-w-0 items-center gap-1">
+                          <span className="shrink-0 pl-1 text-[11px] text-[#9a9a9a]">Sort:</span>
+                          {(["robustness", "sharpe", "raised"] as Sort[]).map((s) => (
+                            <button type="button" key={s} onClick={() => setSort(s)}
+                              aria-pressed={sort === s}
+                              className={cn(
+                                "rounded-full border px-3 min-h-[36px] lg:min-h-[24px] lg:rounded-[var(--radius-xs)] text-center font-display text-[11px] font-medium",
+                                PRODUCT_PRESSABLE_CLASS,
+                                sort === s
+                                  ? "border-accent/16 bg-accent/12 text-accent"
+                                  : "border-card-border text-[#9a9a9a] hover:text-zinc-200",
+                              )}>
+                              {s === "robustness" ? "Score" : s === "sharpe" ? "Sharpe" : "Raised"}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 

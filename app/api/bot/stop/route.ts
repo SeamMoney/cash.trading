@@ -117,6 +117,68 @@ export async function POST(request: NextRequest) {
     let cancelledTwaps = false
     let cancelledBulkOrders = false
 
+    // market_maker opens reduce_only:false TWAPs every tick and had NO branch
+    // here, so "Stop" flipped isRunning to false in the database while leaving
+    // resting TWAPs and an open position live on-chain. Treat it like
+    // high_risk: cancel what's working, then flatten what filled.
+    if (bot.strategy === 'market_maker') {
+      const aptos = createAuthenticatedAptos()
+      try {
+        const { getReadDex, getWriteDex } = await import('@/lib/decibel-sdk')
+        const readDex = getReadDex()
+        const twaps = await readDex.userActiveTwaps.getByAddr({ subAddr: bot.userSubaccount })
+        const mine = (twaps || []).filter((t) => {
+          const m = (t.market ?? '').toString().toLowerCase()
+          return !m || m === bot.market.toLowerCase()
+        })
+        if (mine.length > 0) {
+          const writeDex = getWriteDex()
+          for (const twap of mine) {
+            const orderId = twap.order_id?.toString()
+            if (!orderId) continue
+            await writeDex
+              .cancelTwapOrder({ orderId, marketAddr: bot.market, subaccountAddr: bot.userSubaccount })
+              .catch((e: unknown) => console.warn('   failed to cancel TWAP', orderId, e))
+          }
+          cancelledTwaps = true
+        }
+      } catch (e: any) {
+        console.error('Error cancelling market_maker TWAPs:', e?.message || e)
+      }
+
+      try {
+        const position = await readPositionViaViews(aptos, bot.userSubaccount, bot.market)
+        if (position && position.size > 0) {
+          const privateKey = new Ed25519PrivateKey(process.env.BOT_OPERATOR_PRIVATE_KEY!)
+          const botAccount = new Ed25519Account({ privateKey })
+          const closeTxn = await aptos.transaction.build.simple({
+            sender: botAccount.accountAddress,
+            data: {
+              function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
+              typeArguments: [],
+              functionArguments: [
+                bot.userSubaccount,
+                bot.market,
+                position.size.toString(),
+                !position.isLong,
+                true,   // reduce_only
+                60,
+                120,
+                undefined,
+                undefined,
+              ],
+            },
+          })
+          const committed = await aptos.signAndSubmitTransaction({ signer: botAccount, transaction: closeTxn })
+          await aptos.waitForTransaction({ transactionHash: committed.hash })
+          console.log(`✅ market_maker close submitted: ${committed.hash}`)
+          closedPosition = true
+        }
+      } catch (e: any) {
+        console.error('Error closing market_maker position:', e?.message || e)
+      }
+    }
+
     if (bot.strategy === 'high_risk') {
       const aptos = createAuthenticatedAptos()
 

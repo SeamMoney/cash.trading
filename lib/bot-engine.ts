@@ -1387,8 +1387,23 @@ export class VolumeBotEngine {
       console.log(`\n📝 [Market Maker] Placing ${isLong ? 'LONG' : 'SHORT'} fast TWAP order...`)
       console.log(`Size: $${size.toFixed(2)} USDC`)
 
-      // Use same contract size as regular TWAP
-      const contractSize = 10000 // 0.0001 BTC
+      // Derive the clip from the caller's notional instead of the hardcoded
+      // 0.0001 BTC this used to send. The `size` argument (from capitalUSDC via
+      // calculateOrderSize) was accepted and then ignored, so capital had no
+      // effect on this strategy at all and every market traded a BTC-shaped
+      // quantity. Round to lot size and respect the market minimum.
+      const mmPrice = await this.getCurrentMarketPrice()
+      if (!mmPrice || mmPrice <= 0) {
+        console.warn('⚠️ [Market Maker] No live price — skipping tick rather than sizing blind')
+        return { success: false, txHash: 'no_price', volumeGenerated: 0, direction: isLong ? 'long' : 'short', size: 0, error: 'no live price' }
+      }
+      const mmConfig = this.getMarketConfig()
+      const mmDecimals = this.getMarketSizeDecimals()
+      const rawClip = Math.floor((size / mmPrice) * Math.pow(10, mmDecimals))
+      const contractSize = Math.max(
+        Number(this.roundSizeToLotSize(rawClip)),
+        Number(mmConfig.minSize),
+      )
 
       const transaction = await this.aptos.transaction.build.simple({
         sender: this.botAccount.accountAddress,
@@ -3667,16 +3682,26 @@ export class VolumeBotEngine {
           // Update bot instance status - INCREMENT the database values
           const newCumulativeVolume = botInstance.cumulativeVolume + result.volumeGenerated
           const newOrdersPlaced = botInstance.ordersPlaced + 1
+          // `currentCapitalUsed` is the loss budget the cron stops the bot on
+          // (cron/bot-tick: currentCapitalUsed >= capitalUSDC). It was read but
+          // NEVER written, so that stop could never fire and a losing bot ran
+          // until it was out of collateral. Accumulate realized losses here so
+          // the user's stated capital is a real ceiling on what can be lost.
+          const realizedLoss = result.pnl != null && result.pnl < 0 ? Math.abs(result.pnl) : 0
+          const newCapitalUsed = botInstance.currentCapitalUsed + realizedLoss
 
           const updatedBot = await prisma.botInstance.update({
             where: { id: botInstance.id },
             data: {
               cumulativeVolume: newCumulativeVolume,
               ordersPlaced: newOrdersPlaced,
+              currentCapitalUsed: newCapitalUsed,
               lastOrderTime: new Date(),
               error: null,
-              // Auto-stop if target reached
-              isRunning: newCumulativeVolume < botInstance.volumeTargetUSDC,
+              // Auto-stop if the volume target is met or the loss budget is spent.
+              isRunning:
+                newCumulativeVolume < botInstance.volumeTargetUSDC
+                && newCapitalUsed < botInstance.capitalUSDC,
             }
           })
 
@@ -3746,6 +3771,11 @@ export class VolumeBotEngine {
               data: {
                 cumulativeVolume: newCumulativeVolume,
                 ordersPlaced: botInstance.ordersPlaced + 1,
+                // Keep the loss budget accurate on the retry path too, or a
+                // trade that only landed on retry would spend capital silently.
+                currentCapitalUsed:
+                  botInstance.currentCapitalUsed
+                  + (result.pnl != null && result.pnl < 0 ? Math.abs(result.pnl) : 0),
                 lastOrderTime: new Date(),
               }
             })

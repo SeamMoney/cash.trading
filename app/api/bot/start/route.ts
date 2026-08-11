@@ -66,6 +66,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Server-side ceiling. The UI number stays authoritative below this, but a
+    // mistyped amount or a client bug cannot commit more than the operator has
+    // decided to risk. Unset means no ceiling (local development).
+    const maxCapital = Number(process.env.BOT_MAX_CAPITAL_USDC ?? '')
+    if (Number.isFinite(maxCapital) && maxCapital > 0 && capitalUSDC > maxCapital) {
+      return NextResponse.json(
+        { error: `Capital exceeds the configured ceiling of ${maxCapital} USDC` },
+        { status: 400 }
+      )
+    }
+
+    // `strategy` reached the DB unvalidated; an unknown value silently became
+    // 'twap' deep inside the engine's dispatch.
+    const KNOWN_STRATEGIES = ['twap', 'market_maker', 'delta_neutral', 'high_risk', 'tx_spammer', 'dlp_grid']
+    if (strategy && !KNOWN_STRATEGIES.includes(strategy)) {
+      return NextResponse.json(
+        { error: `Unknown strategy '${strategy}'` },
+        { status: 400 }
+      )
+    }
+
     if (!['long', 'short', 'neutral'].includes(bias)) {
       return NextResponse.json(
         { error: 'Bias must be long, short, or neutral' },

@@ -955,9 +955,20 @@ assert.ok(!launchpadGraduateRoute.includes("VAULT_ADDR_PLACEHOLDER"), "graduatio
 assert.ok(!launchpadPage.includes("Fund Strategy"), "the undeployed bonding curve must not ask users for APT");
 assert.ok(!launchpadPage.includes("Unlock · $29/mo"), "local browser state must not impersonate a paid subscription");
 assert.ok(!launchpadPage.includes("ScheduleTradeModal"), "disabled automation must not expose a fake deploy flow");
-assert.match(sharedHeader, /process\.env\.NODE_ENV !== "production"/);
-assert.match(automationPage, /process\.env\.NODE_ENV === "production"/);
+// The automation surface is no longer hidden by environment; it is gated on an
+// owner allowlist being configured, and the API enforces that allowlist per
+// request. What must stay true is that an UNCONFIGURED deployment still shows
+// nothing and routes away.
+assert.match(automationPage, /botOwnerAllowlistConfigured\(\)/);
 assert.match(automationPage, /redirect\("\/portfolio"\)/);
+assert.ok(
+  sharedHeader.includes("NEXT_PUBLIC_BOT_AUTOMATION_UI"),
+  "the automation nav link must be behind an explicit flag, not shown unconditionally",
+);
+assert.ok(
+  !sharedHeader.includes("process.env.BOT_OWNER_ADDRESSES"),
+  "the client bundle must never read the server-side owner allowlist",
+);
 assert.ok(!tradePage.includes("buildDemoStrategyCurve"), "strategy vault charts must not fabricate performance");
 assert.ok(!tradePage.includes("subscribers"), "strategy cards must not fabricate subscriber counts");
 assert.ok(!tradePage.includes("ScheduleTradeModal"), "the trade page must not expose disabled automation");
@@ -1109,7 +1120,10 @@ for (const path of [
   );
 }
 assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);
-assert.match(serverBotConfig, /wallet authorization is being hardened/);
+// The banner must state the real reason automation is unavailable to this
+// wallet — restriction to the operator account — not the old "being hardened"
+// copy, which described work that is now done.
+assert.match(serverBotConfig, /restricted to the configured operator account/);
 assert.match(serverBotConfig, /automationEnabled && connected/);
 assert.match(tvImportRoute, /parseTradingViewScriptUrl/);
 assert.match(tvImportRoute, /parsed\.protocol !== "https:"/);

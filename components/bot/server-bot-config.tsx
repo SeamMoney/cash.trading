@@ -26,6 +26,9 @@ export function ServerBotConfig() {
   const [strategy, setStrategy] = useState<Strategy>("high_risk")
   const [market, setMarket] = useState<string>("BTC/USD")
   const [aggressiveness, setAggressiveness] = useState<number>(5)
+  // Positions used to be opened at the market maximum (40x on BTC) with no way
+  // to choose. 5x is the engine default; this lets it be set deliberately.
+  const [leverageX, setLeverageX] = useState<number>(5)
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -54,33 +57,35 @@ export function ServerBotConfig() {
       const cacheKey = `${DELEGATION_CACHE_KEY}_${subaccount}`
       const cachedStatus = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null
 
+      // The cache is a hint for the spinner, never an authorization. Trusting
+      // it outright rendered a REVOKED delegation as active until the async
+      // check landed, so Start looked available when it was not.
       if (cachedStatus === 'delegated') {
-        // Trust the cache, show as delegated immediately
-        setHasDelegation(true)
-        setCheckingDelegation(false)
-        console.log('📦 Loaded delegation status from cache: delegated')
-
-        // Verify in background (don't block UI)
-        fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}`)
-          .then(res => res.json())
-          .then(data => {
-            if (!data.hasDelegation) {
-              // Cache was wrong, update state and clear cache
-              console.log('⚠️ Cache was stale, delegation no longer valid')
-              setHasDelegation(false)
-              localStorage.removeItem(cacheKey)
-            }
-          })
-          .catch(() => {
-            // Network error, keep using cached value
-          })
+        setCheckingDelegation(true)
+        console.log('📦 Cached delegation found — verifying before enabling Start')
+        try {
+          const res = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}&userWalletAddress=${encodeURIComponent(account?.address?.toString() ?? '')}`)
+          const data = await res.json()
+          setHasDelegation(Boolean(data.hasDelegation))
+          if (!data.hasDelegation) {
+            console.log('⚠️ Cache was stale, delegation no longer valid')
+            localStorage.removeItem(cacheKey)
+          }
+        } catch {
+          // A failed check is not proof of delegation. Fall back to "not
+          // delegated" so the user re-delegates rather than pressing Start
+          // against a permission that may no longer exist.
+          setHasDelegation(false)
+        } finally {
+          setCheckingDelegation(false)
+        }
         return
       }
 
       // No cache, check blockchain
       setCheckingDelegation(true)
       try {
-        const response = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}`)
+        const response = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}&userWalletAddress=${encodeURIComponent(account?.address?.toString() ?? '')}`)
         const data = await response.json()
 
         if (data.hasDelegation) {
@@ -273,7 +278,7 @@ export function ServerBotConfig() {
       const response = await fetch("/api/bot/delegate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userSubaccount: subaccount }),
+        body: JSON.stringify({ userSubaccount: subaccount, userWalletAddress: account?.address?.toString() }),
       })
 
       const data = await response.json()
@@ -357,6 +362,7 @@ export function ServerBotConfig() {
           market: MARKETS[market].address,
           marketName: market,
           aggressiveness,
+          leverageX,
         }),
       })
 
@@ -451,7 +457,7 @@ export function ServerBotConfig() {
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-yellow-500" />
               <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-yellow-300">
-                Automated bot execution is temporarily unavailable while wallet authorization is being hardened. Manual trading is unaffected.
+                Automated bot execution is unavailable for this wallet. It is restricted to the configured operator account. Manual trading is unaffected.
               </p>
             </div>
           )}
@@ -519,6 +525,32 @@ export function ServerBotConfig() {
             <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
               <span>$1K</span>
               <span>$1M</span>
+            </div>
+          </div>
+
+          {/* Leverage — explicit, because the engine used to size every
+              position at the market maximum with no way to ask for less. */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Leverage</h3>
+              <span className="text-2xl font-bold text-primary font-mono">{leverageX}x</span>
+            </div>
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-zinc-800 via-primary/30 to-primary" />
+              <Slider
+                value={[leverageX]}
+                onValueChange={([value]) => setLeverageX(value)}
+                min={1}
+                max={20}
+                step={1}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
+              <span>1x</span>
+              <span>Clamped to each market&apos;s max</span>
+              <span>20x</span>
             </div>
           </div>
 

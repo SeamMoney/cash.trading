@@ -15,7 +15,12 @@ const NAV_ITEMS = [
   { href: "/", label: "Trade" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
-  ...(process.env.NODE_ENV !== "production"
+  // Link visibility only — this is a client component, so it cannot read the
+  // server-side BOT_OWNER_ADDRESSES allowlist. Access is enforced by that
+  // allowlist in the API and by a redirect on /automation itself; this flag
+  // just avoids advertising a link that would bounce. Showing it is never a
+  // security decision.
+  ...(process.env.NEXT_PUBLIC_BOT_AUTOMATION_UI === "1" || process.env.NODE_ENV !== "production"
     ? [{ href: "/automation", label: "Automation" }]
     : []),
   { href: "/points", label: "Points" },

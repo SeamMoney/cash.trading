@@ -6,6 +6,7 @@ import { ServerBotConfig } from "@/components/bot/server-bot-config"
 import { PointsView } from "@/components/points/points-view"
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { botOwnerAllowlistConfigured } from "@/lib/bot-owner-guard"
 
 export const metadata: Metadata = {
   title: "cash.trading - Farm Decibel Points",
@@ -13,7 +14,12 @@ export const metadata: Metadata = {
 }
 
 export default function Home() {
-  if (process.env.NODE_ENV === "production") {
+  // The page used to be hidden in production because the API behind it had no
+  // authorization at all. It is now authorized per request (owner allowlist +
+  // on-chain subaccount ownership), so the page is available wherever an owner
+  // is configured — and still hidden when nobody is, so an unconfigured
+  // deployment does not advertise a control surface that will only 503.
+  if (!botOwnerAllowlistConfigured()) {
     redirect("/portfolio")
   }
 

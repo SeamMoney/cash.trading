@@ -145,7 +145,7 @@ const RESUME = process.argv.find((a) => a.startsWith("0x") && a.length === 66);
     strategyVaultAddr: sv,
     packageAddress: PKG,
     network: "testnet",
-    markets: markets.map((m, idx) => ({ idx, name: m.name, asset: m.pythAsset })),
+    markets: markets.map((m, idx) => ({ idx, name: m.name, address: m.addr, asset: m.pythAsset })),
     manifestJson: commit.manifestJson,
     pineScript: strategy.script,
     defaultPctBps: 1000,

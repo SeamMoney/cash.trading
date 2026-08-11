@@ -27,13 +27,12 @@ export interface SealedMarket {
   /** Engine price grid (px units, 1e6). Order prices must be multiples. */
   tickerSize: string;
   /**
-   * Pyth feed symbol for this market's price history.
+   * Pyth feed symbol for pre-launch equivalence checks and historical backtests.
    *
-   * Only markets with a feed can be in a vault: the attestor warms the committed program on
-   * historical closes, and a market whose history cannot be fetched cannot be evaluated. That
-   * is why Decibel lists more perps than this table does — XRP, DOGE, SUI and BNB are all
-   * live with verified engine params, but `PYTH_FEED_IDS` has no entry for them, so a vault
-   * bound to one would tick forever without ever producing a signal.
+   * The live attestor replays the exact bounded trace stored by the contract; it never fetches
+   * a second off-chain history. We still require Pyth here because launch equivalence and the
+   * creator-facing backtest need independent historical candles before a vault exists. That is
+   * why Decibel lists more perps than this table does today.
    */
   pythAsset: string;
 }

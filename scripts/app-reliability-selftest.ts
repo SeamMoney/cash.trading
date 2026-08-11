@@ -1613,6 +1613,7 @@ assert.ok(
 // PineScript — which for a private strategy only the creator had. A creator could complete the
 // whole launch flow and own a vault that never placed an order.
 const sealedTickLib = readFileSync("lib/sealed-tick.ts", "utf8");
+const committedTraceLib = readFileSync("lib/committed-price-trace.ts", "utf8");
 const sealedTickCron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
 const sealedTickPersistence = readFileSync("lib/sealed-tick-persistence.ts", "utf8");
 const sealedAttestRoute = readFileSync("app/api/sealed/attest/route.ts", "utf8");
@@ -1626,9 +1627,22 @@ assert.ok(
 );
 assert.ok(
   sealedTickLib.includes('stage: "commitment"') &&
-    sealedTickLib.includes("localCommitment.toLowerCase() !== onChainCommitment.toLowerCase()"),
+    sealedTickLib.includes("localCommitment.toLowerCase() !== snapshot.commitment.toLowerCase()"),
   "the attestor must refuse to sign for a program the vault did not commit to; that refusal " +
     "IS the product guarantee",
+);
+assert.ok(
+  sealedTickLib.includes("::sealed_vault::get_trace") &&
+    !sealedTickLib.includes("fetchPythCandles") &&
+    sealedTickLib.includes('stage: "state-changed"'),
+  "the single-market attestor must evaluate the contract's committed prior-bar trace and " +
+    "refuse to sign if that snapshot changes; a fresh Pyth download is not the signed input",
+);
+assert.ok(
+  committedTraceLib.includes("parseSingleCommittedTrace") &&
+    committedTraceLib.includes("trace timestamps must increase strictly") &&
+    committedTraceLib.includes("Number.MAX_SAFE_INTEGER"),
+  "committed price traces must be decoded strictly before JavaScript evaluates or signs them",
 );
 assert.ok(
   sealedTickCron.includes("isTooSoon(r)"),
@@ -2188,6 +2202,7 @@ assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-h
 // indices that address it.
 {
   const sealedVaults = readFileSync("lib/sealed-vaults.ts", "utf8");
+  const portfolioTick = readFileSync("lib/portfolio-tick.ts", "utf8");
   const payloadRoute = readFileSync("app/api/sealed/payload/route.ts", "utf8");
   const cron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
   const launchUi = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
@@ -2197,7 +2212,7 @@ assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-h
   // Every market must carry its OWN engine params. APT is 10^5 size precision against BTC's
   // 10^9 on testnet — one shared set of constants would mis-size three markets out of four.
   for (const m of SEALED_MARKETS_BY_NETWORK.testnet) {
-    assert.ok(m.pythAsset, `${m.name} has no Pyth feed — the attestor could never warm up on it`);
+    assert.ok(m.pythAsset, `${m.name} has no Pyth feed — launch equivalence and backtests are unavailable`);
     assert.ok(
       Object.hasOwn(PYTH_FEED_IDS, m.pythAsset),
       `${m.name} names a Pyth asset that does not exist: ${m.pythAsset}`,
@@ -2262,6 +2277,17 @@ assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-h
   assert.ok(
     cron.includes("performPortfolioTick"),
     "the cron never calls the portfolio tick path",
+  );
+  assert.ok(
+    portfolioTick.includes("::portfolio_vault::get_trace") &&
+      portfolioTick.includes("::portfolio_vault::get_markets") &&
+      portfolioTick.includes("stablePositions.fingerprint !== positions.fingerprint") &&
+      !portfolioTick.includes("fetchPythCandles") &&
+      !portfolioTick.includes('return "0x1"') &&
+      portfolioTick.includes('stage: "state-changed"') &&
+      portfolioTick.includes("market.idx !== index"),
+    "the portfolio attestor must verify exact on-chain allowlist addresses, replay the frozen " +
+      "contract trace by index, and refuse context or position changes instead of signing stale state",
   );
 
   // Selecting a second market is what switches modules; the UI must send the matching kind.

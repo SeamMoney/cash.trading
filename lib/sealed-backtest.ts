@@ -122,6 +122,13 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
   }
 
   const runner = createStrategyRunner(t.ir);
+  if (runner.unsupported.size > 0) {
+    return {
+      ok: false,
+      error: "The evaluator cannot run every operation in this script.",
+      detail: [...runner.unsupported],
+    };
+  }
 
   const candles = p.candles.filter((c) => Number.isFinite(c.close) && c.close > 0);
   if (candles.length < runner.warmupBars + 20) {
@@ -152,17 +159,22 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
   const barSeconds = estimateBarSeconds(candles);
 
   let prevEquity = equity;
+  let pendingSignal: "buy" | "sell" | "neutral" = "neutral";
+  // `pushBar` can first produce a signal on source index `warmupBars - 1`. The contract
+  // verifies that signal against history through that bar, then executes it at the NEXT
+  // on-chain mark. Even a zero-warmup strategy therefore cannot execute on candle zero.
+  const firstExecutionIndex = Math.max(1, runner.warmupBars);
 
   for (let i = 0; i < candles.length; i++) {
     const bar = candles[i];
-    const signal = runner.pushBar(bar.close);
 
     // The attestor signs a digest through the PREVIOUS bar and the order executes
-    // on the current one, so a signal computed here can only act from the next bar.
+    // on the current one, so only the signal retained from the prior iteration may act here.
     // Trading on the bar that produced the signal is the classic lookahead bug and
     // would flatter every result in this file.
-    if (i <= runner.warmupBars) {
+    if (i < firstExecutionIndex) {
       equityCurve.push({ t: bar.timestamp, v: equity });
+      pendingSignal = runner.pushBar(bar.close);
       continue;
     }
 
@@ -177,7 +189,7 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
       equity -= cost;
     }
 
-    const want: -1 | 0 | 1 = signal === "buy" ? 1 : signal === "sell" ? -1 : 0;
+    const want: -1 | 0 | 1 = pendingSignal === "buy" ? 1 : pendingSignal === "sell" ? -1 : 0;
     const have: -1 | 0 | 1 = position > 0 ? 1 : position < 0 ? -1 : 0;
 
     if (want !== 0 && want !== have) {
@@ -227,18 +239,10 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
     if (prevEquity > 0) barReturns.push(marked / prevEquity - 1);
     prevEquity = marked;
     equityCurve.push({ t: bar.timestamp, v: Number(marked.toFixed(2)) });
-  }
 
-  // Refuse rather than substitute: a backtest of a strategy the evaluator cannot run would be
-  // a backtest of something else, presented as this one. Checked HERE because `unsupported` is
-  // populated as ops execute — checking it before the loop (as this did) meant the set was
-  // always empty and the refusal was dead code.
-  if (runner.unsupported.size > 0) {
-    return {
-      ok: false,
-      error: "The evaluator cannot run every operation in this script.",
-      detail: [...runner.unsupported],
-    };
+    // This bar is committed only after the action above executes. Its derived signal is for
+    // the next bar, never for the price that produced it.
+    pendingSignal = runner.pushBar(bar.close);
   }
 
   // Close whatever is still open at the last price. A backtest that leaves a
@@ -262,8 +266,8 @@ export function runSealedBacktest(p: BacktestParams): BacktestResult {
     equityCurve.push({ t: last.timestamp, v: Number(equity.toFixed(2)) });
   }
 
-  const simulated = Math.max(1, candles.length - runner.warmupBars - 1);
-  const firstTradedClose = candles[Math.min(runner.warmupBars + 1, candles.length - 1)].close;
+  const simulated = Math.max(1, candles.length - firstExecutionIndex);
+  const firstTradedClose = candles[firstExecutionIndex].close;
 
   return {
     ok: true,

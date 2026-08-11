@@ -283,7 +283,7 @@ async function usdc(addr: string): Promise<bigint> {
     strategyVaultAddr: SV,
     packageAddress: PKG,
     network: "testnet",
-    markets: markets.map((m, idx) => ({ idx, name: m.name, asset: m.pythAsset })),
+    markets: markets.map((m, idx) => ({ idx, name: m.name, address: m.addr, asset: m.pythAsset })),
     manifestJson: commit.manifestJson,
     pineScript: strategy.script,
     defaultPctBps: 1000,

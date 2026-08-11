@@ -107,7 +107,7 @@ const REASON = ["STRATEGY", "MAX_HOLD", "FUNDING", "FLIP"];
   const tick = async (label: string) => {
     const r = await performPortfolioTick({
       strategyVaultAddr: SV, packageAddress: PKG, network: "testnet",
-      markets: markets.map((m, idx) => ({ idx, name: m.name, asset: m.pythAsset })),
+      markets: markets.map((m, idx) => ({ idx, name: m.name, address: m.addr, asset: m.pythAsset })),
       manifestJson: commit.manifestJson, pineScript: strategy.script,
       defaultPctBps: 1000, leverageX100: 200,
       attestorPrivateKey: attestorKey, crankPrivateKey: S.privateKey,

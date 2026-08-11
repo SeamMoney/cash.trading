@@ -286,8 +286,11 @@ fully delegated, and still aborts after announcing until the 24h has elapsed.
 
 ### 8.3 Attestor service
 
-Needs: the ed25519 signing key, the committed program, and a Decibel price feed. Per bar: read
-mark price → run program → sign → submit `tick_attested`.
+Needs: the ed25519 signing key and the committed program. Per bar: read the contract's bounded
+price trace (through the previous accepted tick) → run the program → sign that exact
+sequence and digest → submit `tick_attested`. The contract then reads the new mark price,
+appends it, and executes the already-signed prior-history decision. The attestor never rebuilds
+the signed input from a separate price feed.
 
 **Who holds the program.** This is the load-bearing question, not an implementation detail. A
 vault does nothing until something runs its committed strategy every bar, and that something
@@ -309,8 +312,8 @@ enclave holds the key and its measurement is bound into the vault at creation.
 Both paths run the SAME code — `lib/sealed-tick.ts` — because two implementations of the
 signing path is how a cron quietly starts signing something the manual endpoint would have
 refused. It refuses to sign when the supplied source does not reproduce the vault's on-chain
-commitment, when the vault is not sealed, or when there is not enough history to warm the
-program up.
+commitment, when the vault is not sealed, when the committed trace is malformed, when the trace
+changes during evaluation, or when the evaluator cannot execute the whole committed program.
 
 `E_BAR_TOO_SOON` is the normal state of a vault whose cadence is slower than the cron and is
 never counted as a failure; a genuinely failing vault backs off exponentially rather than

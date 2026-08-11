@@ -129,9 +129,43 @@ export function toHex(bytes: Uint8Array): string {
 export function fromHex(hex: string): Uint8Array {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
   if (clean.length % 2 !== 0) throw new Error(`odd-length hex: ${hex}`);
+  if (!/^[0-9a-fA-F]*$/.test(clean)) throw new Error(`invalid hex: ${hex}`);
   const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
   return out;
+}
+
+/**
+ * Decode a Move `vector<u8>` that must be exactly one sha3-256 digest.
+ *
+ * Aptos view clients may expose byte vectors as `0x` hex, a byte array, or a Uint8Array.
+ * Canonicalizing at the view boundary prevents malformed bytes from being string-coerced or
+ * silently converted to zero before an attestation is signed.
+ */
+export function parseMoveBytes32Hex(value: unknown, label: string): string {
+  let bytes: Uint8Array;
+  if (typeof value === "string") {
+    bytes = fromHex(value);
+  } else if (value instanceof Uint8Array) {
+    bytes = value;
+  } else if (Array.isArray(value)) {
+    if (
+      value.some(
+        (byte) => typeof byte !== "number" || !Number.isInteger(byte) || byte < 0 || byte > 255,
+      )
+    ) {
+      throw new Error(`${label} must contain only bytes`);
+    }
+    bytes = Uint8Array.from(value as number[]);
+  } else {
+    throw new Error(`${label} must be a byte vector`);
+  }
+  if (bytes.length !== 32) {
+    throw new Error(`${label} must be 32 bytes, got ${bytes.length}`);
+  }
+  return toHex(bytes);
 }
 
 /** Loads the attestor key. Holds NO funds and NO trading authority — losing it

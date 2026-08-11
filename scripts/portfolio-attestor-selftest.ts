@@ -28,7 +28,19 @@ import {
   validateActions,
   type Action,
 } from "../lib/portfolio-attestor";
-import { requestedLeverageX100, requestedPctBps } from "../lib/portfolio-tick";
+import {
+  parseManifestMarketAddress,
+  requestedLeverageX100,
+  requestedPctBps,
+} from "../lib/portfolio-tick";
+import { parsePortfolioCommittedTrace } from "../lib/committed-price-trace";
+import {
+  decodeMoveU8Vector,
+  normalizePortfolioAddress,
+  parsePortfolioBounds,
+  parsePortfolioMarketAddresses,
+  parsePortfolioPositions,
+} from "../lib/portfolio-chain-state";
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
@@ -212,7 +224,109 @@ console.log("\n7. Strategy-requested sizing");
   console.log("  ok   margin_long/short read as leverage, smaller side wins, bad values ignored");
 }
 
-console.log("\n8. Move test fixture (paste into portfolio_vault_tests.move)");
+console.log("\n8. Committed portfolio trace decoding");
+{
+  const retained = parsePortfolioCommittedTrace(
+    [
+      ["100000000", "200000000", "300000000", "400000000"],
+      ["100", "160"],
+      "2",
+    ],
+    5n,
+    2,
+  );
+  assert.deepEqual(retained.closesByMarket, [[1, 3], [2, 4]]);
+  assert.deepEqual(retained.timestamps, [100n, 160n]);
+  assert.throws(
+    () => parsePortfolioCommittedTrace([["1", "2"], ["1"], "2"], 1n, 3),
+    /width is 2, expected 3/,
+  );
+  assert.throws(
+    () => parsePortfolioCommittedTrace([["1"], ["1"], "2"], 1n, 2),
+    /1 prices for 1 rows × 2 markets/,
+  );
+  assert.throws(
+    () => parsePortfolioCommittedTrace([["1", "2", "3", "4"], ["9", "8"], "2"], 2n, 2),
+    /increase strictly/,
+  );
+  assert.throws(
+    () => parsePortfolioCommittedTrace([["1", "2"], ["1"], "2"], 0n, 2),
+    /sequence-zero vault must have an empty trace/,
+  );
+  console.log("  ok   reconstructs rows by frozen market index and rejects malformed traces");
+}
+
+console.log("\n9. Strict portfolio chain-state decoding");
+{
+  assert.deepEqual(
+    parsePortfolioBounds(["2000", "300", "800", "3", "60", "100", "4"]),
+    { maxPctBps: 2000, maxLeverageX100: 300, maxPositions: 3, marketCount: 4 },
+  );
+  assert.throws(
+    () => parsePortfolioBounds(["2000", "300", "800", "5", "60", "100", "4"]),
+    /maximum positions exceeds/,
+  );
+  assert.throws(
+    () => parsePortfolioBounds(["2000", "300", "800", "3", "60", "100", "9007199254740992"]),
+    /cannot be represented exactly/,
+  );
+
+  const addresses = parsePortfolioMarketAddresses([["0x1", "0x02"]]);
+  assert.equal(addresses[0], normalizePortfolioAddress("0x0001", "fixture address"));
+  assert.equal(addresses[1], normalizePortfolioAddress("0x2", "fixture address"));
+  assert.throws(() => parsePortfolioMarketAddresses([["not-an-address"]]), /Aptos address/);
+
+  assert.deepEqual(decodeMoveU8Vector("0x0002"), [0, 2]);
+  assert.deepEqual(decodeMoveU8Vector([0, 2]), [0, 2]);
+  assert.throws(() => decodeMoveU8Vector("0x0"), /even-length/);
+  assert.throws(() => decodeMoveU8Vector([256]), /0 through 255/);
+
+  assert.equal(parseManifestMarketAddress('{"marketAddr":"0x1"}'), "0x1");
+  assert.throws(() => parseManifestMarketAddress("{}"), /valid Aptos marketAddr/);
+  assert.throws(() => parseManifestMarketAddress("not json"), /not valid JSON/);
+
+  const positions = parsePortfolioPositions(
+    ["0x0002", [true, false], ["5", "7"], ["3", "4"], ["2", "1"]],
+    { marketCount: 4, maxPositions: 3, seq: 5n },
+  );
+  assert.deepEqual([...positions.held.entries()], [[0, true], [2, false]]);
+  const afterClose = parsePortfolioPositions(
+    ["0x00", [true], ["5"], ["3"], ["2"]],
+    { marketCount: 4, maxPositions: 3, seq: 5n },
+  );
+  assert.notEqual(afterClose.fingerprint, positions.fingerprint);
+  assert.throws(
+    () => parsePortfolioPositions(
+      ["0x0002", [true], ["5", "7"], ["3", "4"], ["2", "1"]],
+      { marketCount: 4, maxPositions: 3, seq: 5n },
+    ),
+    /different lengths/,
+  );
+  assert.throws(
+    () => parsePortfolioPositions(
+      ["0x0000", [true, false], ["5", "7"], ["3", "4"], ["2", "1"]],
+      { marketCount: 4, maxPositions: 3, seq: 5n },
+    ),
+    /duplicate position/,
+  );
+  assert.throws(
+    () => parsePortfolioPositions(
+      ["0x04", [true], ["5"], ["3"], ["2"]],
+      { marketCount: 4, maxPositions: 3, seq: 5n },
+    ),
+    /out-of-range/,
+  );
+  assert.throws(
+    () => parsePortfolioPositions(
+      ["0x00", [true], ["5"], ["3"], ["1"]],
+      { marketCount: 4, maxPositions: 3, seq: 5n },
+    ),
+    /inconsistent bars-held/,
+  );
+  console.log("  ok   exact allowlist addresses, u8 vectors, bounds, and positions fail closed");
+}
+
+console.log("\n10. Move test fixture (paste into portfolio_vault_tests.move)");
 console.log(`    pubkey         = x"${hex(pubkey)}";`);
 console.log(`    commitment     = x"${hex(commitment)}";`);
 console.log(`    genesis        = x"${hex(genesis)}";`);

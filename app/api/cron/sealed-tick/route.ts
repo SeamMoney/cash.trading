@@ -202,12 +202,12 @@ export async function GET(request: NextRequest) {
 
     if (isPortfolio) {
       // The allowlist, in stored order. Index i here MUST be market_idx i on-chain; the tick
-      // path re-reads the on-chain market count and refuses to sign on a mismatch, so a
-      // corrupted list fails closed rather than trading the wrong book.
+      // path re-reads every on-chain address and refuses to sign unless this exact order
+      // matches, so a corrupted list fails closed rather than trading the wrong book.
       const names = (row.marketNames ?? row.marketName ?? "").split(",").map((n) => n.trim()).filter(Boolean);
       const resolved = names.map((n, idx) => {
         const m = findSealedMarket(n);
-        return m ? { idx, name: m.name, asset: m.pythAsset } : null;
+        return m ? { idx, name: m.name, address: m.addr, asset: m.pythAsset } : null;
       });
       if (resolved.some((m) => m === null)) {
         const statusPersistenceWarning = await persistTickStatus({
@@ -233,7 +233,7 @@ export async function GET(request: NextRequest) {
         strategyVaultAddr: row.strategyVaultAddr,
         packageAddress: row.packageAddress,
         network: row.network,
-        markets: resolved as Array<{ idx: number; name: string; asset: string }>,
+        markets: resolved as Array<{ idx: number; name: string; address: string; asset: string }>,
         manifestJson: row.manifestJson,
         pineScript: pine,
         defaultPctBps: row.pctBps,

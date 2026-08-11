@@ -27,19 +27,32 @@
  * ## What this refuses to do
  *
  * The refusals are the product. It will not sign when the source does not reproduce the
- * on-chain commitment, when the evaluator cannot run an operation, when a market has too little
- * history to warm the program up, or when the resulting action vector would violate a published
- * bound. A signature asserts the committed program produced these actions; signing anything
- * else for operational convenience is the only way to break the guarantee, so there is no
- * fallback path here that produces a "close enough" action.
+ * on-chain commitment, when the evaluator cannot run an operation, when the committed trace is
+ * malformed or changes during evaluation, or when the resulting action vector would violate a
+ * published bound. A signature asserts the committed program produced these actions; signing
+ * anything else for operational convenience is the only way to break the guarantee, so there
+ * is no fallback path here that produces a "close enough" action.
  */
 import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
 
-import { fetchPythCandles } from "@/lib/launchpad/pyth";
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
 import { canonicalizePine } from "@/lib/sealed-presets";
-import { computeProgramCommitment, fromHex, toHex } from "@/lib/sealed-attestor";
+import {
+  computeProgramCommitment,
+  fromHex,
+  parseMoveBytes32Hex,
+  toHex,
+} from "@/lib/sealed-attestor";
 import { createStrategyRunner } from "@/lib/strategy-equivalence";
+import { parseMoveU64, parsePortfolioCommittedTrace } from "@/lib/committed-price-trace";
+import {
+  normalizePortfolioAddress,
+  parsePortfolioBounds,
+  parsePortfolioMarketAddresses,
+  parsePortfolioPositions,
+  type PortfolioBounds,
+  type PortfolioPositionSnapshot,
+} from "@/lib/portfolio-chain-state";
 import {
   SIDE_CLOSE,
   SIDE_LONG,
@@ -63,9 +76,11 @@ export { requestedLeverageX100, requestedPctBps };
 export interface PortfolioMarket {
   /** Position in the vault's frozen allowlist. Must match the on-chain order exactly. */
   idx: number;
-  /** Market name, used to pick the price feed. */
+  /** Human-readable market name for diagnostics. */
   name: string;
-  /** Pyth feed symbol, e.g. "BTC/USD". */
+  /** Exact Decibel market object address at this frozen index. */
+  address: string;
+  /** @deprecated Registry compatibility only; ticks evaluate the committed on-chain trace. */
   asset: string;
 }
 
@@ -98,6 +113,47 @@ export type PortfolioTickResult =
     }
   | { ok: false; stage: string; error: string; detail?: string[]; retryable: boolean };
 
+interface PortfolioAttestationContext {
+  commitment: string;
+  seq: bigint;
+  inputDigest: string;
+}
+
+async function readPortfolioContext(
+  aptos: Aptos,
+  input: Pick<PortfolioTickInput, "packageAddress" | "strategyVaultAddr">,
+): Promise<PortfolioAttestationContext> {
+  const ctx = (await aptos.view({
+    payload: {
+      function: `${input.packageAddress}::portfolio_vault::get_attestation_context`,
+      functionArguments: [input.strategyVaultAddr],
+    },
+  })) as unknown[];
+  if (!Array.isArray(ctx) || ctx.length < 3) {
+    throw new Error("portfolio attestation context returned an invalid tuple");
+  }
+  return {
+    commitment: parseMoveBytes32Hex(ctx[0], "portfolio program commitment"),
+    seq: parseMoveU64(ctx[1], "portfolio sequence"),
+    inputDigest: parseMoveBytes32Hex(ctx[2], "portfolio input digest"),
+  };
+}
+
+async function readPortfolioPositions(
+  aptos: Aptos,
+  input: Pick<PortfolioTickInput, "packageAddress" | "strategyVaultAddr">,
+  bounds: PortfolioBounds,
+  seq: bigint,
+): Promise<PortfolioPositionSnapshot> {
+  const positions = await aptos.view({
+    payload: {
+      function: `${input.packageAddress}::portfolio_vault::get_positions`,
+      functionArguments: [input.strategyVaultAddr],
+    },
+  });
+  return parsePortfolioPositions(positions, { ...bounds, seq });
+}
+
 export async function performPortfolioTick(
   input: PortfolioTickInput,
 ): Promise<PortfolioTickResult> {
@@ -107,19 +163,9 @@ export async function performPortfolioTick(
 
   // 1. Read the context FIRST. The attestation is signed against the digest the chain currently
   //    holds, never one we assume — a stale digest is simply an invalid signature.
-  let seq: bigint;
-  let inputDigest: string;
-  let onChainCommitment: string;
+  let snapshot: PortfolioAttestationContext;
   try {
-    const ctx = (await aptos.view({
-      payload: {
-        function: `${input.packageAddress}::portfolio_vault::get_attestation_context`,
-        functionArguments: [input.strategyVaultAddr],
-      },
-    })) as unknown[];
-    onChainCommitment = String(ctx[0]);
-    seq = BigInt(String(ctx[1]));
-    inputDigest = String(ctx[2]);
+    snapshot = await readPortfolioContext(aptos, input);
   } catch (err) {
     return {
       ok: false,
@@ -132,7 +178,7 @@ export async function performPortfolioTick(
   // 2. Read the vault's published bounds rather than trusting the caller's copy. The contract
   //    will clamp anyway; reading them here means an over-sized action is caught before a
   //    signature and a transaction are spent on it, and the error names the field.
-  let bounds: { marketCount: number; maxPctBps: number; maxLeverageX100: number; maxPositions: number };
+  let bounds: PortfolioBounds;
   try {
     const b = (await aptos.view({
       payload: {
@@ -140,12 +186,7 @@ export async function performPortfolioTick(
         functionArguments: [input.strategyVaultAddr],
       },
     })) as unknown[];
-    bounds = {
-      maxPctBps: Number(b[0]),
-      maxLeverageX100: Number(b[1]),
-      maxPositions: Number(b[3]),
-      marketCount: Number(b[6]),
-    };
+    bounds = parsePortfolioBounds(b);
   } catch (err) {
     return {
       ok: false,
@@ -169,13 +210,86 @@ export async function performPortfolioTick(
       retryable: false,
     };
   }
+  const misplacedMarket = input.markets.findIndex((market, index) => market.idx !== index);
+  if (misplacedMarket >= 0) {
+    return {
+      ok: false,
+      stage: "markets",
+      error:
+        `market ${misplacedMarket} declares index ${input.markets[misplacedMarket].idx}; `
+        + "portfolio action indices must exactly match the frozen allowlist order",
+      retryable: false,
+    };
+  }
+  let onChainMarkets: string[];
+  try {
+    onChainMarkets = parsePortfolioMarketAddresses(
+      await aptos.view({
+        payload: {
+          function: `${input.packageAddress}::portfolio_vault::get_markets`,
+          functionArguments: [input.strategyVaultAddr],
+        },
+      }),
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "read-markets",
+      error: err instanceof Error ? err.message : "market allowlist read failed",
+      retryable: true,
+    };
+  }
+  if (onChainMarkets.length !== input.markets.length) {
+    return {
+      ok: false,
+      stage: "markets",
+      error:
+        `vault returned ${onChainMarkets.length} market addresses for `
+        + `${input.markets.length} configured markets`,
+      retryable: false,
+    };
+  }
+  for (let index = 0; index < onChainMarkets.length; index++) {
+    let configured: string;
+    try {
+      configured = normalizePortfolioAddress(
+        input.markets[index].address,
+        `configured market ${index}`,
+      );
+    } catch (err) {
+      return {
+        ok: false,
+        stage: "markets",
+        error: err instanceof Error ? err.message : "configured market address is invalid",
+        retryable: false,
+      };
+    }
+    if (onChainMarkets[index] !== configured) {
+      return {
+        ok: false,
+        stage: "markets",
+        error: `market ${index} is ${onChainMarkets[index]} on chain but ${configured} in the registry`,
+        retryable: false,
+      };
+    }
+  }
 
   // 3. Refuse to sign for a program the vault did not commit to.
   const canonical = canonicalizePine(input.pineScript);
   // The commitment binds one market address (the manifest's), even though the vault trades
   // several. That is the manifest the creator committed; reproducing it is what proves the
   // source is unchanged, so it is passed through verbatim rather than re-derived per market.
-  const manifestMarket = readManifestMarket(input.manifestJson);
+  let manifestMarket: string;
+  try {
+    manifestMarket = parseManifestMarketAddress(input.manifestJson);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "manifest",
+      error: err instanceof Error ? err.message : "program manifest is invalid",
+      retryable: false,
+    };
+  }
   const t = transpileV3(canonical, undefined, { target: "vault", marketAddr: manifestMarket });
   if (t.errors?.length) {
     return {
@@ -193,32 +307,20 @@ export async function performPortfolioTick(
       manifestJson: input.manifestJson,
     }),
   );
-  if (localCommitment.toLowerCase() !== onChainCommitment.toLowerCase()) {
+  if (localCommitment.toLowerCase() !== snapshot.commitment.toLowerCase()) {
     return {
       ok: false,
       stage: "commitment",
-      error: `commitment mismatch — on-chain ${onChainCommitment}, local ${localCommitment}`,
+      error: `commitment mismatch — on-chain ${snapshot.commitment}, local ${localCommitment}`,
       retryable: false,
     };
   }
 
   // 4. Read the vault's current legs, so an unchanged signal produces no action at all rather
   //    than an order the contract would ignore.
-  let held = new Map<number, boolean>(); // market_idx → is_long
+  let positions: PortfolioPositionSnapshot;
   try {
-    const p = (await aptos.view({
-      payload: {
-        function: `${input.packageAddress}::portfolio_vault::get_positions`,
-        functionArguments: [input.strategyVaultAddr],
-      },
-    })) as unknown[];
-    // `get_positions` returns `vector<u8>` first, and the Aptos REST API serializes a
-    // `vector<u8>` as a HEX STRING, not a JSON array — `["0x0002", [...]]`, not `[[0,2], ...]`.
-    // Treating it as an array is a TypeError at runtime and is invisible to the type system,
-    // to unit tests, and to the Move tests. It only appears against a live node.
-    const idxs = decodeU8Vector(p[0]);
-    const longs = p[1] as boolean[];
-    held = new Map(idxs.map((idx, i) => [idx, Boolean(longs[i])]));
+    positions = await readPortfolioPositions(aptos, input, bounds, snapshot.seq);
   } catch (err) {
     return {
       ok: false,
@@ -227,8 +329,11 @@ export async function performPortfolioTick(
       retryable: true,
     };
   }
+  const held = positions.held; // market_idx → is_long
 
-  // 5. Evaluate the committed program once per market, on that market's own history.
+  // 5. Read and evaluate the exact flattened history the contract has committed. The next
+  //    action vector is computed from rows THROUGH THE PREVIOUS accepted tick; the contract
+  //    reads and appends the new prices only after it verifies this signature.
   const pctBps = Math.min(requestedPctBps(canonical) ?? input.defaultPctBps, bounds.maxPctBps);
   // The script's leverage if it declares one, the vault's otherwise — and clamped either way.
   // A script can always ask for LESS than the vault allows; it can never ask for more.
@@ -236,49 +341,46 @@ export async function performPortfolioTick(
     requestedLeverageX100(canonical) ?? input.leverageX100,
     bounds.maxLeverageX100,
   );
-  const nowS = Math.floor(Date.now() / 1000);
   const actions: Action[] = [];
   const skipped: string[] = [];
+  const supportProbe = createStrategyRunner(t.ir);
+  if (supportProbe.unsupported.size > 0) {
+    return {
+      ok: false,
+      stage: "evaluate",
+      error: "evaluator cannot run this program",
+      detail: [...supportProbe.unsupported],
+      retryable: false,
+    };
+  }
+
+  let closesByMarket: number[][];
+  try {
+    const trace = await aptos.view({
+      payload: {
+        function: `${input.packageAddress}::portfolio_vault::get_trace`,
+        functionArguments: [input.strategyVaultAddr],
+      },
+    });
+    closesByMarket = parsePortfolioCommittedTrace(
+      trace,
+      snapshot.seq,
+      input.markets.length,
+    ).closesByMarket;
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "read-trace",
+      error: err instanceof Error ? err.message : "committed portfolio trace read failed",
+      retryable: true,
+    };
+  }
 
   for (const market of input.markets) {
-    // Checked AFTER the warmup loop, not here: `unsupported` is populated as ops execute, so
-    // at this point it is always empty and the refusal never fired.
     const runner = createStrategyRunner(t.ir);
 
-    let closes: number[];
-    try {
-      const candles = await fetchPythCandles(
-        market.asset,
-        "1",
-        nowS - (runner.warmupBars + 80) * 120,
-        nowS,
-      );
-      closes = candles.map((c) => c.close);
-    } catch (err) {
-      // One market's feed failing must not stop the others: the tick still commits a bar for
-      // every market (prices are read on-chain), and skipping an ACTION is always safe —
-      // it leaves the existing position alone rather than guessing.
-      skipped.push(`${market.name}: price fetch failed (${err instanceof Error ? err.message : "unknown"})`);
-      continue;
-    }
-    if (closes.length < runner.warmupBars + 2) {
-      skipped.push(
-        `${market.name}: ${closes.length} bars, need ${runner.warmupBars + 2} to warm up`,
-      );
-      continue;
-    }
-
     let signal: "buy" | "sell" | "neutral" = "neutral";
-    for (const c of closes) signal = runner.pushBar(c);
-    if (runner.unsupported.size > 0) {
-      return {
-        ok: false,
-        stage: "evaluate",
-        error: "evaluator cannot run this program",
-        detail: [...runner.unsupported],
-        retryable: false,
-      };
-    }
+    for (const close of closesByMarket[market.idx]) signal = runner.pushBar(close);
 
     const have = held.get(market.idx);
     if (signal === "neutral") continue; // no instruction is how a strategy says "leave it"
@@ -317,18 +419,49 @@ export async function performPortfolioTick(
     return { ok: false, stage: "validate", error: "action vector violates the vault's bounds", detail: problems, retryable: false };
   }
 
+  // Context and trace are separate view calls. Do not sign if another cranker advanced the
+  // digest between them. A race after this check still fails safely on-chain as a stale
+  // sequence/digest rather than executing the wrong action vector.
+  let stable: PortfolioAttestationContext;
+  let stablePositions: PortfolioPositionSnapshot;
+  try {
+    stable = await readPortfolioContext(aptos, input);
+    stablePositions = await readPortfolioPositions(aptos, input, bounds, stable.seq);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "read-context",
+      error: err instanceof Error ? err.message : "chain re-read failed",
+      retryable: true,
+    };
+  }
+  if (
+    stable.seq !== snapshot.seq
+    || stable.inputDigest.toLowerCase() !== snapshot.inputDigest.toLowerCase()
+    || stable.commitment.toLowerCase() !== snapshot.commitment.toLowerCase()
+    || stablePositions.fingerprint !== positions.fingerprint
+  ) {
+    return {
+      ok: false,
+      stage: "state-changed",
+      error: "vault state or positions changed while its committed trace was being evaluated; retrying is safe",
+      retryable: true,
+    };
+  }
+
   // 6. Sign and submit. An empty action vector is still submitted: the bar must be committed to
   //    the trace whether or not it produced a trade, and a skipped bar is publicly visible as a
   //    gap in `seq` — which is exactly the discretion the sequence exists to remove.
   const signature = signPortfolioAttestation(new Ed25519PrivateKey(input.attestorPrivateKey), {
     chainId: await aptos.getChainId(),
     strategyVault: input.strategyVaultAddr,
-    programCommitment: fromHex(onChainCommitment),
-    seq,
-    inputDigest: fromHex(inputDigest),
+    programCommitment: fromHex(snapshot.commitment),
+    seq: snapshot.seq,
+    inputDigest: fromHex(snapshot.inputDigest),
     actions,
   });
 
+  const nowS = Math.floor(Date.now() / 1000);
   const args = actionsToEntryArgs(actions);
   const cranker = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(input.crankPrivateKey),
@@ -359,7 +492,7 @@ export async function performPortfolioTick(
     });
     return {
       ok: true,
-      seq: seq.toString(),
+      seq: snapshot.seq.toString(),
       actions,
       txHash: res.hash,
       skipped,
@@ -374,34 +507,24 @@ export async function performPortfolioTick(
   }
 }
 
-/**
- * Decode a Move `vector<u8>` as returned by the Aptos REST API.
- *
- * The node hex-encodes byte vectors ("0x0002") rather than emitting a JSON array, which is
- * the same family of trap as the SDK encoding a JS string argument as its UTF-8 bytes. Both
- * directions of the `vector<u8>` boundary have now bitten this codebase, so both are handled
- * explicitly rather than by whatever the runtime happens to do. Accepts an array too, so a
- * future node or SDK change that starts returning one does not break this.
- */
-function decodeU8Vector(v: unknown): number[] {
-  if (Array.isArray(v)) return v.map(Number);
-  if (typeof v === "string") {
-    const hex = v.replace(/^0x/i, "");
-    const out: number[] = [];
-    for (let i = 0; i + 1 < hex.length; i += 2) out.push(parseInt(hex.slice(i, i + 2), 16));
-    return out;
-  }
-  return [];
-}
-
 /** The market address the commitment's manifest was built over. */
-function readManifestMarket(manifestJson: string): string {
+export function parseManifestMarketAddress(manifestJson: string): string {
+  let manifest: unknown;
   try {
-    const m = JSON.parse(manifestJson) as { marketAddr?: unknown };
-    return typeof m.marketAddr === "string" ? m.marketAddr : "0x1";
-  } catch {
-    return "0x1";
+    manifest = JSON.parse(manifestJson);
+  } catch (err) {
+    throw new Error(
+      `program manifest is not valid JSON: ${err instanceof Error ? err.message : "parse failed"}`,
+    );
   }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("program manifest must be a JSON object");
+  }
+  const marketAddr = (manifest as { marketAddr?: unknown }).marketAddr;
+  if (typeof marketAddr !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(marketAddr.trim())) {
+    throw new Error("program manifest must contain a valid Aptos marketAddr");
+  }
+  return marketAddr.trim();
 }
 
 /** True when a submit failure is just "this vault already ticked recently". */

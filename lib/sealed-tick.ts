@@ -12,7 +12,8 @@
  * The refusals matter as much as the happy path. This will not sign when:
  *   - the supplied source does not reproduce the vault's on-chain commitment
  *   - the vault is not sealed
- *   - there is not enough price history to warm the program up
+ *   - the committed trace is malformed or changes while the signal is evaluated
+ *   - the evaluator cannot execute every operation in the committed program
  * A signature is a claim that the committed program produced this signal. Signing anything
  * else, for any operational convenience, breaks the only guarantee the product makes.
  */
@@ -21,7 +22,7 @@ import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
 import { createStrategyRunner } from "@/lib/strategy-equivalence";
 import { canonicalizePine } from "@/lib/sealed-presets";
-import { fetchPythCandles } from "@/lib/launchpad/pyth";
+import { parseMoveU64, parseSingleCommittedTrace } from "@/lib/committed-price-trace";
 import {
   extractDecibelBuilderFills,
   type DecibelBuilderFillReceipt,
@@ -30,6 +31,7 @@ import {
   buildTickAttestedPayload,
   computeProgramCommitment,
   fromHex,
+  parseMoveBytes32Hex,
   signAttestation,
   toHex,
   type Signal,
@@ -45,7 +47,7 @@ export interface TickInput {
   /** Registry-held manifest — needed to reproduce the commitment the chain stores. */
   manifestJson: string;
   pineScript: string;
-  /** Price feed symbol. Defaults to the vault's market name. */
+  /** @deprecated Retained in the request shape for older registry rows; ticks use chain trace. */
   asset?: string;
   /** Exact Decibel account whose fills this vault owns. Counterparty events are ignored. */
   expectedDecibelSubaccount?: string;
@@ -75,6 +77,34 @@ export type TickResult =
       builderFills: DecibelBuilderFillReceipt[];
     }
   | { ok: false; stage: string; error: string; seq?: string; signal?: Signal; retryable: boolean };
+
+interface SingleAttestationContext {
+  commitment: string;
+  seq: bigint;
+  inputDigest: string;
+  lastBarTs: bigint;
+}
+
+async function readSingleContext(
+  aptos: Aptos,
+  input: Pick<TickInput, "packageAddress" | "strategyVaultAddr">,
+): Promise<SingleAttestationContext> {
+  const ctx = (await aptos.view({
+    payload: {
+      function: `${input.packageAddress}::sealed_vault::get_attestation_context`,
+      functionArguments: [input.strategyVaultAddr],
+    },
+  })) as unknown[];
+  if (!Array.isArray(ctx) || ctx.length < 5) {
+    throw new Error("sealed attestation context returned an invalid tuple");
+  }
+  return {
+    commitment: parseMoveBytes32Hex(ctx[0], "sealed program commitment"),
+    seq: parseMoveU64(ctx[1], "sealed sequence"),
+    inputDigest: parseMoveBytes32Hex(ctx[2], "sealed input digest"),
+    lastBarTs: parseMoveU64(ctx[4], "sealed last-bar timestamp"),
+  };
+}
 
 /**
  * Confirm the attestor private key matches the public key vaults commit to.
@@ -117,19 +147,9 @@ export async function performTick(input: TickInput): Promise<TickResult> {
 
   // 1. Read the context FIRST. The attestation must be signed against the digest the chain
   //    currently holds, never one we assume — a stale digest is an invalid signature.
-  let seq: bigint;
-  let inputDigest: string;
-  let onChainCommitment: string;
+  let snapshot: SingleAttestationContext;
   try {
-    const ctx = (await aptos.view({
-      payload: {
-        function: `${input.packageAddress}::sealed_vault::get_attestation_context`,
-        functionArguments: [input.strategyVaultAddr],
-      },
-    })) as unknown[];
-    onChainCommitment = String(ctx[0]);
-    seq = BigInt(String(ctx[1]));
-    inputDigest = String(ctx[2]);
+    snapshot = await readSingleContext(aptos, input);
   } catch (err) {
     return {
       ok: false,
@@ -157,49 +177,19 @@ export async function performTick(input: TickInput): Promise<TickResult> {
       manifestJson: input.manifestJson,
     }),
   );
-  if (localCommitment.toLowerCase() !== onChainCommitment.toLowerCase()) {
+  if (localCommitment.toLowerCase() !== snapshot.commitment.toLowerCase()) {
     return {
       ok: false,
       stage: "commitment",
-      error: `commitment mismatch — on-chain ${onChainCommitment}, local ${localCommitment}`,
+      error: `commitment mismatch — on-chain ${snapshot.commitment}, local ${localCommitment}`,
       retryable: false,
     };
   }
 
-  // 3. Warm the program on history, then take the latest bar.
-  // NOTE: `runner.unsupported` is populated as ops EXECUTE, so it is necessarily empty here.
-  // It used to be checked at this point, which made the refusal dead code — a strategy using
-  // an op the evaluator cannot run signed a signal derived from missing values instead of
-  // being refused. It is checked after the warmup loop below, where it is meaningful.
+  // 3. Replay exactly the history the contract has committed. The next signature is computed
+  //    from the series THROUGH THE PREVIOUS accepted bar; `tick_attested` reads and appends the
+  //    new price only after verifying it. A separate price feed is not equivalent to this trace.
   const runner = createStrategyRunner(t.ir);
-  const nowS = Math.floor(Date.now() / 1000);
-  let closes: number[] = [];
-  try {
-    const candles = await fetchPythCandles(
-      input.asset ?? "BTC/USD",
-      "1",
-      nowS - (runner.warmupBars + 80) * 120,
-      nowS,
-    );
-    closes = candles.map((c) => c.close);
-  } catch (err) {
-    return {
-      ok: false,
-      stage: "prices",
-      error: err instanceof Error ? err.message : "price fetch failed",
-      retryable: true,
-    };
-  }
-  if (closes.length < runner.warmupBars + 2) {
-    return {
-      ok: false,
-      stage: "prices",
-      error: `insufficient price history (${closes.length} bars, need ${runner.warmupBars + 2})`,
-      retryable: true,
-    };
-  }
-  let signal: Signal = 0;
-  for (const c of closes) signal = toTrit(runner.pushBar(c));
   if (runner.unsupported.size > 0) {
     return {
       ok: false,
@@ -209,17 +199,70 @@ export async function performTick(input: TickInput): Promise<TickResult> {
     };
   }
 
+  let closes: number[];
+  try {
+    const trace = await aptos.view({
+      payload: {
+        function: `${input.packageAddress}::sealed_vault::get_trace`,
+        functionArguments: [input.strategyVaultAddr],
+      },
+    });
+    closes = parseSingleCommittedTrace(trace, snapshot.seq, snapshot.lastBarTs).closes;
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "read-trace",
+      error: err instanceof Error ? err.message : "committed trace read failed",
+      retryable: true,
+    };
+  }
+
+  let signal: Signal = 0;
+  for (const c of closes) signal = toTrit(runner.pushBar(c));
+
+  // Context and trace are separate view calls. Re-read the signed context after evaluation so
+  // a concurrent cranker cannot advance the vault between them and leave us signing a signal
+  // computed from one snapshot against another. A race after this check still aborts safely on
+  // chain because the signed sequence and digest are stale.
+  let stable: SingleAttestationContext;
+  try {
+    stable = await readSingleContext(aptos, input);
+  } catch (err) {
+    return {
+      ok: false,
+      stage: "read-context",
+      error: err instanceof Error ? err.message : "chain re-read failed",
+      retryable: true,
+    };
+  }
+  if (
+    stable.seq !== snapshot.seq
+    || stable.inputDigest.toLowerCase() !== snapshot.inputDigest.toLowerCase()
+    || stable.commitment.toLowerCase() !== snapshot.commitment.toLowerCase()
+    || stable.lastBarTs !== snapshot.lastBarTs
+  ) {
+    return {
+      ok: false,
+      stage: "state-changed",
+      error: "vault state changed while its committed trace was being evaluated; retrying is safe",
+      seq: snapshot.seq.toString(),
+      signal,
+      retryable: true,
+    };
+  }
+
   // 4. Sign and submit. The cranker pays gas and contributes nothing else — it cannot alter
   //    the signal, and a wrong signature simply aborts.
   const signature = signAttestation(new Ed25519PrivateKey(input.attestorPrivateKey), {
     chainId: await aptos.getChainId(),
     strategyVault: input.strategyVaultAddr,
-    programCommitment: fromHex(onChainCommitment),
-    seq,
-    inputDigest: fromHex(inputDigest),
+    programCommitment: fromHex(snapshot.commitment),
+    seq: snapshot.seq,
+    inputDigest: fromHex(snapshot.inputDigest),
     signal,
   });
 
+  const nowS = Math.floor(Date.now() / 1000);
   const cranker = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(input.crankPrivateKey),
   });
@@ -259,7 +302,7 @@ export async function performTick(input: TickInput): Promise<TickResult> {
     });
     return {
       ok: true,
-      seq: seq.toString(),
+      seq: snapshot.seq.toString(),
       signal,
       txHash: res.hash,
       trades,
@@ -274,7 +317,7 @@ export async function performTick(input: TickInput): Promise<TickResult> {
       ok: false,
       stage: "submit",
       error: msg,
-      seq: seq.toString(),
+      seq: snapshot.seq.toString(),
       signal,
       retryable: benign,
     };

@@ -13,6 +13,9 @@ import assert from "node:assert/strict";
 import { runSealedBacktest } from "../lib/sealed-backtest";
 import { SEALED_CATALOG } from "../lib/sealed-catalog";
 import { SEALED_MARKETS } from "../lib/sealed-vaults";
+import { canonicalizePine } from "../lib/sealed-presets";
+import { transpileV3 } from "../lib/launchpad/transpiler-v3";
+import { createStrategyRunner } from "../lib/strategy-equivalence";
 import type { Candle } from "../lib/launchpad/types";
 
 const market = SEALED_MARKETS[0].addr;
@@ -63,16 +66,34 @@ for (const s of SEALED_CATALOG) {
 console.log(`ok   all ${SEALED_CATALOG.length} catalog strategies backtest and end flat`);
 
 // ── 2. No lookahead ─────────────────────────────────────────────────────────
-// The warmup bars must be skipped entirely, and the first fill can never land on
-// or before the bar the signal was computed on.
+// Independently locate the first non-neutral source signal. Its fill must land on exactly the
+// next candle: not the source candle (lookahead), and not two candles later (an accidental lag).
 {
+  const transpiled = transpileV3(canonicalizePine(ema), undefined, {
+    target: "vault",
+    marketAddr: market,
+  });
+  assert.deepEqual(transpiled.errors ?? [], []);
+  const runner = createStrategyRunner(transpiled.ir);
+  const signals = choppy.map((bar) => runner.pushBar(bar.close));
+  const sourceIndex = signals.findIndex((signal) => signal !== "neutral");
+  assert.ok(sourceIndex >= 0 && sourceIndex + 1 < choppy.length, "fixture produced no tradeable signal");
+
   const r = runSealedBacktest({ ...base, pineScript: ema, candles: choppy });
   assert.ok(r.ok);
-  const firstAllowed = choppy[r.stats.warmupBars + 1].timestamp;
-  for (const f of r.fills) {
-    assert.ok(f.timestamp >= firstAllowed, `fill at ${f.timestamp} precedes the first tradeable bar`);
-  }
-  console.log(`ok   no fill before bar ${r.stats.warmupBars + 1} (${r.fills.length} fills)`);
+  const firstOpen = r.fills.find((fill) => !fill.reduceOnly);
+  assert.ok(firstOpen, "backtest did not execute the first directional signal");
+  assert.equal(
+    firstOpen.timestamp,
+    choppy[sourceIndex + 1].timestamp,
+    "first signal did not execute on the immediately following candle",
+  );
+  assert.notEqual(
+    firstOpen.timestamp,
+    choppy[sourceIndex].timestamp,
+    "first signal executed on the candle that produced it",
+  );
+  console.log(`ok   source bar ${sourceIndex} executes exactly on bar ${sourceIndex + 1}`);
 }
 
 // ── 3. Costs are actually deducted ──────────────────────────────────────────

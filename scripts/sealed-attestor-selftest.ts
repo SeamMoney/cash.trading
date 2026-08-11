@@ -17,13 +17,16 @@ import {
   SIGNAL_SELL,
   computeProgramCommitment,
   foldDigest,
+  fromHex,
   genesisDigest,
+  parseMoveBytes32Hex,
   serializeAttestation,
   signAttestation,
   toHex,
   verifyTraceReplay,
   type Signal,
 } from "../lib/sealed-attestor";
+import { parseMoveU64, parseSingleCommittedTrace } from "../lib/committed-price-trace";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -179,7 +182,63 @@ function main() {
     caught.divergences,
   );
 
-  console.log("\n5. Move test fixture (paste into sealed_vault_tests.move)");
+  console.log("\n5. committed trace decoding");
+  const emptyTrace = parseSingleCommittedTrace([[], []], 0n, 0n);
+  check("sequence zero accepts exactly an empty trace", emptyTrace.closes.length === 0);
+  const retained = parseSingleCommittedTrace(
+    [["100000000", "250000000"], ["100", "160"]],
+    5n,
+    160n,
+  );
+  check(
+    "bounded trace decodes exact 1e8 prices",
+    retained.closes[0] === 1 && retained.closes[1] === 2.5,
+    retained.closes,
+  );
+  check(
+    "timestamps remain exact bigint values",
+    retained.timestamps[0] === 100n && retained.timestamps[1] === 160n,
+  );
+  const rejects = (fn: () => unknown): boolean => {
+    try {
+      fn();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  check(
+    "rejects price/timestamp length mismatch",
+    rejects(() => parseSingleCommittedTrace([["1"], []], 1n, 0n)),
+  );
+  check(
+    "rejects non-increasing timestamps",
+    rejects(() => parseSingleCommittedTrace([["1", "2"], ["7", "7"]], 2n, 7n)),
+  );
+  check(
+    "rejects a trace that does not end at the signed context timestamp",
+    rejects(() => parseSingleCommittedTrace([["1"], ["7"]], 1n, 8n)),
+  );
+  check(
+    "rejects prices JavaScript cannot represent exactly",
+    rejects(() => parseSingleCommittedTrace([["9007199254740992"], ["7"]], 1n, 7n)),
+  );
+  check("rejects non-canonical Move u64 strings", rejects(() => parseMoveU64("01", "fixture")));
+
+  console.log("\n6. strict digest decoding");
+  check("hex round-trips exactly", toHex(fromHex(toHex(COMMITMENT))) === toHex(COMMITMENT));
+  check("rejects non-hex characters", rejects(() => fromHex("0xgg")));
+  check("rejects odd-length hex", rejects(() => fromHex("0xabc")));
+  check(
+    "accepts and canonicalizes a 32-byte Move vector",
+    parseMoveBytes32Hex(Array.from(COMMITMENT), "fixture digest") === toHex(COMMITMENT),
+  );
+  check(
+    "rejects a digest with the wrong byte length",
+    rejects(() => parseMoveBytes32Hex("0x12", "fixture digest")),
+  );
+
+  console.log("\n7. Move test fixture (paste into sealed_vault_tests.move)");
   console.log(`    pubkey     = x"${toHex(pub.toUint8Array()).slice(2)}";`);
   console.log(`    commitment = x"${toHex(COMMITMENT).slice(2)}";`);
   console.log(`    digest     = x"${toHex(g).slice(2)}";`);

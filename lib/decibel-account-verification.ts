@@ -1,4 +1,4 @@
-import { getFastSubaccounts } from "@/lib/decibel-chain";
+import { getFastSubaccounts, getPrimarySubaccountOnChain } from "@/lib/decibel-chain";
 import {
   getReadDex,
   normalizeAptosAddress,
@@ -14,6 +14,21 @@ export async function verifyDecibelSubaccountOwnership(args: {
 }): Promise<{ owned: boolean; lookupIncomplete: boolean }> {
   const owner = normalizeAptosAddress(args.owner, "owner");
   const subaccount = normalizeAptosAddress(args.subaccount, "subaccount");
+
+  // An owner's PRIMARY subaccount is owned by definition, and
+  // `dex_accounts::primary_subaccount` answers that authoritatively. Check it
+  // first: both enumeration paths below can legitimately return an empty list
+  // for an account whose only subaccount is its auto-derived primary, and this
+  // function previously reported that as a confident `owned: false` rather than
+  // an incomplete lookup — a false negative that denies the real owner.
+  try {
+    const primary = await getPrimarySubaccountOnChain(owner, args.network);
+    if (primary && normalizeAptosAddress(primary).toLowerCase() === subaccount.toLowerCase()) {
+      return { owned: true, lookupIncomplete: false };
+    }
+  } catch {
+    // Fall through to enumeration; this check can only ever add a positive.
+  }
 
   try {
     const chainSubaccounts = await getFastSubaccounts(owner, args.network);

@@ -134,7 +134,7 @@ function timeAgo(ts: number) {
 
 const SIG_LABEL = ["Neutral", "BUY", "SELL"];
 const SIG_DOT   = ["bg-zinc-600", "bg-emerald-400 animate-pulse motion-reduce:animate-none", "bg-red-400 animate-pulse motion-reduce:animate-none"];
-const SIG_TEXT  = ["text-zinc-500", "text-emerald-400", "text-red-400"];
+const SIG_TEXT  = ["text-[#a1a1a1]", "text-emerald-400", "text-red-400"];
 const SIG_CHIP  = [
   "border-[#2a2a2a] text-[#888]",
   "border-emerald-500/14 bg-emerald-500/12 text-emerald-400",
@@ -143,7 +143,14 @@ const SIG_CHIP  = [
 
 // ─── Left panel: indicator list item ─────────────────────────────────────────
 
-function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: boolean; onClick: () => void }) {
+/** The row shows whatever the list is ordered by — see `metricFor`. */
+function metricFor(ind: Indicator, sort: Sort): { value: string; label: string } {
+  if (sort === "sharpe") return { value: (ind.meanSharpe / 1000).toFixed(2), label: "Sharpe" };
+  if (sort === "raised") return { value: `${(ind.totalRaised / 1e8).toFixed(2)}`, label: "APT" };
+  return { value: String(ind.robustnessScore), label: "Score" };
+}
+
+function IndicatorItem({ ind, selected, rank, sort, onClick }: { ind: Indicator; selected: boolean; rank: number; sort: Sort; onClick: () => void }) {
   // Live strategies read the SAME on-chain state the detail header shows —
   // the seed lastSignal drifted ("SELL 42d ago" row vs "LAST BUY · 94d ago"
   // detail) and contradicted it in both direction and age.
@@ -153,7 +160,10 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
   const sigTimeMs = hasLive ? live.dataTime * 1000 : ind.lastSignalTime;
   const sigStale =
     hasLive && live.dataTime > 0 && Date.now() - live.dataTime * 1000 > SIGNAL_STALE_AFTER_MS;
-  const sharpe = (ind.meanSharpe / 1000).toFixed(2);
+  // Show the number the list is actually ordered by. Rendering Sharpe while
+  // sorting on Score made the column non-monotonic, so a correctly sorted list
+  // read as unsorted — the worst signal a ranked marketplace can send.
+  const metric = metricFor(ind, sort);
 
   return (
     <button
@@ -170,7 +180,8 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
         // Same selection language as the tabs and filters: accent, not grey.
         selected
           ? "border border-accent/13 bg-accent/[0.07]"
-          : "border border-transparent hover:border-white/[0.08] hover:bg-white/[0.03]",
+          // Hover was a 3/255 lift on #0f0f0f — effectively invisible.
+          : "border border-transparent hover:border-white/[0.10] hover:bg-white/[0.06]",
       )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -178,12 +189,13 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
               strand the status dot alone above it, so that row alone broke the
               list's alignment. The name truncates instead — every row is one line. */}
           <div className="flex items-center gap-1.5">
-            {/* Neutral dot only. It used to be red/green by last signal, so the
-                best-Sharpe strategy on the list wore a red dot and read as
-                "broken" when it only meant "last signal was a sell" — and on a
-                trading surface red/green already means direction. Signal
-                direction is stated once, in words, on the line below. */}
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4a4a4a]" />
+            {/* Rank, not a dot. The dot had gone fully decorative — identical
+                grey on every row, encoding nothing — while still pushing every
+                title 14px off the panel's text axis. An ordinal keeps the
+                ordering legible even when the sort is a composite score. */}
+            <span className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-[#6f6f6f]">
+              {String(rank).padStart(2, "0")}
+            </span>
             {/* min-w-0 (not flex-1) so the name shrinks and truncates when long
                 but still sizes to content when short — otherwise it grows and
                 shoves the PROP badge to the far edge, away from its label. */}
@@ -199,40 +211,44 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
           </div>
           {/* One tone for the whole subtitle: three greys on an 11px line read as
               fuzz, not hierarchy. #8a8a8a clears AA on this surface. */}
-          <div className="flex items-center gap-1.5 mt-0.5 pl-3 text-[11px] text-[#8a8a8a]">
-            <span>{ind.assets[0]}</span>
-            <span className="opacity-50">·</span>
-            <span>{TYPE_LABEL[ind.indicatorType] ?? "Strategy"}</span>
+          {/* Last signal rides on the subtitle rather than a third line. As its
+              own row it appeared on some strategies and not others, so the list
+              pitch swung 70/100/100px and had no rhythm to scan against. */}
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate pl-[22px] text-[11px] text-[#8a8a8a]">
+            <span className="shrink-0">{ind.assets[0]}</span>
+            <span className="shrink-0 opacity-50">·</span>
+            {/* The type mostly restates the name ("SMA Crossover Pro" → "SMA
+                Crossover"), so when a signal exists it yields the slot rather
+                than truncating both to "SM…". Recency beats a redundant label. */}
+            {sig !== 0 && sigTimeMs > 0 ? (
+              <span className={cn("truncate font-medium", sigStale ? "text-[#8a8a8a]" : SIG_TEXT[sig])}>
+                {SIG_LABEL[sig]} {timeAgo(sigTimeMs)}
+              </span>
+            ) : (
+              <span className="truncate">{TYPE_LABEL[ind.indicatorType] ?? "Strategy"}</span>
+            )}
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <span className={cn(
-            "text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
-            ind.isGraduated
-              ? "border-emerald-500/14 bg-emerald-500/10 text-emerald-400"
-              : "border-[#2a2a2a] bg-[#202020] text-[#9a9a9a]",
-          )}>
-            {ind.isGraduated ? "LIVE" : "TESTING"}
-          </span>
+        <div className="shrink-0 text-right">
+          {/* Only LIVE earns a badge. "TESTING" was identical on every row and
+              the header already reports how many are live, so it was the
+              loudest thing in the row while carrying no information — and it
+              crowded out the one number that distinguishes strategies. */}
+          {ind.isGraduated && (
+            <span className="rounded-full border border-emerald-500/14 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+              LIVE
+            </span>
+          )}
           {ind.totalSims > 0 && (
-            // Sharpe is the list's sort key and the row's only quantitative
-            // differentiator — it was the dimmest text on the page. Value reads
-            // bright, unit stays muted.
-            <p className="mt-1 text-[12px] font-medium tabular-nums text-[#e5e5e5]">
-              {sharpe}<span className="ml-1 text-[10px] font-normal text-[#8a8a8a]">Sharpe</span>
+            // The row's only differentiating number, so it outranks everything
+            // else here — it used to be smaller than the subtitle above it.
+            <p className={cn("text-[15px] font-semibold tabular-nums text-[#e5e5e5]", ind.isGraduated && "mt-1")}>
+              {metric.value}
+              <span className="ml-1 text-[10px] font-normal text-[#8a8a8a]">{metric.label}</span>
             </p>
           )}
         </div>
       </div>
-
-      {sig !== 0 && (
-        <div className="pl-3 mt-1.5">
-          <span className={cn("text-[10px] font-semibold", sigStale ? "text-zinc-500" : SIG_TEXT[sig])}>
-            {sigStale ? `LAST ${SIG_LABEL[sig]}` : SIG_LABEL[sig]}
-            {sigTimeMs > 0 && <span className="ml-1 font-normal text-[#8a8a8a]">{timeAgo(sigTimeMs)}</span>}
-          </span>
-        </div>
-      )}
     </button>
   );
 }
@@ -243,12 +259,12 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8 py-16">
       <div className="w-12 h-12 rounded-full bg-[#181818] border border-[#2a2a2a] flex items-center justify-center mb-5">
-        <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-5 h-5 text-[#8a8a8a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
         </svg>
       </div>
       <h3 className="text-base font-display font-semibold text-white mb-2">Select a strategy</h3>
-      <p className="text-sm text-zinc-500 max-w-sm leading-relaxed mb-8">
+      <p className="text-sm text-[#a1a1a1] max-w-sm leading-relaxed mb-8">
         Inspect strategies discovered on Aptos, review their on-chain state, or deploy your own.
       </p>
       <div className="w-full max-w-xs space-y-3 text-left">
@@ -263,7 +279,7 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
             </span>
             <div>
               <p className="font-semibold text-white text-sm mb-0.5">{s.title}</p>
-              <p className="text-zinc-500 text-[12px] leading-relaxed">{s.desc}</p>
+              <p className="text-[#a1a1a1] text-[12px] leading-relaxed">{s.desc}</p>
             </div>
           </div>
         ))}
@@ -287,14 +303,14 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
 function StatCard({ label, value, sub, good, warn }: { label: string; value: string; sub: string; good?: boolean; warn?: boolean }) {
   return (
     <div className="min-w-0 border-b border-card-border px-4 py-4 odd:border-r odd:border-r-card-border sm:border-0 sm:px-5 sm:first:pl-6 sm:last:pr-6">
-      <p className="mb-1.5 truncate text-[10px] font-mono uppercase tracking-[0.15em] text-zinc-600">{label}</p>
+      <p className="mb-1.5 truncate text-[10px] font-mono uppercase tracking-[0.15em] text-[#8a8a8a]">{label}</p>
       <p className={cn(
         "truncate text-[20px] font-display font-bold tabular-nums leading-none sm:text-[24px]",
         warn ? "text-red-400" : good ? "text-emerald-400" : "text-zinc-200",
       )}>
         {value}
       </p>
-      <p className="mt-1 truncate text-[11px] leading-tight text-zinc-600">{sub}</p>
+      <p className="mt-1 truncate text-[11px] leading-tight text-[#8a8a8a]">{sub}</p>
     </div>
   );
 }
@@ -310,7 +326,7 @@ function BacktestBar({ ind }: { ind: Indicator }) {
           type="button"
           onClick={() => setShowBacktest((v) => !v)}
           aria-expanded={showBacktest}
-          className={cn("flex items-center gap-1.5 rounded-[var(--radius-xs)] font-mono text-[11px] text-zinc-500 hover:text-zinc-300", PRODUCT_PRESSABLE_CLASS)}
+          className={cn("flex items-center gap-1.5 rounded-[var(--radius-xs)] font-mono text-[11px] text-[#a1a1a1] hover:text-zinc-300", PRODUCT_PRESSABLE_CLASS)}
         >
           <span style={{
             display: "inline-block",
@@ -323,7 +339,7 @@ function BacktestBar({ ind }: { ind: Indicator }) {
           type="button"
           disabled
           title="Persistent, wallet-authorized launchpad automation is not deployed"
-          className="px-4 py-2 rounded-[var(--radius-sm)] text-[12px] font-display font-bold flex items-center gap-1.5 border border-card-border bg-[#181818] text-zinc-600 cursor-not-allowed"
+          className="px-4 py-2 rounded-[var(--radius-sm)] text-[12px] font-display font-bold flex items-center gap-1.5 border border-card-border bg-[#181818] text-[#8a8a8a] cursor-not-allowed"
         >
           Automation unavailable
         </button>
@@ -375,11 +391,12 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               </span>
             )}
           </div>
-          <p className="text-[13px] text-zinc-500 mt-1">
+          <p className="text-[13px] text-[#a1a1a1] mt-1">
             {TYPE_LABEL[ind.indicatorType] ?? "Strategy"} · {ind.assets.join(", ")}
           </p>
+          {/* Body copy, not a caption — it gets the brighter neutral step. */}
           {ind.description && (
-            <p className="text-[12px] text-zinc-600 mt-1 max-w-lg leading-relaxed">{ind.description}</p>
+            <p className="mt-1 max-w-lg text-[12px] leading-relaxed text-[#a1a1a1]">{ind.description}</p>
           )}
           <button
             type="button"
@@ -392,18 +409,18 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               only for real on-chain vaults (testnet); links are explicit
               testnet so they resolve regardless of the app's network. */}
           {(ind.pkg || ind.vaultAddr) && (
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-zinc-600">
-              <span className="text-zinc-700">On-chain:</span>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-[#8a8a8a]">
+              <span className="text-[#8a8a8a]">On-chain:</span>
               {ind.pkg && (
-                <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                <a className="text-[#a1a1a1] hover:text-emerald-400 transition-colors"
                    href={`https://explorer.aptoslabs.com/account/${ind.pkg}?network=${getClientNetwork()}`}
                    target="_blank" rel="noreferrer">strategy module ↗</a>
               )}
-              <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+              <a className="text-[#a1a1a1] hover:text-emerald-400 transition-colors"
                  href={`https://explorer.aptoslabs.com/account/${ind.address}?network=${getClientNetwork()}`}
                  target="_blank" rel="noreferrer">indicator ↗</a>
               {ind.vaultAddr && (
-                <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
+                <a className="text-[#a1a1a1] hover:text-emerald-400 transition-colors"
                    href={`https://explorer.aptoslabs.com/account/${ind.vaultAddr}?network=${getClientNetwork()}`}
                    target="_blank" rel="noreferrer">Decibel vault ↗</a>
               )}
@@ -428,12 +445,12 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
                 <>
                   <div className="flex items-center gap-1.5">
                     <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", stale ? "bg-zinc-600" : SIG_DOT[sig])} />
-                    <span className={cn("text-base font-bold font-mono tracking-wide", stale ? "text-zinc-500" : SIG_TEXT[sig])}>
+                    <span className={cn("text-base font-bold font-mono tracking-wide", stale ? "text-[#a1a1a1]" : SIG_TEXT[sig])}>
                       {stale ? `LAST ${SIG_LABEL[sig]}` : SIG_LABEL[sig]}
                     </span>
                   </div>
                   {live.isLive && live.price > 0 && (
-                    <span className={cn("text-[11px] font-mono tabular-nums", stale ? "text-amber-500/80" : "text-zinc-600")}>
+                    <span className={cn("text-[11px] font-mono tabular-nums", stale ? "text-amber-500/80" : "text-[#8a8a8a]")}>
                       ${live.price > 1000
                         ? live.price.toLocaleString(undefined, { maximumFractionDigits: 0 })
                         : live.price.toFixed(4)}
@@ -441,7 +458,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
                     </span>
                   )}
                   {!live.isLive && ind.lastSignalTime > 0 && (
-                    <span className="text-[11px] text-zinc-600">{timeAgo(ind.lastSignalTime)}</span>
+                    <span className="text-[11px] text-[#8a8a8a]">{timeAgo(ind.lastSignalTime)}</span>
                   )}
                 </>
               );
@@ -508,7 +525,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-amber-400">TESTNET INDICATOR</span>
           </div>
-          <p className="text-[12px] text-zinc-500 leading-relaxed">
+          <p className="text-[12px] text-[#a1a1a1] leading-relaxed">
             Bonding-curve funding and automatic vault graduation are not deployed. This page will not request APT for either action.
           </p>
         </div>
@@ -690,7 +707,7 @@ export function LaunchpadPage() {
                   </span>
                   <button
                     onClick={() => setTab("explore")}
-                    className="group flex items-center gap-1 text-[11px] font-mono font-medium text-zinc-500 transition-colors hover:text-white"
+                    className="group flex items-center gap-1 text-[11px] font-mono font-medium text-[#a1a1a1] transition-colors hover:text-white"
                   >
                     <span className="transition-transform group-hover:-translate-x-0.5">←</span>
                     Back to marketplace
@@ -804,15 +821,17 @@ export function LaunchpadPage() {
                         <div className="text-center py-8 px-4">
                           <p className="text-xs text-[#888]">No strategies found</p>
                           <button type="button" onClick={() => setTab("deploy")}
-                            className={cn("mt-3 rounded-[var(--radius-xs)] text-xs text-zinc-400 underline hover:text-white", PRODUCT_PRESSABLE_CLASS)}>
+                            className={cn("mt-3 rounded-[var(--radius-xs)] text-xs text-[#a1a1a1] underline hover:text-white", PRODUCT_PRESSABLE_CLASS)}>
                             Deploy the first one →
                           </button>
                         </div>
                       ) : (
-                        indicators.map((ind) => (
+                        indicators.map((ind, i) => (
                           <IndicatorItem
                             key={ind.address}
                             ind={ind}
+                            rank={i + 1}
+                            sort={sort}
                             selected={selected?.address === ind.address}
                             onClick={() => { userPickedRef.current = true; setSelected(ind); }}
                           />

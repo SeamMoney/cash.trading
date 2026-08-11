@@ -28,6 +28,7 @@ async function main() {
   const { transpileV3 } = await import("../lib/launchpad/transpiler-v3");
   const { parsePine } = await import("../lib/launchpad/pine-parser");
   const { astToIndicatorIR, TA_SILENT_SUBSTITUTIONS } = await import("../lib/launchpad/pine-ir");
+  const { checkEquivalence, createStrategyRunner } = await import("../lib/strategy-equivalence");
 
   const emit = (pine: string) =>
     transpileV3(pine, undefined, { target: "vault", marketAddr: MARKET_ADDR });
@@ -43,6 +44,11 @@ async function main() {
   );
   check("EMA 9/21 cross transpiles clean", !baseline.errors?.length, baseline.errors);
   check("emits a Move module", (baseline.moveSource ?? "").includes("module "), null);
+  check(
+    "ordinary strategies keep byte-stable error declarations",
+    !(baseline.moveSource ?? "").includes("E_HISTORY_OFFSET_OUT_OF_BOUNDS"),
+    "dynamic-history error code leaked into an ordinary strategy",
+  );
 
   // ── 2. Silent indicator substitution is now rejected ──────────────────────
   // Previously: ta.vwap → compute_sma, no warning. A "verified" vault would
@@ -176,13 +182,92 @@ async function main() {
     );
   }
 
-  // ── 6. Dynamic indexing stays rejected ────────────────────────────────────
+  // ── 6. Dynamic indexing is accepted only with statically proven bounds ────
   console.log("\n6. dynamic indexing");
   const dyn = emit(
     head("Dyn") +
       `n = input.int(3, "N")\nif (close > close[n])\n    strategy.entry("L", strategy.long)\n`,
   );
-  check("close[n] (dynamic) is rejected", (dyn.errors?.length ?? 0) > 0, dyn.errors ?? "(none)");
+  check("unbounded close[n] is rejected", (dyn.errors?.length ?? 0) > 0, dyn.errors ?? "(none)");
+
+  const boundedSource =
+    head("BoundedDyn") +
+    `n = input.int(3, "N", minval=0, maxval=50)\n` +
+    `if (close > close[n])\n    strategy.entry("L", strategy.long)\n` +
+    `if (close < close[n])\n    strategy.entry("S", strategy.short)\n`;
+  const bounded = emit(boundedSource);
+  check("bounded close[n] transpiles", !bounded.errors?.length, bounded.errors ?? "(none)");
+  check(
+    "bounded close[n] emits a checked runtime lookup",
+    (bounded.moveSource ?? "").includes("history_at(&buf.prices, state.n, 50)"),
+    "missing bounded history_at call",
+  );
+  check(
+    "bounded lookup emits a runtime upper-bound assertion",
+    (bounded.moveSource ?? "").includes("offset <= max_offset"),
+    "missing history offset assertion",
+  );
+
+  const boundedIR = astToIndicatorIR(parsePine(boundedSource), "0x1");
+  check(
+    "dynamic maxval drives buffer capacity",
+    boundedIR.bufferCapacity > 50,
+    `capacity=${boundedIR.bufferCapacity}`,
+  );
+  check(
+    "dynamic maxval drives warmup",
+    boundedIR.warmupMinBars > 50,
+    `warmup=${boundedIR.warmupMinBars}`,
+  );
+
+  const closes = Array.from({ length: 400 }, (_, i) =>
+    100 + i * 0.05 + Math.sin(i / 7) * 2 + Math.cos(i / 19),
+  );
+  const eq = checkEquivalence(boundedIR, closes);
+  check("bounded dynamic history passes equivalence", eq.equivalent, eq);
+  const runner = createStrategyRunner(boundedIR);
+  closes.forEach((close) => runner.pushBar(close));
+  check(
+    "bounded dynamic history is executable by the sealed runner",
+    runner.unsupported.size === 0,
+    [...runner.unsupported],
+  );
+
+  for (const [name, declaration] of [
+    ["missing minval", `n = input.int(3, "N", maxval=50)`],
+    ["missing maxval", `n = input.int(3, "N", minval=0)`],
+    ["negative minval", `n = input.int(3, "N", minval=-1, maxval=50)`],
+  ] as const) {
+    const result = emit(
+      head(`Bad ${name}`) +
+      `${declaration}\nif (close > close[n])\n    strategy.entry("L", strategy.long)\n`,
+    );
+    check(`${name} is rejected`, (result.errors?.length ?? 0) > 0, result.errors ?? "(none)");
+  }
+
+  const namedDynamic = emit(
+    head("Named dynamic") +
+      `n = input.int(3, "N", minval=0, maxval=10)\n` +
+      `f = ta.ema(close, 9)\ns = ta.ema(close, 21)\n` +
+      `if (ta.crossover(f, s) and f > f[n])\n    strategy.entry("L", strategy.long)\n`,
+  );
+  check(
+    "named-series dynamic history is rejected",
+    (namedDynamic.errors ?? []).some((error: string) => error.includes("per-series buffer")),
+    namedDynamic.errors ?? "(none)",
+  );
+
+  for (const [name, offset] of [
+    ["negative literal", "-1"],
+    ["fractional literal", "1.5"],
+    ["literal above the on-chain cap", "2049"],
+  ] as const) {
+    const result = emit(
+      head(`Bad ${name}`) +
+      `if (close > close[${offset}])\n    strategy.entry("L", strategy.long)\n`,
+    );
+    check(`${name} history is rejected`, (result.errors?.length ?? 0) > 0, result.errors ?? "(none)");
+  }
 
   console.log(
     failures === 0

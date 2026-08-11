@@ -12,6 +12,7 @@
  */
 
 import type { ParsedPine, Expr, TACallInfo, InputDef } from "./pine-parser";
+import { analyzeBoundedDynamicHistoryIndex } from "./pine-history";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export type IRExpr =
   | { kind: "call"; fn: string; args: IRExpr[] }
   // V3: extended expressions for universal transpilation
   | { kind: "series_index"; name: string; offset: number }
+  | { kind: "dynamic_series_index"; name: "close"; offset: IRExpr; maxOffset: number }
   | { kind: "div"; left: IRExpr; right: IRExpr }
   | { kind: "abs"; expr: IRExpr }
   | { kind: "max"; left: IRExpr; right: IRExpr }
@@ -275,6 +277,7 @@ interface ConvertCtx {
   params: Record<string, number>;
   taTargets: Set<string>; // all TA-computed field names (snake_case)
   resolvingNames: Set<string>;
+  inputs: ParsedPine["inputs"];
 }
 
 /** Convert a PineScript Expr to an IRExpr */
@@ -422,6 +425,25 @@ function convertExpr(e: Expr, ctx: ConvertCtx): IRExpr {
     }
 
     case "binop": {
+      if (e.op === "index") {
+        const analysis = analyzeBoundedDynamicHistoryIndex(e, ctx.inputs);
+        if (analysis.ok) {
+          return {
+            kind: "dynamic_series_index",
+            name: "close",
+            offset: {
+              kind: "field_ref",
+              field: toSnakeCase(analysis.value.inputName),
+            },
+            maxOffset: analysis.value.maxOffset,
+          };
+        }
+
+        // The confidence pass reports the precise source error. Keep rejected
+        // programs structurally valid here so secondary IR checks do not mask it
+        // with an invented state-field or malformed Move expression.
+        return { kind: "lit_u64", value: "0" };
+      }
       const { op, l, r } = e;
 
       if (op === "and") {
@@ -521,9 +543,10 @@ function toPrevExpr(expr: IRExpr, ctx: ConvertCtx): IRExpr {
  *   6. Build signal logic (explicit or pattern-based fallback)
  *   7. Generate module name
  */
-/** Deepest literal history offset anywhere in the tree (`close[3]` → 3).
- *  Used to size the price trace so `series_index` can never underflow. */
-function deepestHistoryOffset(root: unknown): number {
+/** Deepest proven history offset anywhere in the parsed program.
+ *  Used to size the price trace so literal and bounded dynamic lookups cannot
+ *  underflow after the declared warmup. */
+function deepestHistoryOffset(parsed: ParsedPine): number {
   let deepest = 0;
   const walk = (node: unknown): void => {
     if (Array.isArray(node)) { node.forEach(walk); return; }
@@ -532,9 +555,15 @@ function deepestHistoryOffset(root: unknown): number {
     if (n.k === "hist" && typeof n.offset === "number" && Number.isFinite(n.offset)) {
       if (n.offset > deepest) deepest = n.offset;
     }
+    if (n.k === "binop" && n.op === "index") {
+      const analysis = analyzeBoundedDynamicHistoryIndex(n as unknown as Expr, parsed.inputs);
+      if (analysis.ok && analysis.value.maxOffset > deepest) {
+        deepest = analysis.value.maxOffset;
+      }
+    }
     Object.values(n).forEach(walk);
   };
-  walk(root);
+  walk(parsed);
   return deepest;
 }
 
@@ -788,6 +817,7 @@ export function astToIndicatorIR(parsed: ParsedPine, creatorAddr: string): Indic
     params: parsed.params,
     taTargets,
     resolvingNames: new Set<string>(),
+    inputs: parsed.inputs,
   };
 
   let buyIR: IRExpr | null = null;

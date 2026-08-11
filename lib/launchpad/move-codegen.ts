@@ -45,6 +45,7 @@ function sanitizeModuleName(name: string): string {
  */
 export function generateMoveModule(ir: IndicatorIR): string {
   const lines: string[] = [];
+  const hasDynamicHistory = usesDynamicHistory(ir);
   const moduleName = sanitizeModuleName(ir.moduleName);
   const creatorAddr = ir.creatorAddr || "0xcreator";
 
@@ -62,6 +63,9 @@ export function generateMoveModule(ir: IndicatorIR): string {
   lines.push(`    // ── Error Codes ────────────────────────────────────────────`);
   lines.push(`    const E_NOT_KEEPER: u64 = 1;`);
   lines.push(`    const E_INSUFFICIENT_DATA: u64 = 3;`);
+  if (hasDynamicHistory) {
+    lines.push(`    const E_HISTORY_OFFSET_OUT_OF_BOUNDS: u64 = 4;`);
+  }
   lines.push(``);
 
   // Signal constants
@@ -99,6 +103,11 @@ export function generateMoveModule(ir: IndicatorIR): string {
   // push_price
   lines.push(generatePushPrice(ir, 4));
   lines.push(``);
+
+  if (hasDynamicHistory) {
+    lines.push(generateHistoryAtHelper(4));
+    lines.push(``);
+  }
 
   // TA helper functions — merge op-derived and IR-explicit lists
   const collectedFuncs = collectNeededTAFunctions(ir.taOps);
@@ -728,6 +737,11 @@ function generateIRExpr(expr: IRExpr): string {
       return `*vector::borrow(&buf.prices, buf_len - 1 - ${e.offset})`;
     }
 
+    case "dynamic_series_index": {
+      const offset = generateIRExpr(expr.offset);
+      return `history_at(&buf.prices, ${offset}, ${expr.maxOffset})`;
+    }
+
     case "div": {
       const e = expr as any;
       const l = generateIRExpr(e.left);
@@ -766,6 +780,42 @@ function generateIRExpr(expr: IRExpr): string {
     default:
       return `0 /* unknown expr: ${(expr as { kind: string }).kind} */`;
   }
+}
+
+function generateHistoryAtHelper(indent: number): string {
+  const p = pad(indent);
+  const p2 = pad(indent + 4);
+  return [
+    `${p}// Runtime-safe lookup for statically bounded Pine close[input] history.`,
+    `${p}fun history_at(prices: &vector<u64>, offset: u64, max_offset: u64): u64 {`,
+    `${p2}assert!(offset <= max_offset, E_HISTORY_OFFSET_OUT_OF_BOUNDS);`,
+    `${p2}let len = vector::length(prices);`,
+    `${p2}assert!(offset < len, E_INSUFFICIENT_DATA);`,
+    `${p2}*vector::borrow(prices, len - 1 - offset)`,
+    `${p}}`,
+  ].join("\n");
+}
+
+function usesDynamicHistory(ir: IndicatorIR): boolean {
+  let found = false;
+  const walk = (node: unknown): void => {
+    if (found || node == null) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node !== "object") return;
+    const value = node as Record<string, unknown>;
+    if (value.kind === "dynamic_series_index") {
+      found = true;
+      return;
+    }
+    Object.values(value).forEach(walk);
+  };
+  walk(ir.taOps);
+  walk(ir.signalLogic);
+  walk(ir.funcDefs ?? []);
+  return found;
 }
 
 // ─── Function Definition Generation ──────────────────────────────────────────

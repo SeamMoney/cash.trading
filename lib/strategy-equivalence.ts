@@ -208,6 +208,24 @@ class StrategyEvaluator {
         const idx = this.buffer.length - 1 - e.offset;
         return idx >= 0 ? this.buffer[idx] : 0;
       }
+      case "dynamic_series_index": {
+        const offset = this.evalExpr(e.offset);
+        if (
+          typeof offset !== "number" ||
+          !Number.isInteger(offset) ||
+          offset < 0 ||
+          offset > e.maxOffset
+        ) {
+          this.unsupported.add("dynamic_series_index:offset_out_of_bounds");
+          return 0;
+        }
+        const idx = this.buffer.length - 1 - offset;
+        if (idx < 0) {
+          this.unsupported.add("dynamic_series_index:insufficient_history");
+          return 0;
+        }
+        return this.buffer[idx];
+      }
       case "binop": {
         const l = this.evalExpr(e.left);
         const r = this.evalExpr(e.right);

@@ -18,10 +18,14 @@ import {
   type IndicatorIR,
   type IRFuncDef,
 } from "./pine-ir";
+import {
+  analyzeBoundedDynamicHistoryIndex,
+  MAX_ON_CHAIN_HISTORY_OFFSET,
+} from "./pine-history";
 import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
 /** Pinned emitter version recorded in StrategyArtifact rows; bump on any codegen change. */
-export const TRANSPILER_VERSION = "v3.1.0";
+export const TRANSPILER_VERSION = "v3.2.0";
 
 // ─── Result type ─────────────────────────────────────────────────────────────
 
@@ -221,7 +225,11 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
         }
         break;
       case "hist":
-        if (OHLC_COMPONENTS.has(expr.name) && ast.assignments[expr.name] === undefined) {
+        if (!Number.isInteger(expr.offset) || expr.offset < 0) {
+          add(`Unsupported history offset \`${expr.name}[${expr.offset}]\`: offsets must be non-negative integers.`);
+        } else if (expr.offset > MAX_ON_CHAIN_HISTORY_OFFSET) {
+          add(`Unsupported history offset \`${expr.name}[${expr.offset}]\`: the on-chain limit is ${MAX_ON_CHAIN_HISTORY_OFFSET} bars.`);
+        } else if (OHLC_COMPONENTS.has(expr.name) && ast.assignments[expr.name] === undefined) {
           add(`Unsupported source \`${expr.name}[${expr.offset}]\`: the on-chain price trace records one mark price per bar, so open/high/low don't exist. Rewrite in terms of \`close\`.`);
         } else if (expr.name !== "close" && expr.offset >= 2) {
           add(`\`${expr.name}[${expr.offset}]\` needs a per-series history buffer, which isn't implemented — only one-deep history (\`${expr.name}[1]\`) is available for named series. Offsets ≥ 2 are supported on \`close\` only.`);
@@ -229,7 +237,10 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
         break;
       case "binop":
         if (expr.op === "index") {
-          add("Unsupported PineScript: dynamic history indexing like series[expr] cannot be lowered to Move; use a numeric literal offset such as close[1].");
+          const analysis = analyzeBoundedDynamicHistoryIndex(expr, ast.inputs);
+          if (!analysis.ok) {
+            add(`Unsupported PineScript history lookup: ${analysis.reason}. Use a literal such as \`close[1]\`, or a bounded input such as \`n = input.int(3, minval=0, maxval=50)\` followed by \`close[n]\`.`);
+          }
         }
         walkExpr(expr.l);
         walkExpr(expr.r);

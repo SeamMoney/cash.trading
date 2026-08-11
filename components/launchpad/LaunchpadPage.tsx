@@ -166,9 +166,10 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
         // the panel header and filter block.
         "group w-full rounded-[calc(var(--radius)-7px)] px-2.5 py-2.5 text-left",
         PRODUCT_PRESSABLE_CLASS,
+        // Same selection language as the tabs and filters: accent, not grey.
         selected
-          ? "bg-[#202020] border border-[#2a2a2a]"
-          : "border border-transparent hover:bg-[#181818] hover:border-[#2a2a2a]",
+          ? "border border-accent/25 bg-accent/[0.07]"
+          : "border border-transparent hover:border-white/[0.08] hover:bg-white/[0.03]",
       )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -176,7 +177,12 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
               strand the status dot alone above it, so that row alone broke the
               list's alignment. The name truncates instead — every row is one line. */}
           <div className="flex items-center gap-1.5">
-            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", SIG_DOT[sig])} />
+            {/* Neutral dot only. It used to be red/green by last signal, so the
+                best-Sharpe strategy on the list wore a red dot and read as
+                "broken" when it only meant "last signal was a sell" — and on a
+                trading surface red/green already means direction. Signal
+                direction is stated once, in words, on the line below. */}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4a4a4a]" />
             {/* min-w-0 (not flex-1) so the name shrinks and truncates when long
                 but still sizes to content when short — otherwise it grows and
                 shoves the PROP badge to the far edge, away from its label. */}
@@ -707,13 +713,13 @@ export function LaunchpadPage() {
                     {/* Filters header — hidden on phones, where it only repeats the
                         H1 ("Strategy Marketplace") and costs a whole band of the
                         first screen. On desktop it labels the column. */}
-                    <header className="hidden shrink-0 border-b border-card-border bg-[#202020] lg:flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9a9a9a]">
+                    <header className="hidden shrink-0 border-b border-white/[0.06] bg-[#161616] lg:flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9a9a9a]">
                       Strategies
                     </header>
 
                     {/* Filter controls */}
-                    <div className="shrink-0 px-4 py-3 border-b border-card-border bg-[#181818] space-y-2">
-                      <div className="flex gap-0.5 bg-[#111] border border-card-border rounded-[var(--radius-sm)] p-0.5">
+                    <div className="shrink-0 px-4 py-3 border-b border-white/[0.06] bg-[#161616] space-y-2">
+                      <div className="flex gap-0.5 bg-[#0f0f0f] border border-white/[0.06] rounded-[var(--radius-sm)] p-0.5">
                         {(["all", "live", "testing"] as Array<"all" | "live" | "testing">).map((f) => (
                           <button type="button" key={f} onClick={() => setFilter(f)}
                             aria-pressed={filter === f}
@@ -784,7 +790,7 @@ export function LaunchpadPage() {
                     </div>
 
                     {/* Indicator list */}
-                    <div key={loadKey} className="bg-[#111] overflow-y-auto flex-1 min-h-0 p-1.5 space-y-0.5">
+                    <div key={loadKey} className="bg-[#0f0f0f] scroll-slim overflow-y-auto flex-1 min-h-0 p-1.5 space-y-0.5">
                       {loading ? (
                         <>
                           {[...Array(5)].map((_, i) => (

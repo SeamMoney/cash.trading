@@ -29,10 +29,11 @@ const CONFIGS: Record<string, BlobConfig[]> = {
     { color: "blob-pomegranate", size: 400, style: { top: 500, left: -150 }, animDelay: "blob-animate-delay-1" },
     { color: "blob-blue", size: 300, style: { bottom: 100, right: "10%" }, animDelay: "blob-animate-delay-2" },
   ],
+  // One brand-green wash instead of purple + orange + blue. Three off-brand
+  // tints at 4-7/255 over near-black read as a smudge in the top-right corner,
+  // not as a gradient — too weak to be deliberate, too coloured to be neutral.
   launchpad: [
-    { color: "blob-purple", size: 500, style: { top: -150, right: -80 } },
-    { color: "blob-pomegranate", size: 400, style: { top: 600, left: -120 }, animDelay: "blob-animate-delay-1" },
-    { color: "blob-blue", size: 300, style: { bottom: 200, right: "5%" }, animDelay: "blob-animate-delay-2" },
+    { color: "blob-accent", size: 520, style: { top: -180, right: -100 } },
   ],
 };
 

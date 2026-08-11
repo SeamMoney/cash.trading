@@ -726,6 +726,13 @@
     background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
   }
 
+  /* Brand light. The purple/orange/blue blobs tint a single-accent green
+     product just enough to look like a dirty corner rather than an
+     intentional gradient, so surfaces that want ambience use this instead. */
+  .blob-accent {
+    background: radial-gradient(circle, rgba(57, 255, 20, 0.10) 0%, transparent 70%);
+  }
+
   .blob-animate {
     animation: blob-drift 20s ease-in-out infinite;
   }
@@ -786,5 +793,29 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Slim, inset scrollbar for panels with rounded corners. The default macOS
+     bar is brighter than every border on the page and sits flush against the
+     edge, so it visually slices the panel's radius. The transparent border +
+     content-box clip holds the thumb 3px off the edge. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 10px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.24);
   }
 }

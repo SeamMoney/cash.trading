@@ -52,19 +52,22 @@ actions, or sequence numbers do not match:
 DOTENV_CONFIG_PATH=.env.production pnpm demo:automation
 ```
 
-The command then reads current BTC/USD state from Decibel mainnet, builds the production
-`place_twap_order_to_subaccount` payload, and simulates it without signing or submitting.
+The command then reads current BTC/USD state from Decibel mainnet, finds an existing production
+bot account with collateral and an on-chain delegation to the controlled operator, builds the
+production `place_twap_order_to_subaccount` payload, and simulates it without signing or
+submitting. The user's subaccount address is deliberately redacted from the output.
 
 ## Exact mainnet automation status
 
-Current mainnet reads and payload construction work. The dedicated operator has APT for gas
-and a Decibel primary subaccount, but that subaccount has 0 USDC collateral. Mainnet simulation
-therefore stops at missing or uninitialized trading state. That is not a mainnet fill, and we do
-not present it as one.
+Current mainnet reads, delegation, collateral lookup, payload construction, and VM execution all
+work. Against the existing delegated production account, the live BTC/USD TWAP payload returns
+`Executed successfully` in Aptos mainnet simulation. Simulation supplies only the operator's
+public key; it does not sign or submit a transaction, so it cannot spend funds.
 
-Funding the operator or placing a user trade is a separate money-moving action. It was not
-necessary to publish the vault package, and it is intentionally outside this demo unless the
-owner separately chooses an amount and account to fund.
+That is strong proof that the non-vault automation is wired correctly for current mainnet state,
+but it is not a mainnet fill and we do not present it as one. The completed order → fill → close →
+fill receipts above remain on testnet. Placing a new mainnet order just to improve a demo would be
+a separate money-moving action and is intentionally outside this verification.
 
 ## Three-minute walkthrough
 
@@ -78,4 +81,5 @@ owner separately chooses an amount and account to fund.
    receipt links.
 
 Do not claim a funded sealed vault or mainnet automated fill yet. The package and production
-runner are ready; the first funded vault remains the explicit money-moving acceptance test.
+runner are ready, and the existing non-vault payload passes the mainnet VM against a real
+delegated account. The first funded vault remains the explicit money-moving acceptance test.

@@ -22,6 +22,7 @@ import {
   Ed25519PrivateKey,
   Network,
 } from "@aptos-labs/ts-sdk";
+import { PrismaClient } from "@prisma/client";
 import { MAINNET_CONFIG } from "@/lib/decibel-sdk";
 import { MAKER_FEE, TAKER_FEE } from "@/lib/decibel";
 
@@ -67,6 +68,17 @@ const objectAddress = (value: unknown) =>
   value && typeof value === "object" && "inner" in value
     ? lower((value as { inner: unknown }).inner)
     : lower(value);
+
+const delegatedAddresses = (value: unknown): string[] => {
+  const map = Array.isArray(value) ? value[0] : value;
+  const entries =
+    map && typeof map === "object"
+      ? ((map as { entries?: Array<{ key?: unknown }>; data?: Array<{ key?: unknown }> }).entries ??
+          (map as { data?: Array<{ key?: unknown }> }).data ??
+          [])
+      : [];
+  return entries.map((entry) => lower(entry.key)).filter(Boolean);
+};
 const explorer = (hash: string, network: "testnet" | "mainnet") =>
   `https://explorer.aptoslabs.com/txn/${hash}?network=${network}`;
 
@@ -179,6 +191,57 @@ const first = <T>(v: unknown): T => (Array.isArray(v) ? (v[0] as T) : (v as T));
 const view = (fn: string, args: Array<string | number | boolean>) =>
   aptos.view({ payload: { function: `${PKG}::${fn}` as `${string}::${string}::${string}`, functionArguments: args } });
 
+type MainnetTarget = {
+  subaccount: string;
+  collateral: number;
+};
+
+/**
+ * Find an existing production bot account that is both collateralized on
+ * mainnet and delegated to the controlled operator. The address is never
+ * printed. This is a read-only lookup used only as the target of Aptos
+ * simulation; no transaction is signed or submitted.
+ */
+async function findMainnetTarget(): Promise<MainnetTarget | null> {
+  const explicit = process.env.AUTOMATION_DEMO_SUBACCOUNT?.trim();
+  const candidates: string[] = explicit ? [explicit] : [];
+  let prisma: PrismaClient | null = null;
+
+  if (!explicit && process.env.DATABASE_URL) {
+    prisma = new PrismaClient();
+    try {
+      const rows = await prisma.botInstance.findMany({
+        orderBy: { updatedAt: "desc" },
+        select: { userSubaccount: true },
+      });
+      candidates.push(...rows.map((row) => row.userSubaccount));
+    } catch {
+      // The immutable testnet proof and operator-primary fallback still run
+      // when the demo is invoked without production database access.
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const collateral = Number(
+        first<string>(await view("perp_engine::get_cross_total_collateral_value", [candidate])),
+      );
+      if (collateral <= 0) continue;
+      const delegates = delegatedAddresses(
+        await view("dex_accounts::view_delegated_permissions", [candidate]),
+      );
+      if (delegates.includes(OPERATOR)) return { subaccount: candidate, collateral };
+    } catch {
+      // Old testnet bot rows are expected in the production database. They do
+      // not exist on mainnet, so skip them without exposing their addresses.
+    }
+  }
+
+  return null;
+}
+
 async function main() {
   const line = () => console.log("─".repeat(66));
   console.log("\n  cash.trading — non-vault automation evidence\n");
@@ -202,12 +265,19 @@ async function main() {
 
   // ── 2. The automation account, on current mainnet ───────────────────────
   const apt = await aptos.getAccountAPTAmount({ accountAddress: OPERATOR }).catch(() => 0);
-  const subaccount = first<string>(await view("dex_accounts::primary_subaccount", [OPERATOR]));
-  const collateral = Number(first<string>(await view("perp_engine::get_cross_total_collateral_value", [subaccount])));
+  const operatorSubaccount = first<string>(await view("dex_accounts::primary_subaccount", [OPERATOR]));
+  const operatorCollateral = Number(
+    first<string>(await view("perp_engine::get_cross_total_collateral_value", [operatorSubaccount])),
+  );
+  const mainnetTarget = await findMainnetTarget();
   console.log("  operator account   ", OPERATOR);
   console.log("  mainnet gas         ", (apt / 1e8).toFixed(4), "APT");
-  console.log("  decibel subaccount ", subaccount);
-  console.log("  usdc collateral     ", (collateral / 1e6).toFixed(2), "USDC");
+  console.log("  operator primary   ", operatorSubaccount);
+  console.log("  primary collateral ", (operatorCollateral / 1e6).toFixed(2), "USDC");
+  if (mainnetTarget) {
+    console.log("  delegated target   ", "production account (address redacted)");
+    console.log("  target collateral  ", (mainnetTarget.collateral / 1e6).toFixed(2), "USDC");
+  }
   line();
 
   // ── 3. Live mainnet market state — the same reads the bot ticks on ───────
@@ -230,21 +300,23 @@ async function main() {
   console.log(`  tick / lot / min    ${tick} / ${lot} / ${minSize}   szDecimals ${szDecimals}`);
   line();
 
-  // ── 4. The exact order the market-maker strategy builds each tick ────────
-  // Reproduces placeMarketMakerOrder: a post-only maker TWAP at the engine's
-  // minimum valid clip size.
-  const contractSize = Math.max(lot, minSize); // one valid maker clip
+  // ── 4. The exact order the legacy bot builds each tick ───────────────────
+  // Reproduces placeMarketMakerOrder. A TWAP is split into individual child
+  // orders by Decibel, so the total must be larger than one minimum-size clip.
+  // The production bot currently uses 10_000 BTC base units (0.0001 BTC).
+  const contractSize = Math.max(10_000, lot, minSize * 5);
   const sizeBase = contractSize / 10 ** szDecimals;
   const notional = sizeBase * markPrice;
+  const simulationSubaccount = mainnetTarget?.subaccount ?? operatorSubaccount;
   const payload = {
     function: `${PKG}::dex_accounts_entry::place_twap_order_to_subaccount`,
     typeArguments: [] as string[],
-    functionArguments: [subaccount, market, contractSize, true, false, 300, 600, undefined, undefined] as unknown[],
+    functionArguments: [simulationSubaccount, market, contractSize, true, false, 300, 600, undefined, undefined] as unknown[],
   };
-  console.log("  planned tick        BUY (maker) — post-only TWAP");
+  console.log("  planned tick        BUY — delegated TWAP");
   console.log(`  size                ${sizeBase} ${symbol}   ≈ $${notional.toFixed(2)} notional`);
   console.log(`  entry function      dex_accounts_entry::place_twap_order_to_subaccount`);
-  console.log(`  fee economics       maker ${(MAKER_FEE * 100).toFixed(3)}%  vs  taker ${(TAKER_FEE * 100).toFixed(3)}%`);
+  console.log(`  possible fill fees  maker ${(MAKER_FEE * 100).toFixed(3)}%  vs  taker ${(TAKER_FEE * 100).toFixed(3)}%`);
   console.log(`                      → maker round-trip ${(MAKER_FEE * 2 * 100).toFixed(3)}%; taker round-trip ${(TAKER_FEE * 2 * 100).toFixed(3)}%`);
   line();
 
@@ -268,9 +340,10 @@ async function main() {
   if (sim.success) {
     console.log("  MAINNET SIMULATION  ✅ VM ACCEPTED — no transaction was submitted");
     console.log(`  gas estimate        ${sim.gas_used} units`);
-    console.log("\n  This proves the current payload passes the mainnet VM. It does not");
-    console.log("  claim an order was placed or filled. The testnet receipts above are");
-    console.log("  the execution proof.\n");
+    console.log("\n  This proves the current operator, delegated production account,");
+    console.log("  collateral, market parameters, and payload pass the mainnet VM.");
+    console.log("  It does not claim an order was submitted or filled. The immutable");
+    console.log("  testnet receipts above remain the completed execution proof.\n");
   } else {
     const vm = sim.vm_status || "";
     // 0 collateral: the subaccount was created but never funded, so its trading

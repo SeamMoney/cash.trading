@@ -1072,6 +1072,20 @@ for (const [path, source] of legacyBotRoutes) {
     );
     continue;
   }
+  // The cron entry point is machine-authenticated, not user-authorized: it is
+  // invoked by Vercel, not a wallet. It must keep its shared-secret check and
+  // must refuse to run when that secret is unset.
+  if (path === "app/api/cron/bot-tick/route.ts") {
+    assert.match(source, /Bearer \$\{cronSecret\}/, "the bot cron must require CRON_SECRET");
+    assert.match(source, /if \(!cronSecret\)/, "the bot cron must refuse to run when CRON_SECRET is unset");
+    assert.match(
+      source,
+      /network: getActiveNetwork\(\)/,
+      "the bot cron must only tick bots belonging to this deployment's network",
+    );
+    assert.match(source, /tickFailures/, "the bot cron must back off bots that keep failing");
+    continue;
+  }
   // Everything else on this surface stays behind the original blanket gate.
   assert.match(
     source,

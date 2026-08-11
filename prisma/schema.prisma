@@ -32,10 +32,23 @@ model BotInstance {
   activePositionIsLong Boolean? // Direction of bot's position
   activePositionEntry  Float? // Entry price of bot's position
   activePositionTxHash String? // Tx hash that opened the position
+  // Which chain this bot trades. Without it the cron cannot tell a stale
+  // testnet row from a live mainnet one and would tick both against whatever
+  // network the server happens to be configured for.
+  network              String         @default("mainnet")
+  // Leverage the user asked for. Null means the engine's conservative default
+  // (5x) rather than the market maximum, which is what every position used to
+  // get implicitly.
+  leverageX            Int?
+  // Tick health, mirroring SealedVault: a bot that errors every minute would
+  // otherwise be retried forever at 6-12 trades per invocation.
+  lastTickAt           DateTime?
+  tickFailures         Int            @default(0)
   orders               OrderHistory[]
 
   @@unique([userWalletAddress, userSubaccount])
   @@index([userWalletAddress])
+  @@index([isRunning, network])
 }
 
 model OrderHistory {

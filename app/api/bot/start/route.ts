@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
-import { getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { getAllMarketAddresses, getActiveNetwork } from '@/lib/decibel-sdk'
 import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
 import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
@@ -161,6 +161,8 @@ export async function POST(request: NextRequest) {
         marketName,
         isRunning: true,
         sessionId,
+        network: getActiveNetwork(),
+        leverageX,
       },
       update: {
         capitalUSDC,
@@ -170,6 +172,9 @@ export async function POST(request: NextRequest) {
         market: resolvedMarket,
         marketName,
         isRunning: true,
+        network: getActiveNetwork(),
+        leverageX,
+        tickFailures: 0,
         cumulativeVolume: 0,
         ordersPlaced: 0,
         currentCapitalUsed: 0,

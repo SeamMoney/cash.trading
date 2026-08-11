@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk'
-import { getAllMarketAddresses } from '@/lib/decibel-sdk'
+import { getAllMarketAddresses, getActiveNetwork } from '@/lib/decibel-sdk'
 import type { BotConfig } from '@/lib/bot-engine'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds max execution time
@@ -36,9 +35,6 @@ const TRADE_DELAY_MS: Record<string, number> = {
  * to maximize volume even when browser is closed
  */
 export async function GET(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
   const startTime = Date.now()
 
   try {
@@ -54,9 +50,17 @@ export async function GET(request: NextRequest) {
 
     console.log('⏰ Cron tick: Processing active bots...')
 
-    // Get all running bots from database
+    // Only bots for the chain this deployment actually trades, and only those
+    // that are not in failure backoff. Previously this selected on isRunning
+    // alone, so a stale testnet row would be ticked against mainnet, and a bot
+    // erroring every minute was retried forever.
+    const MAX_TICK_FAILURES = 5
     const runningBots = await prisma.botInstance.findMany({
-      where: { isRunning: true },
+      where: {
+        isRunning: true,
+        network: getActiveNetwork(),
+        tickFailures: { lt: MAX_TICK_FAILURES },
+      },
     })
 
     if (runningBots.length === 0) {
@@ -146,6 +150,7 @@ export async function GET(request: NextRequest) {
           strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid',
           market: resolvedMarket,
           marketName: bot.marketName,
+          leverageX: bot.leverageX ?? undefined,
         }
 
         const botEngine = new VolumeBotEngine(config)
@@ -237,6 +242,11 @@ export async function GET(request: NextRequest) {
 
         if (tradesExecuted > 0) {
           console.log(`✅ Executed ${tradesExecuted} trades, +$${totalVolumeThisCron.toFixed(0)} volume`)
+          // A productive tick clears the failure streak.
+          await prisma.botInstance.update({
+            where: { id: bot.id },
+            data: { lastTickAt: new Date(), tickFailures: 0 },
+          })
           results.push({
             wallet: bot.userWalletAddress,
             status: 'executed',
@@ -244,6 +254,15 @@ export async function GET(request: NextRequest) {
             volumeGenerated: totalVolumeThisCron,
           })
         } else {
+          await prisma.botInstance.update({
+            where: { id: bot.id },
+            data: {
+              lastTickAt: new Date(),
+              // Only a real error counts toward backoff; a quiet tick (cooldown,
+              // no signal) is not a failure.
+              ...(lastError ? { tickFailures: { increment: 1 } } : {}),
+            },
+          })
           results.push({
             wallet: bot.userWalletAddress,
             status: lastError ? 'error' : 'no_trades',
@@ -253,11 +272,15 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error(`Error processing bot ${bot.userWalletAddress.slice(0, 10)}...:`, error)
 
-        // Update bot with error
+        // Update bot with error. After MAX_TICK_FAILURES consecutive failures
+        // this bot drops out of the cron's selection entirely rather than
+        // retrying 6-12 times a minute forever.
         await prisma.botInstance.update({
           where: { id: bot.id },
           data: {
             error: error instanceof Error ? error.message : 'Unknown error',
+            lastTickAt: new Date(),
+            tickFailures: { increment: 1 },
           },
         })
 

@@ -27,8 +27,24 @@ export async function GET() {
   const cronSecretConfigured = !!process.env.CRON_SECRET
   const databaseConfigured = !!process.env.DATABASE_URL
   const botOperatorConfigured = !!process.env.BOT_OPERATOR_PRIVATE_KEY
+  // Env vars alone never meant the cron was actually scheduled. For most of
+  // this file's life /api/cron/bot-tick was NOT registered in vercel.json, and
+  // this endpoint still told users the bot would "run every minute even when
+  // browser is closed" — inviting them to walk away from a leveraged position
+  // that nothing was watching. Read the registration instead of assuming it.
+  let cronRegistered = false
+  try {
+    const vercelConfig = await import('@/vercel.json')
+    const crons = (vercelConfig as { crons?: Array<{ path?: string }> }).crons
+      ?? (vercelConfig as { default?: { crons?: Array<{ path?: string }> } }).default?.crons
+      ?? []
+    cronRegistered = crons.some((c) => c?.path === '/api/cron/bot-tick')
+  } catch {
+    cronRegistered = false
+  }
 
-  const cloudModeEnabled = cronSecretConfigured && databaseConfigured && botOperatorConfigured
+  const cloudModeEnabled =
+    cronSecretConfigured && databaseConfigured && botOperatorConfigured && cronRegistered
 
   return NextResponse.json({
     automationEnabled: true,
@@ -38,10 +54,11 @@ export async function GET() {
       cronSecret: cronSecretConfigured,
       database: databaseConfigured,
       botOperator: botOperatorConfigured,
+      cronRegistered,
     },
     message: cloudModeEnabled
       ? 'Cloud mode active. Bot will run every minute even when browser is closed.'
-      : 'Cloud mode not configured. Bot requires browser tab to be open.',
+      : 'Cloud mode not configured. Bot requires the browser tab to stay open.',
     setupGuide: !cloudModeEnabled ? {
       missing: [
         !cronSecretConfigured && 'CRON_SECRET - Required for Vercel Cron authentication',

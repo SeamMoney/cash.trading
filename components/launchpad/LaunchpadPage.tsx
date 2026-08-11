@@ -160,9 +160,11 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
       onClick={onClick}
       className={cn(
         // Concentric with the panel it sits in: the list is inset by the panel
-        // border (1px) + its p-2 padding (8px), so the item's corner must be
-        // 9px tighter than the panel's --radius to keep the curves parallel.
-        "group w-full rounded-[calc(var(--radius)-9px)] px-3 py-2.5 text-left",
+        // border (1px) + its p-1.5 padding (6px), so the item's corner must be
+        // 7px tighter than the panel's --radius to keep the curves parallel.
+        // Its px-2.5 (10px) + that 6px puts row text on the same 16px axis as
+        // the panel header and filter block.
+        "group w-full rounded-[calc(var(--radius)-7px)] px-2.5 py-2.5 text-left",
         PRODUCT_PRESSABLE_CLASS,
         selected
           ? "bg-[#202020] border border-[#2a2a2a]"
@@ -188,10 +190,12 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1.5 mt-0.5 pl-3">
-            <span className="text-[11px] text-zinc-500">{ind.assets[0]}</span>
-            <span className="text-zinc-700">·</span>
-            <span className="text-[11px] text-zinc-600">{TYPE_LABEL[ind.indicatorType] ?? "Strategy"}</span>
+          {/* One tone for the whole subtitle: three greys on an 11px line read as
+              fuzz, not hierarchy. #8a8a8a clears AA on this surface. */}
+          <div className="flex items-center gap-1.5 mt-0.5 pl-3 text-[11px] text-[#8a8a8a]">
+            <span>{ind.assets[0]}</span>
+            <span className="opacity-50">·</span>
+            <span>{TYPE_LABEL[ind.indicatorType] ?? "Strategy"}</span>
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -199,12 +203,17 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
             "text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
             ind.isGraduated
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-[#2a2a2a] bg-[#202020] text-[#888]",
+              : "border-[#2a2a2a] bg-[#202020] text-[#9a9a9a]",
           )}>
             {ind.isGraduated ? "LIVE" : "TESTING"}
           </span>
           {ind.totalSims > 0 && (
-            <p className="text-[10px] text-zinc-600 mt-0.5 tabular-nums">{sharpe} Sharpe</p>
+            // Sharpe is the list's sort key and the row's only quantitative
+            // differentiator — it was the dimmest text on the page. Value reads
+            // bright, unit stays muted.
+            <p className="mt-1 text-[12px] font-medium tabular-nums text-[#e5e5e5]">
+              {sharpe}<span className="ml-1 text-[10px] font-normal text-[#8a8a8a]">Sharpe</span>
+            </p>
           )}
         </div>
       </div>
@@ -213,7 +222,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
         <div className="pl-3 mt-1.5">
           <span className={cn("text-[10px] font-semibold", sigStale ? "text-zinc-500" : SIG_TEXT[sig])}>
             {sigStale ? `LAST ${SIG_LABEL[sig]}` : SIG_LABEL[sig]}
-            {sigTimeMs > 0 && <span className="text-zinc-600 font-normal ml-1">{timeAgo(sigTimeMs)}</span>}
+            {sigTimeMs > 0 && <span className="ml-1 font-normal text-[#8a8a8a]">{timeAgo(sigTimeMs)}</span>}
           </span>
         </div>
       )}
@@ -513,9 +522,14 @@ export function LaunchpadPage() {
 
   // Below lg the detail panel stacks under the full 16-row list (~1700px
   // down) — without this scroll, tapping a strategy appears to do nothing.
+  // Only for a deliberate PICK though: the first strategy is auto-selected on
+  // load, and scrolling for that would drop phone users past the list they
+  // came to browse.
+  const userPickedRef = useRef(false);
   const selectedAddress = selected?.address ?? null;
   useEffect(() => {
     if (!selectedAddress || !detailPanelRef.current) return;
+    if (!userPickedRef.current) return;
     if (window.matchMedia("(min-width: 1024px)").matches) return;
     detailPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedAddress]);
@@ -560,9 +574,14 @@ export function LaunchpadPage() {
     return () => clearInterval(t);
   }, [fetchIndicators]);
 
-  // Keep selected indicator fresh when registry updates
+  // Keep selected indicator fresh when registry updates, and open on the first
+  // strategy rather than a tutorial: the detail panel is the widest region on
+  // the page, so leaving it on an explainer spends the best real estate on
+  // something a returning user has already read. On mobile the detail panel
+  // stacks BELOW the list, so auto-selecting costs nothing there.
   useEffect(() => {
-    if (!selected) return;
+    if (!indicators.length) return;
+    if (!selected) { setSelected(indicators[0]); return; }
     const fresh = indicators.find((i) => i.address === selected.address);
     if (fresh) setSelected(fresh);
   }, [indicators]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -574,7 +593,9 @@ export function LaunchpadPage() {
     setTimeout(() => {
       setIndicators((prev) => {
         const found = prev.find((i) => i.address === addr);
-        if (found) setSelected(found);
+        // Deploying IS a deliberate pick — scrolling to the new strategy is
+        // exactly what the creator wants to see next.
+        if (found) { userPickedRef.current = true; setSelected(found); }
         return prev;
       });
     }, 500);
@@ -595,8 +616,13 @@ export function LaunchpadPage() {
                 Strategy Marketplace
               </h1>
               {!loading && (
-                <span className="mt-2 block text-[11px] font-mono tabular-nums text-[#6a6a6a]">
-                  {meta.total} strategies · <span className="text-accent/80">{meta.graduated} live</span>
+                <span className="mt-2 block text-[11px] font-mono tabular-nums text-[#8a8a8a]">
+                  {meta.total} strategies ·{" "}
+                  {/* Accent means "good" — painting a zero with it dresses a
+                      failure state as a win. Only a non-zero count earns it. */}
+                  <span className={meta.graduated > 0 ? "text-accent" : "text-[#8a8a8a]"}>
+                    {meta.graduated} live
+                  </span>
                 </span>
               )}
             </div>
@@ -624,16 +650,20 @@ export function LaunchpadPage() {
                   onClick={() => setTab(t)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group relative -mb-px px-3.5 py-3 text-[13px] font-display font-semibold transition-colors duration-200 sm:px-4",
-                    active ? "text-white" : "text-[#7a7a7a] hover:text-zinc-200",
+                    // first:-ml-3.5 pulls "Explore" back onto the page gutter so the
+                    // tab, its underline and the H1 all share one left axis.
+                    "group relative -mb-px px-3.5 py-3 text-[13px] font-display font-semibold transition-colors duration-200 first:-ml-3.5 sm:px-4 sm:first:-ml-4",
+                    active ? "text-white" : "text-[#8a8a8a] hover:text-zinc-200",
                   )}
                 >
                   {t === "explore" ? "Explore" : t === "bots" ? "My Bots" : "Creator"}
                   <span
                     className={cn(
+                      // Selected == accent, everywhere. A white bar emitting green
+                      // light read as haze rather than intent.
                       "pointer-events-none absolute inset-x-2.5 -bottom-px h-[2px] rounded-full transition-all duration-300 ease-out sm:inset-x-3",
                       active
-                        ? "bg-white opacity-100 shadow-[0_0_10px_rgba(57,255,20,0.45)]"
+                        ? "bg-accent opacity-100"
                         : "bg-white/50 opacity-0 group-hover:opacity-40",
                     )}
                   />
@@ -674,37 +704,44 @@ export function LaunchpadPage() {
                 {/* Left: list panel — relative wrapper so the panel doesn't inflate the grid row height */}
                 <div className="relative min-h-[480px]">
                   <div className="lg:absolute lg:inset-0 w-full overflow-hidden rounded-[var(--radius)] border border-card-border shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)] flex flex-col">
-                    {/* Filters header */}
-                    <header className="shrink-0 border-b border-card-border bg-[#202020] flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#888]">
+                    {/* Filters header — hidden on phones, where it only repeats the
+                        H1 ("Strategy Marketplace") and costs a whole band of the
+                        first screen. On desktop it labels the column. */}
+                    <header className="hidden shrink-0 border-b border-card-border bg-[#202020] lg:flex items-center px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9a9a9a]">
                       Strategies
                     </header>
 
                     {/* Filter controls */}
-                    <div className="shrink-0 px-3 py-2.5 border-b border-card-border bg-[#181818] space-y-2">
+                    <div className="shrink-0 px-4 py-3 border-b border-card-border bg-[#181818] space-y-2">
                       <div className="flex gap-0.5 bg-[#111] border border-card-border rounded-[var(--radius-sm)] p-0.5">
                         {(["all", "live", "testing"] as Array<"all" | "live" | "testing">).map((f) => (
                           <button type="button" key={f} onClick={() => setFilter(f)}
                             aria-pressed={filter === f}
                             className={cn(
-                              "flex-1 rounded-[var(--radius-xs)] py-1 font-display text-[11px] font-medium",
+                              // Concentric with its track: 10px outer − 2px p-0.5 = 8px.
+                              // 36px tall on touch, compact on desktop.
+                              "flex-1 rounded-[calc(var(--radius-sm)-2px)] min-h-[36px] lg:min-h-[26px] font-display text-[11px] font-medium",
                               PRODUCT_PRESSABLE_CLASS,
-                              filter === f ? "bg-[#202020] text-white" : "text-[#888] hover:text-zinc-300",
+                              filter === f ? "bg-accent/12 text-accent" : "text-[#9a9a9a] hover:text-zinc-200",
                             )}>
                             {f === "all" ? "All" : f === "live" ? "Live" : "Testing"}
                           </button>
                         ))}
                       </div>
-                      <div className="flex flex-wrap gap-1">
+                      {/* Toggles + sort share one row on phones (they are all
+                          "narrow the list" controls) and stack on desktop where
+                          the column is only 300px wide. */}
+                      <div className="flex flex-wrap items-center gap-1">
                         <button
                           type="button"
                           onClick={() => setShowSignals((v) => !v)}
                           aria-pressed={showSignals}
                           className={cn(
-                            "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
                             PRODUCT_PRESSABLE_CLASS,
                             showSignals
-                              ? "bg-white text-black border-white"
-                              : "border-[#2a2a2a] text-[#888] hover:text-zinc-300",
+                              ? "border-accent/40 bg-accent/12 text-accent"
+                              : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
                           LIVE SIGNALS
                         </button>
@@ -713,26 +750,32 @@ export function LaunchpadPage() {
                           onClick={() => setShowGraduated((v) => !v)}
                           aria-pressed={showGraduated}
                           className={cn(
-                            "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                            "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
                             PRODUCT_PRESSABLE_CLASS,
                             showGraduated
-                              ? "bg-white text-black border-white"
-                              : "border-[#2a2a2a] text-[#888] hover:text-zinc-300",
+                              ? "border-accent/40 bg-accent/12 text-accent"
+                              : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
                           GRADUATED
                         </button>
-                      </div>
-                      <div className="flex items-center gap-1 text-[11px]">
-                        <span className="text-[#888] shrink-0 font-mono">Sort:</span>
+
+                        {/* Sort joins the same rail on phones — it is the same
+                            "narrow the list" job, and a dedicated row cost a
+                            whole band of the first screen. It breaks onto its
+                            own line again on desktop, where the column is 300px. */}
+                        {/* Kept visible on every size: without it the sort options
+                            are visually identical to the toggle chips beside them,
+                            and nothing tells you they are a different control. */}
+                        <span className="shrink-0 pl-1 font-mono text-[11px] text-[#9a9a9a]">Sort:</span>
                         {(["robustness", "sharpe", "raised"] as Sort[]).map((s) => (
                           <button type="button" key={s} onClick={() => setSort(s)}
                             aria-pressed={sort === s}
                             className={cn(
-                              "flex-1 rounded-[var(--radius-xs)] border py-1 text-center font-mono text-[10px]",
+                              "rounded-full border px-3 min-h-[36px] lg:min-h-[24px] lg:flex-1 lg:rounded-[var(--radius-xs)] text-center font-mono text-[10px]",
                               PRODUCT_PRESSABLE_CLASS,
                               sort === s
-                                ? "border-[#2a2a2a] bg-[#202020] text-white"
-                                : "border-card-border text-[#555] hover:text-[#888]",
+                                ? "border-accent/40 bg-accent/12 text-accent"
+                                : "border-card-border text-[#9a9a9a] hover:text-zinc-200",
                             )}>
                             {s === "robustness" ? "Score" : s === "sharpe" ? "Sharpe" : "Raised"}
                           </button>
@@ -741,13 +784,13 @@ export function LaunchpadPage() {
                     </div>
 
                     {/* Indicator list */}
-                    <div key={loadKey} className="bg-[#111] overflow-y-auto flex-1 min-h-0 p-2 space-y-0.5">
+                    <div key={loadKey} className="bg-[#111] overflow-y-auto flex-1 min-h-0 p-1.5 space-y-0.5">
                       {loading ? (
                         <>
                           {[...Array(5)].map((_, i) => (
                             // Skeletons must occupy the same box as the rows they stand in for,
                             // or the list visibly reflows when data lands.
-                            <div key={i} className="h-14 animate-pulse rounded-[calc(var(--radius)-9px)] bg-[#181818] motion-reduce:animate-none" />
+                            <div key={i} className="h-14 animate-pulse rounded-[calc(var(--radius)-7px)] bg-[#181818] motion-reduce:animate-none" />
                           ))}
                         </>
                       ) : indicators.length === 0 ? (
@@ -764,7 +807,7 @@ export function LaunchpadPage() {
                             key={ind.address}
                             ind={ind}
                             selected={selected?.address === ind.address}
-                            onClick={() => setSelected(ind)}
+                            onClick={() => { userPickedRef.current = true; setSelected(ind); }}
                           />
                         ))
                       )}

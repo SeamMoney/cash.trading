@@ -1557,6 +1557,7 @@ assert.ok(
 // whole launch flow and own a vault that never placed an order.
 const sealedTickLib = readFileSync("lib/sealed-tick.ts", "utf8");
 const sealedTickCron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
+const sealedTickPersistence = readFileSync("lib/sealed-tick-persistence.ts", "utf8");
 const sealedAttestRoute = readFileSync("app/api/sealed/attest/route.ts", "utf8");
 const sourceVaultLib = readFileSync("lib/sealed-source-vault.ts", "utf8");
 const sealedReadinessLib = readFileSync("lib/sealed-readiness.ts", "utf8");
@@ -1580,6 +1581,28 @@ assert.ok(
 assert.ok(
   sealedTickCron.includes("backoffMs(row.tickFailures)"),
   "a persistently failing vault must back off rather than burn gas every minute",
+);
+assert.ok(
+  !sealedTickCron.includes("catch(() => undefined)"),
+  "sealed-vault tick persistence must never fail silently — otherwise confirmed fills vanish " +
+    "from analytics and failed vaults never enter backoff",
+);
+assert.ok(
+  sealedTickCron.includes("persistSingleMarketTick") &&
+    sealedAttestRoute.includes("persistSingleMarketTick") &&
+    sealedTickPersistence.includes("prisma.$transaction(writes)") &&
+    sealedTickPersistence.includes("skipDuplicates: true"),
+  "a confirmed single-market tick must persist its receipt and health cursor atomically and " +
+    "remain idempotent when the same receipt is replayed, regardless of which attestation " +
+    "entry point submitted it",
+);
+assert.ok(
+  sealedTickCron.includes("persistenceWarning") &&
+    sealedTickCron.includes("statusPersistenceWarning") &&
+    sealedTickCron.includes("persistenceWarnings") &&
+    sealedAttestRoute.includes("persistenceWarning"),
+  "database failures after an on-chain tick must be surfaced in the authenticated cron result " +
+    "and logs, not reported as a clean success",
 );
 const managedRowsLookup = sealedTickCron.indexOf("const rows = await prisma.sealedVault.findMany");
 const emptyManagedQueue = sealedTickCron.indexOf("if (rows.length === 0)");

@@ -22,6 +22,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { attestorKeyMismatch, performTick, isTooSoon } from "@/lib/sealed-tick";
 import {
+  persistSingleMarketTick,
+  persistTickStatus,
+} from "@/lib/sealed-tick-persistence";
+import {
   performPortfolioTick,
   isTooSoon as isPortfolioTooSoon,
 } from "@/lib/portfolio-tick";
@@ -167,15 +171,22 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       // A decrypt failure means the key rotated or the row was tampered with. Never retry in a
       // loop — record it and move on.
-      await prisma.sealedVault.update({
-        where: { strategyVaultAddr: row.strategyVaultAddr },
+      const statusPersistenceWarning = await persistTickStatus({
+        strategyVaultAddr: row.strategyVaultAddr,
+        context: "decrypt failure",
         data: {
           tickFailures: row.tickFailures + 1,
           lastTickAt: new Date(),
           lastTickError: `decrypt failed: ${err instanceof Error ? err.message : "unknown"}`,
         },
-      }).catch(() => undefined);
-      results.push({ vault: row.strategyVaultAddr, error: "decrypt failed" });
+      });
+      results.push({
+        vault: row.strategyVaultAddr,
+        ok: false,
+        stage: "decrypt",
+        error: "decrypt failed",
+        ...(statusPersistenceWarning ? { statusPersistenceWarning } : {}),
+      });
       continue;
     }
 
@@ -199,15 +210,22 @@ export async function GET(request: NextRequest) {
         return m ? { idx, name: m.name, asset: m.pythAsset } : null;
       });
       if (resolved.some((m) => m === null)) {
-        await prisma.sealedVault.update({
-          where: { strategyVaultAddr: row.strategyVaultAddr },
+        const statusPersistenceWarning = await persistTickStatus({
+          strategyVaultAddr: row.strategyVaultAddr,
+          context: "portfolio market validation failure",
           data: {
             tickFailures: row.tickFailures + 1,
             lastTickAt: new Date(),
             lastTickError: `unknown market in allowlist: ${names.join(",")}`,
           },
-        }).catch(() => undefined);
-        results.push({ vault: row.strategyVaultAddr, ok: false, stage: "markets", error: "unknown market in allowlist" });
+        });
+        results.push({
+          vault: row.strategyVaultAddr,
+          ok: false,
+          stage: "markets",
+          error: "unknown market in allowlist",
+          ...(statusPersistenceWarning ? { statusPersistenceWarning } : {}),
+        });
         continue;
       }
 
@@ -246,8 +264,10 @@ export async function GET(request: NextRequest) {
             error: err instanceof Error ? err.message : "unknown",
           });
         }
-        await prisma.sealedVault.update({
-          where: { strategyVaultAddr: row.strategyVaultAddr },
+        const persistenceWarning = await persistTickStatus({
+          strategyVaultAddr: row.strategyVaultAddr,
+          context: "confirmed portfolio tick",
+          transactionHash: pr.txHash,
           data: {
             lastTickAt: new Date(),
             lastTickSeq: Number(pr.seq),
@@ -256,7 +276,7 @@ export async function GET(request: NextRequest) {
             // vault quietly trading three of its four markets is visible rather than green.
             lastTickError: pr.skipped.length > 0 ? `skipped: ${pr.skipped.join("; ")}`.slice(0, 500) : null,
           },
-        }).catch(() => undefined);
+        });
         results.push({
           vault: row.strategyVaultAddr,
           ok: true,
@@ -265,20 +285,28 @@ export async function GET(request: NextRequest) {
           skipped: pr.skipped.length,
           builderFills: pr.builderFills.length,
           ...(accountingWarning ? { accountingWarning } : {}),
+          ...(persistenceWarning ? { persistenceWarning } : {}),
           tx: pr.txHash,
         });
       } else if (isPortfolioTooSoon(pr)) {
         results.push({ vault: row.strategyVaultAddr, skipped: "too soon" });
       } else {
-        await prisma.sealedVault.update({
-          where: { strategyVaultAddr: row.strategyVaultAddr },
+        const statusPersistenceWarning = await persistTickStatus({
+          strategyVaultAddr: row.strategyVaultAddr,
+          context: `portfolio tick failure at ${pr.stage}`,
           data: {
             tickFailures: row.tickFailures + 1,
             lastTickAt: new Date(),
             lastTickError: `${pr.stage}: ${pr.error}`.slice(0, 500),
           },
-        }).catch(() => undefined);
-        results.push({ vault: row.strategyVaultAddr, ok: false, stage: pr.stage, error: pr.error });
+        });
+        results.push({
+          vault: row.strategyVaultAddr,
+          ok: false,
+          stage: pr.stage,
+          error: pr.error,
+          ...(statusPersistenceWarning ? { statusPersistenceWarning } : {}),
+        });
       }
       continue;
     }
@@ -317,34 +345,13 @@ export async function GET(request: NextRequest) {
           error: err instanceof Error ? err.message : "unknown",
         });
       }
-      // Persist the fills from our own receipt. createMany + skipDuplicates so a re-run of the
-      // same seq is idempotent rather than doubling a vault's trade count.
-      if (r.trades.length > 0) {
-        await prisma.sealedTrade.createMany({
-          data: r.trades.map((t) => ({
-            strategyVaultAddr: row.strategyVaultAddr,
-            network: row.network,
-            seq: t.seq,
-            isBuy: t.isBuy,
-            reduceOnly: t.reduceOnly,
-            size: BigInt(t.size),
-            price: BigInt(t.price),
-            orderPx: BigInt(t.orderPx),
-            txHash: r.txHash,
-            tradedAt: new Date(t.timestamp * 1000),
-          })),
-          skipDuplicates: true,
-        }).catch(() => undefined);
-      }
-      await prisma.sealedVault.update({
-        where: { strategyVaultAddr: row.strategyVaultAddr },
-        data: {
-          lastTickAt: new Date(),
-          lastTickSeq: Number(r.seq),
-          tickFailures: 0,
-          lastTickError: null,
-        },
-      }).catch(() => undefined);
+      const persistenceWarning = await persistSingleMarketTick({
+        strategyVaultAddr: row.strategyVaultAddr,
+        network: row.network,
+        seq: r.seq,
+        transactionHash: r.txHash,
+        trades: r.trades,
+      });
       results.push({
         vault: row.strategyVaultAddr,
         ok: true,
@@ -353,28 +360,48 @@ export async function GET(request: NextRequest) {
         fills: r.trades.length,
         builderFills: r.builderFills.length,
         ...(accountingWarning ? { accountingWarning } : {}),
+        ...(persistenceWarning ? { persistenceWarning } : {}),
         tx: r.txHash,
       });
     } else if (isTooSoon(r)) {
       // Healthy — the vault's cadence is simply slower than the cron. Not a failure.
       results.push({ vault: row.strategyVaultAddr, skipped: "too soon" });
     } else {
-      await prisma.sealedVault.update({
-        where: { strategyVaultAddr: row.strategyVaultAddr },
+      const statusPersistenceWarning = await persistTickStatus({
+        strategyVaultAddr: row.strategyVaultAddr,
+        context: `single-market tick failure at ${r.stage}`,
         data: {
           tickFailures: row.tickFailures + 1,
           lastTickAt: new Date(),
           lastTickError: `${r.stage}: ${r.error}`.slice(0, 500),
         },
-      }).catch(() => undefined);
-      results.push({ vault: row.strategyVaultAddr, ok: false, stage: r.stage, error: r.error });
+      });
+      results.push({
+        vault: row.strategyVaultAddr,
+        ok: false,
+        stage: r.stage,
+        error: r.error,
+        ...(statusPersistenceWarning ? { statusPersistenceWarning } : {}),
+      });
     }
   }
 
   const ticked = results.filter((r) => r.ok === true).length;
   const failed = results.filter((r) => r.ok === false).length;
+  const persistenceWarnings = results.filter(
+    (result) => result.persistenceWarning || result.statusPersistenceWarning,
+  ).length;
   return NextResponse.json(
-    { ok: true, network, considered: rows.length, ticked, failed, results },
+    {
+      ok: true,
+      degraded: failed > 0 || persistenceWarnings > 0,
+      network,
+      considered: rows.length,
+      ticked,
+      failed,
+      persistenceWarnings,
+      results,
+    },
     { status: 200, headers: NO_STORE },
   );
 }

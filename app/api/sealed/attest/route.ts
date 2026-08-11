@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { persistDecibelBuilderFills } from "@/lib/decibel-builder-revenue";
 import { attestorKeyMismatch, performTick } from "@/lib/sealed-tick";
+import { persistSingleMarketTick } from "@/lib/sealed-tick-persistence";
 import {
   derivePrimarySubaccount,
   getSealedVault,
@@ -140,14 +141,23 @@ export async function POST(request: NextRequest) {
         error: err instanceof Error ? err.message : "unknown",
       });
     }
+    const persistenceWarning = await persistSingleMarketTick({
+      strategyVaultAddr: row.strategyVaultAddr,
+      network: row.network,
+      seq: result.seq,
+      transactionHash: result.txHash,
+      trades: result.trades,
+    });
     return NextResponse.json(
       {
         ok: true,
         seq: result.seq,
         signal: result.signal,
         txHash: result.txHash,
+        fills: result.trades.length,
         builderFills: result.builderFills.length,
         ...(accountingWarning ? { accountingWarning } : {}),
+        ...(persistenceWarning ? { persistenceWarning } : {}),
       },
       { status: 200, headers: NO_STORE },
     );

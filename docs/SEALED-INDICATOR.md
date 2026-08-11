@@ -325,7 +325,14 @@ Aptos's hosted indexer removed its `events` table, so `VaultTraded` cannot be qu
 fact. We are the party submitting every managed tick, though, so fills are read out of our own
 transaction receipt and persisted to `SealedTrade` — a cache of on-chain facts, each row
 re-derivable from its `txHash`. Self-hosted vaults therefore have no rows, which the endpoint
-reports as *unavailable*, never as *no trades*.
+reports as *unavailable*, never as *no trades*, unless their keeper submits through
+`POST /api/sealed/attest`. That server endpoint sees the confirmed receipt and persists it with
+the same path as the managed cron; a fully standalone keeper does not.
+
+For managed single-market vaults, those receipt rows and `SealedVault.lastTickSeq` are committed
+in one idempotent database transaction. A Neon failure after Aptos confirms the trade is surfaced
+as a `persistenceWarning` with the transaction hash in the authenticated cron result and logs;
+it is never discarded as a clean success.
 
 Returns are per-trade price moves before leverage, fees and slippage — not the vault's net
 return to depositors. The UI says that verbatim.

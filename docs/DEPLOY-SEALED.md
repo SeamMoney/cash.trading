@@ -401,7 +401,8 @@ without it the scheduled run 401s forever while everything else reports healthy.
 
 ```bash
 curl -s "https://<your-domain>/api/cron/sealed-tick?secret=$CRANK_SECRET" | jq
-# { "ok": true, "considered": N, "ticked": N, "failed": 0, "results": [...] }
+# { "ok": true, "degraded": false, "considered": N, "ticked": N,
+#   "failed": 0, "persistenceWarnings": 0, "results": [...] }
 ```
 
 Behaviour worth knowing:
@@ -412,6 +413,11 @@ Behaviour worth knowing:
 - **Failures back off exponentially**, `2^failures` minutes capped at 60, so a broken vault
   doesn't burn gas every minute.
 - **Only managed vaults are touched.** Self-hosted ones are the creator's responsibility.
+- **Confirmed single-market fills and the vault cursor commit together.** Receipt replay is
+  idempotent. If Neon rejects the transaction after the Aptos transaction succeeds, the cron
+  still returns HTTP 200 so Vercel does not replay every vault, but sets `degraded: true`, adds
+  `persistenceWarning` beside the affected transaction hash, increments
+  `persistenceWarnings`, and writes the full error to Vercel logs.
 - `maxDuration = 300`, batch capped at 200 vaults. Ticks run **sequentially**, so at ~2s each
   the practical ceiling is roughly 100–150 vaults per firing. Past that, ticks get skipped
   silently. Parallelising the loop is the fix; it hasn't been needed yet.
@@ -427,9 +433,11 @@ Behaviour worth knowing:
 | Cron not firing | silence | `SealedVault.lastTickAt` goes stale |
 | Wrong cron secret | silence | Vercel cron logs show 401; `lastTickAt` never set |
 | Attestor keypair mismatch | every vault silent | cron returns HTTP 500 with the derived vs expected key |
+| Neon write fails after Aptos succeeds | chain trade exists but local analytics lag | `degraded: true`, `persistenceWarnings > 0`, transaction hash in `results[]` and Vercel logs |
 
 `lastTickAt`, `lastTickSeq`, `tickFailures` and `lastTickError` are written to `SealedVault` on
-every run — query them for health rather than scraping logs.
+every persisted run. Query them for normal health, and alert on `degraded` or
+`persistenceWarnings` so a database outage cannot masquerade as a clean tick.
 
 ---
 

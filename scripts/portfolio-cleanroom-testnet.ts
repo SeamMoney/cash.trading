@@ -20,9 +20,12 @@
  *
  * Idempotent. State lands in `.portfolio-cleanroom-testnet/` (gitignored); re-running resumes
  * at the first incomplete step rather than spending USDC again.
+ * Pass `--migrate-key-only` to move a legacy embedded key into deployer.key without submitting
+ * a transaction.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   Account,
   AccountAddress,
@@ -56,6 +59,7 @@ const APT_SEED = 300_000_000n;     // 3 APT for gas + publish
 const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));
 
 interface State {
+  /** Legacy location. Migrated to deployer.key before the next transaction. */
   privateKey?: string;
   addr?: string;
   fundTx?: string;
@@ -70,10 +74,20 @@ interface State {
   tickTx?: string;
 }
 
-mkdirSync(DIR, { recursive: true });
-const statePath = `${DIR}/state.json`;
+mkdirSync(DIR, { recursive: true, mode: 0o700 });
+chmodSync(DIR, 0o700);
+const statePath = resolve(DIR, "state.json");
+const keyPath = resolve(DIR, "deployer.key");
 const state: State = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : {};
-const save = () => writeFileSync(statePath, JSON.stringify(state, null, 2));
+if (existsSync(statePath)) chmodSync(statePath, 0o600);
+
+function writeOwnerOnlyFile(path: string, contents: string) {
+  writeFileSync(path, contents, { encoding: "utf8", mode: 0o600 });
+  // `mode` only applies when a file is first created. Tighten an existing file too.
+  chmodSync(path, 0o600);
+}
+
+const save = () => writeOwnerOnlyFile(statePath, JSON.stringify(state, null, 2));
 
 async function send(signer: Account, label: string, data: Parameters<typeof aptos.transaction.build.simple>[0]["data"]) {
   const txn = await aptos.transaction.build.simple({ sender: signer.accountAddress, data });
@@ -104,20 +118,47 @@ async function usdc(addr: string): Promise<bigint> {
 (async () => {
   console.log("\nportfolio_vault clean-room — testnet\n");
 
+  // ── 1. A fresh account, funded from the existing deployer ──────────────────
+  // Older runs embedded this key in state.json and passed it in argv to the Aptos CLI. Keep
+  // the resumable account, but migrate the secret to an owner-only file before using it.
+  let cleanroomPrivateKeyRaw: string;
+  if (existsSync(keyPath)) {
+    chmodSync(keyPath, 0o600);
+    cleanroomPrivateKeyRaw = readFileSync(keyPath, "utf8").trim();
+    if (state.privateKey && state.privateKey.trim() !== cleanroomPrivateKeyRaw) {
+      throw new Error("legacy state key does not match deployer.key; refusing ambiguous migration");
+    }
+  } else if (state.privateKey) {
+    cleanroomPrivateKeyRaw = state.privateKey.trim();
+    writeOwnerOnlyFile(keyPath, cleanroomPrivateKeyRaw);
+  } else {
+    cleanroomPrivateKeyRaw = Account.generate().privateKey.toString();
+    writeOwnerOnlyFile(keyPath, cleanroomPrivateKeyRaw);
+  }
+  if (state.privateKey) {
+    delete state.privateKey;
+    save();
+  }
+  const me = Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(cleanroomPrivateKeyRaw) });
+  const derivedAddr = me.accountAddress.toStringLong();
+  if (state.addr && AccountAddress.from(state.addr).toStringLong() !== derivedAddr) {
+    throw new Error("state address does not match deployer.key; refusing to sign");
+  }
+  if (!state.addr) {
+    state.addr = derivedAddr;
+    save();
+  }
+  console.log(`  account    ${state.addr}`);
+
+  if (process.argv.includes("--migrate-key-only")) {
+    console.log("  key state  migrated to owner-only deployer.key; no transaction submitted\n");
+    return;
+  }
+
   if (!existsSync(".sealed-e2e-testnet/deployer.key")) {
     console.log("skipped: .sealed-e2e-testnet/deployer.key not found — this E2E run needs a funded testnet deployer key");
     process.exit(0);
   }
-
-  // ── 1. A fresh account, funded from the existing deployer ──────────────────
-  if (!state.privateKey) {
-    const fresh = Account.generate();
-    state.privateKey = fresh.privateKey.toString();
-    state.addr = fresh.accountAddress.toStringLong();
-    save();
-  }
-  const me = Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(state.privateKey) });
-  console.log(`  account    ${state.addr}`);
 
   if (!state.fundTx) {
     // The public faucet needs a signed-in JWT, so gas comes from the account that already has
@@ -150,7 +191,8 @@ async function usdc(addr: string): Promise<bigint> {
       "move", "publish", "--skip-fetch-latest-git-deps",
       "--named-addresses", named,
       "--url", "https://api.testnet.aptoslabs.com/v1",
-      "--private-key", state.privateKey!,
+      // Do not expose the signing key through the process argument list.
+      "--private-key-file", keyPath,
       "--assume-yes", "--max-gas", "2000000", "--included-artifacts", "none",
     ], { cwd: "contracts/strategy-vaults", encoding: "utf8" });
     const tx = out.match(/"transaction_hash":\s*"(0x[0-9a-f]+)"/)?.[1];
@@ -289,7 +331,7 @@ async function usdc(addr: string): Promise<bigint> {
     defaultPctBps: 1000,
     leverageX100: 200,
     attestorPrivateKey: attestorKey,
-    crankPrivateKey: state.privateKey!,
+    crankPrivateKey: cleanroomPrivateKeyRaw,
   });
 
   if (!r.ok) {

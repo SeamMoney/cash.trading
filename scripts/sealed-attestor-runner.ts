@@ -172,6 +172,7 @@ async function simulate(flags: Record<string, string>) {
       programCommitment: commitment,
       seq,
       inputDigest: digest,
+      barTs,
       signal,
     };
     const signature = signAttestation(privKey, att);
@@ -231,6 +232,7 @@ async function simulate(flags: Record<string, string>) {
       programCommitment: commitment,
       seq: replaySeq,
       inputDigest: replayDigest,
+      barTs: b.barTs,
       signal: b.signal,
     });
     const good = new Ed25519PublicKey(attestorPub).verifySignature({
@@ -258,6 +260,7 @@ async function simulate(flags: Record<string, string>) {
       programCommitment: commitment,
       seq: BigInt(victim),
       inputDigest: d,
+      barTs: trace[victim].barTs,
       signal: (trace[victim].signal === 1 ? 2 : 1) as Signal,
     });
     const accepted = new Ed25519PublicKey(attestorPub).verifySignature({
@@ -356,6 +359,7 @@ async function live(flags: Record<string, string>) {
       programCommitment: commitment,
       seq,
       inputDigest: hexToBytes(inputDigest),
+      barTs,
       signal,
     });
 

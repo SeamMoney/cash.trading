@@ -24,7 +24,7 @@ function sha3(bytes: Uint8Array): Uint8Array {
 
 /** Must equal ATTESTATION_DOMAIN in portfolio_vault.move. Distinct from the single-market
  *  domain so a signature for one can never be replayed against the other. */
-export const PORTFOLIO_ATTESTATION_DOMAIN = "cash.trading/portfolio-vault/v1";
+export const PORTFOLIO_ATTESTATION_DOMAIN = "cash.trading/portfolio-vault/v2";
 
 export const SIDE_CLOSE = 0;
 export const SIDE_LONG = 1;
@@ -47,6 +47,8 @@ export interface PortfolioAttestation {
   programCommitment: Uint8Array;
   seq: bigint;
   inputDigest: Uint8Array;
+  /** Attestation issuance time in Unix seconds. Bound and freshness-checked on-chain. */
+  barTs: bigint;
   actions: Action[];
 }
 
@@ -87,6 +89,7 @@ export function serializePortfolioAttestation(a: PortfolioAttestation): Uint8Arr
   s.serializeBytes(a.programCommitment); // program_commitment
   s.serializeU64(a.seq); // seq
   s.serializeBytes(a.inputDigest); // input_digest
+  s.serializeU64(a.barTs); // bar_ts
   s.serializeBytes(actionsDigest(a.actions)); // actions_digest
   return s.toUint8Array();
 }

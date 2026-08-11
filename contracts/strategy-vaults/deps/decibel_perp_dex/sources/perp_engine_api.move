@@ -9,17 +9,19 @@
 ///
 /// This module exists because `builder_code_registry`'s own `new_builder_code` and
 /// `approve_max_fee` are `friend`-visible and therefore uncallable from a strategy module —
-/// the same trap as `perp_engine` vs `public_read_api`. Every builder-code construction and
-/// approval must go through here.
+/// the same trap as `perp_engine` vs `public_read_api`. Builder-code construction uses this
+/// public wrapper.
 ///
 /// The fee unit is HUNDREDTHS of a basis point: 1 bp == 100. See
 /// `DECIBEL_BUILDER_CHAIN_UNITS_PER_BPS` in lib/decibel.ts, which uses the same scale.
 ///
-/// Approval note: the approval is recorded for `signer::address_of(signer)`, i.e. the account
-/// that places the order. A vault admin cannot grant it on a vault subaccount's behalf —
+/// Approval note: the approval is recorded for `signer::address_of(signer)`. A strategy object
+/// signer is not the Decibel vault's primary trading subaccount. A vault admin cannot grant the
+/// approval on that subaccount's behalf through the public owner-scoped entry function —
 /// `dex_accounts_entry::approve_max_builder_fee_for_subaccount` aborts with
-/// EBUILDER_SUBACCOUNT_NOT_FOUND when the subaccount is not one of the signer's own. That is
-/// why `sealed_vault` self-approves with its object signer at creation.
+/// EBUILDER_SUBACCOUNT_NOT_FOUND when the subaccount is not one of the signer's own. Automated
+/// vaults therefore use a zero builder fee and never call `approve_max_fee`; the declaration
+/// remains in this ABI stub because it exists in Decibel's published module.
 ///
 /// Stubs only; never published.
 module decibel::perp_engine_api {

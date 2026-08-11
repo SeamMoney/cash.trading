@@ -1,8 +1,9 @@
 # Deploying sealed vaults to production
 
-A step-by-step runbook. Every command here has been run against testnet; every address and
-number has been verified against the live chain rather than copied from memory. Where something
-has **not** been proven on mainnet, it says so.
+A step-by-step runbook. The current contract revision is published and initialized on Aptos
+mainnet. It was independently recompiled at the published address and every module matched the
+on-chain bytecode exactly. Every address and number below is read from the live chain rather
+than copied from memory. Where something has **not** been proven, it says so.
 
 Read [SEALED-INDICATOR.md](./SEALED-INDICATOR.md) first if you don't know what a sealed vault is.
 This document assumes you do and only covers getting it live.
@@ -13,16 +14,78 @@ This document assumes you do and only covers getting it live.
 
 | | Status |
 |---|---|
-| Contract on **testnet** | Published & exercised end-to-end — `0xacc35ae1a8a692d2070e0f6f4b7e0969752789300e055f6973f0ec8287f1740c` |
-| Contract on **mainnet** | **Not published.** Nothing below has run on mainnet. |
-| Builder code (1 bp revenue) | Implemented. Each strategy-vault trading identity must approve the Builder address before its first fee-bearing order; see §8.5b. |
-| Prod database | 4 sealed migrations pending (§3) |
-| Prod env vars | None of the sealed vars are set — `/api/sealed/config` returns `ready:false` |
-| Tick cron | Committed to `vercel.json`, never run in prod |
+| Contract on **testnet** | **Current zero-builder-fee checkout still needs a fresh directional proof.** The preceding package at `0x4ad6f9f4f650bf26417255db304c5131b94136ea63063fef176bb2c515c7c0e9` completed creation, delegation and three neutral ticks, then exposed the builder-identity bug on its first forced buy. See §0.1. |
+| Contract on **mainnet** | **Published and initialized.** Package [`0x3590…5105`](https://explorer.aptoslabs.com/account/0x3590fbae95f65fd00d01be6bf2d5e0049b5b447e749ed269d8cca744d71b5105/modules?network=mainnet); publish [`0x19ee…c6b`](https://explorer.aptoslabs.com/txn/0x19ee80346da94d44a13434808656b2047802ab1737577ad0a69dc62d18da5c6b?network=mainnet); platform init [`0x1e50…611`](https://explorer.aptoslabs.com/txn/0x1e50ab268a3d3732e5a772897d59d713c111818130616306ab3e6b6ac19e4611?network=mainnet). No vault was created and no USDC was spent during publication. |
+| Automated-vault builder fee | **Locked to 0 bp.** Decibel validates approval against the vault's actual trading subaccount, which a delegated strategy cannot approve through the current public API. Direct user orders still use the separately configured 1 bp builder fee. See §8.5b. |
+| Prod database | **Current.** All 18 repository migrations were applied and verified on 2026-08-11 (§3). |
+| Prod env vars | The package, public attestor, managed attestor, cranker, source-encryption key and cron secret are configured for the next production build (§3). `/api/sealed/config` is the live readiness probe. |
+| Tick cron | Scheduled in `vercel.json`; intentionally inert until the sealed package, keys and registry are ready |
 
-The app degrades honestly with none of this done: the launchpad shows "Preview mode ·
-launching is unavailable" and the primary action renders as disabled. Deploying the frontend
-without the rest is safe.
+The current checkout uses the v2 attestation layout, which binds the submitted bar timestamp
+and expires signed instructions on-chain. Every earlier testnet package used v1 and is historical
+evidence only. The package publish and platform initialization are proven on mainnet; no funded
+mainnet vault has been created, so the first funded launch and directional order remain a separate
+money-moving production check.
+
+The app degrades honestly when production configuration is incomplete: the launchpad shows
+"Preview mode · launching is unavailable" and the primary action renders as disabled. The live
+readiness endpoint also checks that `platform_terms` exists before enabling launch.
+
+### 0.1 Mainnet release evidence
+
+The package was published from a dedicated mainnet deployer on 2026-08-11 with Aptos compatible
+upgrade policy. A second clean compile at the final address matched all five modules byte for
+byte:
+
+| Module | SHA-256 prefix |
+|---|---|
+| `math_lib` | `aee9afc62c7ca1e3` |
+| `indicator` | `8af44bc1da40c7cc` |
+| `sealed_vault` | `20e4ed03dd10e3a9` |
+| `strategy_vault` | `4dc72ae2572ed22b` |
+| `portfolio_vault` | `c12dfe2767e86a6a` |
+
+The live `platform_terms` view returns a 50 USDC launch fee, treasury and builder address
+`0x69d3…39fa`, and an automated-vault builder fee of 0 bp. The package registry reports policy
+`1` (`compatible`) and upgrade number `0`.
+
+### 0.2 Previous testnet release evidence and the directional failure
+
+The 2026-08-11 run began with a fresh deployer and no package state. It published the preceding
+positive-builder-fee revision,
+verified the bytecode, initialized platform terms, minted test USDC, created and funded a real
+Decibel testnet vault, created and sealed a strategy vault, delegated it, stored the manifest,
+and submitted three signed attested ticks. The final on-chain state was `sealed=true`,
+`seq=3`, `trades=0`; neutral warm-up signals correctly placed no order.
+
+- Package: [`0x4ad6…c0e9`](https://explorer.aptoslabs.com/account/0x4ad6f9f4f650bf26417255db304c5131b94136ea63063fef176bb2c515c7c0e9/modules?network=testnet)
+- Publish: [`0xf1b171…4975`](https://explorer.aptoslabs.com/txn/0xf1b171ead28c009bd35dd69e306f64627d63f3502bd1d8ec0cecc69fbe084975?network=testnet)
+- Platform initialization: [`0x3d4564…681e`](https://explorer.aptoslabs.com/txn/0x3d45643e48d3865630309d643258cc9cf03a2e9e802f4b324c3103b78f20681e?network=testnet)
+- Decibel vault: [`0x90d7…99ea`](https://explorer.aptoslabs.com/account/0x90d7ce26226aeb7e4bb80a8d8b7837839afa10ddac7392200ec0ccf6793199ea?network=testnet)
+- Sealed strategy vault: [`0x2cf1…22d4`](https://explorer.aptoslabs.com/account/0x2cf1857c0d644ecf0021bf2176db14fdc0e458919b630f74c0f06680aacb22d4?network=testnet)
+- Create and seal: [`0x243dad…9d5d`](https://explorer.aptoslabs.com/txn/0x243dad4c0cf4aa25e833b90b87128d19134ad3dcf6c0c0e44ba575d1d7a29d5d?network=testnet)
+- Delegate: [`0x2eaffe…d2d2`](https://explorer.aptoslabs.com/txn/0x2eaffe4223121080d042d0143758ba186d527e03102f241ff9dcbf7852ffd2d2?network=testnet)
+- Attested ticks: [`seq 0`](https://explorer.aptoslabs.com/txn/0x9521d9a5b8a7f50326bec4a27a488e69d5cff928730864f98b072454fa1ce14e?network=testnet), [`seq 1`](https://explorer.aptoslabs.com/txn/0x3e944b4ce7da6aa99f4f4c77e24f6b1b79f65c709f37b806e9e6aa851ff936df?network=testnet), [`seq 2`](https://explorer.aptoslabs.com/txn/0xd2234a9271d6fc5f5531424230b913b70b9f24255ecaf490fc8cc2febbfe4d22?network=testnet)
+
+Independent local/on-chain SHA-256 prefixes were identical for every module in that preceding
+revision:
+`math_lib 8384122af805f753`, `indicator 4af0ab05ed6c8184`,
+`sealed_vault 6283b660724340c4`, `strategy_vault 4eb9157e5b3e050e`, and
+`portfolio_vault f8dd51151e8c62c7`. This supersedes the legacy `0xacc35a…1740c`
+package, whose `portfolio_vault` does not match the current checkout.
+
+The neutral ticks proved the committed runner and attestor path, but did not exercise Decibel's
+order validation. A forced buy then aborted with
+`builder_code_registry::EBUILDER_NOT_REGISTERED(0x2)`. The strategy object had approved the
+builder; Decibel checked the separate primary subaccount owned by the vault. The current source
+removes that invalid approval, locks automated fees to zero, and preflights legacy positive-fee
+vaults against the actual subaccount before signing. A fresh buy/sell testnet run is the remaining
+release gate.
+
+To exercise the order plumbing deterministically, the deploy tool accepts
+`--test-signal buy|sell|neutral` **only on testnet**. It records those ticks as
+`source:"test-override"`; it does not pretend the committed strategy emitted them. The flag is
+parsed before state or key material and is unconditionally rejected outside testnet.
 
 ---
 
@@ -36,17 +99,24 @@ Three decisions that are painful to change later.
 follows it. **Recommendation: run the first real vault on testnet**, by overriding this in a
 preview deployment, before spending mainnet USDC.
 
-### 1.2 The mainnet publish is irreversible
+### 1.2 The mainnet package uses Aptos compatible policy
 
-`sealed:publish --network mainnet` injects `upgrade_policy = "immutable"` into `Move.toml`
-before publishing (`scripts/sealed-e2e-deploy.ts` ~line 255). That is deliberate — an
-upgradeable "sealed" contract is not sealed, since the publisher could rewrite the rules under
-existing depositors. Consequences:
+The sealed package imports Decibel's live mainnet modules. Those packages use Aptos upgrade
+policy 1 (`compatible`). Aptos rejects an immutable package that depends on them with
+`0x1::code::EDEP_WEAKER_POLICY`, so `sealed:publish --network mainnet` explicitly injects
+`upgrade_policy = "compatible"` into its protected package copy.
 
-- The published bytecode can **never** be changed. A bug means publishing a new package at a
-  new address and migrating vaults.
-- Ship only a version you would be happy to never patch. The Move tests must pass and the
-  testnet vault should have traded.
+Consequences:
+
+- Aptos only permits backward-compatible upgrades, signed by the deployer. The deployer key is
+  therefore a package upgrade authority and must stay offline after release.
+- Ship only after the Move tests and exact-address preflight pass. Any later upgrade needs the
+  same review, compilation, tests, publish guard and bytecode verification as the first release.
+- The publish tool compiles at the final package address and compares all five local `.mv`
+  modules byte-for-byte with the fullnode response before it records the package or initializes
+  platform terms. A mismatch stops the pipeline.
+- Mainnet mutation is blocked unless the operator supplies the exact confirmation phrase shown
+  in §2.3. The guard runs before state or key files are created.
 
 ### 1.3 Managed attestation is a trust concession
 
@@ -62,14 +132,15 @@ same address string on testnet and mainnet; only the accounts are separate. So t
 thing as "the testnet address" of a role — there is one address per role, and the question is
 only whether that keypair is fresh.
 
-Every key under `.sealed-e2e-testnet/`, `.portfolio-cleanroom-testnet/` and `.sealed-e2e-mainnet/`
-that was generated during development has lived in ephemeral CI containers and appeared in agent
-transcripts. **Treat all of them as burned.** Generate four new ones for mainnet:
+Treat every development or testnet key as burned. Production roles require separate keys that
+have never appeared in logs, transcripts, shell arguments or committed files. The mainnet
+deployer and attestor used for the release above were generated locally into ignored, mode-0600
+files; only their public addresses are recorded here. Generate each production role separately:
 
 | Role | Where it lives | What it does | Compromise means |
 |---|---|---|---|
-| **Deployer / admin** | cold — signs a handful of times, ever | Publishes the package (its address **is** `@cash_strategy`), and is the only account `init_platform` / `set_platform_config` accept | Attacker can redirect the treasury and builder addresses for **future** vaults. Existing vaults snapshot their terms at creation and are unaffected. Cannot change bytecode: the mainnet publish is immutable (§1.2) |
-| **Builder / treasury** | cold, ideally hardware | Receives the 1 bp builder fee and the launch fee. The strategy-vault trading identity approves it on-chain at creation. | Revenue theft only. Contract-capped at `MAX_BUILDER_FEE_BPS = 10` |
+| **Deployer / admin** | cold — signs a handful of times, ever | Publishes or compatibly upgrades the package (its address **is** `@cash_strategy`), and is the only account `init_platform` / `set_platform_config` accept | Attacker can change future compatible bytecode and platform terms. Existing vault resources keep their stored terms, but upgraded code can change how those resources are interpreted. Keep this key offline (§1.2) |
+| **Treasury** | cold, ideally hardware | Receives the one-time launch fee. The automated-vault package cannot charge a builder fee. | Launch revenue theft only |
 | **Attestor** | hot — Vercel env, `SEALED_ATTESTOR_PRIVATE_KEY` | Signs one bounded action per bar. Its public key is sealed into every vault at birth | Attacker can steer trades **within** the frozen bounds: market allowlist, per-leg and aggregate leverage, max positions, bar cadence, max-hold. Cannot withdraw, cannot exceed caps, cannot unseal |
 | **Cranker** | hot — Vercel env, `SEALED_CRANK_PRIVATE_KEY` | Submits the tick transaction and pays gas. No authority whatsoever | Attacker gets a gas wallet. Signals are verified against the attestor pubkey on chain |
 
@@ -78,7 +149,7 @@ Rules that follow from the table:
 - **Never reuse one key for two roles.** Deployer = admin is already a doubling-up the contract
   forces on us; don't add more. Attestor ≠ cranker is enforced by §4.2's guidance and is the
   reason a stolen gas wallet can't forge signals.
-- **Builder ≠ deployer.** The builder address accumulates revenue; it should never be an
+- **Treasury ≠ deployer.** The treasury accumulates launch revenue; it should never be an
   account whose key ever touched a server.
 - The deployer is cold **but not disposable** — losing it means no future `set_platform_config`,
   so back it up the way you back up the attestor key.
@@ -89,13 +160,14 @@ Rules that follow from the table:
 Generate them separately, and write down which is which before funding anything:
 
 ```bash
-for role in deployer builder attestor cranker; do
+for role in deployer treasury attestor cranker; do
   aptos key generate --output-file "mainnet-$role.key" --assume-yes
 done
 ```
 
-Fund the deployer (~1 APT, §2.2) and the cranker (§5). The builder and attestor need no APT —
-the builder never submits a transaction from this system, and the attestor only signs off-chain.
+Fund a fresh deployer with at least 2.5 APT (§2.2) and fund the cranker (§5). The treasury and
+attestor need no APT. The treasury never submits a transaction from this system, and the attestor
+only signs off-chain.
 
 ---
 
@@ -127,18 +199,36 @@ The package address **is** the deployer address, and it is permanent.
 # Generate a dedicated deployer, or set SEALED_DEPLOYER_PRIVATE_KEY to an existing funded key.
 export SEALED_DEPLOYER_PRIVATE_KEY=ed25519-priv-0x...
 
-# Required on mainnet. This is the cold Aptos address that receives the builder fee.
-# The deployer is intentionally never used as an implicit mainnet revenue recipient.
-export DECIBEL_BUILDER_ADDRESS=0x...
-export DECIBEL_BUILDER_FEE_BPS=1
-
-# Optional. Receives the one-time 50 USDC launch fee. When omitted it uses the
-# explicit builder address above, never the deployer address.
+# Required on mainnet. This cold Aptos address receives the one-time 50 USDC launch fee.
+# The deployer is never used as an implicit mainnet revenue recipient.
 export SEALED_TREASURY_ADDRESS=0x...
+
+# Automated vault orders must omit the builder fee until Decibel exposes a public approval
+# path for a vault's actual primary trading subaccount. The deploy tool rejects any other value.
+export SEALED_VAULT_BUILDER_FEE_BPS=0
+
+# Optional compatibility/audit stamp stored in platform and vault state. It receives no
+# automated-order revenue while the fee is zero. When omitted it equals the treasury address.
+export DECIBEL_BUILDER_ADDRESS=0x...
 ```
 
-The publish costs well under 1 APT. Fund the deployer with **~1 APT on mainnet**. The script
-gates on 0.4 APT and prints the address to fund if short.
+Before loading the deployer key into the publish command, run the read-only preflight with its
+public address:
+
+```bash
+pnpm sealed:preflight-mainnet --package 0x<fresh-deployer-address>
+```
+
+It checks the Aptos CLI, chain ID, Decibel market parameters, native USDC metadata, mainnet
+platform economics, exact-address compatible Move compilation/tests, existing package bytecode (if any),
+and the APT balance. It does not read deployment state, load or create a key, sign, or submit a
+transaction. Every line must report `PASS` before publishing.
+
+The eventual publish fee is well under 1 APT, but Aptos validates the transaction against the
+CLI's 2,000,000-unit maximum-gas ceiling before submission. A clean-room publish funded with
+1 APT fails that validation. Fund a fresh deployer with **at least 2.5 APT on mainnet**. The
+script enforces that fresh-publish reserve, then drops to a 0.4 APT gate after a package exists
+so an interrupted setup remains resumable.
 
 The deploy tool passes the publisher key through a temporary mode-`0600` file and removes it
 after the CLI exits. It never places the mainnet key in the process argument list. Its state
@@ -147,7 +237,8 @@ directory and files are also forced to mode `0700` and `0600` respectively.
 ### 2.3 Publish
 
 ```bash
-pnpm sealed:publish --network mainnet
+pnpm sealed:publish --network mainnet \
+  --confirm-mainnet PUBLISH_COMPATIBLE_SEALED_VAULTS_ON_APTOS_MAINNET
 ```
 
 This publishes and calls `init_platform`, then **stops**. It does not create a vault and
@@ -159,7 +250,9 @@ with stale terms or silently redirects revenue.
 
 > Do **not** use `pnpm sealed:e2e run --network mainnet` for this. `run` continues into the
 > full pipeline: it creates a real Decibel vault, paying Decibel's 100 USDC protocol fee, the
-> 100 USDC seed and our 50 USDC launch fee — 250 USDC of real money, by surprise.
+> 100 USDC seed and our 50 USDC launch fee — 250 USDC of real money. The tool requires a
+> separate `SPEND_250_USDC_ON_MAINNET_SEALED_E2E` confirmation for that path, but package
+> deployment should still use `sealed:publish`.
 
 The script is resumable. Its state lives in `.sealed-e2e-mainnet/` (deployer key, attestor key,
 addresses). **Back that directory up** — the attestor private key in it is what every vault
@@ -177,7 +270,14 @@ Two publish failures cost hours on testnet; both are already fixed, but recognis
 
 ```bash
 pnpm sealed:e2e status --network mainnet
+pnpm sealed:e2e verify-package --network mainnet --package 0x<package-address>
 ```
+
+`verify-package` recompiles the current checkout at the exact published address, hashes the
+local and on-chain bytes for each module, and exits nonzero on any mismatch or missing module.
+The publish command runs this check automatically before `init_platform`; the standalone command
+is the repeatable release/audit check. It must report `MATCH` for `math_lib`, `indicator`,
+`sealed_vault`, `strategy_vault`, and `portfolio_vault`.
 
 Then confirm the platform config landed, substituting your package address:
 
@@ -185,8 +285,8 @@ Then confirm the platform config landed, substituting your package address:
 curl -s https://api.mainnet.aptoslabs.com/v1/view \
   -H 'content-type: application/json' \
   -d '{"function":"<PKG>::sealed_vault::platform_terms","type_arguments":[],"arguments":[]}'
-# Expect: ["50000000","<treasury>","<builder>","1"]
-#          launch fee (50 USDC)          builder fee (1 bp)
+# Expect: ["50000000","<treasury>","<builder-stamp>","0"]
+#          launch fee (50 USDC)                 automated builder fee (0 bp)
 ```
 
 If this 404s, the package didn't publish. If it aborts, `init_platform` didn't run.
@@ -508,8 +608,9 @@ table. Vaults we don't attest have no rows, reported as *unavailable* — never 
 ### 8.4 Performance numbers are pre-cost
 
 `cumulativeReturnPct` compounds per-trade price moves. It excludes leverage, Decibel's
-maker/taker fees, our 1 bp builder fee and slippage. The UI labels it as such. It is **not** a
-depositor's net return, and shouldn't be presented as one in marketing.
+maker/taker fees and slippage. Automated vault orders currently carry no builder fee. The UI
+labels the series as pre-cost. It is **not** a depositor's net return and should not be presented
+as one in marketing.
 
 ### 8.5 One market in the single-market path
 
@@ -549,38 +650,43 @@ chain.
 
 Bugs it found, all fixed: the `PositionViewInfo` stub's abilities (publish-time
 `TYPE_MISMATCH`), an empty `input_digest` that made bar zero unsignable for every vault, a
-hex-encoded `vector<u8>` read as an array, `is_swap` being caller-asserted, and a missing
-`approve_max_fee` at creation.
+hex-encoded `vector<u8>` read as an array, and `is_swap` being caller-asserted. A later forced
+single-market buy found the separate builder-identity failure described below.
 
 **Still unproven:** the max-hold and adverse-funding force-closes (both need a position held
 across many bars), gas per tick at 16 markets, and the funding sign convention (§2.5).
 
 ---
 
-### 8.5b Builder-code approval invariant
+### 8.5b Builder-code identity invariant
 
-Decibel requires the trading identity that places an order to approve the Builder address and
-maximum fee first. A fee-bearing order without that `(trading account, builder address)` approval
+Decibel requires the trading subaccount charged by a fee-bearing order to approve the builder
+address and maximum fee first. Without that exact `(subaccount, builder)` approval, the order
 aborts with:
 
 ```
 Move abort in …::builder_code_registry: EBUILDER_NOT_REGISTERED(0x2)
 ```
 
-That error name means the approval pair is absent. It does not refer to a Decibel-admin builder
-allowlist. The current mainnet registry stores the global fee cap and per-account approvals; it
-does not store a separate list of registered builders. Decibel's current Builder Code guide also
-describes the flow as permissionless.
+The name means the approval pair is absent. It does not refer to a Decibel-admin builder
+allowlist. The registry stores a global cap and per-subaccount approvals.
 
-Both `sealed_vault` and `portfolio_vault` call the public
-`perp_engine_api::approve_max_fee` function from their own object signer during creation. Keep
-that call immediately before the first order can run. A normal user-controlled Decibel account
-uses `dex_accounts_entry::approve_max_builder_fee_for_subaccount` instead and must explicitly
-sign the approval in its wallet.
+The critical identity is the Decibel vault resource's `portfolio.dex_primary_subaccount`.
+`perp_engine_api::approve_max_fee(&strategy_object_signer, ...)` approves the strategy object,
+which is not that trading subaccount. The order still fails. Decibel's public
+`dex_accounts_entry::approve_max_builder_fee_for_subaccount` path is owner-scoped; a delegated
+strategy cannot use it to approve a subaccount owned by the vault.
 
-If the fee is zero, omit the Builder Code. If the fee is positive, verify the approval on-chain
-before sending the first real order. This protects a new deployment from retrying a permanently
-invalid order because its approval transaction was skipped or reverted.
+The current automated-vault package therefore enforces `builder_fee_bps == 0` and omits the
+Builder Code from every order. The deployment tool rejects a nonzero
+`SEALED_VAULT_BUILDER_FEE_BPS`. Direct cash.trading orders are separate: the connected user can
+approve the app's 1 bp fee for their own subaccount, so those orders keep builder revenue.
+
+The cranker also protects legacy positive-fee vaults. Before signing any directional tick, it
+reads the frozen builder terms, resolves the Decibel vault's actual primary subaccount, and calls
+`builder_code_registry::get_approved_max_fee`. A missing, undersized or mismatched approval is a
+permanent `builder-preflight` failure. The cranker does not sign or spend gas retrying it. A legacy
+vault can only proceed when the actual subaccount already has enough approval.
 
 ### 8.5c 🚨 Two strategy vaults on one Decibel vault corrupt each other
 
@@ -676,7 +782,7 @@ the app actually points at, not the one you think it does.
 | Frontend bad | Revert the Vercel deployment. Vaults keep trading — the cron is independent. |
 | Cron misbehaving | Unset `CRANK_SECRET` → cron 501s immediately. Vaults stop trading but hold positions. |
 | A single vault misbehaving | `sealed_vault::set_paused(creator, sv_addr, true)` — instant, creator-only, blocks new ticks without touching the position. |
-| Contract bug | **No rollback.** The mainnet publish is immutable. Pause affected vaults, publish a new package, migrate. |
+| Contract bug | Pause affected vaults. Prefer a new package and migration for a clean trust boundary; use a compatible in-place upgrade only after the full release gate and public bytecode review. |
 | Key compromise (attestor) | Pause every vault. Rotating the key requires new vaults — the key is sealed into each one at creation. |
 
 Migrations are additive, so a frontend rollback never needs a database rollback.
@@ -688,8 +794,12 @@ Migrations are additive, so a frontend rollback never needs a database rollback.
 ```bash
 # Contract
 bash scripts/install-aptos-cli.sh && export APTOS_BIN="$PWD/.aptos-cli/aptos"
-pnpm sealed:publish --network mainnet     # publish + init_platform, spends no USDC
+pnpm sealed:preflight-mainnet --package 0x<fresh-deployer-address>
+pnpm sealed:publish --network mainnet \
+  --confirm-mainnet PUBLISH_COMPATIBLE_SEALED_VAULTS_ON_APTOS_MAINNET
+                                             # publish + init_platform, spends no USDC
 pnpm sealed:e2e status  --network mainnet # read state back
+pnpm sealed:e2e verify-package --network mainnet --package 0x<package-address>
 pnpm sealed:e2e run     --network testnet # FULL pipeline — creates a funded vault
 
 # Database
@@ -702,6 +812,8 @@ pnpm test:sealed-readiness # launch/registry/runner config and attestor keypair
 pnpm test:economics        # re-reads Decibel's limits from BOTH chains
 pnpm test:catalog          # every strategy commits; blurbs match their scripts
 pnpm test:sealed           # attestation BCS layout vs Move
+pnpm test:sealed-package   # exact local/on-chain package comparison logic
+pnpm test:sealed-deploy    # live publish + funded-run confirmation guards
 pnpm test:transpiler       # transpiler rejects what it cannot honestly compile
 
 # Ops
@@ -713,8 +825,10 @@ curl -s "https://<domain>/api/sealed/config" | jq '{launchReady,managedReady,rea
 
 ```
  1. pnpm test:reliability && cd contracts/strategy-vaults && aptos move test   # green
- 2. Fund deployer with ~1 APT (mainnet)
- 3. pnpm sealed:publish --network mainnet                                      # §2
+ 2. Set SEALED_TREASURY_ADDRESS and run sealed:preflight-mainnet with the
+    fresh deployer's public address; fund it to at least 2.5 APT until all checks pass
+ 3. pnpm sealed:publish --network mainnet \
+      --confirm-mainnet PUBLISH_COMPATIBLE_SEALED_VAULTS_ON_APTOS_MAINNET      # §2
  4. Back up .sealed-e2e-mainnet/                                               # §2.3
  5. pnpm db:migrate:deploy                                                     # §3
  6. Set §4.1 vars → redeploy → config shows launchReady:true, managedReady:false
@@ -724,4 +838,6 @@ curl -s "https://<domain>/api/sealed/config" | jq '{launchReady,managedReady,rea
 10. Smoke test one real vault                                                  # §7
 ```
 
-Steps 1–5 are reversible. Step 3 is not.
+Steps 1–2 are read-only or reversible. Step 3 writes permanent chain history and installs a
+compatible package. Later configuration can change, and a deployer-signed compatible upgrade can
+replace package bytecode; neither action removes the original transaction history.

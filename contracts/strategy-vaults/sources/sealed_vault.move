@@ -39,7 +39,7 @@ module cash_strategy::sealed_vault {
     use decibel::public_read_api;
     use decibel::perp_market::PerpMarket;
     use decibel::perp_order;
-    // new_builder_code and approve_max_fee are the PUBLIC surface for builder codes;
+    // new_builder_code is the PUBLIC constructor for an optional builder code;
     // builder_code_registry's own constructors are friend-visible.
     use decibel::perp_engine_api;
     use decibel::builder_code_registry::BuilderCode;
@@ -75,6 +75,7 @@ module cash_strategy::sealed_vault {
     const E_SWAP_NOT_ANNOUNCED: u64 = 19;
     const E_SWAP_NOT_MATURED:   u64 = 20;
     const E_ANNOUNCE_EXPIRED:   u64 = 21;
+    const E_BAR_TOO_OLD:        u64 = 30;
 
     /// Upper bound on the slippage rule — 5%. Bounded so a curator cannot
     /// configure effectively-unlimited price tolerance.
@@ -83,7 +84,7 @@ module cash_strategy::sealed_vault {
     // ─── Constants ───────────────────────────────────────────────────
     /// Domain separator — prevents an attestation being replayed against any other protocol,
     /// module version, or message type that happens to share a field layout.
-    const ATTESTATION_DOMAIN: vector<u8> = b"cash.trading/sealed-vault/v1";
+    const ATTESTATION_DOMAIN: vector<u8> = b"cash.trading/sealed-vault/v2";
 
     /// Mark price is in px decimals (1e6); the committed trace is 1e8-scaled.
     const PRICE_SCALE_PX_TO_1E8: u64 = 100;
@@ -91,12 +92,18 @@ module cash_strategy::sealed_vault {
 
     /// Reject bars dated more than this far ahead of chain time.
     const MAX_CLOCK_SKEW_SECS: u64 = 60;
+    /// A signed tick is an instruction for the current market, not an option the cranker may
+    /// hold and exercise later at a more favorable price.
+    const MAX_ATTESTATION_AGE_SECS: u64 = 300;
 
     /// Decibel expresses builder fees in hundredths of a basis point.
     const BUILDER_UNITS_PER_BPS: u64 = 100;
-    /// Hard ceiling on the builder fee this module will ever attach, in bps. Depositors pay
-    /// this on notional, so it is bounded in code and not merely in config.
-    const MAX_BUILDER_FEE_BPS: u64 = 10;
+    /// Automated orders execute against a Decibel vault subaccount, not this strategy object.
+    /// Decibel currently exposes no public function by which a delegated strategy can approve
+    /// a builder fee for that subaccount. A non-zero code therefore aborts every real order
+    /// with EBUILDER_NOT_REGISTERED. Keep the ceiling at zero until Decibel adds a supported
+    /// vault-admin/delegate approval path. Direct user orders use a separate approval flow.
+    const MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS: u64 = 0;
     /// Hard ceiling on the one-time launch fee, in USDC micro-units (1e6). $500.
     const MAX_LAUNCH_FEE_UNITS: u64 = 500_000_000;
 
@@ -178,7 +185,7 @@ module cash_strategy::sealed_vault {
         /// Where the builder fee on this vault's fills is paid. Snapshotted at creation so a
         /// later platform-config change can never redirect an existing vault's fees.
         builder_addr: address,
-        /// Builder fee in bps of notional, bounded by MAX_BUILDER_FEE_BPS. 0 disables it.
+        /// Builder fee in bps of notional. Currently forced to zero for automated vaults.
         builder_fee_bps: u64,
 
         // ── Swap notice ──
@@ -198,7 +205,7 @@ module cash_strategy::sealed_vault {
     /// Platform economics, held at @cash_strategy and settable only by the admin.
     ///
     /// Both numbers are bounded in code, not just here: the launch fee cannot exceed
-    /// MAX_LAUNCH_FEE_UNITS and the builder fee cannot exceed MAX_BUILDER_FEE_BPS. An admin key
+    /// MAX_LAUNCH_FEE_UNITS and the automated builder fee cannot exceed its zero ceiling. An admin key
     /// compromise therefore cannot turn this into an unbounded tax on depositors.
     struct PlatformConfig has key {
         admin: address,
@@ -237,8 +244,10 @@ module cash_strategy::sealed_vault {
         capacity: u64,
     }
 
-    /// The signed message. Every field except `signal` is reconstructed from chain state, so
-    /// the attestor's only degree of freedom is the signal itself.
+    /// The signed message. `bar_ts` is supplied to the entry function but cryptographically
+    /// bound here, so a permissionless cranker cannot change or indefinitely delay execution.
+    /// The cranker supplies `bar_ts` and `signal`, but both are covered by the signature;
+    /// every other field is reconstructed from chain state.
     struct Attestation has drop {
         domain: vector<u8>,
         chain_id: u8,
@@ -247,6 +256,7 @@ module cash_strategy::sealed_vault {
         seq: u64,
         /// Digest of the series through the PREVIOUS bar — the state the signal was computed on.
         input_digest: vector<u8>,
+        bar_ts: u64,
         signal: u8,
     }
 
@@ -358,7 +368,7 @@ module cash_strategy::sealed_vault {
     ) {
         assert!(signer::address_of(admin) == @cash_strategy, E_NOT_ADMIN);
         assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE);
-        assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE);
+        assert!(builder_fee_bps <= MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS, E_BAD_FEE);
         move_to(admin, PlatformConfig {
             admin: signer::address_of(admin),
             treasury,
@@ -382,7 +392,7 @@ module cash_strategy::sealed_vault {
         let cfg = borrow_global_mut<PlatformConfig>(@cash_strategy);
         assert!(signer::address_of(admin) == cfg.admin, E_NOT_ADMIN);
         assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE);
-        assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE);
+        assert!(builder_fee_bps <= MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS, E_BAD_FEE);
         cfg.treasury = treasury;
         cfg.launch_fee_units = launch_fee_units;
         cfg.builder_addr = builder_addr;
@@ -529,19 +539,6 @@ module cash_strategy::sealed_vault {
             extend_ref,
         });
 
-        // Pre-authorize the builder fee from the vault's own trading identity. Decibel
-        // validates a builder code against an approved maximum, and the approval must come
-        // from the account the orders are placed by — the vault admin cannot grant it on a
-        // vault subaccount's behalf (EBUILDER_SUBACCOUNT_NOT_FOUND). Doing it here means a
-        // launched vault is immediately able to trade with the code attached.
-        if (builder_fee_bps > 0) {
-            perp_engine_api::approve_max_fee(
-                &obj_signer,
-                builder_addr,
-                builder_fee_bps * BUILDER_UNITS_PER_BPS,
-            );
-        };
-
         move_to(&obj_signer, PriceTrace {
             prices: vector::empty<u64>(),
             timestamps: vector::empty<u64>(),
@@ -666,9 +663,9 @@ module cash_strategy::sealed_vault {
 
     // ─── The tick ────────────────────────────────────────────────────
 
-    /// Permissionless crank. The caller pays gas and supplies the bar timestamp, the attested
-    /// signal and its signature — nothing else. The price is read on-chain; the message the
-    /// signature must match is reconstructed entirely from chain state.
+    /// Permissionless crank. The caller pays gas and supplies the signed bar timestamp, signal,
+    /// and signature — nothing else. The price is read on-chain; all remaining signed fields are
+    /// reconstructed from chain state.
     ///
     /// A wrong signature aborts. A stale or out-of-order bar aborts. There is no path by which
     /// the cranker influences what trade happens.
@@ -690,6 +687,7 @@ module cash_strategy::sealed_vault {
         // Timing: strictly forward, spaced, and not from the future.
         let now = timestamp::now_seconds();
         assert!(bar_ts <= now + MAX_CLOCK_SKEW_SECS, E_BAR_IN_FUTURE);
+        assert!(bar_ts + MAX_ATTESTATION_AGE_SECS >= now, E_BAR_TOO_OLD);
         assert!(
             sv.last_bar_ts == 0 || bar_ts >= sv.last_bar_ts + sv.min_bar_interval_s,
             E_BAR_TOO_SOON,
@@ -698,7 +696,7 @@ module cash_strategy::sealed_vault {
         // 1. Verify the attestation against the CURRENT committed state (series through the
         //    previous bar). The attestor computed this signal from exactly that series.
         let prev_digest = sv.input_digest;
-        verify_attestation(sv, sv_addr, prev_digest, signal, signature);
+        verify_attestation(sv, sv_addr, prev_digest, bar_ts, signal, signature);
 
         // 2. Read the price on-chain. The attestor never supplies it and cannot influence it.
         // mark_px is in the engine's px units (1e6); the committed trace is 1e8-scaled.
@@ -737,6 +735,7 @@ module cash_strategy::sealed_vault {
         sv: &SealedVault,
         sv_addr: address,
         prev_digest: vector<u8>,
+        bar_ts: u64,
         signal: u8,
         signature_bytes: vector<u8>,
     ) {
@@ -747,6 +746,7 @@ module cash_strategy::sealed_vault {
             program_commitment: sv.program_commitment,
             seq: sv.seq,
             input_digest: prev_digest,
+            bar_ts,
             signal,
         };
         let sig = ed25519::new_signature_from_bytes(signature_bytes);
@@ -993,6 +993,15 @@ module cash_strategy::sealed_vault {
     }
 
     #[view]
+    /// Builder terms frozen into this strategy. New deployments enforce fee_bps == 0. The
+    /// view remains useful for refusing to crank an older package whose non-zero fee lacks an
+    /// approval on the actual Decibel vault subaccount.
+    public fun get_builder_terms(sv_addr: address): (address, u64) acquires SealedVault {
+        let sv = borrow_global<SealedVault>(sv_addr);
+        (sv.builder_addr, sv.builder_fee_bps)
+    }
+
+    #[view]
     public fun get_trace(sv_addr: address): (vector<u64>, vector<u64>) acquires PriceTrace {
         let t = borrow_global<PriceTrace>(sv_addr);
         (t.prices, t.timestamps)
@@ -1015,6 +1024,7 @@ module cash_strategy::sealed_vault {
         program_commitment: vector<u8>,
         seq: u64,
         input_digest: vector<u8>,
+        bar_ts: u64,
         signal: u8,
         cid: u8,
     ): vector<u8> {
@@ -1025,6 +1035,7 @@ module cash_strategy::sealed_vault {
             program_commitment,
             seq,
             input_digest,
+            bar_ts,
             signal,
         })
     }

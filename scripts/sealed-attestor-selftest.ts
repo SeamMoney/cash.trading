@@ -63,7 +63,7 @@ function main() {
   check("genesis digest is 32 bytes", g.length === 32, g.length);
   check(
     "genesis digest is sha3_256(domain)",
-    toHex(g) === toHex(genesisDigest()) && ATTESTATION_DOMAIN === "cash.trading/sealed-vault/v1",
+    toHex(g) === toHex(genesisDigest()) && ATTESTATION_DOMAIN === "cash.trading/sealed-vault/v2",
   );
   const d1 = foldDigest(g, 1000n, 7000000000000n);
   const d2 = foldDigest(d1, 1060n, 7010000000000n);
@@ -89,6 +89,7 @@ function main() {
     programCommitment: COMMITMENT,
     seq: 0n,
     inputDigest: g,
+    barTs: 1000n,
     signal: SIGNAL_BUY as Signal,
   };
   const msg = serializeAttestation(att);
@@ -104,6 +105,7 @@ function main() {
   check("strategy_vault is bound", !mut("strategyVault", "0x" + "ab".repeat(32)));
   check("chain_id is bound", !mut("chainId", 1));
   check("input_digest is bound", !mut("inputDigest", d1));
+  check("bar_ts is bound", !mut("barTs", 1001n));
   check(
     "program_commitment is bound",
     !mut("programCommitment", foldDigest(g, 7n, 7n)),
@@ -144,6 +146,7 @@ function main() {
       programCommitment: COMMITMENT,
       seq: BigInt(i),
       inputDigest: digest,
+      barTs,
       signal,
     });
     digest = foldDigest(digest, barTs, price);

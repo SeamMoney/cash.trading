@@ -1,4 +1,4 @@
-import { DEFAULT_DECIBEL_BUILDER_FEE_BPS } from "@/lib/decibel-builder-config";
+import { DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS } from "@/lib/decibel-builder-config";
 
 /**
  * Decibel vault economics — what it costs to run a vault, and what we charge.
@@ -74,9 +74,10 @@ export const DECIBEL_VAULT_LIMITS = {
  *    licensed the creator can re-point it at as many sealed strategies as they like for gas
  *    alone. That is what the fee actually buys: not one bot, but a vault that can run any
  *    indicator, swapped whenever they want.
- *  - `builderFeeBps` — charged on notional of every fill the vault makes, via Decibel's
- *    builder-code mechanism. This is the recurring line; it accrues whether the vault is up or
- *    down, and it does not depend on a creator ever launching another vault.
+ *  - `builderFeeBps` — currently zero for automated vault fills. Decibel validates a builder
+ *    approval against the vault's trading subaccount, but its public API only lets the owner of
+ *    a user trading account grant that approval. The delegated strategy object cannot grant it
+ *    for a Decibel vault. Direct cash.trading orders still use the separate 1 bp builder route.
  *
  * Both are read from the CHAIN at runtime (`sealed_vault::platform_terms`) — these constants
  * are the deployment default and the UI's fallback, not the source of truth.
@@ -84,8 +85,8 @@ export const DECIBEL_VAULT_LIMITS = {
 export const PLATFORM_LAUNCH = {
   /** One-time, per Decibel vault, in whole USDC. Bounded at $500 by the contract. */
   launchFeeUsdc: 50,
-  /** Builder fee on notional, in bps. Bounded at 10 bps by the contract. */
-  builderFeeBps: DEFAULT_DECIBEL_BUILDER_FEE_BPS,
+  /** Builder fee on automated vault notional. Must remain zero until Decibel adds approval. */
+  builderFeeBps: DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS,
 } as const;
 
 export const PLATFORM_FEE = {

@@ -42,16 +42,18 @@ async function tick(sv: string, signal: Signal) {
   const [commitment, seq, digest] = (await view(
     `${PKG}::sealed_vault::get_attestation_context`, [sv],
   )) as [string, string, string];
+  const barTs = BigInt(Math.floor(Date.now() / 1000));
   const sig = signAttestation(attestor.privateKey, {
     chainId: 2,
     strategyVault: sv,
     programCommitment: fromHex(commitment),
     seq: BigInt(seq),
     inputDigest: fromHex(digest),
+    barTs,
     signal,
   });
   return send(creator, `${PKG}::sealed_vault::tick_attested`, [
-    sv, String(Math.floor(Date.now() / 1000)), signal, Array.from(sig),
+    sv, String(barTs), signal, Array.from(sig),
   ]);
 }
 

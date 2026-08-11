@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 import { createHash } from "crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { promisify } from "util";
@@ -116,6 +116,11 @@ async function withTempPackage<T>(
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+async function writeOwnerOnlyFile(filePath: string, contents: string): Promise<void> {
+  await writeFile(filePath, contents, { encoding: "utf8", mode: 0o600 });
+  await chmod(filePath, 0o600);
 }
 
 function extractModuleName(moveSource: string): string | null {
@@ -280,8 +285,10 @@ export async function publishPineVault(args: {
 
   const run = async (): Promise<PublishResult> => {
     try {
-      const { stdout } = await withTempPackage(args.moveSource, args.moduleName, "_", (dir) =>
-        execFileAsync(
+      const { stdout } = await withTempPackage(args.moveSource, args.moduleName, "_", async (dir) => {
+        const keyPath = path.join(dir, ".deployer.key");
+        await writeOwnerOnlyFile(keyPath, key);
+        return execFileAsync(
           "aptos",
           [
             "move",
@@ -291,15 +298,17 @@ export async function publishPineVault(args: {
             "--package-dir",
             dir,
             "--skip-fetch-latest-git-deps",
-            "--private-key",
-            key,
+            // Never put a signing key in the process argument list. The containing temp
+            // package is deleted by withTempPackage whether publishing succeeds or fails.
+            "--private-key-file",
+            keyPath,
             "--url",
             "https://api.testnet.aptoslabs.com/v1",
             "--assume-yes",
           ],
           { timeout: PUBLISH_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
-        ),
-      );
+        );
+      });
       const cliError = extractCliError(stdout);
       if (cliError) {
         return { ok: false, error: cliError };

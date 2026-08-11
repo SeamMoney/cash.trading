@@ -6,7 +6,13 @@
  *   pnpm test:economics
  */
 import assert from "node:assert/strict";
-import { DECIBEL_VAULT_LIMITS, computeFeeBreakdown, validateVaultConfig, launchCostUsdc } from "../lib/vault-economics";
+import {
+  DECIBEL_VAULT_LIMITS,
+  PLATFORM_LAUNCH,
+  computeFeeBreakdown,
+  launchCostUsdc,
+  validateVaultConfig,
+} from "../lib/vault-economics";
 import { deriveShareSymbol, truncateDisplayName } from "../lib/sealed-vaults";
 
 const PKGS = {
@@ -50,6 +56,11 @@ async function main() {
 
   console.log("\nfee model");
   const b = computeFeeBreakdown();
+  check(
+    "automated vault builder fee is locked to 0 bp",
+    PLATFORM_LAUNCH.builderFeeBps === 0,
+    PLATFORM_LAUNCH.builderFeeBps,
+  );
   check("total fee is within Decibel's cap", b.depositorPaysPct * 100 <= DECIBEL_VAULT_LIMITS.maxFeeBps, b);
   check("creator + platform == depositor pays", Math.abs(b.creatorKeepsPct + b.platformTakesPct - b.depositorPaysPct) < 1e-9, b);
   console.log(`       ${b.summary}`);

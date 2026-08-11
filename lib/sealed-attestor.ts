@@ -2,10 +2,10 @@
  * Sealed-vault attestor — the off-chain half of docs/SEALED-INDICATOR.md.
  *
  * The attestor runs the committed strategy and signs one trit per bar. Its
- * entire authority is that trit: the market, size, price, timing and execution
- * are all enforced on-chain by `cash_strategy::sealed_vault`, and the signed
- * message is reconstructed from chain state so the attestor cannot choose any
- * field except the signal.
+ * entire authority is that trit: the market, size, price and execution are
+ * enforced on-chain by `cash_strategy::sealed_vault`. The issuance timestamp is
+ * signed and expires on-chain, so the permissionless cranker cannot turn a
+ * signal into an option it exercises later.
  *
  * The BCS layout below MUST match `sealed_vault::Attestation` field-for-field.
  * `scripts/sealed-attestor-selftest.ts` pins it, and the Move test
@@ -27,7 +27,7 @@ function sha3(bytes: Uint8Array): Uint8Array {
 }
 
 /** Must equal ATTESTATION_DOMAIN in sealed_vault.move. */
-export const ATTESTATION_DOMAIN = "cash.trading/sealed-vault/v1";
+export const ATTESTATION_DOMAIN = "cash.trading/sealed-vault/v2";
 
 export const SIGNAL_NEUTRAL = 0;
 export const SIGNAL_BUY = 1;
@@ -44,6 +44,8 @@ export interface Attestation {
   seq: bigint;
   /** 32 bytes — the on-chain digest of the series through the PREVIOUS bar. */
   inputDigest: Uint8Array;
+  /** Attestation issuance time in Unix seconds. Bound and freshness-checked on-chain. */
+  barTs: bigint;
   signal: Signal;
 }
 
@@ -62,6 +64,7 @@ export function serializeAttestation(a: Attestation): Uint8Array {
   s.serializeBytes(a.programCommitment); // program_commitment
   s.serializeU64(a.seq); // seq
   s.serializeBytes(a.inputDigest); // input_digest
+  s.serializeU64(a.barTs); // bar_ts
   s.serializeU8(a.signal); // signal
   return s.toUint8Array();
 }
@@ -236,6 +239,7 @@ export function verifyTraceReplay(args: {
       programCommitment: args.programCommitment,
       seq: BigInt(seq),
       inputDigest: digest,
+      barTs: bar.barTs,
       signal: bar.signal,
     });
 

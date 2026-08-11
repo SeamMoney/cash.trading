@@ -33,7 +33,7 @@
  * anything else for operational convenience is the only way to break the guarantee, so there
  * is no fallback path here that produces a "close enough" action.
  */
-import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
+import { Account, Aptos, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
 import { canonicalizePine } from "@/lib/sealed-presets";
@@ -67,6 +67,11 @@ import {
   extractDecibelBuilderFills,
   type DecibelBuilderFillReceipt,
 } from "@/lib/decibel-builder-receipt";
+import {
+  assertAutomatedVaultBuilderCompatible,
+  AutomatedVaultBuilderCompatibilityError,
+  createAuthenticatedAptosForNetwork,
+} from "@/lib/automated-vault-builder";
 
 // Re-exported so the attestor, the backtester and the launch UI all read the same two
 // functions. Three implementations of "what did the script ask for" is how a preview starts
@@ -157,9 +162,8 @@ async function readPortfolioPositions(
 export async function performPortfolioTick(
   input: PortfolioTickInput,
 ): Promise<PortfolioTickResult> {
-  const aptos = new Aptos(
-    new AptosConfig({ network: input.network === "mainnet" ? Network.MAINNET : Network.TESTNET }),
-  );
+  const network = input.network === "mainnet" ? "mainnet" : "testnet";
+  const aptos = createAuthenticatedAptosForNetwork(network);
 
   // 1. Read the context FIRST. The attestation is signed against the digest the chain currently
   //    holds, never one we assume — a stale digest is simply an invalid signature.
@@ -449,19 +453,44 @@ export async function performPortfolioTick(
     };
   }
 
+  // Empty action vectors still commit a bar but never reach the order engine. Any actual
+  // order from a legacy positive-fee package needs approval on the Decibel vault subaccount,
+  // not on this strategy object and not on a direct user's account.
+  if (actions.length > 0) {
+    try {
+      await assertAutomatedVaultBuilderCompatible({
+        aptos,
+        network,
+        packageAddress: input.packageAddress,
+        strategyVaultAddress: input.strategyVaultAddr,
+        moduleName: "portfolio_vault",
+        expectedDecibelSubaccount: input.expectedDecibelSubaccount,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        stage: "builder-preflight",
+        error: err instanceof Error ? err.message : "builder compatibility read failed",
+        retryable: !(err instanceof AutomatedVaultBuilderCompatibilityError),
+      };
+    }
+  }
+
   // 6. Sign and submit. An empty action vector is still submitted: the bar must be committed to
-  //    the trace whether or not it produced a trade, and a skipped bar is publicly visible as a
-  //    gap in `seq` — which is exactly the discretion the sequence exists to remove.
+  //    the trace whether or not it produced a trade. Missed cadence is visible in the signed
+  //    timestamps; `seq` orders accepted ticks and prevents replay, but is intentionally dense.
+  const nowS = Math.floor(Date.now() / 1000);
+  const barTs = BigInt(nowS);
   const signature = signPortfolioAttestation(new Ed25519PrivateKey(input.attestorPrivateKey), {
     chainId: await aptos.getChainId(),
     strategyVault: input.strategyVaultAddr,
     programCommitment: fromHex(snapshot.commitment),
     seq: snapshot.seq,
     inputDigest: fromHex(snapshot.inputDigest),
+    barTs,
     actions,
   });
 
-  const nowS = Math.floor(Date.now() / 1000);
   const args = actionsToEntryArgs(actions);
   const cranker = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(input.crankPrivateKey),
@@ -474,7 +503,7 @@ export async function performPortfolioTick(
         typeArguments: [],
         functionArguments: [
           input.strategyVaultAddr,
-          String(nowS),
+          String(barTs),
           args.marketIdxs,
           args.sides,
           args.pctBpsList,
@@ -502,7 +531,7 @@ export async function performPortfolioTick(
     const msg = err instanceof Error ? err.message : "submit failed";
     // E_BAR_TOO_SOON is the normal state of a vault ticked more often than its cadence allows,
     // not a fault — a cron must not count it as a failure or it would back off healthy vaults.
-    const benign = /E_BAR_TOO_SOON|EBAR_TOO_SOON|,\s*11\)/.test(msg);
+    const benign = /E_BAR_TOO_SOON|EBAR_TOO_SOON/.test(msg);
     return { ok: false, stage: "submit", error: msg, retryable: benign };
   }
 }

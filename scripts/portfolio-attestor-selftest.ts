@@ -41,6 +41,7 @@ import {
   parsePortfolioMarketAddresses,
   parsePortfolioPositions,
 } from "../lib/portfolio-chain-state";
+import { ATTESTATION_DOMAIN } from "../lib/sealed-attestor";
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
@@ -60,7 +61,7 @@ const actions: Action[] = [
 ];
 
 console.log("\n1. Domain separation");
-assert.notEqual(PORTFOLIO_ATTESTATION_DOMAIN, "cash.trading/sealed-vault/v1");
+assert.notEqual(PORTFOLIO_ATTESTATION_DOMAIN, ATTESTATION_DOMAIN);
 console.log(`  ok   domain is "${PORTFOLIO_ATTESTATION_DOMAIN}", distinct from the single-market one`);
 
 console.log("\n2. Action digest");
@@ -87,6 +88,7 @@ const message = serializePortfolioAttestation({
   programCommitment: commitment,
   seq: 0n,
   inputDigest: genesis,
+  barTs: 1000n,
   actions,
 });
 const signature = signPortfolioAttestation(key, {
@@ -95,6 +97,7 @@ const signature = signPortfolioAttestation(key, {
   programCommitment: commitment,
   seq: 0n,
   inputDigest: genesis,
+  barTs: 1000n,
   actions,
 });
 assert.equal(signature.length, 64);
@@ -107,10 +110,11 @@ for (const [name, mutate] of [
   ["strategyVault", (a: Parameters<typeof serializePortfolioAttestation>[0]) => ({ ...a, strategyVault: "0x" + "ab".repeat(32) })],
   ["actions", (a: Parameters<typeof serializePortfolioAttestation>[0]) => ({ ...a, actions: [actions[0]] })],
   ["inputDigest", (a: Parameters<typeof serializePortfolioAttestation>[0]) => ({ ...a, inputDigest: new Uint8Array(32).fill(1) })],
+  ["barTs", (a: Parameters<typeof serializePortfolioAttestation>[0]) => ({ ...a, barTs: 1001n })],
 ] as const) {
   const base = {
     chainId: CHAIN_ID, strategyVault: SV, programCommitment: commitment,
-    seq: 0n, inputDigest: genesis, actions,
+    seq: 0n, inputDigest: genesis, barTs: 1000n, actions,
   };
   const other = serializePortfolioAttestation(mutate(base));
   assert.notEqual(hex(message), hex(other), `${name} is not bound by the signature`);

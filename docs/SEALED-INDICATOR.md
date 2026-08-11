@@ -4,8 +4,12 @@
 > wants to keep alpha private. That path stays available for curators who *want* full public
 > verifiability (open-source strategies); this document describes the sealed alternative.
 >
-> Status: module written (`contracts/strategy-vaults/sources/sealed_vault.move`), not yet
-> published. Testnet deploy runbook in §8.
+> Status: the zero-builder-fee revision is published and initialized on Aptos mainnet at
+> [`0x3590…5105`](https://explorer.aptoslabs.com/account/0x3590fbae95f65fd00d01be6bf2d5e0049b5b447e749ed269d8cca744d71b5105/modules?network=mainnet).
+> All five modules independently match the local build byte for byte. Publication created no
+> vault and spent no USDC; the first funded mainnet vault and directional order remain a separate
+> money-moving production check.
+> Production runbook: [DEPLOY-SEALED.md](./DEPLOY-SEALED.md).
 
 ## 1. The problem with what we shipped
 
@@ -56,24 +60,25 @@ program_commitment = sha3_256(
 
 `manifest_json` pins transpiler version + options (marketAddr, lot, min, szPow) so emission is
 reproducible byte-for-byte. Same formula as `docs/SHELBY-PIN.md` — reuse it, don't invent a
-second one. The commitment and the entire rule set go on-chain at creation and are immutable
-from that instant — `create_sealed_vault` seals the vault itself. There is no second seal step.
+second one. The commitment, attestor key, market binding and risk parameters go on-chain at
+creation and cannot be edited in that vault resource. The package authority described in §5 can
+still replace compatible execution code. `create_sealed_vault` has no second seal step.
 
 ### 3.2 Attest (every bar, off-chain)
 
 The attestor holds an ed25519 key and runs the committed program. It signs a BCS-serialized
-struct whose fields the chain can **independently reconstruct**:
+struct. Chain state determines every field except the signal and the issuance timestamp; the
+contract binds that timestamp to the signature and rejects it once it is stale:
 
 ```move
 struct Attestation has drop {
-    domain:             vector<u8>,   // "cash.trading/sealed-vault/v1"
+    domain:             vector<u8>,   // "cash.trading/sealed-vault/v2"
     chain_id:           u8,
     strategy_vault:     address,
     program_commitment: vector<u8>,
-    seq:                u64,          // strictly monotonic — no gaps, no replays
-    bar_ts:             u64,
-    price:              u64,          // must equal the on-chain mark price
-    input_digest:       vector<u8>,   // rolling hash of ALL bars seen so far
+    seq:                u64,          // next on-chain sequence — no accepted-tick replays
+    input_digest:       vector<u8>,   // digest through the previous accepted bar
+    bar_ts:             u64,          // signed issuance time; expires on-chain
     signal:             u8,
 }
 ```
@@ -82,19 +87,24 @@ struct Attestation has drop {
 
 `tick_attested(cranker, sv_addr, bar_ts, signal, signature)`:
 
-1. Read mark price **on-chain** via `perp_engine::get_mark_price` — the caller never supplies it.
-2. Enforce `bar_ts > last_bar_ts + min_bar_interval_s` (no bar stuffing, no back-dating).
-3. Append `(price, bar_ts)` to the on-chain trace; update `input_digest`.
-4. Reconstruct the `Attestation` struct from **chain state**, not from caller input.
-5. `ed25519::signature_verify_strict` against the sealed `attestor_pubkey`.
+1. Enforce the minimum bar interval, reject timestamps more than 60 seconds in the future, and
+   reject attestations more than 5 minutes old.
+2. Reconstruct the `Attestation` from chain state plus the submitted `bar_ts` and `signal`.
+3. `ed25519::signature_verify_strict` against the sealed `attestor_pubkey`. Because `bar_ts` is
+   signed, a permissionless cranker cannot move the instruction to a later timestamp.
+4. Read mark price **on-chain** via `public_read_api::get_mark_price` — neither the attestor nor
+   the cranker supplies it.
+5. Append `(price, bar_ts)` to the bounded on-chain trace; update the all-history digest.
 6. `seq += 1`.
 7. If the signal is a flip: size from NAV, enforce leverage cap, place reduce-only close +
    open via the module's own `ExtendRef` signer.
 8. Emit `AttestedTick` (every bar) and `VaultTraded` (on trades).
 
-The signature covers a message the attestor **cannot choose**: price and `input_digest` come
-from chain state, `seq` from the module's counter, `strategy_vault` and `program_commitment`
-from sealed storage. The only free field is `signal`.
+The signature binds `input_digest` from chain state, `seq` from the module's counter,
+`strategy_vault` and `program_commitment` from sealed storage, plus the submitted signal and
+timestamp. Price is deliberately absent from the message and is read on-chain only after the
+signature verifies. The attestor controls the signal; tier 1 still trusts it to run the
+committed program honestly (§6).
 
 ### 3.4 Trace
 
@@ -102,8 +112,9 @@ Two on-chain artifacts make the history checkable by anyone:
 
 - **`input_digest`** — a rolling `sha3_256(prev_digest || bar_ts || price)` over every bar the
   module has ever processed. Commits the complete input history in 32 bytes.
-- **`seq`** — strictly monotonic with no gaps. The attestor cannot hide a bar it didn't like,
-  because skipping a bar breaks the chain and any missing `seq` is publicly visible.
+- **`seq`** — strictly monotonic with no replays. It proves the order of accepted ticks.
+- **timestamps** — expose liveness gaps. The contract enforces a minimum cadence, not a maximum;
+  a missing crank cannot make the vault misfire, but it can make the vault miss a trade.
 
 ## 4. Why this is not "a middleware bot managing the vault"
 
@@ -115,7 +126,8 @@ The distinction is enforceable, not rhetorical:
 | Pick any size | Nothing — size is `nav × pct_bps`, computed on-chain |
 | Pick entry price | Nothing — price is the on-chain mark |
 | Trade whenever | Only once per `min_bar_interval_s`, on a monotonic seq |
-| Skip/reorder trades silently | Nothing — gaps in `seq` are public |
+| Skip ticks | Can stop submitting; timestamp gaps remain public |
+| Reorder/replay accepted ticks | Nothing — `seq`, digest and signed timestamp bind the order |
 | Withdraw funds | Nothing — no funds-movement capability is ever delegated |
 | Trade on a whim | Only emit `signal ∈ {neutral, buy, sell}` |
 
@@ -128,15 +140,16 @@ only answer one question the vault asks it.
 | Threat | Mitigated by | Residual |
 |---|---|---|
 | Attestor forges the price | Price read on-chain | None |
-| Attestor replays an old signal | `seq` + `bar_ts` monotonic | None |
-| Attestor hides an unfavourable bar | `seq` gaps are public | None (detectable) |
+| Cranker delays a signed signal | Signed `bar_ts` + 5-minute expiry | At most the expiry window |
+| Attestor replays an old signal | `seq` + signed `bar_ts` | None |
+| Attestor skips an unfavourable bar | Accepted timestamps expose the cadence gap | Detectable, not prevented in tier 1 |
 | Attestor trades another market | `market` sealed at creation | None |
 | Attestor oversizes | Size computed on-chain from NAV + leverage cap | None |
 | Attestor withdraws | No funds-movement delegation | None |
 | Curator changes the strategy | `program_commitment` sealed one-way | None |
 | Curator adds a second Decibel delegate | **Not fixed here** — needs `CURATOR-RULES.md` §3.6 admin custody | **Real.** Monitor + de-badge |
 | **Attestor runs a different program than the one committed** | Nothing, in tier 1 | **Real — the core residue.** See §6 |
-| Package upgraded to change rules | `Move.toml` must set `upgrade_policy = "immutable"` before mainnet | Currently unset |
+| Package upgraded to change rules | The package uses Aptos `compatible` policy because its live Decibel dependencies use that policy. The publish tool verifies all five modules byte-for-byte; the deployer key stays offline | **Real.** A deployer-signed compatible upgrade can change execution logic. Existing vaults cannot protect themselves from that package authority |
 
 **Do not claim more than this.** The tier-1 guarantee is: *the signal came from the holder of
 the sealed attestor key, on inputs the chain verified, under rules the chain enforced.* It is
@@ -183,14 +196,20 @@ Fixed in the same change-set as this module; see the commit that adds this file.
 
 ## 8. Deployment runbook (testnet → mainnet)
 
-**Preferred path: `pnpm sealed:e2e run`** — one resumable command from empty account to live
-attested ticks (publish → testnet USDC mint → subaccount → Decibel vault → create → delegate →
-seal → attest). Mainnet: `pnpm sealed:e2e run --network mainnet` with a funded
-`SEALED_DEPLOYER_PRIVATE_KEY`; identical pipeline, skips the USDC mint. `verify-markets`
-re-reads lot/min/szDecimals from both chains and fails on drift. The aptos CLI installs
-anywhere (including the CCR sandbox) via `scripts/install-aptos-cli.sh`; CI compiles the
-package and runs the Move tests on every push. The manual sequence below remains for
-reference.
+**Preferred testnet validation: `pnpm sealed:e2e run --network testnet`** — one resumable
+command from empty account to live attested ticks (publish → testnet USDC mint → subaccount →
+Decibel vault → create → delegate → seal → attest). It is the release gate for the exact
+checkout that will go to mainnet.
+
+**Mainnet package deployment: `pnpm sealed:publish --network mainnet`**, with the explicit
+compatible-publish confirmation documented in [DEPLOY-SEALED.md](./DEPLOY-SEALED.md). It stops
+after publishing, exact bytecode verification and `init_platform`; it does not spend USDC or
+create a vault. Do not substitute the full `sealed:e2e run` command on mainnet: that path creates
+and funds a real vault and costs 250 USDC, so the tool requires a second spending confirmation.
+
+`verify-markets` re-reads lot/min/szDecimals from both chains and fails on drift. The Aptos CLI
+installs via `scripts/install-aptos-cli.sh`; CI compiles the package and runs the Move tests on
+every push. The manual sequence below remains for reference.
 
 ### 8.1 Publish the sealed module
 
@@ -209,8 +228,12 @@ Prerequisites and gotchas:
 - Point `deps/decibel_perp_dex` and `deps/decibel_accounts` at the **current** Decibel package
   `0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f`. The seven existing
   testnet packages bind the old `0x952535…be9f` and cannot be migrated — they are abandoned.
-- Set `upgrade_policy = "immutable"` in `Move.toml` before the **mainnet** publish (testnet
-  stays upgradeable while iterating). Not set today.
+- Mainnet uses Aptos `compatible` policy. Decibel's imported packages use policy 1, and Aptos
+  rejects an immutable dependent package with `EDEP_WEAKER_POLICY`. The supported
+  `sealed:publish` command copies the package into its protected state directory, injects the
+  compatible policy, publishes, recompiles at the final address, and compares every module
+  byte-for-byte with the fullnode response. Keep the deployer key offline after release. Do not
+  use the manual command above for mainnet.
 - Lot/min are hardcoded testnet BTC/USD constants (`strategy_vault.move:46-50`). Sealed vaults
   read them per market from creation args instead — pass the real values.
 
@@ -221,12 +244,18 @@ Prerequisites and gotchas:
    subaccount (not their wallet). `fee_bps = 1000`, `fee_interval_s = 2_592_000`;
    `delegate_to_creator = false`, so no human is ever a delegate.
 2. `sealed_vault::create_sealed_vault(creator, commitment, attestor_pubkey, vault, market, …,
-   enclave_measurement)` → returns object address `R`. **This call seals the vault**: the
-   commitment, the attestor key, the market binding and every rule are immutable when it
-   returns.
+   enclave_measurement)` → returns object address `R`. **This call seals the vault resource**:
+   the commitment, attestor key, market binding and stored limits cannot be edited after it
+   returns. The compatible package authority remains the trust limit described in §5.
 3. `vault_admin_api::delegate_dex_actions_to(vault, R, expiry)` — **always pass an expiry**.
    Until this lands the vault cannot place an order, which is why it is last: no step before it
    grants any trading authority.
+
+Automated vault orders currently carry no builder fee. Decibel checks builder approval against
+the vault's primary trading subaccount; the strategy object's signer cannot approve that separate
+identity through the current public API. The contract locks its automated builder fee to zero and
+the cranker preflights older positive-fee vaults before signing. Direct user orders keep their
+separate 1 bp builder fee because users can approve their own subaccounts.
 
 **Why three signatures and not one.** Decibel declares both `create_and_fund_vault` and
 `delegate_dex_actions_to` as `private entry` (verified against the live mainnet ABI). A
@@ -340,8 +369,8 @@ it is never discarded as a clean success.
 Returns are per-trade price moves before leverage, fees and slippage — not the vault's net
 return to depositors. The UI says that verbatim.
 
-The cranker pays gas and contributes nothing else — it cannot alter the signal, and a wrong
-signature simply aborts the transaction.
+The cranker pays gas and contributes nothing else. It cannot alter the signal or its signed
+timestamp, and an expired or wrong signature aborts the transaction.
 
 ### 8.4 Environment
 

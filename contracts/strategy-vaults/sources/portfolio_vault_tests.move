@@ -23,15 +23,16 @@ module cash_strategy::portfolio_vault_tests {
     // ── Fixtures from scripts/portfolio-attestor-selftest.ts ──────────────
     const FIXTURE_PUBKEY: vector<u8> = x"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
     const FIXTURE_COMMITMENT: vector<u8> = x"2626262626262626262626262626262626262626262626262626262626262626";
-    const FIXTURE_GENESIS: vector<u8> = x"07eabb8a17b267a5251b09ee1dcc0ba8c2836e8bcbc54a6a9d13f661701b2450";
+    const FIXTURE_GENESIS: vector<u8> = x"c687f35c7d0fdddc3f5b149cef4d7409e04f5032fc3cebb9ed55007caea8c594";
     const FIXTURE_ACTIONS_DIGEST: vector<u8> = x"533d4ba6724e6efa86e1fb19f12940cc915754ba3515161c81e75c517f5fa550";
-    const FIXTURE_SIGNATURE: vector<u8> = x"dbdbce12b63f86842475095ae133c409591ffd14cd8a05f4c6848ab1bd677d7363cf9344341cf1fc2791d562c44985fb926d9afe553e02a0752a11d82eaec107";
-    const FIXTURE_MESSAGE: vector<u8> = x"1f636173682e74726164696e672f706f7274666f6c696f2d7661756c742f763102cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd20262626262626262626262626262626262626262626262626262626262626262600000000000000002007eabb8a17b267a5251b09ee1dcc0ba8c2836e8bcbc54a6a9d13f661701b245020533d4ba6724e6efa86e1fb19f12940cc915754ba3515161c81e75c517f5fa550";
+    const FIXTURE_SIGNATURE: vector<u8> = x"8df30ad38f5efa27ebbdfd8fe1bf6bdad5b272f7bce85ae09320a298a59de523ac4ec7912a7fcc4cc621588ce1ca06f3926be7887ee45b224602f63ba8352203";
+    const FIXTURE_MESSAGE: vector<u8> = x"1f636173682e74726164696e672f706f7274666f6c696f2d7661756c742f763202cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd202626262626262626262626262626262626262626262626262626262626262626000000000000000020c687f35c7d0fdddc3f5b149cef4d7409e04f5032fc3cebb9ed55007caea8c594e80300000000000020533d4ba6724e6efa86e1fb19f12940cc915754ba3515161c81e75c517f5fa550";
     /// sha3_256(genesis || bcs(1000u64) || bcs(vector[7e12, 3.5e11, 2e10, 9e8])) per TypeScript.
-    const FIXTURE_FOLD: vector<u8> = x"5d3df1cb2df9ee3952aa22bfa3e6421c379d72c5d5a17e4a2ade7c97cb241b90";
+    const FIXTURE_FOLD: vector<u8> = x"a2c5770e0d96a5376294d2bc437f94b160445e262f7228a9325aa4413f3aa0ca";
 
     const FIXTURE_SV: address = @0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd;
     const FIXTURE_CHAIN_ID: u8 = 2;
+    const FIXTURE_BAR_TS: u64 = 1000;
 
     /// The fixture action vector: long market 0 at 15% / 2x, short market 2 at 8% / 1.5x,
     /// close market 3.
@@ -94,6 +95,7 @@ module cash_strategy::portfolio_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             FIXTURE_ACTIONS_DIGEST,
             FIXTURE_CHAIN_ID,
         );
@@ -109,6 +111,7 @@ module cash_strategy::portfolio_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             FIXTURE_ACTIONS_DIGEST,
             FIXTURE_CHAIN_ID,
         );
@@ -126,7 +129,7 @@ module cash_strategy::portfolio_vault_tests {
         let other = portfolio_vault::actions_digest_for_test(
             vector[0u8], vector[1u8], vector[1500u16], vector[200u16]);
         let msg = portfolio_vault::attestation_message_for_test(
-            FIXTURE_SV, FIXTURE_COMMITMENT, 0, FIXTURE_GENESIS, other, FIXTURE_CHAIN_ID);
+            FIXTURE_SV, FIXTURE_COMMITMENT, 0, FIXTURE_GENESIS, FIXTURE_BAR_TS, other, FIXTURE_CHAIN_ID);
         let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
         let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
         assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 9);
@@ -136,7 +139,7 @@ module cash_strategy::portfolio_vault_tests {
     #[test]
     fun seq_is_bound_by_the_signature() {
         let msg = portfolio_vault::attestation_message_for_test(
-            FIXTURE_SV, FIXTURE_COMMITMENT, 1, FIXTURE_GENESIS, FIXTURE_ACTIONS_DIGEST, FIXTURE_CHAIN_ID);
+            FIXTURE_SV, FIXTURE_COMMITMENT, 1, FIXTURE_GENESIS, FIXTURE_BAR_TS, FIXTURE_ACTIONS_DIGEST, FIXTURE_CHAIN_ID);
         let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
         let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
         assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 10);
@@ -147,10 +150,28 @@ module cash_strategy::portfolio_vault_tests {
     fun strategy_vault_is_bound_by_the_signature() {
         let msg = portfolio_vault::attestation_message_for_test(
             @0xabababababababababababababababababababababababababababababababab,
-            FIXTURE_COMMITMENT, 0, FIXTURE_GENESIS, FIXTURE_ACTIONS_DIGEST, FIXTURE_CHAIN_ID);
+            FIXTURE_COMMITMENT, 0, FIXTURE_GENESIS, FIXTURE_BAR_TS, FIXTURE_ACTIONS_DIGEST, FIXTURE_CHAIN_ID);
         let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
         let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
         assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 11);
+    }
+
+    /// A permissionless cranker cannot move a signed action vector to another
+    /// timestamp and choose a different on-chain execution price.
+    #[test]
+    fun bar_timestamp_is_bound_by_the_signature() {
+        let msg = portfolio_vault::attestation_message_for_test(
+            FIXTURE_SV,
+            FIXTURE_COMMITMENT,
+            0,
+            FIXTURE_GENESIS,
+            FIXTURE_BAR_TS + 1,
+            FIXTURE_ACTIONS_DIGEST,
+            FIXTURE_CHAIN_ID,
+        );
+        let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
+        let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
+        assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 16);
     }
 
     /// A new vault must start at the DOMAIN-SEEDED genesis digest, not an empty vector.
@@ -161,7 +182,7 @@ module cash_strategy::portfolio_vault_tests {
     fun genesis_is_sha3_of_domain() {
         assert!(
             portfolio_vault::genesis_digest_for_test()
-                == std::hash::sha3_256(b"cash.trading/portfolio-vault/v1"),
+                == std::hash::sha3_256(b"cash.trading/portfolio-vault/v2"),
             14,
         );
         assert!(portfolio_vault::genesis_digest_for_test() == FIXTURE_GENESIS, 15);

@@ -17,7 +17,7 @@
  * A signature is a claim that the committed program produced this signal. Signing anything
  * else, for any operational convenience, breaks the only guarantee the product makes.
  */
-import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
+import { Account, Aptos, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
 import { createStrategyRunner } from "@/lib/strategy-equivalence";
@@ -36,6 +36,11 @@ import {
   toHex,
   type Signal,
 } from "@/lib/sealed-attestor";
+import {
+  assertAutomatedVaultBuilderCompatible,
+  AutomatedVaultBuilderCompatibilityError,
+  createAuthenticatedAptosForNetwork,
+} from "@/lib/automated-vault-builder";
 
 const toTrit = (s: "buy" | "sell" | "neutral"): Signal => (s === "buy" ? 1 : s === "sell" ? 2 : 0);
 
@@ -139,11 +144,8 @@ export function attestorKeyMismatch(privateKeyRaw: string, expectedPublicKey?: s
 }
 
 export async function performTick(input: TickInput): Promise<TickResult> {
-  const aptos = new Aptos(
-    new AptosConfig({
-      network: input.network === "mainnet" ? Network.MAINNET : Network.TESTNET,
-    }),
-  );
+  const network = input.network === "mainnet" ? "mainnet" : "testnet";
+  const aptos = createAuthenticatedAptosForNetwork(network);
 
   // 1. Read the context FIRST. The attestation must be signed against the digest the chain
   //    currently holds, never one we assume — a stale digest is an invalid signature.
@@ -251,18 +253,45 @@ export async function performTick(input: TickInput): Promise<TickResult> {
     };
   }
 
+  // A neutral bar only extends the committed trace. A directional bar reaches Decibel's order
+  // engine, so older positive-fee packages must prove approval on the vault's ACTUAL trading
+  // subaccount before we spend a signature or gas. New packages freeze this fee at zero.
+  if (signal !== 0) {
+    try {
+      await assertAutomatedVaultBuilderCompatible({
+        aptos,
+        network,
+        packageAddress: input.packageAddress,
+        strategyVaultAddress: input.strategyVaultAddr,
+        moduleName: "sealed_vault",
+        expectedDecibelSubaccount: input.expectedDecibelSubaccount,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        stage: "builder-preflight",
+        error: err instanceof Error ? err.message : "builder compatibility read failed",
+        seq: snapshot.seq.toString(),
+        signal,
+        retryable: !(err instanceof AutomatedVaultBuilderCompatibilityError),
+      };
+    }
+  }
+
   // 4. Sign and submit. The cranker pays gas and contributes nothing else — it cannot alter
   //    the signal, and a wrong signature simply aborts.
+  const nowS = Math.floor(Date.now() / 1000);
+  const barTs = BigInt(nowS);
   const signature = signAttestation(new Ed25519PrivateKey(input.attestorPrivateKey), {
     chainId: await aptos.getChainId(),
     strategyVault: input.strategyVaultAddr,
     programCommitment: fromHex(snapshot.commitment),
     seq: snapshot.seq,
     inputDigest: fromHex(snapshot.inputDigest),
+    barTs,
     signal,
   });
 
-  const nowS = Math.floor(Date.now() / 1000);
   const cranker = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(input.crankPrivateKey),
   });
@@ -272,7 +301,7 @@ export async function performTick(input: TickInput): Promise<TickResult> {
       data: buildTickAttestedPayload({
         packageAddress: input.packageAddress,
         strategyVault: input.strategyVaultAddr,
-        barTs: BigInt(nowS),
+        barTs,
         signal,
         signature,
       }),
@@ -312,7 +341,7 @@ export async function performTick(input: TickInput): Promise<TickResult> {
     const msg = err instanceof Error ? err.message : "submit failed";
     // E_BAR_TOO_SOON is the normal state of a vault ticked more often than its cadence allows,
     // not a fault — the cron must not count it as a failure or it would back off healthy vaults.
-    const benign = /E_BAR_TOO_SOON|EBAR_TOO_SOON|,\s*11\)/.test(msg);
+    const benign = /E_BAR_TOO_SOON|EBAR_TOO_SOON/.test(msg);
     return {
       ok: false,
       stage: "submit",

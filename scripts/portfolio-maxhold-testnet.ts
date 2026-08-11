@@ -20,7 +20,8 @@
  * Reuses the clean-room stack in `.portfolio-cleanroom-testnet/` — that Decibel vault is
  * already licensed and funded, so this costs gas only.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
 
 import { performPortfolioTick } from "../lib/portfolio-tick";
@@ -34,14 +35,19 @@ import { buildDelegateDecibelVaultPayload } from "../lib/decibel-vaults";
 import { SEALED_CATALOG } from "../lib/sealed-catalog";
 
 const DECIBEL = "0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f";
-if (!existsSync(".portfolio-cleanroom-testnet/state.json") || !existsSync(".sealed-e2e-testnet/attestor.key")) {
-  console.log("skipped: needs .portfolio-cleanroom-testnet/state.json and .sealed-e2e-testnet/attestor.key — run the clean-room E2E first");
+const statePath = resolve(".portfolio-cleanroom-testnet/state.json");
+const keyPath = resolve(".portfolio-cleanroom-testnet/deployer.key");
+if (!existsSync(statePath) || !existsSync(keyPath) || !existsSync(".sealed-e2e-testnet/attestor.key")) {
+  console.log("skipped: needs owner-only clean-room state/key and the testnet attestor key — run the clean-room E2E first");
   process.exit(0);
 }
-const S = JSON.parse(readFileSync(".portfolio-cleanroom-testnet/state.json", "utf8"));
+chmodSync(statePath, 0o600);
+chmodSync(keyPath, 0o600);
+const S = JSON.parse(readFileSync(statePath, "utf8"));
+const cleanroomPrivateKeyRaw = readFileSync(keyPath, "utf8").trim();
 const PKG: string = S.addr;
 const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));
-const me = Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(S.privateKey) });
+const me = Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(cleanroomPrivateKeyRaw) });
 
 async function send(label: string, data: Parameters<typeof aptos.transaction.build.simple>[0]["data"]) {
   const txn = await aptos.transaction.build.simple({ sender: me.accountAddress, data });
@@ -110,7 +116,7 @@ const REASON = ["STRATEGY", "MAX_HOLD", "FUNDING", "FLIP"];
       markets: markets.map((m, idx) => ({ idx, name: m.name, address: m.addr, asset: m.pythAsset })),
       manifestJson: commit.manifestJson, pineScript: strategy.script,
       defaultPctBps: 1000, leverageX100: 200,
-      attestorPrivateKey: attestorKey, crankPrivateKey: S.privateKey,
+      attestorPrivateKey: attestorKey, crankPrivateKey: cleanroomPrivateKeyRaw,
     });
     if (!r.ok) throw new Error(`${label} failed at ${r.stage}: ${r.error}`);
     const tx = await aptos.getTransactionByHash({ transactionHash: r.txHash });

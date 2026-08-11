@@ -33,8 +33,10 @@ import {
 import type { DecibelTrade } from "../lib/decibel-api";
 import { extractConfirmedDecibelFill } from "../lib/decibel-trade-fill";
 import {
+  DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS,
   DEFAULT_DECIBEL_BUILDER_FEE_BPS,
   DEFAULT_DECIBEL_BUILDER_FEE_RATE,
+  MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS,
 } from "../lib/decibel-builder-config";
 import {
   runBacktest as runLegacyLaunchpadBacktest,
@@ -103,7 +105,11 @@ const cashRewardsCheckpointMigration = readFileSync(
 const decibelBuilderLib = readFileSync("lib/decibel-builder.ts", "utf8");
 const decibelBuilderRoute = readFileSync("app/api/decibel/builder/route.ts", "utf8");
 const decibelBuilderConfig = readFileSync("lib/decibel-builder-config.ts", "utf8");
+const automatedVaultBuilder = readFileSync("lib/automated-vault-builder.ts", "utf8");
+const moveCompileService = readFileSync("lib/move-compile-service.ts", "utf8");
 const sealedDeployScript = readFileSync("scripts/sealed-e2e-deploy.ts", "utf8");
+const portfolioCleanroomScript = readFileSync("scripts/portfolio-cleanroom-testnet.ts", "utf8");
+const portfolioMaxholdScript = readFileSync("scripts/portfolio-maxhold-testnet.ts", "utf8");
 const vaultEconomics = readFileSync("lib/vault-economics.ts", "utf8");
 const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "utf8")) as {
   formulaVersion: number;
@@ -1285,15 +1291,21 @@ assert.equal(builderFeeBpsToChainUnits(10), "1000");
 assert.throws(() => builderFeeBpsToChainUnits(0), /positive whole basis-point/);
 assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_BPS, 1);
 assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_RATE, 0.0001);
+assert.equal(DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS, 0);
+assert.equal(MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS, 0);
 assert.match(
   decibelBuilderConfig,
   /DEFAULT_DECIBEL_BUILDER_FEE_RATE\s*=\s*\n?\s*DEFAULT_DECIBEL_BUILDER_FEE_BPS \/ 10_000/,
 );
-assert.match(vaultEconomics, /builderFeeBps: DEFAULT_DECIBEL_BUILDER_FEE_BPS/);
+assert.match(
+  vaultEconomics,
+  /builderFeeBps: DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS/,
+);
 assert.match(
   sealedDeployScript,
-  /DECIBEL_BUILDER_ADDRESS is required for an immutable mainnet publish/,
+  /SEALED_TREASURY_ADDRESS is required for a mainnet publish/,
 );
+assert.match(sealedDeployScript, /SEALED_VAULT_BUILDER_FEE_BPS must be 0/);
 assert.match(sealedDeployScript, /state network mismatch/);
 assert.match(sealedDeployScript, /--private-key-file/);
 assert.doesNotMatch(
@@ -1302,6 +1314,21 @@ assert.doesNotMatch(
 );
 assert.match(sealedDeployScript, /assertPlatformTerms\(terms, platformEconomics\)/);
 assert.match(sealedDeployScript, /refusing to continue or silently redirect revenue/);
+assert.match(portfolioCleanroomScript, /writeOwnerOnlyFile\(statePath,/);
+assert.match(portfolioCleanroomScript, /writeOwnerOnlyFile\(keyPath,/);
+assert.match(portfolioCleanroomScript, /mode: 0o600/);
+assert.match(portfolioCleanroomScript, /chmodSync\(path, 0o600\)/);
+assert.match(portfolioCleanroomScript, /chmodSync\(DIR, 0o700\)/);
+assert.match(portfolioCleanroomScript, /--migrate-key-only/);
+assert.match(portfolioCleanroomScript, /no transaction submitted/);
+assert.match(portfolioCleanroomScript, /"--private-key-file", keyPath/);
+assert.doesNotMatch(portfolioCleanroomScript, /"--private-key",/);
+assert.doesNotMatch(portfolioCleanroomScript, /crankPrivateKey: state\.privateKey/);
+assert.match(portfolioMaxholdScript, /readFileSync\(keyPath, "utf8"\)/);
+assert.doesNotMatch(portfolioMaxholdScript, /S\.privateKey/);
+assert.match(moveCompileService, /writeOwnerOnlyFile\(keyPath, key\)/);
+assert.match(moveCompileService, /"--private-key-file",\s*keyPath/);
+assert.doesNotMatch(moveCompileService, /"--private-key",\s*key/);
 const builderOrderConfig = {
   address: "0x2",
   maxLeverage: 10,
@@ -1428,20 +1455,55 @@ assert.ok(
 // The attestation layout is a cross-language contract with sealed_vault.move.
 // Drift here breaks every signature, so pin the domain and the field order.
 const attestorLib = readFileSync("lib/sealed-attestor.ts", "utf8");
+const portfolioAttestorLib = readFileSync("lib/portfolio-attestor.ts", "utf8");
 const sealedVaultMove = readFileSync("contracts/strategy-vaults/sources/sealed_vault.move", "utf8");
+const portfolioVaultMove = readFileSync(
+  "contracts/strategy-vaults/sources/portfolio_vault.move",
+  "utf8",
+);
 assert.ok(
-  attestorLib.includes('"cash.trading/sealed-vault/v1"'),
+  attestorLib.includes('"cash.trading/sealed-vault/v2"'),
   "the attestation domain separator must be pinned in the TypeScript signer",
 );
 assert.ok(
-  sealedVaultMove.includes('b"cash.trading/sealed-vault/v1"'),
+  sealedVaultMove.includes('b"cash.trading/sealed-vault/v2"'),
   "the attestation domain separator must match in Move",
 );
-const bcsOrder = ["domain", "chain_id", "strategy_vault", "program_commitment", "seq", "input_digest", "signal"];
+assert.ok(
+  portfolioAttestorLib.includes('"cash.trading/portfolio-vault/v2"') &&
+    portfolioVaultMove.includes('b"cash.trading/portfolio-vault/v2"'),
+  "the portfolio attestation domain separator must match in TypeScript and Move",
+);
+const bcsOrder = [
+  "domain",
+  "chain_id",
+  "strategy_vault",
+  "program_commitment",
+  "seq",
+  "input_digest",
+  "bar_ts",
+  "signal",
+];
 let cursor = 0;
 for (const field of bcsOrder) {
   const at = attestorLib.indexOf(`// ${field}`, cursor);
   assert.ok(at > 0, `serializeAttestation must serialize ${field} in the documented order`);
+  cursor = at;
+}
+const portfolioBcsOrder = [
+  "domain",
+  "chain_id",
+  "strategy_vault",
+  "program_commitment",
+  "seq",
+  "input_digest",
+  "bar_ts",
+  "actions_digest",
+];
+cursor = 0;
+for (const field of portfolioBcsOrder) {
+  const at = portfolioAttestorLib.indexOf(`// ${field}`, cursor);
+  assert.ok(at > 0, `serializePortfolioAttestation must serialize ${field} in order`);
   cursor = at;
 }
 
@@ -1469,6 +1531,18 @@ assert.ok(
 assert.ok(
   sealedVaultMove.includes("E_BAR_TOO_SOON"),
   "min_bar_interval_s must bound how often the attestor can act",
+);
+assert.ok(
+  sealedVaultMove.includes("bar_ts + MAX_ATTESTATION_AGE_SECS >= now") &&
+    sealedVaultMove.includes("bar_ts,") &&
+    sealedVaultMove.includes("E_BAR_TOO_OLD"),
+  "sealed attestations must bind their timestamp and expire on-chain",
+);
+assert.ok(
+  portfolioVaultMove.includes("bar_ts + MAX_ATTESTATION_AGE_SECS >= now") &&
+    portfolioVaultMove.includes("bar_ts,") &&
+    portfolioVaultMove.includes("E_BAR_TOO_OLD"),
+  "portfolio attestations must bind their timestamp and expire on-chain",
 );
 assert.ok(
   sealedVaultMove.includes("sealed: true,"),
@@ -1524,11 +1598,11 @@ assert.ok(
   "the seal payload kind must be gone — sealing happens inside create_sealed_vault",
 );
 
-// ── Revenue must reach the chain, not just the cost panel ──────────────────
-// Both lines are contract-enforced, and both were display-only at some point in this file's
-// history. The launch fee is charged inside create_sealed_vault, so it cannot be skipped by
-// calling the contract directly; the builder code is stamped into each vault at creation, so a
-// later config change cannot retroactively redirect an existing vault's fees.
+// ── Launch revenue and delegated-order compatibility ───────────────────────
+// The launch fee is contract-enforced. Direct user orders retain the normal builder fee, but
+// delegated vault orders must stay at zero until Decibel exposes a public approval path for the
+// vault's actual trading subaccount. Approving the strategy object does not authorize that
+// subaccount and makes every paid order abort with EBUILDER_NOT_REGISTERED.
 assert.ok(
   sealedVaultMove.includes("collect_launch_fee(creator, decibel_vault_addr)"),
   "create_sealed_vault must collect the platform launch fee — a fee the UI charges but the " +
@@ -1545,7 +1619,7 @@ assert.ok(
 );
 assert.ok(
   sealedVaultMove.includes("builder_code(builder_addr, builder_fee_bps)"),
-  "every order must carry the builder code; it is the only volume-based revenue line",
+  "the order path must keep the zero-fee builder-code omission and old-vault compatibility path",
 );
 assert.ok(
   sealedVaultMove.includes("builder_addr,\n            builder_fee_bps,"),
@@ -1553,15 +1627,35 @@ assert.ok(
     "change cannot redirect an existing vault's fees",
 );
 assert.ok(
-  sealedVaultMove.includes("perp_engine_api::approve_max_fee"),
-  "the vault must self-approve its builder fee — a vault admin cannot approve on a vault " +
-    "subaccount's behalf (EBUILDER_SUBACCOUNT_NOT_FOUND), so orders would abort without this",
+  !sealedVaultMove.includes("perp_engine_api::approve_max_fee") &&
+    !portfolioVaultMove.includes("perp_engine_api::approve_max_fee"),
+  "a strategy object approval is the wrong identity and must never be presented as authorizing " +
+    "the Decibel vault's trading subaccount",
 );
 assert.ok(
   sealedVaultMove.includes("assert!(launch_fee_units <= MAX_LAUNCH_FEE_UNITS, E_BAD_FEE)") &&
-    sealedVaultMove.includes("assert!(builder_fee_bps <= MAX_BUILDER_FEE_BPS, E_BAD_FEE)"),
-  "both platform fees must be bounded in code, so an admin key compromise cannot turn them " +
-    "into an unbounded tax on depositors",
+    sealedVaultMove.includes(
+      "assert!(builder_fee_bps <= MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS, E_BAD_FEE)",
+    ) &&
+    portfolioVaultMove.includes("sealed_vault::builder_stamp_friend()"),
+  "the launch fee must stay bounded and automated vault builder fees must stay locked at zero",
+);
+assert.ok(
+  sealedVaultMove.includes("public fun get_builder_terms") &&
+    portfolioVaultMove.includes("public fun get_builder_terms"),
+  "both vault modes must expose their frozen builder terms for exact preflight checks",
+);
+assert.ok(
+  automatedVaultBuilder.includes("dex_primary_subaccount") &&
+    automatedVaultBuilder.includes("builder_code_registry::get_approved_max_fee") &&
+    automatedVaultBuilder.includes("AUTOMATED_VAULT_DECIBEL_PACKAGE_BY_NETWORK") &&
+    automatedVaultBuilder.includes("0xe7da2794b1d8af76532ed95f38bfdf1136abfd8ea3a240189971988a83101b7f") &&
+    !automatedVaultBuilder.includes("getDecibelPackage") &&
+    automatedVaultBuilder.includes("Approval on the strategy object") &&
+    automatedVaultBuilder.includes("builderFeeBps === 0"),
+  "the legacy-vault preflight must use the package automated vaults were compiled against, " +
+    "check the actual Decibel subaccount, and let new zero-fee vaults pass without fabricating " +
+    "an approval",
 );
 assert.ok(
   sealedVaultMove.includes("struct StrategyRelaunched"),
@@ -1637,6 +1731,13 @@ assert.ok(
     sealedTickLib.includes('stage: "state-changed"'),
   "the single-market attestor must evaluate the contract's committed prior-bar trace and " +
     "refuse to sign if that snapshot changes; a fresh Pyth download is not the signed input",
+);
+assert.ok(
+  sealedTickLib.includes("assertAutomatedVaultBuilderCompatible") &&
+    sealedTickLib.includes('stage: "builder-preflight"') &&
+    sealedTickLib.indexOf("assertAutomatedVaultBuilderCompatible({") <
+      sealedTickLib.indexOf("signAttestation(new Ed25519PrivateKey"),
+  "a directional single-market tick must prove builder compatibility before it signs",
 );
 assert.ok(
   committedTraceLib.includes("parseSingleCommittedTrace") &&
@@ -1981,6 +2082,14 @@ assert.ok(
 assert.equal(packageJson.scripts?.["test:sealed"], "tsx scripts/sealed-attestor-selftest.ts");
 assert.equal(packageJson.scripts?.["test:catalog"], "tsx scripts/sealed-catalog-selftest.ts");
 assert.equal(packageJson.scripts?.["test:economics"], "tsx scripts/vault-economics-selftest.ts");
+assert.equal(
+  packageJson.scripts?.["test:sealed-package"],
+  "tsx scripts/sealed-package-verification-selftest.ts",
+);
+assert.equal(
+  packageJson.scripts?.["test:sealed-deploy"],
+  "tsx scripts/sealed-mainnet-deploy-guard-selftest.ts",
+);
 
 // Decibel's vault limits are consensus-enforced — a stale value aborts vault
 // creation in production. The 30-day fee-interval floor in particular bit us:
@@ -2287,7 +2396,14 @@ assert.equal(packageJson.scripts?.["test:transpiler"], "tsx scripts/transpiler-h
       portfolioTick.includes('stage: "state-changed"') &&
       portfolioTick.includes("market.idx !== index"),
     "the portfolio attestor must verify exact on-chain allowlist addresses, replay the frozen " +
-      "contract trace by index, and refuse context or position changes instead of signing stale state",
+    "contract trace by index, and refuse context or position changes instead of signing stale state",
+  );
+  assert.ok(
+    portfolioTick.includes("assertAutomatedVaultBuilderCompatible") &&
+      portfolioTick.includes('stage: "builder-preflight"') &&
+      portfolioTick.indexOf("assertAutomatedVaultBuilderCompatible({") <
+        portfolioTick.indexOf("signPortfolioAttestation(new Ed25519PrivateKey"),
+    "a directional portfolio tick must prove builder compatibility before it signs",
   );
 
   // Selecting a second market is what switches modules; the UI must send the matching kind.

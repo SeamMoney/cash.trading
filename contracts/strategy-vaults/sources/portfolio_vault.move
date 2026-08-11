@@ -25,7 +25,8 @@
 ///   - at most `max_positions` legs open at once, at most one action per market per bar (so a
 ///     single bar cannot pyramid one market).
 ///   - the price of every market is read on-chain. The attestor never supplies a price.
-///   - timing is still bar-spaced and forward-only, and the sequence still cannot skip silently.
+///   - timing is still bar-spaced and forward-only; signed timestamps expose missed cadence,
+///     while the sequence orders accepted ticks and prevents replay.
 ///
 /// And two guarantees the single-market version could not make:
 ///
@@ -93,6 +94,7 @@ module cash_strategy::portfolio_vault {
     const E_BAD_POSITION_LIMIT:   u64 = 27;
     const E_BAD_HOLD_LIMIT:       u64 = 28;
     const E_BAD_FUNDING_LIMIT:    u64 = 29;
+    const E_BAR_TOO_OLD:          u64 = 30;
     const E_SWAP_NOT_ANNOUNCED:   u64 = 19;
     const E_SWAP_NOT_MATURED:     u64 = 20;
     const E_ANNOUNCE_EXPIRED:     u64 = 21;
@@ -114,11 +116,14 @@ module cash_strategy::portfolio_vault {
     /// creator setting an effectively-infinite hold.
     const MAX_HOLD_BARS: u64 = 14_400;
 
-    const ATTESTATION_DOMAIN: vector<u8> = b"cash.trading/portfolio-vault/v1";
+    const ATTESTATION_DOMAIN: vector<u8> = b"cash.trading/portfolio-vault/v2";
 
     const PRICE_SCALE_PX_TO_1E8: u64 = 100;
     const BPS_DENOM: u128 = 10000;
     const MAX_CLOCK_SKEW_SECS: u64 = 60;
+    /// A signed action row expires quickly so a permissionless cranker cannot hold it and choose
+    /// a later execution price.
+    const MAX_ATTESTATION_AGE_SECS: u64 = 300;
     const BUILDER_UNITS_PER_BPS: u64 = 100;
 
     const SWAP_NOTICE_SECS: u64 = 86_400;
@@ -251,11 +256,13 @@ module cash_strategy::portfolio_vault {
 
     /// The signed message.
     ///
-    /// Every field but `actions_digest` is reconstructed from chain state, so the attestor's
-    /// only freedom remains the payload it committed to — now a vector rather than a trit. The
-    /// digest rather than the vector itself keeps the signed message fixed-size, and the
-    /// contract recomputes it from the actions actually submitted, so a cranker cannot swap
-    /// the action list for a signature that was issued over a different one.
+    /// `bar_ts` is supplied to the entry function but cryptographically bound and expires
+    /// quickly, so a permissionless cranker cannot change or indefinitely delay execution.
+    /// The cranker supplies `bar_ts` and the action vector, but the timestamp and the vector's
+    /// digest are covered by the signature; every other field is reconstructed from chain state.
+    /// The digest rather than the vector itself keeps the signed message fixed-size, and the
+    /// contract recomputes it from the actions actually submitted, so a cranker cannot swap the
+    /// action list for a signature that was issued over a different one.
     struct PortfolioAttestation has drop {
         domain: vector<u8>,
         chain_id: u8,
@@ -263,6 +270,7 @@ module cash_strategy::portfolio_vault {
         program_commitment: vector<u8>,
         seq: u64,
         input_digest: vector<u8>,
+        bar_ts: u64,
         actions_digest: vector<u8>,
     }
 
@@ -480,22 +488,6 @@ module cash_strategy::portfolio_vault {
             extend_ref,
         });
 
-        // Pre-authorize the builder fee from the vault's own trading identity, exactly as
-        // `sealed_vault` does at creation. Without it every single order aborts with
-        // `EBUILDER_NOT_REGISTERED` — Decibel validates an attached builder code against an
-        // approval recorded for the account that PLACES the order, and a vault admin cannot
-        // grant it on a subaccount's behalf. This module shipped without it, so the very first
-        // order of the very first portfolio vault reverted; the live clean-room run is what
-        // surfaced it, because a vault that never signals never places an order and every
-        // earlier test happened to see `neutral`.
-        if (builder_fee_bps > 0) {
-            perp_engine_api::approve_max_fee(
-                &sv_signer,
-                builder_addr,
-                builder_fee_bps * BUILDER_UNITS_PER_BPS,
-            );
-        };
-
         move_to(&sv_signer, PriceTrace {
             prices: vector::empty<u64>(),
             timestamps: vector::empty<u64>(),
@@ -568,6 +560,7 @@ module cash_strategy::portfolio_vault {
 
         let now = timestamp::now_seconds();
         assert!(bar_ts <= now + MAX_CLOCK_SKEW_SECS, E_BAR_IN_FUTURE);
+        assert!(bar_ts + MAX_ATTESTATION_AGE_SECS >= now, E_BAR_TOO_OLD);
         assert!(
             pv.last_bar_ts == 0 || bar_ts >= pv.last_bar_ts + pv.min_bar_interval_s,
             E_BAR_TOO_SOON,
@@ -585,7 +578,7 @@ module cash_strategy::portfolio_vault {
 
         // 1. Verify against the state the strategy was computed on.
         let prev_digest = pv.input_digest;
-        verify_attestation(pv, sv_addr, prev_digest, actions_digest, signature);
+        verify_attestation(pv, sv_addr, prev_digest, bar_ts, actions_digest, signature);
 
         // 2. Price every market on-chain. The attestor supplies no prices at all.
         let prices = vector::empty<u64>();
@@ -1095,6 +1088,7 @@ module cash_strategy::portfolio_vault {
         pv: &PortfolioVault,
         sv_addr: address,
         prev_digest: vector<u8>,
+        bar_ts: u64,
         actions_digest: vector<u8>,
         signature_bytes: vector<u8>,
     ) {
@@ -1105,6 +1099,7 @@ module cash_strategy::portfolio_vault {
             program_commitment: pv.program_commitment,
             seq: pv.seq,
             input_digest: prev_digest,
+            bar_ts,
             actions_digest,
         };
         let sig = ed25519::new_signature_from_bytes(signature_bytes);
@@ -1232,6 +1227,14 @@ module cash_strategy::portfolio_vault {
     }
 
     #[view]
+    /// Builder terms frozen into this strategy. New deployments inherit the sealed module's
+    /// zero-fee ceiling; this view lets crankers reject incompatible legacy vaults exactly.
+    public fun get_builder_terms(sv_addr: address): (address, u64) acquires PortfolioVault {
+        let pv = borrow_global<PortfolioVault>(sv_addr);
+        (pv.builder_addr, pv.builder_fee_bps)
+    }
+
+    #[view]
     /// The committed trace: (flattened prices, timestamps, markets per row).
     public fun get_trace(sv_addr: address): (vector<u64>, vector<u64>, u64) acquires PriceTrace {
         let t = borrow_global<PriceTrace>(sv_addr);
@@ -1256,6 +1259,7 @@ module cash_strategy::portfolio_vault {
         program_commitment: vector<u8>,
         seq: u64,
         input_digest: vector<u8>,
+        bar_ts: u64,
         actions_digest: vector<u8>,
         cid: u8,
     ): vector<u8> {
@@ -1266,6 +1270,7 @@ module cash_strategy::portfolio_vault {
             program_commitment,
             seq,
             input_digest,
+            bar_ts,
             actions_digest,
         })
     }

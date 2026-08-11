@@ -20,16 +20,17 @@ module cash_strategy::sealed_vault_tests {
     // ── Fixtures from scripts/sealed-attestor-selftest.ts ─────────────────
     const FIXTURE_PUBKEY: vector<u8> = x"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
     const FIXTURE_COMMITMENT: vector<u8> = x"26804fc18ed3e410c55e76888b9c4a8b131827d82844cadcff1630d329b15be7";
-    const FIXTURE_GENESIS: vector<u8> = x"a6f5c35b82594055865d9e7b4a5afa0b6a710210733bbf0c5c6c10e81c72451a";
-    const FIXTURE_SIGNATURE: vector<u8> = x"18b03d8713809df5382d1e9116c8627bedfb1b0b9d270d531984a2ef5b95a7d05d37cbf52cf8f2b2e20e8c95f69b0c075286ffa1851696071a8830ec25a4ff07";
+    const FIXTURE_GENESIS: vector<u8> = x"c826b26a4c26c4793209efa352ed1e9774d4b081e63f41cb62fdbcdfb6049542";
+    const FIXTURE_SIGNATURE: vector<u8> = x"1a8adb537060b5556028a359879d0653b5c8a1ad994d176c9ff1c3aaf0ab73c60f097e1f612ece2de9d43a071c31012450bf36e0838fa8677b99d205808fd305";
     /// Full BCS message the TS side signed — pins the layout independently of
     /// the signature check below.
-    const FIXTURE_MESSAGE: vector<u8> = x"1c636173682e74726164696e672f7365616c65642d7661756c742f763102cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd2026804fc18ed3e410c55e76888b9c4a8b131827d82844cadcff1630d329b15be7000000000000000020a6f5c35b82594055865d9e7b4a5afa0b6a710210733bbf0c5c6c10e81c72451a01";
+    const FIXTURE_MESSAGE: vector<u8> = x"1c636173682e74726164696e672f7365616c65642d7661756c742f763202cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd2026804fc18ed3e410c55e76888b9c4a8b131827d82844cadcff1630d329b15be7000000000000000020c826b26a4c26c4793209efa352ed1e9774d4b081e63f41cb62fdbcdfb6049542e80300000000000001";
     /// sha3_256(genesis || bcs(1000u64) || bcs(7000000000000u64)) per TypeScript.
-    const FIXTURE_FOLD: vector<u8> = x"74b8480b623ceb566e5bd2eb771693c85ee6c9cc2566fb9549804091cdcb7ba3";
+    const FIXTURE_FOLD: vector<u8> = x"776bad456cf9824e95b6d38fec292c883afd9d0113a63a08c0f7ac8a834583fb";
 
     const FIXTURE_SV: address = @0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd;
     const FIXTURE_CHAIN_ID: u8 = 2;
+    const FIXTURE_BAR_TS: u64 = 1000;
     const SIGNAL_BUY: u8 = 1;
     const SIGNAL_SELL: u8 = 2;
 
@@ -41,6 +42,7 @@ module cash_strategy::sealed_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             SIGNAL_BUY,
             FIXTURE_CHAIN_ID,
         );
@@ -56,6 +58,7 @@ module cash_strategy::sealed_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             SIGNAL_BUY,
             FIXTURE_CHAIN_ID,
         );
@@ -73,6 +76,7 @@ module cash_strategy::sealed_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             SIGNAL_SELL, // was BUY
             FIXTURE_CHAIN_ID,
         );
@@ -90,6 +94,7 @@ module cash_strategy::sealed_vault_tests {
             FIXTURE_COMMITMENT,
             1, // was 0
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             SIGNAL_BUY,
             FIXTURE_CHAIN_ID,
         );
@@ -106,12 +111,31 @@ module cash_strategy::sealed_vault_tests {
             FIXTURE_COMMITMENT,
             0,
             FIXTURE_GENESIS,
+            FIXTURE_BAR_TS,
             SIGNAL_BUY,
             FIXTURE_CHAIN_ID,
         );
         let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
         let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
         assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 5);
+    }
+
+    /// The permissionless cranker must not be able to hold an attestation and
+    /// choose a more favorable execution timestamp later.
+    #[test]
+    fun bar_timestamp_is_bound_by_the_signature() {
+        let msg = sealed_vault::attestation_message_for_test(
+            FIXTURE_SV,
+            FIXTURE_COMMITMENT,
+            0,
+            FIXTURE_GENESIS,
+            FIXTURE_BAR_TS + 1,
+            SIGNAL_BUY,
+            FIXTURE_CHAIN_ID,
+        );
+        let sig = ed25519::new_signature_from_bytes(FIXTURE_SIGNATURE);
+        let pk = ed25519::new_unvalidated_public_key_from_bytes(FIXTURE_PUBKEY);
+        assert!(!ed25519::signature_verify_strict(&sig, &pk, msg), 13);
     }
 
     /// Genesis digest and the fold step must match TypeScript, or a verifier
@@ -142,7 +166,7 @@ module cash_strategy::sealed_vault_tests {
     #[test]
     fun genesis_is_sha3_of_domain() {
         assert!(
-            sealed_vault::genesis_digest_for_test() == hash::sha3_256(b"cash.trading/sealed-vault/v1"),
+            sealed_vault::genesis_digest_for_test() == hash::sha3_256(b"cash.trading/sealed-vault/v2"),
             12,
         );
     }

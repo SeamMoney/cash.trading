@@ -45,7 +45,11 @@
     "test:builder-revenue": "tsx scripts/decibel-builder-revenue-selftest.ts",
     "test:source-vault": "tsx scripts/sealed-source-vault-selftest.ts",
     "test:sealed-readiness": "tsx scripts/sealed-readiness-selftest.ts",
-    "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish"
+    "test:sealed-package": "tsx scripts/sealed-package-verification-selftest.ts",
+    "test:sealed-deploy": "tsx scripts/sealed-mainnet-deploy-guard-selftest.ts",
+    "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish",
+    "sealed:preflight-mainnet": "tsx scripts/sealed-e2e-deploy.ts preflight-mainnet --network mainnet",
+    "demo:automation": "tsx scripts/bot-automation-demo.ts"
   },
   "dependencies": {
     "@aptos-labs/derived-wallet-ethereum": "^0.9.2",

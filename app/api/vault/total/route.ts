@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getVaults } from '@/lib/decibel-api'
 import { checkApiRateLimit } from '@/lib/api-rate-limit'
+import { getActiveDecibelVaults } from '@/lib/decibel-vault-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,14 +15,14 @@ export async function GET(request: NextRequest) {
     )
   }
   try {
-    const result = await getVaults({ network: 'mainnet', limit: 1000, strict: true })
+    const result = await getActiveDecibelVaults()
 
     // Keep all-vault TVL separate from protocol DLP TVL. The dashboard
     // displays both and must not silently hide user-managed vaults.
     let totalTvl = 0
     let protocolTvl = 0
     let totalDepositors = 0
-    const activeVaults = result.items.filter((vault) => vault.status === 'active')
+    const activeVaults = result.vaults.filter((vault) => vault.status === 'active')
 
     for (const vault of activeVaults) {
       const tvl = Number(vault.tvl ?? 0)

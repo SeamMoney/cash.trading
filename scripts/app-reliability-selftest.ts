@@ -38,6 +38,7 @@ import {
 } from "../lib/decibel-builder-config";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
+const decibelVaultList = readFileSync("lib/decibel-vault-list.ts", "utf8");
 const tradePage = readFileSync("components/trade/TradePageClient.tsx", "utf8");
 const cronRoute = readFileSync("app/api/cron/bot-tick/route.ts", "utf8");
 const keeperRoute = readFileSync("app/api/launchpad/keeper/route.ts", "utf8");
@@ -218,14 +219,18 @@ assert.equal(
   "Vercel must use the migration-aware production build command",
 );
 
-assert.match(vaultRoute, /const VAULT_PAGE_SIZE = 1_000;/);
-assert.match(vaultRoute, /status: "active"/);
-assert.match(vaultRoute, /remainingOffsets\.map\(fetchPage\)/);
+assert.match(decibelVaultList, /const VAULT_PAGE_SIZE = 1_000;/);
+assert.match(decibelVaultList, /status: "active"/);
+assert.match(decibelVaultList, /remainingOffsets\.map\(fetchPage\)/);
 assert.match(vaultRoute, /s-maxage=30, stale-while-revalidate=300/);
-assert.match(vaultRoute, /next: \{ revalidate: 30 \}/);
+assert.match(decibelVaultList, /unstable_cache/);
+assert.match(decibelVaultList, /\{ revalidate: 30 \}/);
+assert.match(decibelVaultList, /cache: "no-store"/);
 assert.match(vaultRoute, /status: 502, headers: VAULT_UNAVAILABLE_HEADERS/);
-assert.match(vaultRoute, /function validatePage/);
-assert.match(vaultRoute, /uniqueVaults\.size !== firstPage\.total_count/);
+assert.match(decibelVaultList, /function validatePage/);
+assert.match(decibelVaultList, /uniqueVaults\.size !== firstPage\.total_count/);
+assert.match(decibelVaultList, /let inFlight: Promise<DecibelVaultSnapshot> \| null/);
+assert.match(vaultRoute, /getActiveDecibelVaults/);
 assert.ok(!vaultRoute.includes("/vaults?limit=50"), "vault discovery must not stop at 50");
 
 assert.equal(formatVaultUsd(312_980.887387), "$312.98K");
@@ -700,9 +705,16 @@ assert.match(pointsStats, /Realized P&amp;L/);
 assert.ok(!pointsCalculator.includes("POINTS_RATE"), "the AMPs scenario must not use the obsolete S0 formula");
 assert.ok(!pointsCalculator.includes("HYPE was"), "the AMPs scenario must not imply an unrelated token valuation");
 assert.ok(!farmingTips.includes("Automated volume generation"), "points tips must not encourage artificial volume");
-assert.match(vaultTotalRoute, /limit: 1000, strict: true/);
+assert.match(vaultTotalRoute, /getActiveDecibelVaults/);
 assert.match(vaultTotalRoute, /vault\.status === 'active'/);
 assert.match(vaultTotalRoute, /protocolTvl/);
+assert.ok(
+  depthVercelConfig.crons.some(
+    (cron: { path?: string; schedule?: string }) =>
+      cron.path === "/api/decibel/vaults" && cron.schedule === "* * * * *",
+  ),
+  "production must warm the shared vault cache every minute",
+);
 assert.match(vaultUserRoute, /'mainnet', true/);
 assert.match(decibelPoints, /typeof value !== 'number'/);
 assert.match(decibelApi, /DECIBEL_READ_TIMEOUT_MS = 12_000/);

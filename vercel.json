@@ -16,6 +16,10 @@
       "schedule": "17 4 * * *"
     },
     {
+      "path": "/api/decibel/vaults",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/sealed-tick",
       "schedule": "* * * * *"
     }

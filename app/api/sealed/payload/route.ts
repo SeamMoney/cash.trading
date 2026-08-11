@@ -31,6 +31,7 @@ import {
   isHexAddress,
   normalizeAddress,
   PORTFOLIO_DEFAULTS,
+  readPlatformTerms,
   sealedNetwork,
   truncateDisplayName,
 } from "@/lib/sealed-vaults";
@@ -121,6 +122,21 @@ export async function POST(request: NextRequest) {
     const name = typeof body.name === "string" ? truncateDisplayName(body.name) : "";
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400, headers: NO_STORE });
+    }
+
+    // This is the first paid step of a launch. A valid-looking package address is not enough:
+    // if the module was never published or `init_platform` failed, this transaction can still
+    // charge Decibel's creation fee and seed a vault that the next step can never bind. Prove
+    // the configured sealed package is live before handing any wallet a transaction to sign.
+    const terms = await readPlatformTerms(network);
+    if (!terms.onChain) {
+      return NextResponse.json(
+        {
+          error:
+            "sealed-vault platform terms are unavailable on-chain — launch is disabled before any funds are spent",
+        },
+        { status: 503, headers: NO_STORE },
+      );
     }
     const fundingUsdc = Number(body.fundingUsdc ?? DECIBEL_VAULT_LIMITS.minFundsForActivationUsdc);
     const violations = validateVaultConfig({

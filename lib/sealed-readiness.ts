@@ -29,6 +29,9 @@ export interface SealedReadiness {
   missing: string[];
 }
 
+export const SEALED_PLATFORM_TERMS_MISSING =
+  "SEALED_PLATFORM_TERMS (configured package is not initialized on-chain)";
+
 function normalizeAptosAddress(raw: string | undefined): string | null {
   const match = /^0x([0-9a-fA-F]{1,64})$/.exec(raw?.trim() ?? "");
   if (!match) return null;
@@ -125,6 +128,35 @@ export function evaluateSealedReadiness(
     ready: managedReady,
     launchMissing,
     managedMissing,
+    missing,
+  };
+}
+
+/**
+ * Add the one readiness check a local environment inspection cannot prove.
+ *
+ * A syntactically valid Aptos address can still point at an unpublished package or at a package
+ * whose `init_platform` transaction never landed. In either case, letting the launch flow build
+ * its first Decibel transaction can cost the creator real USDC before the sealed-vault step
+ * inevitably fails. Apply this after reading `sealed_vault::platform_terms` from chain.
+ */
+export function withSealedPlatformReadiness(
+  readiness: SealedReadiness,
+  platformTermsOnChain: boolean,
+): SealedReadiness {
+  if (!readiness.packageAddress || platformTermsOnChain) return readiness;
+
+  const launchMissing = [...readiness.launchMissing];
+  pushUnique(launchMissing, SEALED_PLATFORM_TERMS_MISSING);
+  const missing = [...launchMissing];
+  for (const problem of readiness.managedMissing) pushUnique(missing, problem);
+
+  return {
+    ...readiness,
+    launchReady: false,
+    managedReady: false,
+    ready: false,
+    launchMissing,
     missing,
   };
 }

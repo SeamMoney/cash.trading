@@ -1694,6 +1694,7 @@ assert.ok(
 );
 assert.ok(
   sealedConfigRoute.includes("evaluateSealedReadiness") &&
+    sealedConfigRoute.includes("withSealedPlatformReadiness") &&
     sealedReadinessLib.includes("ready: managedReady") &&
     sealedReadinessLib.includes("SEALED_ATTESTOR_PRIVATE_KEY") &&
     sealedReadinessLib.includes("SEALED_CRANK_PRIVATE_KEY") &&
@@ -1701,6 +1702,12 @@ assert.ok(
     sealedReadinessLib.includes("CRON_SECRET"),
   "config.ready must mean the default managed bot can actually decrypt, sign and crank — " +
     "package + public key alone can create a paid vault that never trades",
+);
+assert.ok(
+  sealedPayloadRoute.includes("readPlatformTerms(network)") &&
+    sealedPayloadRoute.includes("before any funds are spent"),
+  "the first paid launch payload must require live on-chain platform terms: a syntactically " +
+    "valid but unpublished package can otherwise charge the Decibel fee before binding fails",
 );
 assert.ok(
   sealedVaultsRoute2.includes("readiness.managedReady") &&

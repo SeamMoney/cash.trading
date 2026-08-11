@@ -61,6 +61,21 @@ async function main() {
   assert.equal(wrongNetwork.status, 400);
   assert.match(String(wrongNetwork.json.error), /configured mainnet deployment/);
 
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("not found", { status: 404 });
+  try {
+    const unpaidBoundary = await post({
+      kind: "decibel-vault",
+      creatorAddr: strategyVault,
+      name: "Safety boundary",
+      fundingUsdc: 100,
+    });
+    assert.equal(unpaidBoundary.status, 503);
+    assert.match(String(unpaidBoundary.json.error), /before any funds are spent/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
   const badExpiry = await post({
     kind: "delegate",
     strategyVaultAddr: strategyVault,

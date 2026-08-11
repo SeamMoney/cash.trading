@@ -304,6 +304,13 @@ openssl rand -hex 32   # CRANK_SECRET
   that the scheduler cannot run. The endpoint cannot prove that the cranker wallet holds APT, so
   the funded-wallet check in §5 remains mandatory.
 
+`launchReady` also requires a successful live read of
+`<SEALED_VAULT_PACKAGE>::sealed_vault::platform_terms`. A well-formed address is not proof that
+the package was published or that `init_platform` landed. The first `decibel-vault` payload
+repeats this check before it returns a transaction for the creator to sign, because that step
+charges Decibel's protocol fee and seeds the vault. If Aptos RPC or the sealed package is
+unavailable, launch fails closed before any funds are spent.
+
 `POST /api/sealed/vaults` repeats this gate for managed source registration and also requires the
 on-chain attestor key to equal the configured platform key. A stale or custom client therefore
 cannot place an impossible-to-sign vault into the cron working set.

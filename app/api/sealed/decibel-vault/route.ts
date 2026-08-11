@@ -109,8 +109,12 @@ export async function GET(request: NextRequest) {
         requiredUsdc: need.totalUsdc,
         launchFeeUsdc: terms.launchFeeUsdc,
         builderFeeBps: terms.builderFeeBps,
+        termsOnChain: terms.onChain,
         /** True when a launch would go through end-to-end without a funding step. */
-        canLaunch: usdc >= need.subaccountUsdc && walletUsdc >= need.walletUsdc,
+        canLaunch:
+          terms.onChain &&
+          usdc >= need.subaccountUsdc &&
+          walletUsdc >= need.walletUsdc,
         shortfallSubaccountUsdc: Math.max(0, need.subaccountUsdc - usdc),
         shortfallWalletUsdc: Math.max(0, need.walletUsdc - walletUsdc),
       },

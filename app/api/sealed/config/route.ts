@@ -16,7 +16,10 @@ import {
   readPlatformTerms,
 } from "@/lib/sealed-vaults";
 import { SEALED_PRESETS } from "@/lib/sealed-presets";
-import { evaluateSealedReadiness } from "@/lib/sealed-readiness";
+import {
+  evaluateSealedReadiness,
+  withSealedPlatformReadiness,
+} from "@/lib/sealed-readiness";
 import {
   DECIBEL_VAULT_LIMITS,
   computeFeeBreakdown,
@@ -51,7 +54,10 @@ export async function GET(request: NextRequest) {
   // admin-settable on chain, and a stale constant would show a price that is no longer real.
   const terms = await readPlatformTerms();
 
-  const readiness = evaluateSealedReadiness();
+  const readiness = withSealedPlatformReadiness(
+    evaluateSealedReadiness(),
+    terms.onChain,
+  );
 
   return NextResponse.json(
     {

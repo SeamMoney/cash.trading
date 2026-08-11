@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 
-import { evaluateSealedReadiness } from "../lib/sealed-readiness";
+import {
+  SEALED_PLATFORM_TERMS_MISSING,
+  evaluateSealedReadiness,
+  withSealedPlatformReadiness,
+} from "../lib/sealed-readiness";
 
 const PACKAGE = `0x${"12".repeat(32)}`;
 const attestor = Ed25519PrivateKey.generate();
@@ -73,5 +77,22 @@ assert.equal(ready.ready, true);
 assert.deepEqual(ready.missing, []);
 assert.equal(ready.packageAddress, PACKAGE);
 assert.equal(ready.attestorPubkey, attestor.publicKey().toString().toLowerCase());
+
+const unpublished = withSealedPlatformReadiness(ready, false);
+assert.equal(unpublished.launchReady, false);
+assert.equal(unpublished.managedReady, false);
+assert.equal(unpublished.ready, false);
+assert.ok(unpublished.launchMissing.includes(SEALED_PLATFORM_TERMS_MISSING));
+assert.ok(unpublished.missing.includes(SEALED_PLATFORM_TERMS_MISSING));
+
+const published = withSealedPlatformReadiness(ready, true);
+assert.deepEqual(published, ready, "an initialized on-chain package must preserve env readiness");
+
+const absentPackage = withSealedPlatformReadiness(empty, false);
+assert.equal(
+  absentPackage.launchMissing.includes(SEALED_PLATFORM_TERMS_MISSING),
+  false,
+  "a missing package should not also report a redundant on-chain initialization error",
+);
 
 console.log("sealed readiness: passed");

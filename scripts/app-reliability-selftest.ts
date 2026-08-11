@@ -117,6 +117,12 @@ const launchpadMoveCodegen = readFileSync("lib/launchpad/move-codegen.ts", "utf8
 const launchpadTradesRoute = readFileSync("app/api/launchpad/trades/route.ts", "utf8");
 const launchpadTradeHistory = readFileSync("components/launchpad/TradeHistory.tsx", "utf8");
 const launchpadSignalStreamRoute = readFileSync("app/api/launchpad/signals/stream/route.ts", "utf8");
+const launchpadSignalStore = readFileSync("lib/launchpad/signals-store.ts", "utf8");
+const launchpadPrismaSchema = readFileSync("prisma/schema.prisma", "utf8");
+const launchpadSignalMigration = readFileSync(
+  "prisma/migrations/20260810150000_add_launchpad_signal_store/migration.sql",
+  "utf8",
+);
 const marketRefreshRoute = readFileSync("app/api/markets/refresh/route.ts", "utf8");
 const vercelIgnore = readFileSync(".vercelignore", "utf8");
 const launchpadSignalsRoute = readFileSync("app/api/launchpad/signals/route.ts", "utf8");
@@ -849,9 +855,21 @@ assert.match(launchpadSignalsRoute, /Signal ingestion is not configured/);
 assert.match(launchpadSignalsRoute, /checkApiRateLimit\(req, "launchpad-signals"/);
 assert.match(launchpadSignalsRoute, /paid_signal_delivery_not_configured/);
 assert.match(launchpadSignalsRoute, /streamUrl\.searchParams\.set\("indicators"/);
+assert.ok(!launchpadSignalsRoute.includes("signalBuffer"), "signal ingestion must not rely on instance memory");
+assert.ok(!launchpadSignalsRoute.includes("sseSubscribers"), "signal delivery must work across Vercel instances");
+assert.match(launchpadSignalsRoute, /appendLaunchpadSignal/);
+assert.match(launchpadSignalsRoute, /getRecentLaunchpadSignals/);
 assert.match(launchpadSignalStreamRoute, /requested\.length > 32/);
 assert.match(launchpadSignalStreamRoute, /isProprietarySignalIndicator/);
 assert.match(launchpadSignalStreamRoute, /checkApiRateLimit\(req, "launchpad-signal-stream"/);
+assert.match(launchpadSignalStreamRoute, /getLaunchpadSignalsAfter/);
+assert.ok(!launchpadSignalStreamRoute.includes("signalBuffer"), "SSE must poll the shared signal ledger");
+assert.ok(!launchpadSignalStreamRoute.includes("sseSubscribers"), "SSE must not subscribe to one process");
+assert.match(launchpadSignalStore, /MAX_RETAINED_SIGNALS_PER_INDICATOR = 1_000/);
+assert.match(launchpadSignalStore, /launchpadSignal\.deleteMany/);
+assert.match(launchpadSignalStore, /ROW_NUMBER\(\) OVER \(PARTITION BY "indicatorAddr"/);
+assert.match(launchpadPrismaSchema, /model LaunchpadSignal/);
+assert.match(launchpadSignalMigration, /CREATE TABLE "LaunchpadSignal"/);
 assert.match(launchpadVerifyRoute, /checkApiRateLimit\(req, "launchpad-verify"/);
 assert.match(launchpadVerifyRoute, /SOURCE_HASH_RE/);
 assert.match(launchpadVerifyRoute, /clientConfig: \{ API_KEY: apiKey \}/);

@@ -3,6 +3,10 @@ import { indicatorRegistry } from "@/app/api/launchpad/indicators/route";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 import { PYTH_FEED_IDS } from "@/lib/launchpad/constants";
+import {
+  appendLaunchpadSignal,
+  getRecentLaunchpadSignals,
+} from "@/lib/launchpad/signals-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,20 +15,6 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
 const MAX_SIGNAL_BODY_BYTES = 16_000;
-
-export interface SignalEntry {
-  timestamp: number;
-  signal: 0 | 1 | 2; // NEUTRAL | BUY | SELL
-  price: number;
-  confidence: number;
-  asset: string;
-}
-
-// In-memory delivery buffer populated only by authenticated keeper decisions.
-export const signalBuffer: Map<string, SignalEntry[]> = new Map();
-
-// ─── SSE subscribers ─────────────────────────────────────────────────
-export const sseSubscribers: Set<(data: string) => void> = new Set();
 
 export function isProprietarySignalIndicator(indicator: string): boolean {
   return indicatorRegistry.some(
@@ -85,15 +75,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(streamUrl, 307);
   }
 
-  const signals = signalBuffer.get(indicator) || [];
-  const recent = signals.slice(-limit).reverse(); // newest first
+  try {
+    const { signals, total } = await getRecentLaunchpadSignals(indicator, limit);
+    const recent = signals.map(({ id: _id, indicatorAddr: _indicatorAddr, ...entry }) => entry);
 
-  return NextResponse.json({
-    indicator,
-    signals: recent,
-    total: signals.length,
-    returned: recent.length,
-  }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json({
+      indicator,
+      signals: recent,
+      total,
+      returned: recent.length,
+    }, { headers: NO_STORE_HEADERS });
+  } catch (error) {
+    console.error("[launchpad-signals] history read failed:", error);
+    return NextResponse.json(
+      { error: "Signal history is temporarily unavailable" },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -113,67 +111,65 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  try {
-    const rawBody = await req.text();
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_SIGNAL_BODY_BYTES) {
-      return NextResponse.json(
-        { error: "Request body is too large" },
-        { status: 413, headers: NO_STORE_HEADERS },
-      );
-    }
-    const body = JSON.parse(rawBody) as Record<string, unknown>;
-    const { indicatorAddr, signal, price, confidence, asset } = body;
-
-    if (
-      !isValidAptosAddress(indicatorAddr) ||
-      typeof signal !== "number" ||
-      ![0, 1, 2].includes(signal) ||
-      typeof price !== "number" ||
-      !Number.isFinite(price) ||
-      price <= 0 ||
-      (confidence !== undefined &&
-        (typeof confidence !== "number" ||
-          !Number.isFinite(confidence) ||
-          confidence < 0 ||
-          confidence > 10_000)) ||
-      typeof asset !== "string" ||
-      !Object.hasOwn(PYTH_FEED_IDS, asset)
-    ) {
-      return NextResponse.json(
-        { error: "Signal fields are invalid" },
-        { status: 400, headers: NO_STORE_HEADERS },
-      );
-    }
-
-    const normalizedIndicator = normalizeAptosAddress(indicatorAddr, "indicatorAddr");
-    const normalizedSignal = signal as 0 | 1 | 2;
-
-    if (!signalBuffer.has(normalizedIndicator)) signalBuffer.set(normalizedIndicator, []);
-    const buf = signalBuffer.get(normalizedIndicator)!;
-    const entry: SignalEntry = {
-      timestamp: Date.now(),
-      signal: normalizedSignal,
-      price,
-      confidence: typeof confidence === "number" ? confidence : 0,
-      asset,
-    };
-    buf.push(entry);
-    if (buf.length > 1000) buf.splice(0, buf.length - 1000);
-
-    // Notify SSE subscribers
-    const payload = JSON.stringify({ indicatorAddr: normalizedIndicator, ...entry });
-    for (const send of sseSubscribers) send(payload);
-
+  const rawBody = await req.text();
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_SIGNAL_BODY_BYTES) {
     return NextResponse.json(
-      { success: true, totalSignals: buf.length },
-      { headers: NO_STORE_HEADERS },
+      { error: "Request body is too large" },
+      { status: 413, headers: NO_STORE_HEADERS },
     );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Signal ingestion failed";
-    console.error("[launchpad-signals] ingestion failed:", message);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
     return NextResponse.json(
       { error: "Signal payload is invalid" },
       { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const { indicatorAddr, signal, price, confidence, asset } = body;
+  if (
+    !isValidAptosAddress(indicatorAddr) ||
+    typeof signal !== "number" ||
+    ![0, 1, 2].includes(signal) ||
+    typeof price !== "number" ||
+    !Number.isFinite(price) ||
+    price <= 0 ||
+    (confidence !== undefined &&
+      (typeof confidence !== "number" ||
+        !Number.isInteger(confidence) ||
+        confidence < 0 ||
+        confidence > 10_000)) ||
+    typeof asset !== "string" ||
+    !Object.hasOwn(PYTH_FEED_IDS, asset)
+  ) {
+    return NextResponse.json(
+      { error: "Signal fields are invalid" },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const normalizedIndicator = normalizeAptosAddress(indicatorAddr, "indicatorAddr");
+  try {
+    const { total } = await appendLaunchpadSignal({
+      indicatorAddr: normalizedIndicator,
+      signal: signal as 0 | 1 | 2,
+      price,
+      confidence: typeof confidence === "number" ? confidence : 0,
+      asset,
+    });
+
+    return NextResponse.json(
+      { success: true, totalSignals: total },
+      { headers: NO_STORE_HEADERS },
+    );
+  } catch (error) {
+    console.error("[launchpad-signals] storage write failed:", error);
+    return NextResponse.json(
+      { error: "Signal storage is temporarily unavailable" },
+      { status: 503, headers: NO_STORE_HEADERS },
     );
   }
 }

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  isProprietarySignalIndicator,
-  signalBuffer,
-  sseSubscribers,
-} from "../route";
+import { isProprietarySignalIndicator } from "../route";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
+import {
+  getLaunchpadSignalHistory,
+  getLaunchpadSignalsAfter,
+  type StoredLaunchpadSignal,
+} from "@/lib/launchpad/signals-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,14 @@ export const maxDuration = 300;
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
 };
+const HISTORY_PER_CONNECTION = 10;
+const MAX_POLL_BATCH = 500;
+const POLL_INTERVAL_MS = 3_000;
+
+function signalPayload(signal: StoredLaunchpadSignal, historical = false): string {
+  const { id: _id, ...entry } = signal;
+  return JSON.stringify(historical ? { ...entry, historical: true } : entry);
+}
 
 /**
  * GET /api/launchpad/signals/stream?indicators=addr1,addr2
@@ -61,73 +70,84 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const watchedIndicators = [...watched];
+  let history: StoredLaunchpadSignal[];
+  try {
+    history = await getLaunchpadSignalHistory(
+      watchedIndicators,
+      HISTORY_PER_CONNECTION,
+    );
+  } catch (error) {
+    console.error("[launchpad-signal-stream] history read failed:", error);
+    return NextResponse.json(
+      { error: "Signal stream is temporarily unavailable" },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  let cleanup = () => {};
   const stream = new ReadableStream({
     start(controller) {
       const enc = new TextEncoder();
-      controller.enqueue(enc.encode("retry: 5000\n\n"));
+      let closed = false;
+      let cursorId = history.at(-1)?.id ?? 0n;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let keepalive: ReturnType<typeof setInterval> | null = null;
 
-      // Send recent history on connect
-      for (const addr of watched) {
-        const buf = signalBuffer.get(addr) || [];
-        const recent = buf.slice(-10);
-        for (const s of recent) {
-          const payload = JSON.stringify({ indicatorAddr: addr, ...s, historical: true });
-          controller.enqueue(enc.encode(`data: ${payload}\n\n`));
+      cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (keepalive) clearInterval(keepalive);
+        if (pollTimer) clearTimeout(pollTimer);
+        try { controller.close(); } catch { /* already closed */ }
+      };
+
+      const enqueue = (value: string): boolean => {
+        if (closed) return false;
+        try {
+          controller.enqueue(enc.encode(value));
+          return true;
+        } catch {
+          cleanup();
+          return false;
         }
+      };
+
+      enqueue("retry: 5000\n\n");
+      for (const signal of history) {
+        enqueue(`data: ${signalPayload(signal, true)}\n\n`);
       }
 
-      // Send keepalive every 15s
-      const keepalive = setInterval(() => {
-        try {
-          controller.enqueue(enc.encode(`: keepalive\n\n`));
-        } catch {
-          clearInterval(keepalive);
-        }
+      keepalive = setInterval(() => {
+        enqueue(": keepalive\n\n");
       }, 15000);
 
-      // Subscribe to new signals
-      function onSignal(data: string) {
+      const poll = async () => {
+        if (closed) return;
         try {
-          const parsed = JSON.parse(data) as { indicatorAddr: string };
-          if (watched.has(parsed.indicatorAddr)) {
-            controller.enqueue(enc.encode(`data: ${data}\n\n`));
+          const signals = await getLaunchpadSignalsAfter(
+            watchedIndicators,
+            cursorId,
+            MAX_POLL_BATCH,
+          );
+          for (const signal of signals) {
+            if (!enqueue(`data: ${signalPayload(signal)}\n\n`)) return;
+            cursorId = signal.id;
           }
-        } catch {
-          // ignore
+        } catch (error) {
+          console.error("[launchpad-signal-stream] polling failed:", error);
+          enqueue('event: status\ndata: {"error":"Signal updates are temporarily delayed"}\n\n');
+        } finally {
+          if (!closed) pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
         }
-      }
-      sseSubscribers.add(onSignal);
+      };
 
-      // Poll the authenticated delivery buffer for entries written in this instance.
-      const lastSeen = new Map<string, number>();
-      for (const addr of watched) {
-        lastSeen.set(addr, (signalBuffer.get(addr) || []).length);
-      }
-      const poll = setInterval(() => {
-        for (const addr of watched) {
-          const buf = signalBuffer.get(addr) || [];
-          const prev = lastSeen.get(addr) || 0;
-          if (buf.length > prev) {
-            for (let i = prev; i < buf.length; i++) {
-              const payload = JSON.stringify({ indicatorAddr: addr, ...buf[i] });
-              try {
-                controller.enqueue(enc.encode(`data: ${payload}\n\n`));
-              } catch {
-                // stream closed
-              }
-            }
-            lastSeen.set(addr, buf.length);
-          }
-        }
-      }, 1000);
-
-      // Cleanup on close
-      req.signal.addEventListener("abort", () => {
-        clearInterval(keepalive);
-        clearInterval(poll);
-        sseSubscribers.delete(onSignal);
-        try { controller.close(); } catch { /* already closed */ }
-      }, { once: true });
+      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+      req.signal.addEventListener("abort", cleanup, { once: true });
+      if (req.signal.aborted) cleanup();
+    },
+    cancel() {
+      cleanup();
     },
   });
 

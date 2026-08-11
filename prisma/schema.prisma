@@ -168,6 +168,24 @@ model IndicatorSignalDecision {
   @@index([expiresAt])
 }
 
+/// Durable public launchpad signal delivery.
+///
+/// Vercel may serve ingestion and SSE requests from different instances, so a
+/// process-local buffer cannot be the delivery source. Rows are capped per
+/// indicator by the application after every insert.
+model LaunchpadSignal {
+  id            BigInt   @id @default(autoincrement())
+  indicatorAddr String
+  signal        Int
+  price         Float
+  confidence    Int
+  asset         String
+  source        String   @default("keeper")
+  observedAt    DateTime @default(now())
+
+  @@index([indicatorAddr, id])
+}
+
 model ExecutionAudit {
   id              String                   @id @default(cuid())
   strategyVaultId String

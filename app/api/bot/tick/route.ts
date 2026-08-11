@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { getMarkPrice } from '@/lib/price-feed'
 import { getAllMarketAddresses, createAuthenticatedAptos, getActiveNetwork } from '@/lib/decibel-sdk'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
+import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
 // Market configs for size/price decimals (differ between testnet and mainnet)
 const TESTNET_MKT_CONFIG: Record<string, { pxDecimals: number; szDecimals: number }> = {
@@ -33,8 +34,6 @@ export const maxDuration = 300 // 5 minutes - need time to wait for TWAP fills
  * Body: { userWalletAddress: string }
  */
 export async function POST(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
 
   try {
     const body = await request.json()
@@ -44,6 +43,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing userWalletAddress' },
         { status: 400 }
+      )
+    }
+
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress, subaccount: userSubaccount })
+    if (denied) return denied
+
+    // Keyed by wallet, not IP: the authorized identity is the thing worth
+    // bounding, and these routes sign real orders.
+    const rate = checkRateLimitForKey('bot-tick-manual', String(userWalletAddress).toLowerCase(), 60, 60000)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfterS: rate.retryAfterS },
+        { status: 429 },
       )
     }
 

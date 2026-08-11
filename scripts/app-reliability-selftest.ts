@@ -173,6 +173,7 @@ const legacyBotRoutes = [
   "app/api/stats/route.ts",
 ].map((path) => [path, readFileSync(path, "utf8")] as const);
 const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
+const botOwnerGuard = readFileSync("lib/bot-owner-guard.ts", "utf8");
 const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
 const serverBotConfig = readFileSync("components/bot/server-bot-config.tsx", "utf8");
 const tvImportRoute = readFileSync("app/api/launchpad/tv-import/route.ts", "utf8");
@@ -1045,12 +1046,52 @@ assert.ok(
   !txUtils.includes("transaction.feePayerAddress ="),
   "wallet-adapter senders must leave fee-payer binding to the sponsor service",
 );
+// The bot API used to fail closed in production behind a blanket 501 because it
+// had no authorization at all. It is now authorized per-request instead: an
+// explicit owner allowlist plus on-chain proof that the caller owns the
+// subaccount being traded. These assertions replace the blanket-gate tripwire —
+// the surface must never go back to accepting an arbitrary body.
 assert.match(legacyBotGuard, /reason: "legacy_bot_api_not_enabled"/);
+assert.match(botOwnerGuard, /BOT_OWNER_ADDRESSES/);
+assert.match(botOwnerGuard, /verifyDecibelSubaccountOwnership/);
+assert.ok(
+  botOwnerGuard.includes("lookupIncomplete") && botOwnerGuard.includes("status: 503"),
+  "an ownership lookup that fails must be treated as denial, never as permission",
+);
+assert.ok(
+  botOwnerGuard.includes("botOwnerAllowlistConfigured") && botOwnerGuard.includes("bot_owner_allowlist_not_configured"),
+  "an unconfigured allowlist must disable the bot API rather than open it",
+);
 for (const [path, source] of legacyBotRoutes) {
+  // The money-moving and data-exposing bot routes authorize per request.
+  if (path.startsWith("app/api/bot/")) {
+    assert.match(
+      source,
+      /denyUnlessBotOwner\(/,
+      `${path} must authorize the caller against the bot owner allowlist`,
+    );
+    continue;
+  }
+  // Everything else on this surface stays behind the original blanket gate.
   assert.match(
     source,
     /legacyBotAutomationUnavailable\(\)/,
     `${path} must fail closed in production until wallet-signed authorization exists`,
+  );
+}
+// Every route that can move funds must also prove subaccount ownership, not
+// just that the caller is allowlisted.
+for (const path of [
+  "app/api/bot/start/route.ts",
+  "app/api/bot/tick/route.ts",
+  "app/api/bot/stop/route.ts",
+  "app/api/bot/close-position/route.ts",
+]) {
+  const source = readFileSync(path, "utf8");
+  assert.match(
+    source,
+    /denyUnlessBotOwner\(\{[^}]*subaccount/s,
+    `${path} must verify the subaccount belongs to the authorized wallet`,
   );
 }
 assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BOT_OPERATOR } from '@/lib/decibel-client'
 import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork } from '@/lib/decibel-sdk'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
 
 // Use authenticated Aptos client to avoid 429 rate limits
 const aptos = createAuthenticatedAptos()
@@ -14,9 +14,6 @@ const DECIBEL_PACKAGE = getActiveNetwork() === 'mainnet'
  * Check if the bot operator has trading permissions for a user's subaccount
  */
 export async function GET(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
   try {
     const { searchParams } = new URL(request.url)
     const userSubaccount = searchParams.get('userSubaccount')
@@ -27,6 +24,12 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Requires the owning wallet so the subaccount can be tied to an allowlisted
+    // owner; previously this leaked delegation state for any address.
+    const userWalletAddress = searchParams.get('userWalletAddress')
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress, subaccount: userSubaccount })
+    if (denied) return denied
 
     // The Subaccount type moved to `dex_accounts` and is now an enum whose
     // delegated_permissions live in a nested BigOrderedMap — the old raw

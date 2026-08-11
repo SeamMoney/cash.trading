@@ -7,7 +7,8 @@ const DECIBEL_PACKAGE = getActiveNetwork() === 'mainnet'
   ? MAINNET_CONFIG.deployment.package
   : TESTNET_CONFIG.deployment.package
 import { prisma } from '@/lib/prisma'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
+import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
 // Market configs for size/price decimals and ticker sizes (updated Feb 5, 2026)
 const MARKET_CONFIG: Record<string, { pxDecimals: number; szDecimals: number; tickerSize: bigint }> = {
@@ -38,12 +39,22 @@ function roundPriceToTickerSize(priceUSD: number, tickerSize: bigint): bigint {
  * Body: { userSubaccount, marketAddress, marketName, sizeRaw, isLong }
  */
 export async function POST(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
   try {
     const body = await request.json()
     const { userWalletAddress, userSubaccount, marketAddress, marketName, sizeRaw, isLong } = body
+
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress, subaccount: userSubaccount })
+    if (denied) return denied
+
+    // Keyed by wallet, not IP: the authorized identity is the thing worth
+    // bounding, and these routes sign real orders.
+    const rate = checkRateLimitForKey('bot-close-position', String(userWalletAddress).toLowerCase(), 12, 60000)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfterS: rate.retryAfterS },
+        { status: 429 },
+      )
+    }
 
     if (!userSubaccount || !marketAddress || sizeRaw === undefined || isLong === undefined) {
       return NextResponse.json(

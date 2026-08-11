@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { Ed25519PrivateKey, Ed25519Account } from '@aptos-labs/ts-sdk'
 import { getMarkPrice } from '@/lib/price-feed'
 import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, getAllMarketAddresses } from '@/lib/decibel-sdk'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
+import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
@@ -69,14 +70,24 @@ async function readSzDecimals(aptos: any, market: string, marketName: string): P
 }
 
 export async function POST(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
   try {
     const body = await request.json()
     const { userWalletAddress, userSubaccount } = body
 
     console.log('🛑 Stop request for wallet:', userWalletAddress, 'subaccount:', userSubaccount?.slice(0, 20))
+
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress, subaccount: userSubaccount })
+    if (denied) return denied
+
+    // Keyed by wallet, not IP: the authorized identity is the thing worth
+    // bounding, and these routes sign real orders.
+    const rate = checkRateLimitForKey('bot-stop', String(userWalletAddress).toLowerCase(), 12, 60000)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfterS: rate.retryAfterS },
+        { status: 429 },
+      )
+    }
 
     if (!userWalletAddress) {
       return NextResponse.json(

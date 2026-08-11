@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
+  // Read-only, but it exposes bot config and PnL, so it is owner-gated too.
   try {
     const { searchParams } = new URL(request.url)
     const userWalletAddress = searchParams.get('userWalletAddress')
@@ -19,6 +17,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress })
+    if (denied) return denied
 
     // Get bot from database - if subaccount provided, look for exact match
     // Otherwise, find any bot for this wallet (backwards compatibility)

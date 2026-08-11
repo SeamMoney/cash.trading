@@ -3,7 +3,8 @@ import { VolumeBotEngine, BotConfig } from '@/lib/bot-engine'
 import { botManager } from '@/lib/bot-manager'
 import { prisma } from '@/lib/prisma'
 import { getAllMarketAddresses } from '@/lib/decibel-sdk'
-import { legacyBotAutomationUnavailable } from '@/lib/legacy-bot-guard'
+import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
+import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -33,9 +34,8 @@ async function resolveMarketAddress(marketName: string, fallbackAddress: string)
 }
 
 export async function POST(request: NextRequest) {
-  const unavailable = legacyBotAutomationUnavailable()
-  if (unavailable) return unavailable
-
+  // Authorization happens after the body is parsed, because it is the body that
+  // names the wallet and subaccount being acted on. See lib/bot-owner-guard.ts.
   try {
     const body = await request.json()
     const {
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       market,
       marketName,
       strategy,
+      leverageX,
     } = body as BotConfig
 
     console.log('📥 Received userWalletAddress:', typeof userWalletAddress, userWalletAddress)
@@ -56,6 +57,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing required fields: userWalletAddress, userSubaccount' },
         { status: 400 }
+      )
+    }
+
+    // Allowlisted wallet AND on-chain proof it owns this subaccount, before we
+    // hand the operator key anything to trade.
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress, subaccount: userSubaccount })
+    if (denied) return denied
+
+    // Keyed by wallet, not IP: the authorized identity is the thing worth
+    // bounding, and these routes sign real orders.
+    const rate = checkRateLimitForKey('bot-start', String(userWalletAddress).toLowerCase(), 6, 60000)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfterS: rate.retryAfterS },
+        { status: 429 },
       )
     }
 
@@ -173,6 +189,7 @@ export async function POST(request: NextRequest) {
       strategy,
       market: resolvedMarket,
       marketName,
+      leverageX,
     }
 
     const bot = new VolumeBotEngine(config)

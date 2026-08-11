@@ -12,6 +12,7 @@ import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
 import { AmbientBlobs } from "@/components/layout/AmbientBlobs";
 import { PRODUCT_PRESSABLE_CLASS } from "@/components/ui/product-surface";
+import { getClientNetwork } from "@/lib/decibel-client";
 
 const CONTRACT = "0x33b2487e54af56e709eb65c5bdd597a64df509c0ec01f94cc79f4d9d6adea3ee";
 
@@ -248,7 +249,7 @@ function EmptyState({ onDeploy }: { onDeploy: () => void }) {
       </div>
       <h3 className="text-base font-display font-semibold text-white mb-2">Select a strategy</h3>
       <p className="text-sm text-zinc-500 max-w-sm leading-relaxed mb-8">
-        Inspect strategies discovered from Aptos testnet, review their on-chain state, or deploy your own.
+        Inspect strategies discovered on Aptos, review their on-chain state, or deploy your own.
       </p>
       <div className="w-full max-w-xs space-y-3 text-left">
         {[
@@ -395,15 +396,15 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               <span className="text-zinc-700">On-chain:</span>
               {ind.pkg && (
                 <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
-                   href={`https://explorer.aptoslabs.com/account/${ind.pkg}?network=testnet`}
+                   href={`https://explorer.aptoslabs.com/account/${ind.pkg}?network=${getClientNetwork()}`}
                    target="_blank" rel="noreferrer">strategy module ↗</a>
               )}
               <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
-                 href={`https://explorer.aptoslabs.com/account/${ind.address}?network=testnet`}
+                 href={`https://explorer.aptoslabs.com/account/${ind.address}?network=${getClientNetwork()}`}
                  target="_blank" rel="noreferrer">indicator ↗</a>
               {ind.vaultAddr && (
                 <a className="text-zinc-500 hover:text-emerald-400 transition-colors"
-                   href={`https://explorer.aptoslabs.com/account/${ind.vaultAddr}?network=testnet`}
+                   href={`https://explorer.aptoslabs.com/account/${ind.vaultAddr}?network=${getClientNetwork()}`}
                    target="_blank" rel="noreferrer">Decibel vault ↗</a>
               )}
             </div>

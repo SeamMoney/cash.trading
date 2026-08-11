@@ -146,6 +146,27 @@ const SIG_CHIP  = [
 
 // ─── Left panel: indicator list item ─────────────────────────────────────────
 
+/**
+ * Market strings arrive inconsistently from the registry — some rows carry
+ * "ETH/USD" and others just "ETH" — which made one list show two conventions
+ * side by side and read like unmigrated data. Every perp here is USD-quoted.
+ */
+function marketLabel(asset: string | undefined): string {
+  const a = (asset ?? "").trim();
+  if (!a) return "";
+  return a.includes("/") ? a : `${a}/USD`;
+}
+
+/**
+ * The literal word "Strategy" is what `TYPE_LABEL` falls back to when an
+ * indicator's type isn't one of the known kinds. It adds nothing next to a
+ * name like "SuperTrend ETH" and reads as unfilled placeholder, so an unknown
+ * type renders nothing at all rather than filler.
+ */
+function typeLabel(indicatorType: number): string | null {
+  return TYPE_LABEL[indicatorType] ?? null;
+}
+
 /** The row shows whatever the list is ordered by — see `metricFor`. */
 function metricFor(ind: Indicator, sort: Sort): { value: string; label: string } {
   if (sort === "sharpe") return { value: (ind.meanSharpe / 1000).toFixed(2), label: "Sharpe" };
@@ -218,18 +239,25 @@ function IndicatorItem({ ind, selected, rank, sort, onClick }: { ind: Indicator;
               own row it appeared on some strategies and not others, so the list
               pitch swung 70/100/100px and had no rhythm to scan against. */}
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate pl-[22px] text-[11px] text-[#8a8a8a]">
-            <span className="shrink-0">{ind.assets[0]}</span>
-            <span className="shrink-0 opacity-50">·</span>
+            <span className="shrink-0">{marketLabel(ind.assets[0])}</span>
             {/* The type mostly restates the name ("SMA Crossover Pro" → "SMA
                 Crossover"), so when a signal exists it yields the slot rather
-                than truncating both to "SM…". Recency beats a redundant label. */}
+                than truncating both to "SM…". Recency beats a redundant label.
+                When neither exists the separator goes too — a trailing "·"
+                with nothing after it is the tell of a missing field. */}
             {sig !== 0 && sigTimeMs > 0 ? (
-              <span className={cn("truncate font-medium", sigStale ? "text-[#8a8a8a]" : SIG_TEXT[sig])}>
-                {SIG_LABEL[sig]} {timeAgo(sigTimeMs)}
-              </span>
-            ) : (
-              <span className="truncate">{TYPE_LABEL[ind.indicatorType] ?? "Strategy"}</span>
-            )}
+              <>
+                <span className="shrink-0 opacity-50">·</span>
+                <span className={cn("truncate font-medium", sigStale ? "text-[#8a8a8a]" : SIG_TEXT[sig])}>
+                  {SIG_LABEL[sig]} {timeAgo(sigTimeMs)}
+                </span>
+              </>
+            ) : typeLabel(ind.indicatorType) ? (
+              <>
+                <span className="shrink-0 opacity-50">·</span>
+                <span className="truncate">{typeLabel(ind.indicatorType)}</span>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -403,7 +431,9 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
             )}
           </div>
           <p className="text-[13px] text-[#a1a1a1] mt-1">
-            {TYPE_LABEL[ind.indicatorType] ?? "Strategy"} · {ind.assets.join(", ")}
+            {[typeLabel(ind.indicatorType), ind.assets.map(marketLabel).filter(Boolean).join(", ")]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
           {/* Body copy, not a caption — it gets the brighter neutral step. */}
           {ind.description && (
@@ -673,12 +703,18 @@ export function LaunchpadPage() {
               </h1>
               {!loading && (
                 <span className="mt-2 block text-[11px] font-mono tabular-nums text-[#8a8a8a]">
-                  {meta.total} strategies ·{" "}
                   {/* Accent means "good" — painting a zero with it dresses a
-                      failure state as a win. Only a non-zero count earns it. */}
-                  <span className={meta.graduated > 0 ? "text-accent" : "text-[#8a8a8a]"}>
-                    {meta.graduated} live
-                  </span>
+                      failure state as a win, so only a non-zero count earns it.
+                      And "· 0 live" next to a number is read as a dead product;
+                      state the true position instead ("18 in testing") until
+                      something has actually graduated. */}
+                  {meta.graduated > 0 ? (
+                    <>
+                      {meta.total} strategies · <span className="text-accent">{meta.graduated} live</span>
+                    </>
+                  ) : (
+                    <>{meta.total} strategies in testing</>
+                  )}
                 </span>
               )}
             </div>

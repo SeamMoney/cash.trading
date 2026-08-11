@@ -27,6 +27,7 @@ const head = (s: string) => `//@version=5\nstrategy("${s}", overlay=true)\n`;
 async function main() {
   const { transpileV3 } = await import("../lib/launchpad/transpiler-v3");
   const { parsePine } = await import("../lib/launchpad/pine-parser");
+  const { collectPineExecutionCompatibilityErrors } = await import("../lib/launchpad/pine-compatibility");
   const { astToIndicatorIR, TA_SILENT_SUBSTITUTIONS } = await import("../lib/launchpad/pine-ir");
   const { checkEquivalence, createStrategyRunner } = await import("../lib/strategy-equivalence");
 
@@ -268,6 +269,113 @@ async function main() {
     );
     check(`${name} history is rejected`, (result.errors?.length ?? 0) > 0, result.errors ?? "(none)");
   }
+
+  // ── 7. Unsupported source cannot disappear during parser recovery ─────────
+  console.log("\n7. source completeness");
+  const customType = emit(
+    head("Custom type")
+      + `type Pool\n    float level\n`
+      + `fast = ta.ema(close, 9)\nslow = ta.ema(close, 21)\n`
+      + `if (ta.crossover(fast, slow))\n    strategy.entry("L", strategy.long)\n`,
+  );
+  check(
+    "custom type declarations are rejected, not skipped",
+    (customType.errors ?? []).some((error) => error.includes("Custom Pine types")),
+    customType.errors ?? "(none)",
+  );
+
+  const remoteSeries = emit(
+    head("Remote series")
+      + `remote = request.security("BTCUSD", "1D", close)\n`
+      + `if (close > remote)\n    strategy.entry("L", strategy.long)\n`,
+  );
+  check(
+    "request.security is rejected, not reduced to local close",
+    (remoteSeries.errors ?? []).some((error) => error.includes("request.*")),
+    remoteSeries.errors ?? "(none)",
+  );
+
+  const multiStatementBlock = emit(
+    head("Two statements")
+      + `slow = ta.ema(close, 21)\n`
+      + `if (close > slow)\n`
+      + `    strategy.entry("L", strategy.long)\n`
+      + `    strategy.entry("S", strategy.short)\n`,
+  );
+  check(
+    "a second direct block statement is rejected instead of dropped",
+    (multiStatementBlock.errors ?? []).some((error) => error.includes("2 direct statements")),
+    multiStatementBlock.errors ?? "(none)",
+  );
+
+  const wrappedExecution = emit(
+    head("Wrapped execution")
+      + `fast = ta.ema(close, 9)\nslow = ta.ema(close, 21)\n`
+      + `longSignal = close > fast and\n    fast > slow\n`
+      + `if longSignal\n    strategy.entry("L", strategy.long)\n`,
+  );
+  check(
+    "a wrapped execution expression is rejected instead of truncated",
+    (wrappedExecution.errors ?? []).some((error) => error.includes("spans multiple physical lines")),
+    wrappedExecution.errors ?? "(none)",
+  );
+
+  const malformed = parsePine(
+    head("Malformed")
+      + `[fast, slow] ta.macd(close, 12, 26, 9)\n`
+      + `if close > slow\n    strategy.entry("L", strategy.long)\n`,
+  );
+  check(
+    "parser recovery records the source line it skipped",
+    malformed.parseErrors.some((error) => error.includes("line 3")),
+    malformed.parseErrors,
+  );
+
+  const harmlessWords = collectPineExecutionCompatibilityErrors(
+    head("Words in prose")
+      + `// type Pool request.security array.new bar_index\n`
+      + `description = "request.security and type Pool are documentation"\n`
+      + `plot(\n    close,\n    title="array.new in a visual label")\n`,
+  );
+  check(
+    "comments, strings, and multiline visuals do not trigger source rules",
+    harmlessWords.length === 0,
+    harmlessWords,
+  );
+
+  // ── 8. Shared math helpers remain executable under the strict gate ────────
+  console.log("\n8. shared math helpers");
+  const mathStrategy = emit(
+    head("Math helpers")
+      + `fast = ta.ema(close, 9)\nslow = ta.ema(close, 21)\n`
+      + `ceiling = math.max(fast, slow)\n`
+      + `floor = math.min(fast, slow)\n`
+      + `distance = math.abs(close - fast)\n`
+      + `if (close > ceiling and distance >= 0)\n    strategy.entry("L", strategy.long)\n`
+      + `if (close < floor and distance >= 0)\n    strategy.entry("S", strategy.short)\n`,
+  );
+  check("math.abs/min/max transpile clean", !mathStrategy.errors?.length, mathStrategy.errors);
+  const mathRunner = createStrategyRunner(mathStrategy.ir);
+  check(
+    "math.abs/min/max are supported before the first tick",
+    mathRunner.unsupported.size === 0,
+    [...mathRunner.unsupported],
+  );
+
+  // ── 9. Unsupported IR is visible before its branch executes ───────────────
+  console.log("\n9. static evaluator support audit");
+  const poisoned = structuredClone(baseline.ir);
+  poisoned.signalLogic.buyCondition = {
+    kind: "call",
+    fn: "request_security",
+    args: [],
+  };
+  const poisonedRunner = createStrategyRunner(poisoned);
+  check(
+    "generic call is reported before pushBar()",
+    poisonedRunner.unsupported.has("call:request_security"),
+    [...poisonedRunner.unsupported],
+  );
 
   console.log(
     failures === 0

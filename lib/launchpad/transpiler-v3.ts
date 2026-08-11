@@ -1,9 +1,11 @@
 /**
- * Transpiler V3 — Universal PineScript → Move v2 compiler
+ * Transpiler V3 — verified PineScript subset → Move v2 compiler
  *
- * Unlike V2 (which pattern-matches to known TA functions), V3 compiles
- * EVERY PineScript statement to its Move equivalent. Handles custom
- * functions, loops, var state, pivot detection, and complex conditionals.
+ * Unlike V2 (which pattern-matches to known TA functions), V3 lowers parsed
+ * statements into a shared IR. Source-level compatibility checks reject any
+ * syntax the parser, Move emitter, and sealed evaluator cannot all reproduce.
+ * Richer scripts may still be rendered as previews, but are never presented
+ * as executable vault programs unless the entire execution path is supported.
  *
  * Pipeline: PineScript → Extended Parser → Statement-Centric IR → Move Codegen
  */
@@ -22,10 +24,11 @@ import {
   analyzeBoundedDynamicHistoryIndex,
   MAX_ON_CHAIN_HISTORY_OFFSET,
 } from "./pine-history";
+import { collectPineExecutionCompatibilityErrors } from "./pine-compatibility";
 import { generateMoveModule, generateStrategyVaultModule } from "./move-codegen";
 
 /** Pinned emitter version recorded in StrategyArtifact rows; bump on any codegen change. */
-export const TRANSPILER_VERSION = "v3.2.0";
+export const TRANSPILER_VERSION = "v3.3.0";
 
 // ─── Result type ─────────────────────────────────────────────────────────────
 
@@ -103,6 +106,7 @@ function scoreConfidence(
   ast: ParsedPine,
   ir: IndicatorIR,
   opts?: TranspileV3Options,
+  sourceErrors: string[] = [],
 ): {
   confidence: TranspileV3Result["confidence"];
   warnings: string[];
@@ -118,13 +122,14 @@ function scoreConfidence(
   if (ast.taCalls.length === 0) {
     warnings.push("No TA function calls detected.");
   }
+  errors.push(...sourceErrors);
   errors.push(...collectUnsupportedSyntaxErrors(ast));
+  errors.push(...(ast.parseErrors ?? []));
   // Malformed TA-call arguments are hard rejects — never silently defaulted.
   errors.push(...(ast.argErrors ?? []));
-  // IR call nodes named ta_* have no emitted implementation (all helpers are
-  // compute_*) — the generated Move can never compile. Reject instead of
-  // shipping source that fails at the compile/publish step.
-  errors.push(...collectUndefinedTACallErrors(ir));
+  // A surviving generic call has no implementation shared by Move and the
+  // committed evaluator. Reject every one, not just ta_* calls.
+  errors.push(...collectUnevaluableCallErrors(ir));
   // Same family: state.<field> references the struct never declares, and
   // custom functions whose body lowered to nothing but must return a value.
   errors.push(...collectUndeclaredFieldErrors(ir));
@@ -310,11 +315,10 @@ function collectUnsupportedSyntaxErrors(ast: ParsedPine): string[] {
   return errors;
 }
 
-/** Find IR call nodes that reference functions the codegen never emits.
- *  The inline-ta fallback in pine-ir produces `ta_<fn>` calls for ta.* uses
- *  inside larger expressions, but every emitted helper is named compute_* —
- *  so any surviving ta_* call is a guaranteed Move compile failure. */
-function collectUndefinedTACallErrors(ir: IndicatorIR): string[] {
+/** Find generic IR calls that cannot be reproduced by the sealed evaluator.
+ * First-class supported helpers lower to dedicated IR nodes; any call that
+ * survives here is therefore outside the executable subset. */
+function collectUnevaluableCallErrors(ir: IndicatorIR): string[] {
   const errors = new Set<string>();
   const walk = (node: unknown): void => {
     if (Array.isArray(node)) {
@@ -323,11 +327,18 @@ function collectUndefinedTACallErrors(ir: IndicatorIR): string[] {
     }
     if (!node || typeof node !== "object") return;
     const n = node as Record<string, unknown>;
-    if (n.kind === "call" && typeof n.fn === "string" && n.fn.startsWith("ta_")) {
-      const pineFn = n.fn.slice(3);
-      errors.add(
-        `ta.${pineFn} used inline inside a larger expression — it has no on-chain inline form. Assign it to its own variable on one line (e.g. \`x = ta.${pineFn}(...)\`), then use \`x\`. Note: on-chain TA helpers operate on the close-price series; computed-series sources aren't supported.`,
-      );
+    if (n.kind === "call" && typeof n.fn === "string") {
+      if (n.fn.startsWith("ta_")) {
+        const pineFn = n.fn.slice(3);
+        errors.add(
+          `ta.${pineFn} used inline inside a larger expression — it has no on-chain inline form. Assign it to its own variable on one line (e.g. \`x = ta.${pineFn}(...)\`), then use \`x\`. Note: on-chain TA helpers operate on the close-price series; computed-series sources aren't supported.`,
+        );
+      } else {
+        errors.add(
+          `Function call \`${n.fn.replaceAll("_", ".")}()\` is preview-only. `
+          + "It has no implementation shared by the generated Move module and the sealed signal evaluator, so it cannot be committed yet.",
+        );
+      }
     }
     Object.values(n).forEach(walk);
   };
@@ -407,6 +418,8 @@ export function transpileV3(
   creatorAddr = "0xcreator",
   options: TranspileV3Options = {},
 ): TranspileV3Result {
+  const sourceErrors = collectPineExecutionCompatibilityErrors(pineScript);
+
   // 1. Parse
   const ast = parsePine(pineScript);
 
@@ -428,7 +441,7 @@ export function transpileV3(
   const moveToml = generateMoveToml(ir.moduleName, creatorAddr);
 
   // 5. Score confidence
-  const { confidence, warnings, errors } = scoreConfidence(ast, ir, options);
+  const { confidence, warnings, errors } = scoreConfidence(ast, ir, options, sourceErrors);
   if (errors.length > 0) {
     moveSource = renderRejectedMoveSource(errors);
   }

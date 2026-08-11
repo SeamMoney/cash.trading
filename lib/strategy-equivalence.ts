@@ -166,6 +166,126 @@ const pineBackend: MathBackend = {
 
 type Env = Map<string, number | boolean>;
 
+const SUPPORTED_BINOPS = new Set([
+  "+", "-", "*", "/", ">", "<", ">=", "<=", "==", "!=", "&&", "||",
+]);
+
+/**
+ * Inspect every branch of a committed IR before any price is pushed.
+ *
+ * Runtime discovery was unsafe here: an unsupported call hidden in a branch
+ * that had not fired yet made `runner.unsupported` look empty during commit.
+ * This static walk makes the public runner contract truthful immediately.
+ */
+export function collectUnsupportedStrategyIR(ir: IndicatorIR): Set<string> {
+  const unsupported = new Set<string>();
+
+  const walkExpr = (expr: IRExpr): void => {
+    switch (expr.kind) {
+      case "lit_u64":
+      case "lit_bool":
+      case "price":
+      case "field_ref":
+      case "prev_field":
+      case "series_index":
+        return;
+      case "dynamic_series_index":
+        walkExpr(expr.offset);
+        return;
+      case "binop":
+        if (!SUPPORTED_BINOPS.has(expr.op)) unsupported.add(`binop:${expr.op}`);
+        walkExpr(expr.left);
+        walkExpr(expr.right);
+        return;
+      case "unop":
+        if (expr.op !== "!") unsupported.add(`unop:${expr.op}`);
+        walkExpr(expr.expr);
+        return;
+      case "ternary":
+        walkExpr(expr.cond);
+        walkExpr(expr.yes);
+        walkExpr(expr.no);
+        return;
+      case "safe_sub":
+      case "div":
+      case "scaled_mul":
+        walkExpr(expr.left);
+        walkExpr(expr.right);
+        return;
+      case "max":
+      case "min":
+        walkExpr(expr.left);
+        walkExpr(expr.right);
+        return;
+      case "abs":
+      case "neg":
+      case "na_check":
+      case "not_na":
+        walkExpr(expr.expr);
+        return;
+      case "call":
+        unsupported.add(`call:${expr.fn}`);
+        expr.args.forEach(walkExpr);
+        return;
+      default:
+        unsupported.add((expr as { kind: string }).kind);
+    }
+  };
+
+  const walkOps = (ops: IRTAOp[]): void => {
+    for (const op of ops) {
+      switch (op.kind) {
+        case "sma":
+        case "ema":
+        case "rsi":
+        case "macd":
+        case "bb":
+        case "highest":
+        case "lowest":
+        case "crossover":
+        case "crossunder":
+        case "noop":
+          break;
+        case "assign":
+        case "let":
+          walkExpr(op.expr);
+          break;
+        case "state_update":
+          walkExpr(op.expr);
+          break;
+        case "if":
+          walkExpr(op.cond);
+          walkOps(op.then);
+          if (op.els) walkOps(op.els);
+          break;
+        case "for":
+          walkExpr(op.start);
+          walkExpr(op.end);
+          walkExpr(op.step);
+          walkOps(op.body);
+          break;
+        case "while":
+          walkExpr(op.cond);
+          walkOps(op.body);
+          break;
+        case "stoch":
+        case "supertrend":
+        case "atr":
+          unsupported.add(op.kind);
+          break;
+        default:
+          unsupported.add((op as { kind: string }).kind);
+      }
+    }
+  };
+
+  walkOps(ir.taOps);
+  walkExpr(ir.signalLogic.buyCondition);
+  walkExpr(ir.signalLogic.sellCondition);
+  for (const fn of ir.funcDefs ?? []) walkOps(fn.body);
+  return unsupported;
+}
+
 class StrategyEvaluator {
   private buffer: number[] = [];
   private env: Env = new Map();
@@ -178,6 +298,7 @@ class StrategyEvaluator {
     /** Capped sliding buffer (on-chain behavior) vs unbounded (Pine). */
     private capBuffer: boolean,
   ) {
+    for (const item of collectUnsupportedStrategyIR(ir)) this.unsupported.add(item);
     for (const f of ir.stateFields) {
       this.env.set(f.name, f.moveType === "bool" ? false : 0);
     }

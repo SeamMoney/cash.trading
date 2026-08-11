@@ -184,6 +184,9 @@ export interface ParsedPine {
    *  periods). These must reject the transpile — silently substituting a
    *  default would deploy a different strategy than the user wrote. */
   argErrors: string[];
+  /** Parser recovery must never be silent for a committed vault. Preview
+   *  renderers may keep going, but the execution compiler rejects these. */
+  parseErrors: string[];
   varDeclarations?: Map<string, { initExpr: Expr; isVarip: boolean }>;
   visualCalls?: string[];
   alertConditions?: Array<{ condition: Expr; title: string; message: string }>;
@@ -232,12 +235,19 @@ export function parsePine(src: string): ParsedPine {
     strategyEntries: [], strategyCloses: [],
     params: {},
     argErrors: [],
+    parseErrors: [],
     varDeclarations: new Map(),
     visualCalls: [],
     alertConditions: [],
     detectedPattern: "unknown",
     moveConfig: { indicatorType: 0, shortPeriod: 10, longPeriod: 30, thirdPeriod: 9, description: "SMA Crossover" },
   };
+
+  function recordParseError(error: unknown, line: number): void {
+    const detail = error instanceof Error ? error.message : "unsupported syntax";
+    const message = `Pine parser could not consume line ${line}: ${detail}`;
+    if (!result.parseErrors.includes(message)) result.parseErrors.push(message);
+  }
 
   // ── Expression Parsing ─────────────────────────────────────────────────────
 
@@ -444,9 +454,11 @@ export function parsePine(src: string): ParsedPine {
     skip();
     if (is("EOF")) return null;
 
+    const line = at().line;
     try {
       return parseStatement();
-    } catch {
+    } catch (error) {
+      recordParseError(error, line);
       // Skip to next newline on error
       while (!is("NEWLINE") && !is("EOF")) adv();
       return null;
@@ -706,10 +718,12 @@ export function parsePine(src: string): ParsedPine {
         // Simplified: we just collect one statement
         if (stmts.length > 0) break;
       }
+      const line = at().line;
       try {
         const stmt = parseStatement();
         stmts.push(stmt);
-      } catch {
+      } catch (error) {
+        recordParseError(error, line);
         while (!is("NEWLINE") && !is("EOF")) adv();
       }
       skip();
@@ -900,9 +914,11 @@ export function parsePine(src: string): ParsedPine {
   while (!is("EOF")) {
     skip();
     if (is("EOF")) break;
+    const line = at().line;
     try {
       parseStatement();
-    } catch {
+    } catch (error) {
+      recordParseError(error, line);
       while (!is("NEWLINE") && !is("EOF")) adv();
     }
     skip();

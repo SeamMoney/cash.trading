@@ -396,12 +396,25 @@ function convertExpr(e: Expr, ctx: ConvertCtx): IRExpr {
         };
       }
 
-      // math.abs, math.max, math.min → call nodes
-      if (ns === "math") {
+      // These math helpers have first-class IR nodes implemented by both the
+      // Move code generator and the committed signal evaluator. Keeping them
+      // as generic call nodes made the generated module look plausible while
+      // the attestor could not execute the same expression.
+      if (ns === "math" && fn === "abs" && args.length === 1) {
+        return { kind: "abs", expr: convertExpr(args[0], ctx) };
+      }
+      if (ns === "math" && fn === "max" && args.length === 2) {
         return {
-          kind: "call",
-          fn: `math_${fn}`,
-          args: args.map(a => convertExpr(a, ctx)),
+          kind: "max",
+          left: convertExpr(args[0], ctx),
+          right: convertExpr(args[1], ctx),
+        };
+      }
+      if (ns === "math" && fn === "min" && args.length === 2) {
+        return {
+          kind: "min",
+          left: convertExpr(args[0], ctx),
+          right: convertExpr(args[1], ctx),
         };
       }
 

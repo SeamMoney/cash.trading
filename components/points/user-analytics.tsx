@@ -151,7 +151,7 @@ export function UserAnalytics({ account }: { account?: string | null }) {
             placeholder="0x... Aptos owner address"
             autoComplete="off"
             spellCheck={false}
-            className="h-9 w-full border border-white/10 bg-black/50 pl-8 pr-3 font-mono text-[11px] text-white outline-none focus:border-primary/50"
+            className="h-9 w-full border border-white/10 bg-black/50 pl-8 pr-3 font-mono text-[11px] text-white outline-none focus:border-primary/18"
           />
         </label>
         <button

@@ -681,7 +681,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       {/* Preview banner spans both columns — the unavailable state must be the first thing
           read, not something discovered after configuring everything. */}
       {previewMode && (
-        <div className="mb-3 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 sm:p-4">
+        <div className="mb-3 rounded-[var(--radius)] border border-amber-500/14 bg-amber-500/[0.06] px-3 py-2.5 sm:p-4">
           <p className="font-display text-[13px] font-semibold text-amber-300 sm:text-[14px]">
             Preview mode · launching unavailable on {config?.network}
           </p>
@@ -762,7 +762,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
               type="button"
               onClick={importTradingView}
               disabled={busy || tvBusy || !tvUrl.trim()}
-              className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "shrink-0 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground hover:border-accent/50 disabled:pointer-events-none disabled:opacity-40")}
+              className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "shrink-0 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground hover:border-accent/18 disabled:pointer-events-none disabled:opacity-40")}
             >
               {tvBusy ? "Fetching…" : "Import"}
             </button>
@@ -797,7 +797,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
                       "w-[210px] shrink-0 rounded-[var(--radius-sm)] border px-3 py-2 text-left disabled:opacity-40 sm:w-[calc(50%-0.1875rem)]",
                       PRODUCT_PRESSABLE_CLASS,
                       active
-                        ? "border-accent/35 bg-accent/[0.06]"
+                        ? "border-accent/15 bg-accent/[0.06]"
                         : "border-transparent bg-card hover:border-border-strong hover:bg-card-hover",
                     )}
                   >
@@ -1355,7 +1355,7 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
 }
 
 const inputCls =
-  "w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none disabled:opacity-50";
+  "w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-accent/16 focus:outline-none disabled:opacity-50";
 
 /** Segmented choice. Replaces every slider and number input in this flow — the set of legal
  *  values is small and known, so picking from it is both faster and impossible to get wrong. */
@@ -1431,7 +1431,7 @@ function RailChoice({
         PRODUCT_PRESSABLE_CLASS,
         "min-h-10 p-2.5 text-left disabled:pointer-events-none disabled:opacity-50",
         active
-          ? "border-accent/50 bg-accent/[0.06]"
+          ? "border-accent/18 bg-accent/[0.06]"
           : "hover:border-border-strong hover:bg-card-hover",
       )}
     >

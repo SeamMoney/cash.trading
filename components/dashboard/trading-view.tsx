@@ -73,18 +73,18 @@ export function TradingView() {
         <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest pl-1">Accounts & Pairs</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Long Side */}
-          <div className="bg-black/40 backdrop-blur-sm border border-green-500/30 p-4 space-y-4 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)] relative group hover:border-green-500/60 transition-colors">
+          <div className="bg-black/40 backdrop-blur-sm border border-green-500/14 p-4 space-y-4 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)] relative group hover:border-green-500/12 transition-colors">
             <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500 opacity-50" />
             <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-green-500 opacity-50" />
 
             <div className="text-green-500 font-bold tracking-widest font-mono text-sm">[ LONG ]</div>
             <Button
               variant="outline"
-              className="w-full justify-between bg-black/50 border-white/10 h-12 text-zinc-300 hover:text-green-500 hover:bg-green-500/10 hover:border-green-500/50 rounded-none font-mono transition-all"
+              className="w-full justify-between bg-black/50 border-white/10 h-12 text-zinc-300 hover:text-green-500 hover:bg-green-500/10 hover:border-green-500/18 rounded-none font-mono transition-all"
             >
               Select Account
             </Button>
-            <div className="bg-black/50 border border-white/10 p-3 flex items-center justify-between hover:border-green-500/30 transition-colors">
+            <div className="bg-black/50 border border-white/10 p-3 flex items-center justify-between hover:border-green-500/14 transition-colors">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 bg-[#F7931A] flex items-center justify-center text-[10px] font-bold text-white">
                   ₿
@@ -102,18 +102,18 @@ export function TradingView() {
           </div>
 
           {/* Short Side */}
-          <div className="bg-black/40 backdrop-blur-sm border border-red-500/30 p-4 space-y-4 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)] relative group hover:border-red-500/60 transition-colors">
+          <div className="bg-black/40 backdrop-blur-sm border border-red-500/14 p-4 space-y-4 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)] relative group hover:border-red-500/12 transition-colors">
             <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500 opacity-50" />
             <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-red-500 opacity-50" />
 
             <div className="text-red-500 font-bold tracking-widest font-mono text-sm">[ SHORT ]</div>
             <Button
               variant="outline"
-              className="w-full justify-between bg-black/50 border-white/10 h-12 text-zinc-300 hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/50 rounded-none font-mono transition-all"
+              className="w-full justify-between bg-black/50 border-white/10 h-12 text-zinc-300 hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/18 rounded-none font-mono transition-all"
             >
               Select Account
             </Button>
-            <div className="bg-black/50 border border-white/10 p-3 flex items-center justify-between hover:border-red-500/30 transition-colors">
+            <div className="bg-black/50 border border-white/10 p-3 flex items-center justify-between hover:border-red-500/14 transition-colors">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 bg-[#627EEA] flex items-center justify-center text-[10px] font-bold text-white">
                   ♦
@@ -140,7 +140,7 @@ export function TradingView() {
       {/* Notional Input */}
       <div className="space-y-2">
         <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest pl-1">Notional Size</h3>
-        <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-6 shadow-lg relative group hover:border-primary/60 transition-colors">
+        <div className="bg-black/40 backdrop-blur-sm border border-primary/14 p-6 shadow-lg relative group hover:border-primary/12 transition-colors">
           <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
           <div className="flex items-center gap-4 text-4xl md:text-5xl font-mono text-primary/50">
             <span>$</span>
@@ -148,7 +148,7 @@ export function TradingView() {
               type="text"
               value={notionalSize}
               onChange={(e) => setNotionalSize(e.target.value)}
-              className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/50 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
+              className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/18 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
               placeholder="0.00"
             />
           </div>
@@ -293,7 +293,7 @@ export function TradingView() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative group">
                 <Input
-                  className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/50 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
+                  className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/18 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3 top-2.5 text-zinc-500 text-xs">% PROFIT</span>
@@ -301,7 +301,7 @@ export function TradingView() {
               <div className="relative group">
                 <span className="absolute left-3 top-2.5 text-zinc-500 text-xs">$</span>
                 <Input
-                  className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/50 h-10 pl-6 font-mono rounded-none text-white transition-all group-hover:border-white/20"
+                  className="bg-black/30 border-white/10 focus-visible:ring-primary/50 focus-visible:border-primary/18 h-10 pl-6 font-mono rounded-none text-white transition-all group-hover:border-white/20"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3 top-2.5 text-zinc-600 text-[10px] uppercase">Price Target</span>
@@ -334,7 +334,7 @@ export function TradingView() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative group">
                 <Input
-                  className="bg-black/30 border-white/10 focus-visible:ring-red-500/50 focus-visible:border-red-500/50 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
+                  className="bg-black/30 border-white/10 focus-visible:ring-red-500/50 focus-visible:border-red-500/18 h-10 pr-8 font-mono rounded-none text-white transition-all group-hover:border-white/20"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3 top-2.5 text-zinc-500 text-xs">% LOSS</span>
@@ -342,7 +342,7 @@ export function TradingView() {
               <div className="relative group">
                 <span className="absolute left-3 top-2.5 text-zinc-500 text-xs">$</span>
                 <Input
-                  className="bg-black/30 border-white/10 focus-visible:ring-red-500/50 focus-visible:border-red-500/50 h-10 pl-6 font-mono rounded-none text-white transition-all group-hover:border-white/20"
+                  className="bg-black/30 border-white/10 focus-visible:ring-red-500/50 focus-visible:border-red-500/18 h-10 pl-6 font-mono rounded-none text-white transition-all group-hover:border-white/20"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3 top-2.5 text-zinc-600 text-[10px] uppercase">Stop Price</span>
@@ -378,7 +378,7 @@ export function TradingView() {
               className={cn(
                 "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
                 tradingMode === "aggressive"
-                  ? "bg-red-500/10 text-red-500 border border-red-500/50"
+                  ? "bg-red-500/10 text-red-500 border border-red-500/18"
                   : "text-zinc-500 hover:bg-white/5 border border-transparent",
               )}
             >
@@ -403,7 +403,7 @@ export function TradingView() {
               className={cn(
                 "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group",
                 tradingMode === "passive"
-                  ? "bg-green-500/10 text-green-500 border border-green-500/50"
+                  ? "bg-green-500/10 text-green-500 border border-green-500/18"
                   : "text-zinc-500 hover:bg-white/5 border border-transparent",
               )}
             >

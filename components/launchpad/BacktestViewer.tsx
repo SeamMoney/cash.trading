@@ -83,7 +83,7 @@ export function BacktestViewer({ indicatorAddr, indicatorName, params = [5, 20],
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/12 rounded-lg px-3 py-2">{error}</p>}
 
         {equityCurve.length > 0 && <EquityCurveChart data={equityCurve} initialCapital={10000} />}
 

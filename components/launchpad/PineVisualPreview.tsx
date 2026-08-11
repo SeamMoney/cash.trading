@@ -594,13 +594,13 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       )}
 
       {runtimeIssue && (
-        <div className="border-t border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 font-mono text-[9px] leading-relaxed text-amber-300/80">
+        <div className="border-t border-amber-500/12 bg-amber-500/[0.06] px-3 py-2 font-mono text-[9px] leading-relaxed text-amber-300/80">
           Preview runtime: {runtimeIssue}
         </div>
       )}
 
       {error && (
-        <div className="border-t border-red-500/20 bg-red-500/10 px-3 py-1.5 font-mono text-[9px] text-red-400">
+        <div className="border-t border-red-500/12 bg-red-500/10 px-3 py-1.5 font-mono text-[9px] text-red-400">
           {error}
         </div>
       )}

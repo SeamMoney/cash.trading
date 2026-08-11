@@ -57,7 +57,7 @@ export function PointsStats() {
         <button
           onClick={refresh}
           disabled={loading}
-          className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/50 text-zinc-400 hover:text-primary disabled:opacity-50 shrink-0"
+          className="p-1.5 bg-black/40 border border-white/10 hover:border-primary/18 text-zinc-400 hover:text-primary disabled:opacity-50 shrink-0"
         >
           {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
         </button>
@@ -195,7 +195,7 @@ export function PointsStats() {
           </div>
         </div>
       ) : (
-        <div className="px-3 py-3 bg-primary/5 border border-primary/20 text-center">
+        <div className="px-3 py-3 bg-primary/5 border border-primary/12 text-center">
           <p className="text-primary font-mono text-xs sm:text-sm">Connect wallet to see your stats</p>
         </div>
       )}

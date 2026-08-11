@@ -48,7 +48,7 @@ export function CloudStatusIndicator({ compact = false }: CloudStatusIndicatorPr
     }
 
     return (
-      <div className="p-3 border relative bg-yellow-500/5 border-yellow-500/30">
+      <div className="p-3 border relative bg-yellow-500/5 border-yellow-500/14">
         <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-current opacity-50" />
         <div className="flex items-center gap-2">
           <CloudOff className="w-5 h-5 text-yellow-400" />
@@ -85,8 +85,8 @@ export function CloudStatusIndicator({ compact = false }: CloudStatusIndicatorPr
     <div className={cn(
       "p-3 border relative",
       status.cloudModeEnabled
-        ? "bg-green-500/5 border-green-500/30"
-        : "bg-yellow-500/5 border-yellow-500/30"
+        ? "bg-green-500/5 border-green-500/14"
+        : "bg-yellow-500/5 border-yellow-500/14"
     )}>
       <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-current opacity-50" />
 
@@ -119,7 +119,7 @@ export function CloudStatusIndicator({ compact = false }: CloudStatusIndicatorPr
       </div>
 
       {!status.cloudModeEnabled && (
-        <div className="mt-2 pt-2 border-t border-yellow-500/20">
+        <div className="mt-2 pt-2 border-t border-yellow-500/12">
           <p className="text-[10px] text-zinc-500 font-mono">
             For 24/7 operation, configure cloud mode in Vercel environment variables
           </p>

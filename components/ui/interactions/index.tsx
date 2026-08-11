@@ -77,7 +77,7 @@ export function ActionButton({
         PRESSABLE_CONTROL,
         variant === "primary"
           ? "bg-accent text-accent-foreground hover:opacity-90"
-          : "border border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/50",
+          : "border border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/18",
         state === "error" && "bg-red-500 text-white",
         className,
       )}
@@ -148,7 +148,7 @@ export function ValidatedField({
         transition={{ duration: 0.24, ease: EASE }}
         className={cn(
           "w-full rounded-[10px] border bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
-          err ? "border-red-500/60" : "border-white/[0.06] focus:border-accent/40",
+          err ? "border-red-500/12" : "border-white/[0.06] focus:border-accent/16",
         )}
       />
       {validate && (
@@ -218,7 +218,7 @@ export function ContentState({
             ? (
               <div
                 role="alert"
-                className="rounded-[16px] border border-red-500/40 bg-red-500/5 px-5 py-6 text-center"
+                className="rounded-[16px] border border-red-500/16 bg-red-500/5 px-5 py-6 text-center"
               >
                 <p className="text-[12px] text-red-400">{error}</p>
               </div>
@@ -254,9 +254,9 @@ export function Banner({
       className={cn(
         "flex items-start gap-2.5 rounded-[var(--radius)] border p-3.5",
         tone === "info" && "border-white/[0.06] bg-[#141414]",
-        tone === "success" && "border-accent/40 bg-accent/5",
-        tone === "warn" && "border-amber-500/30 bg-amber-500/5",
-        tone === "error" && "border-red-500/40 bg-red-500/5",
+        tone === "success" && "border-accent/16 bg-accent/5",
+        tone === "warn" && "border-amber-500/14 bg-amber-500/5",
+        tone === "error" && "border-red-500/16 bg-red-500/5",
       )}
     >
       <Icon

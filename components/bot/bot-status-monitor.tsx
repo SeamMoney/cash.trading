@@ -560,12 +560,12 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     <div className="space-y-4 font-mono">
       {/* Live Positions Panel - Show when NOT running but have positions */}
       {!isRunning && livePositions.length > 0 && (
-        <div className="border border-purple-500/30 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+        <div className="border border-purple-500/14 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
           <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-purple-500" />
           <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-purple-500" />
 
           {/* Header */}
-          <div className="px-4 py-3 bg-purple-500/5 border-b border-purple-500/20 flex items-center justify-between">
+          <div className="px-4 py-3 bg-purple-500/5 border-b border-purple-500/12 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-purple-400" />
               <h3 className="text-purple-400 text-sm uppercase tracking-widest font-bold">Live Positions</h3>
@@ -598,8 +598,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                   className={cn(
                     "p-3 relative border",
                     pos.direction === 'long'
-                      ? "bg-green-500/5 border-green-500/30"
-                      : "bg-red-500/5 border-red-500/30"
+                      ? "bg-green-500/5 border-green-500/14"
+                      : "bg-red-500/5 border-red-500/14"
                   )}
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -607,8 +607,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       <span className={cn(
                         "px-2 py-0.5 text-[10px] font-bold uppercase",
                         pos.direction === 'long'
-                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/14'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/14'
                       )}>
                         {pos.direction === 'long' ? '↑ LONG' : '↓ SHORT'}
                       </span>
@@ -667,8 +667,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                     className={cn(
                       "w-full h-8 text-xs font-bold font-mono tracking-wider border relative overflow-hidden group transition-all duration-300",
                       isClosing
-                        ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/50"
-                        : "bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/50",
+                        ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/18"
+                        : "bg-red-500/20 hover:bg-red-500/40 text-red-400 border-red-500/18",
                       "disabled:cursor-not-allowed"
                     )}
                   >
@@ -706,12 +706,12 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
 
       {/* Status Panel - ALWAYS SHOW FIRST when running */}
       {isRunning && status && config && (
-        <div className="border border-primary/30 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+        <div className="border border-primary/14 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
           <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary" />
           <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary" />
 
           {/* Header */}
-          <div className="px-4 py-3 bg-primary/5 border-b border-primary/20 flex items-center justify-between">
+          <div className="px-4 py-3 bg-primary/5 border-b border-primary/12 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-primary animate-pulse" />
               <h3 className="text-primary text-sm uppercase tracking-widest font-bold">Bot Running</h3>
@@ -796,7 +796,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             </div>
 
             {cashRewards?.config && !cashRewards.config.enabled && (
-              <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 text-[10px] text-yellow-300">
+              <div className="p-2 bg-yellow-500/10 border border-yellow-500/14 text-[10px] text-yellow-300">
                 CASH rewards paused: {cashRewards.config.disabledReason}
               </div>
             )}
@@ -805,8 +805,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
             <div className={cn(
               "p-3 border relative transition-colors duration-200",
               rateLimitBackoff > 0
-                ? "bg-orange-500/5 border-orange-500/20"
-                : "bg-primary/5 border-primary/20"
+                ? "bg-orange-500/5 border-orange-500/12"
+                : "bg-primary/5 border-primary/12"
             )}>
               <div className={cn(
                 "absolute -left-[1px] top-1/2 -translate-y-1/2 h-6 w-[3px] transition-colors duration-200",
@@ -854,8 +854,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
               <div className={cn(
                 "p-3 relative transition-all duration-200",
                 monitoringInfo?.isManual
-                  ? "bg-purple-500/10 border border-purple-500/30"
-                  : "bg-blue-500/10 border border-blue-500/30",
+                  ? "bg-purple-500/10 border border-purple-500/14"
+                  : "bg-blue-500/10 border border-blue-500/14",
                 monitoringInfo ? "opacity-100" : "opacity-0 h-0 p-0 overflow-hidden border-0"
               )}>
                 <div className={cn(
@@ -958,8 +958,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                         className={cn(
                           "p-2 relative border",
                           !isBotPosition
-                            ? "bg-purple-500/10 border-purple-500/30"
-                          : "bg-blue-500/10 border-blue-500/30"
+                            ? "bg-purple-500/10 border-purple-500/14"
+                          : "bg-blue-500/10 border-blue-500/14"
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -967,8 +967,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                           <span className={cn(
                             "px-1.5 py-0.5 text-[9px] font-bold uppercase",
                             pos.direction === 'long'
-                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/14'
+                              : 'bg-red-500/20 text-red-400 border border-red-500/14'
                           )}>
                             {pos.direction === 'long' ? '↑' : '↓'} {pos.direction.toUpperCase()}
                           </span>
@@ -1006,7 +1006,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                                 sizeRaw: pos.sizeRaw,
                               })}
                               disabled={isClosing}
-                              className="px-2 py-0.5 text-[8px] font-bold bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/30 disabled:opacity-50"
+                              className="px-2 py-0.5 text-[8px] font-bold bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/14 disabled:opacity-50"
                             >
                               {isClosing ? <Loader2 className="w-2 h-2 animate-spin" /> : <X className="w-2 h-2" />}
                             </button>
@@ -1042,7 +1042,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
 
             {/* Error Display - don't show rate limit errors as they auto-recover */}
             {status.error && !status.error.includes('429') && !status.error.includes('rate limit') && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 relative">
+              <div className="p-3 bg-red-500/10 border border-red-500/14 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500" />
                 <p className="text-xs text-red-400">
                   <strong>Error:</strong> {status.error}
@@ -1083,8 +1083,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       <div className={cn(
                         "px-2 py-0.5 text-[10px] font-bold uppercase",
                         order.direction === 'long'
-                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                          : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/14'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/14'
                       )}>
                         {order.direction === 'long' ? '↑ LONG' : '↓ SHORT'}
                       </div>
@@ -1149,8 +1149,8 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                         <span className={cn(
                           "text-xs font-bold px-2 py-0.5",
                           order.pnl > 0
-                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                            ? "bg-green-500/20 text-green-400 border border-green-500/14"
+                            : "bg-red-500/20 text-red-400 border border-red-500/14"
                         )}>
                           {order.pnl > 0 ? '+' : ''}${order.pnl.toFixed(2)} PnL
                         </span>
@@ -1162,9 +1162,9 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
                       {order.cashReward && (
                         <span className={cn(
                           "text-[10px] px-2 py-0.5 border",
-                          order.cashReward.status === 'SENT' && "bg-green-500/10 text-green-400 border-green-500/30",
-                          (order.cashReward.status === 'PENDING' || order.cashReward.status === 'PROCESSING') && "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-                          order.cashReward.status === 'FAILED' && "bg-red-500/10 text-red-400 border-red-500/30",
+                          order.cashReward.status === 'SENT' && "bg-green-500/10 text-green-400 border-green-500/14",
+                          (order.cashReward.status === 'PENDING' || order.cashReward.status === 'PROCESSING') && "bg-yellow-500/10 text-yellow-400 border-yellow-500/14",
+                          order.cashReward.status === 'FAILED' && "bg-red-500/10 text-red-400 border-red-500/14",
                           order.cashReward.status === 'SKIPPED' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/30"
                         )}>
                           +{order.cashReward.amountCash.toLocaleString(undefined, { maximumFractionDigits: 4 })} CASH {order.cashReward.status}

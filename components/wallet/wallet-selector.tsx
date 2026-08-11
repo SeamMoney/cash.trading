@@ -334,7 +334,7 @@ export function WalletSelector({ isOpen, onClose }: WalletSelectorProps) {
 
               {/* X-Chain Info */}
               {(selectedChain === 'Solana' || selectedChain === 'Ethereum') && (
-                <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30">
+                <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/14">
                   <div className="flex items-center gap-2">
                     <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-semibold">
                       X-CHAIN

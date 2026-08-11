@@ -142,7 +142,7 @@ export function HistoryTable() {
         <button
           onClick={fetchTrades}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 hover:border-primary/50 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 hover:border-primary/18 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="w-3 h-3 animate-spin" />

@@ -226,8 +226,8 @@ const SIG_LABEL = ["NEUTRAL", "BUY", "SELL"];
 const SIG_COLOR = ["text-zinc-400", "text-emerald-400", "text-red-400"];
 const SIG_BG    = [
   "bg-[#1a1a1a] border-[#2a2a2a]",          // neutral
-  "bg-emerald-500/15 border-emerald-500/25",   // buy
-  "bg-red-500/15 border-red-500/25",           // sell
+  "bg-emerald-500/15 border-emerald-500/13",   // buy
+  "bg-red-500/15 border-red-500/13",           // sell
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -711,7 +711,7 @@ export function OnChainChart({
         <div className={cn(
           "mx-3 mb-3 rounded-lg border px-3 py-2 text-[11px]",
           decibelTx.error
-            ? "border-red-500/20 bg-red-500/5 text-red-400"
+            ? "border-red-500/12 bg-red-500/5 text-red-400"
             : "border-violet-500/25 bg-violet-500/8 text-violet-300",
         )}>
           {decibelTx.error ? (

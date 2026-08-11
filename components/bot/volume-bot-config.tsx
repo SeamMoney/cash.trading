@@ -85,14 +85,14 @@ export function VolumeBotConfig() {
 
       {/* Live Status - Shows when running */}
       {bot.isRunning && bot.config && (
-        <Card className="bg-black/40 border-primary/30">
+        <Card className="bg-black/40 border-primary/14">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-white flex items-center gap-2">
                 <Activity className="w-5 h-5 text-primary animate-pulse" />
                 Bot Running
               </CardTitle>
-              <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30">
+              <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/14">
                 Active
               </Badge>
             </div>
@@ -125,7 +125,7 @@ export function VolumeBotConfig() {
             </div>
 
             {bot.error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <div className="p-3 bg-red-500/10 border border-red-500/12 rounded-lg">
                 <p className="text-sm text-red-400">{bot.error}</p>
               </div>
             )}
@@ -162,7 +162,7 @@ export function VolumeBotConfig() {
               onClick={handleSetMax}
               disabled={bot.isRunning}
               variant="outline"
-              className="border-primary/30 text-primary hover:bg-primary/10"
+              className="border-primary/14 text-primary hover:bg-primary/10"
             >
               MAX
             </Button>
@@ -250,7 +250,7 @@ export function VolumeBotConfig() {
 
         {/* Error Display */}
         {localError && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <div className="p-3 bg-red-500/10 border border-red-500/12 rounded-lg">
             <p className="text-sm text-red-400">{localError}</p>
           </div>
         )}

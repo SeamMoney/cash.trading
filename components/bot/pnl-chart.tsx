@@ -87,13 +87,13 @@ export function PnLChart({ orders }: PnLChartProps) {
 
         {/* Trade breakdown */}
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+          <div className="p-3 bg-green-500/10 border border-green-500/12 rounded-lg">
             <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Profitable Trades</p>
             <p className="text-xl font-mono font-bold text-green-400 tabular-nums">
               {profitableTrades}
             </p>
           </div>
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <div className="p-3 bg-red-500/10 border border-red-500/12 rounded-lg">
             <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Losing Trades</p>
             <p className="text-xl font-mono font-bold text-red-400 tabular-nums">
               {losingTrades}

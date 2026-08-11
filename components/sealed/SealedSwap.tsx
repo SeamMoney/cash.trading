@@ -655,8 +655,8 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                   className={cn(
                     "shrink-0 rounded-[10px] border px-3 py-2 font-display text-[13px] font-semibold transition-colors",
                     activeVault === decibelVaultAddr
-                      ? "border-accent/50 bg-accent/10 text-accent"
-                      : "border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/40",
+                      ? "border-accent/18 bg-accent/10 text-accent"
+                      : "border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/16",
                   )}
                 >
                   {activeVault === decibelVaultAddr ? "Cancel" : "Swap strategy"}
@@ -684,7 +684,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                         disabled={busy}
                         className={cn(
                           "flex w-full items-center justify-between rounded-[10px] border px-3.5 py-3 text-left transition-colors",
-                          "border-white/[0.06] bg-[#0d0d0d] hover:border-accent/40 disabled:opacity-50",
+                          "border-white/[0.06] bg-[#0d0d0d] hover:border-accent/16 disabled:opacity-50",
                         )}
                       >
                         <span className="min-w-0">

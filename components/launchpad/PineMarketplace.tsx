@@ -439,7 +439,7 @@ export function PineMarketplace({
                 ) : feedError && items.length === 0 ? (
                   <div className="flex min-h-[280px] items-center justify-center">
                     <div className="max-w-sm text-center">
-                      <span className="mx-auto flex size-10 items-center justify-center rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.06] text-amber-300">
+                      <span className="mx-auto flex size-10 items-center justify-center rounded-[var(--radius-sm)] border border-amber-500/12 bg-amber-500/[0.06] text-amber-300">
                         <RefreshCw className="size-4" aria-hidden="true" />
                       </span>
                       <p className="mt-3 font-display text-[14px] font-semibold text-foreground">
@@ -468,7 +468,7 @@ export function PineMarketplace({
                 ) : (
                   <>
                     {feedError ? (
-                      <div className="mb-3 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 text-[11px] text-amber-200/80">
+                      <div className="mb-3 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-amber-500/12 bg-amber-500/[0.05] px-3 py-2 text-[11px] text-amber-200/80">
                         <span>Showing the last loaded indicator list.</span>
                         <button
                           type="button"
@@ -632,7 +632,7 @@ export function PineMarketplace({
                         <span className="font-mono text-[11px]">Loading public Pine source…</span>
                       </div>
                     ) : sourceError ? (
-                      <div className="rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/[0.06] p-4 text-[13px] leading-relaxed text-amber-200/80">{sourceError}</div>
+                      <div className="rounded-[var(--radius-sm)] border border-amber-500/12 bg-amber-500/[0.06] p-4 text-[13px] leading-relaxed text-amber-200/80">{sourceError}</div>
                     ) : (
                       <div className="flex h-full min-h-0 flex-col gap-2.5">
                         <div className="flex flex-wrap items-center justify-between gap-2 px-1">

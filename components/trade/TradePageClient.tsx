@@ -487,7 +487,7 @@ function VaultsPanel({
                       className={cn(
                         "flex-1 rounded-[8px] border px-3 py-2 text-[12px] font-bold transition-[transform,background-color,color,border-color] duration-150 active:scale-[0.97]",
                         tradesVaultAddress === vault.address
-                          ? "border-accent/30 bg-accent/10 text-accent"
+                          ? "border-accent/14 bg-accent/10 text-accent"
                           : "border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
                       )}
                     >
@@ -624,8 +624,8 @@ interface StrategyVaultSummary {
 const SIG_LABEL_TRADE = ["HOLD", "BUY", "SELL"];
 const SIG_COLOR = [
   { text: "text-zinc-500", bg: "bg-zinc-800 border-zinc-700" },
-  { text: "text-emerald-400", bg: "bg-emerald-500/15 border-emerald-500/30" },
-  { text: "text-red-400",    bg: "bg-red-500/15 border-red-500/30" },
+  { text: "text-emerald-400", bg: "bg-emerald-500/15 border-emerald-500/14" },
+  { text: "text-red-400",    bg: "bg-red-500/15 border-red-500/14" },
 ];
 
 function isRealAptosAddress(value?: string | null) {
@@ -801,7 +801,7 @@ function SignalProductsPanel({
                     {sigLabel}
                   </span>
                   {live?.inPosition && (
-                    <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] font-bold text-emerald-400">
+                    <span className="rounded border border-emerald-500/12 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] font-bold text-emerald-400">
                       IN POSITION
                     </span>
                   )}

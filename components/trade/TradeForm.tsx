@@ -505,20 +505,20 @@ export function TradeForm({
       <h3 className="text-[13px] font-display font-semibold mb-4">{marketName}</h3>
 
       {connected && isLoadingSubaccounts && (
-        <div className="bg-accent/10 border border-accent/20 rounded-[10px] p-3 mb-4 text-[12px] text-accent">
+        <div className="bg-accent/10 border border-accent/12 rounded-[10px] p-3 mb-4 text-[12px] text-accent">
           Checking Decibel subaccounts...
         </div>
       )}
 
       {connected && subaccountError && !isLoadingSubaccounts && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-[10px] p-3 mb-4 text-[12px] text-danger">
+        <div className="bg-red-500/10 border border-red-500/12 rounded-[10px] p-3 mb-4 text-[12px] text-danger">
           {subaccountError}
         </div>
       )}
 
       {/* Subaccount Warning */}
       {connected && !isLoadingSubaccounts && subaccounts.length === 0 && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-[10px] p-3 mb-4 text-[12px]">
+        <div className="bg-yellow-500/10 border border-yellow-500/12 rounded-[10px] p-3 mb-4 text-[12px]">
           <p className="text-warning font-medium mb-1">
             No Decibel subaccount found
           </p>

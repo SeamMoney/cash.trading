@@ -154,7 +154,7 @@ export function MarketPermissionsModal({
               className={cn(
                 "!flex !min-h-16 !items-center !gap-3 !rounded-[var(--radius-sm)] !border !p-3 transition-colors",
                 approved
-                  ? "!border-accent/30 !bg-accent/[0.035]"
+                  ? "!border-accent/14 !bg-accent/[0.035]"
                   : "!border-card-border !bg-background-tertiary",
               )}
             >

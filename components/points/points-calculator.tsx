@@ -73,7 +73,7 @@ export function PointsCalculator() {
                     : '—'}
               </div>
             </div>
-            <div className="bg-black/40 border border-primary/20 px-2 py-2">
+            <div className="bg-black/40 border border-primary/12 px-2 py-2">
               <div className="text-[9px] font-mono uppercase text-zinc-500 mb-0.5">Scenario Value</div>
               <div className="text-sm sm:text-lg font-mono font-bold text-primary tabular-nums leading-tight">
                 {fmtUsd(calc.yourValue)}

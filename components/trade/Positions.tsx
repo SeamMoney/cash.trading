@@ -1709,7 +1709,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         {o.details}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                        <span className="inline-flex items-center rounded-full border border-accent/12 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
                           {o.status ?? "Open"}
                         </span>
                       </td>

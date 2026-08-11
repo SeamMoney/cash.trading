@@ -64,8 +64,8 @@ export function DecibelPosition({ subaccountAddr, marketName }: Props) {
         <div key={i} className={cn(
           "rounded-lg border px-3 py-2.5",
           pos.side === "long"
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-red-500/20 bg-red-500/5"
+            ? "border-emerald-500/12 bg-emerald-500/5"
+            : "border-red-500/12 bg-red-500/5"
         )}>
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">

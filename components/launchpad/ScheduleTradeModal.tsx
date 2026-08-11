@@ -112,7 +112,7 @@ export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: 
 
           {/* Indicator info */}
           <div className="flex items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-accent/20 bg-accent/10">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-accent/12 bg-accent/10">
               <svg className="size-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
@@ -172,7 +172,7 @@ export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: 
 
           {/* Success */}
           {success && (
-            <div className="px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[12px] font-medium flex items-center gap-2">
+            <div className="px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/12 text-emerald-400 text-[12px] font-medium flex items-center gap-2">
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
               Bot deployed — it will trade automatically when signals fire.
             </div>
@@ -180,7 +180,7 @@ export function ScheduleTradeModal({ indicator, isOpen, onClose, onScheduled }: 
 
           {/* Error */}
           {error && (
-            <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px]">
+            <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/12 text-red-400 text-[11px]">
               {error}
             </div>
           )}

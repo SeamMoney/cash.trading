@@ -220,7 +220,7 @@ export function BotDashboard() {
       {/* ── Toast ── */}
       <div className={cn(
         "fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-sm font-medium font-mono transition-all duration-300",
-        toast.type === "buy" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : toast.type === "sell" ? "border-red-500/30 bg-red-500/10 text-red-400" : "border-[#2a2a2a] bg-[#181818] text-white",
+        toast.type === "buy" ? "border-emerald-500/14 bg-emerald-500/10 text-emerald-400" : toast.type === "sell" ? "border-red-500/14 bg-red-500/10 text-red-400" : "border-[#2a2a2a] bg-[#181818] text-white",
         toast.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
       )}>
         {toast.message}
@@ -271,7 +271,7 @@ export function BotDashboard() {
             <button
               onClick={() => cancelJob(bot.jobId)}
               disabled={cancellingId === bot.jobId}
-              className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono border border-[#2a2a2a] text-zinc-500 hover:text-red-400 hover:border-red-500/30 transition-colors"
+              className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono border border-[#2a2a2a] text-zinc-500 hover:text-red-400 hover:border-red-500/14 transition-colors"
             >
               {cancellingId === bot.jobId ? "..." : "Stop"}
             </button>

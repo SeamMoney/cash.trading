@@ -71,7 +71,7 @@ export function AgentPanel() {
     <div className="surface-1 glow-accent rounded-[16px] p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/20">
+          <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/12">
             Agent Mode
           </span>
           <span

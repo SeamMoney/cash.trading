@@ -28,7 +28,7 @@ export function TheaterTicket() {
             <div className="flex justify-between items-start">
               <Badge
                 variant="outline"
-                className="border-primary/50 text-primary bg-primary/10"
+                className="border-primary/18 text-primary bg-primary/10"
               >
                 <Star className="w-3 h-3 mr-1 fill-current" /> PREMIERE
               </Badge>

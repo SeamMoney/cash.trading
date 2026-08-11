@@ -95,7 +95,7 @@ export function ManualAddressInput() {
 
   return (
     <div className="space-y-4">
-      <Alert className="bg-blue-500/10 border-blue-500/20">
+      <Alert className="bg-blue-500/10 border-blue-500/12">
         <Info className="h-4 w-4 text-blue-500" />
         <AlertTitle className="text-blue-400">Used Ethereum or Solana wallet on Decibel?</AlertTitle>
         <AlertDescription className="text-blue-300/80">
@@ -136,7 +136,7 @@ export function ManualAddressInput() {
       </Button>
 
       {error && (
-        <Alert className="bg-red-500/10 border-red-500/20">
+        <Alert className="bg-red-500/10 border-red-500/12">
           <AlertTriangle className="h-4 w-4 text-red-500" />
           <AlertTitle className="text-red-400">Error</AlertTitle>
           <AlertDescription className="text-red-300/80">{error}</AlertDescription>
@@ -145,7 +145,7 @@ export function ManualAddressInput() {
 
       {result && (
         <div className="space-y-4">
-          <Alert className="bg-primary/10 border-primary/20">
+          <Alert className="bg-primary/10 border-primary/12">
             <Info className="h-4 w-4 text-primary" />
             <AlertTitle className="text-primary">Balance Found!</AlertTitle>
             <AlertDescription className="text-zinc-300">
@@ -161,7 +161,7 @@ export function ManualAddressInput() {
             </AlertDescription>
           </Alert>
 
-          <Alert className="bg-yellow-500/10 border-yellow-500/20">
+          <Alert className="bg-yellow-500/10 border-yellow-500/12">
             <AlertTriangle className="h-4 w-4 text-yellow-500" />
             <AlertTitle className="text-yellow-400">Read-Only Mode</AlertTitle>
             <AlertDescription className="text-yellow-300/80 space-y-3">

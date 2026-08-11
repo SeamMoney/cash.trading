@@ -50,7 +50,7 @@ export function GlassWalletCard({
       transition={{ duration: 0.4 }}
       className={cn("w-full max-w-[400px]", className)}
     >
-      <Card className="group relative h-56 overflow-hidden rounded-2xl border-border/50 bg-gradient-to-br from-card/80 via-card/40 to-card/20 backdrop-blur-md transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10">
+      <Card className="group relative h-56 overflow-hidden rounded-2xl border-border/50 bg-gradient-to-br from-card/80 via-card/40 to-card/20 backdrop-blur-md transition-all duration-300 hover:border-primary/18 hover:shadow-xl hover:shadow-primary/10">
         {/* Abstract Background Shapes */}
         <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl transition-all duration-500 group-hover:bg-primary/20" />
         <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-secondary/10 blur-3xl transition-all duration-500 group-hover:bg-secondary/20" />

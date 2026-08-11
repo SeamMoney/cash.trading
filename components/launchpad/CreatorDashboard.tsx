@@ -140,7 +140,7 @@ export function CreatorDashboard({ creatorAddr }: Props) {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[13px] font-bold text-white font-mono">{indicator.symbol}</span>
                       {indicator.isProprietary && (
-                        <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[8px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25 uppercase tracking-wide">
+                        <span className="px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[8px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/13 uppercase tracking-wide">
                           Proprietary
                         </span>
                       )}

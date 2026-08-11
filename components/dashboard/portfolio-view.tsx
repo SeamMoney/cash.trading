@@ -145,7 +145,7 @@ export function PortfolioView() {
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 p-4 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/12 p-4 text-red-400 text-sm">
           {error}
         </div>
       )}
@@ -224,7 +224,7 @@ export function PortfolioView() {
 
       {/* Connect Wallet prompt */}
       {!connected && !isMockMode && (
-        <div className="border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+        <div className="border border-dashed border-primary/14 bg-primary/5 p-6 text-center">
           <p className="text-sm text-primary font-bold">Connect wallet to see your stats</p>
         </div>
       )}

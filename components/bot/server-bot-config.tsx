@@ -431,8 +431,8 @@ export function ServerBotConfig() {
 
       {/* Main Configuration Panel */}
       <div className="border border-white/10 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/50" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/50" />
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/18" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/18" />
 
         {/* Header */}
         <div className="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
@@ -447,7 +447,7 @@ export function ServerBotConfig() {
 
         <div className="p-6 space-y-6 font-mono">
           {!cloudStatusLoading && !automationEnabled && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 relative flex items-start gap-2">
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/14 relative flex items-start gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-yellow-500" />
               <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-yellow-300">
@@ -458,7 +458,7 @@ export function ServerBotConfig() {
           {/* Capital Input */}
           <div className="space-y-2">
             <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
-            <div className="bg-black/40 backdrop-blur-sm border border-primary/30 p-3 md:p-4 relative group hover:border-primary/60 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
+            <div className="bg-black/40 backdrop-blur-sm border border-primary/14 p-3 md:p-4 relative group hover:border-primary/12 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary opacity-70" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary opacity-70" />
               <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
@@ -476,7 +476,7 @@ export function ServerBotConfig() {
                   disabled={!connected || isRunning || loading}
                   variant="outline"
                   size="sm"
-                  className="border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest flex-shrink-0 px-2 md:px-3"
+                  className="border-primary/18 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest flex-shrink-0 px-2 md:px-3"
                 >
                   MAX
                 </Button>
@@ -530,7 +530,7 @@ export function ServerBotConfig() {
               disabled={isRunning || loading}
               className={cn(
                 "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
-                marketDropdownOpen && "border-primary/50"
+                marketDropdownOpen && "border-primary/18"
               )}
             >
               <div className="flex items-center gap-3">
@@ -614,9 +614,9 @@ export function ServerBotConfig() {
             </div>
             <div className={cn(
               "p-2 border relative flex items-center gap-2",
-              aggressiveness <= 3 && "bg-green-500/5 border-green-500/30",
-              aggressiveness > 3 && aggressiveness <= 7 && "bg-yellow-500/5 border-yellow-500/30",
-              aggressiveness > 7 && "bg-red-500/5 border-red-500/30"
+              aggressiveness <= 3 && "bg-green-500/5 border-green-500/14",
+              aggressiveness > 3 && aggressiveness <= 7 && "bg-yellow-500/5 border-yellow-500/14",
+              aggressiveness > 7 && "bg-red-500/5 border-red-500/14"
             )}>
               {aggressiveness <= 3 && <Gauge className="w-4 h-4 text-green-400 flex-shrink-0" />}
               {aggressiveness > 3 && aggressiveness <= 7 && <Bolt className="w-4 h-4 text-yellow-400 flex-shrink-0" />}
@@ -644,7 +644,7 @@ export function ServerBotConfig() {
                 className={cn(
                   "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "long"
-                    ? "bg-green-500/10 text-green-500 border border-green-500/50"
+                    ? "bg-green-500/10 text-green-500 border border-green-500/18"
                     : "text-zinc-500 hover:bg-white/5 border border-transparent"
                 )}
               >
@@ -658,7 +658,7 @@ export function ServerBotConfig() {
                 className={cn(
                   "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "neutral"
-                    ? "bg-primary/10 text-primary border border-primary/50"
+                    ? "bg-primary/10 text-primary border border-primary/18"
                     : "text-zinc-500 hover:bg-white/5 border border-transparent"
                 )}
               >
@@ -671,7 +671,7 @@ export function ServerBotConfig() {
                 className={cn(
                   "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
                   bias === "short"
-                    ? "bg-red-500/10 text-red-500 border border-red-500/50"
+                    ? "bg-red-500/10 text-red-500 border border-red-500/18"
                     : "text-zinc-500 hover:bg-white/5 border border-transparent"
                 )}
               >
@@ -695,7 +695,7 @@ export function ServerBotConfig() {
               disabled={isRunning || loading}
               className={cn(
                 "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
-                strategyDropdownOpen && "border-primary/50"
+                strategyDropdownOpen && "border-primary/18"
               )}
             >
               <div className="flex items-center gap-3">
@@ -777,10 +777,10 @@ export function ServerBotConfig() {
             {/* Strategy Description */}
             <div className={cn(
               "p-2 border relative flex items-center gap-2",
-              strategy === "twap" && "bg-blue-500/5 border-blue-500/30",
-              strategy === "market_maker" && "bg-purple-500/5 border-purple-500/30",
+              strategy === "twap" && "bg-blue-500/5 border-blue-500/14",
+              strategy === "market_maker" && "bg-purple-500/5 border-purple-500/14",
               strategy === "delta_neutral" && "bg-cyan-500/5 border-cyan-500/30",
-              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/30",
+              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/14",
               strategy === "tx_spammer" && "bg-pink-500/5 border-pink-500/30"
             )}>
               {strategy === "twap" && <BarChart3 className="w-4 h-4 text-blue-400 flex-shrink-0" />}
@@ -803,7 +803,7 @@ export function ServerBotConfig() {
 
           {/* Error Display */}
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 relative">
+            <div className="p-3 bg-red-500/10 border border-red-500/14 relative">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500" />
               <p className="text-sm text-red-400 font-mono">{error}</p>
             </div>
@@ -812,7 +812,7 @@ export function ServerBotConfig() {
           {/* Delegation Section - only show when connected */}
           {automationEnabled && connected && !isRunning && !hasDelegation && !checkingDelegation && (
             <div className="space-y-3">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/30 relative">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/14 relative">
                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
                 <div className="flex items-start gap-2">
                   <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -827,7 +827,7 @@ export function ServerBotConfig() {
                 onClick={handleDelegate}
                 disabled={delegating}
                 variant="outline"
-                className="w-full border-primary/50 text-primary hover:bg-primary/10 rounded-none font-mono uppercase tracking-widest"
+                className="w-full border-primary/18 text-primary hover:bg-primary/10 rounded-none font-mono uppercase tracking-widest"
               >
                 {delegating ? "Delegating..." : "Delegate Permissions"}
               </Button>
@@ -845,7 +845,7 @@ export function ServerBotConfig() {
           )}
 
           {automationEnabled && connected && !isRunning && hasDelegation && (
-            <div className="p-3 bg-green-500/10 border border-green-500/30 relative flex items-center gap-2">
+            <div className="p-3 bg-green-500/10 border border-green-500/14 relative flex items-center gap-2">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
               <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
               <p className="text-xs text-green-400 font-mono">
@@ -885,7 +885,7 @@ export function ServerBotConfig() {
 
           {/* Connect Wallet prompt when not connected */}
           {automationEnabled && !connected && (
-            <div className="p-4 bg-primary/10 border border-primary/30 relative text-center">
+            <div className="p-4 bg-primary/10 border border-primary/14 relative text-center">
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />
               <p className="text-primary font-mono font-bold">Connect wallet to start</p>

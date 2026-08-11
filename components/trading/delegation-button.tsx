@@ -52,7 +52,7 @@ export function DelegationButton({ className, variant = "default" }: DelegationB
         disabled={isSubmitting}
         variant="outline"
         className={cn(
-          "font-mono border-green-500/30 text-green-500 hover:bg-green-500/10 hover:border-green-500/50",
+          "font-mono border-green-500/14 text-green-500 hover:bg-green-500/10 hover:border-green-500/18",
           className
         )}
       >

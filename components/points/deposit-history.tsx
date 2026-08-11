@@ -150,7 +150,7 @@ export function DepositHistory() {
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors ${
                   filter === f
-                    ? 'bg-primary/20 text-primary border border-primary/30'
+                    ? 'bg-primary/20 text-primary border border-primary/14'
                     : 'text-zinc-500 hover:text-white border border-white/10 hover:border-white/20'
                 }`}
               >

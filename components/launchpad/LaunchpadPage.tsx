@@ -137,8 +137,8 @@ const SIG_DOT   = ["bg-zinc-600", "bg-emerald-400 animate-pulse motion-reduce:an
 const SIG_TEXT  = ["text-zinc-500", "text-emerald-400", "text-red-400"];
 const SIG_CHIP  = [
   "border-[#2a2a2a] text-[#888]",
-  "border-emerald-500/30 bg-emerald-500/12 text-emerald-400",
-  "border-red-500/30 bg-red-500/12 text-red-400",
+  "border-emerald-500/14 bg-emerald-500/12 text-emerald-400",
+  "border-red-500/14 bg-red-500/12 text-red-400",
 ];
 
 // ─── Left panel: indicator list item ─────────────────────────────────────────
@@ -169,7 +169,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
         PRODUCT_PRESSABLE_CLASS,
         // Same selection language as the tabs and filters: accent, not grey.
         selected
-          ? "border border-accent/25 bg-accent/[0.07]"
+          ? "border border-accent/13 bg-accent/[0.07]"
           : "border border-transparent hover:border-white/[0.08] hover:bg-white/[0.03]",
       )}>
       <div className="flex items-start justify-between gap-2">
@@ -189,7 +189,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
                 shoves the PROP badge to the far edge, away from its label. */}
             <span className="min-w-0 truncate text-sm font-medium text-white">{ind.name}</span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent shrink-0">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[var(--radius-xs)] text-[9px] font-bold font-mono border border-accent/14 bg-accent/10 text-accent shrink-0">
                 <svg className="w-2 h-2" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -209,7 +209,7 @@ function IndicatorItem({ ind, selected, onClick }: { ind: Indicator; selected: b
           <span className={cn(
             "text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
             ind.isGraduated
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+              ? "border-emerald-500/14 bg-emerald-500/10 text-emerald-400"
               : "border-[#2a2a2a] bg-[#202020] text-[#9a9a9a]",
           )}>
             {ind.isGraduated ? "LIVE" : "TESTING"}
@@ -361,13 +361,13 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
             <span className={cn(
               "text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border",
               ind.isGraduated
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                ? "border-emerald-500/14 bg-emerald-500/10 text-emerald-400"
                 : "border-[#2a2a2a] bg-[#202020] text-[#888]",
             )}>
               {ind.isGraduated ? "LIVE" : "TESTING"}
             </span>
             {ind.isProprietary && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-bold font-mono border border-accent/30 bg-accent/10 text-accent">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] text-[10px] font-bold font-mono border border-accent/14 bg-accent/10 text-accent">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>
@@ -747,7 +747,7 @@ export function LaunchpadPage() {
                             "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
                             PRODUCT_PRESSABLE_CLASS,
                             showSignals
-                              ? "border-accent/40 bg-accent/12 text-accent"
+                              ? "border-accent/16 bg-accent/12 text-accent"
                               : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
                           LIVE SIGNALS
@@ -760,7 +760,7 @@ export function LaunchpadPage() {
                             "inline-flex items-center rounded-full border px-3 min-h-[36px] lg:min-h-[24px] font-mono text-[10px] uppercase tracking-wider",
                             PRODUCT_PRESSABLE_CLASS,
                             showGraduated
-                              ? "border-accent/40 bg-accent/12 text-accent"
+                              ? "border-accent/16 bg-accent/12 text-accent"
                               : "border-[#2a2a2a] text-[#9a9a9a] hover:text-zinc-200",
                           )}>
                           GRADUATED
@@ -781,7 +781,7 @@ export function LaunchpadPage() {
                               "rounded-full border px-3 min-h-[36px] lg:min-h-[24px] lg:flex-1 lg:rounded-[var(--radius-xs)] text-center font-mono text-[10px]",
                               PRODUCT_PRESSABLE_CLASS,
                               sort === s
-                                ? "border-accent/40 bg-accent/12 text-accent"
+                                ? "border-accent/16 bg-accent/12 text-accent"
                                 : "border-card-border text-[#9a9a9a] hover:text-zinc-200",
                             )}>
                             {s === "robustness" ? "Score" : s === "sharpe" ? "Sharpe" : "Raised"}

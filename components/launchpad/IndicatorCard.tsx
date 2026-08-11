@@ -242,8 +242,8 @@ export function IndicatorCard(props: IndicatorCardProps) {
   const showUnlock = isProprietary && !isSubscribed;
   const ctaLabel = showUnlock ? "Unlock · $29/mo" : "Deploy Bot";
   const ctaClass = showUnlock
-    ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-    : "border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20";
+    ? "border-amber-500/14 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+    : "border-purple-500/14 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20";
   const ctaAction = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (showUnlock) {
@@ -304,7 +304,7 @@ export function IndicatorCard(props: IndicatorCardProps) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <h3 className="text-sm font-semibold text-white truncate">{name}</h3>
             {isProprietary && (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono border border-amber-500/30 bg-amber-500/10 text-amber-400">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono border border-amber-500/14 bg-amber-500/10 text-amber-400">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm-2 5V5a2 2 0 1 1 4 0v1H6z"/>
                 </svg>

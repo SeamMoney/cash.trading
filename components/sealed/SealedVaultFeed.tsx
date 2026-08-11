@@ -251,7 +251,7 @@ export function SealedVaultFeed() {
               className={cn(
                 "w-full rounded-[var(--radius)] border p-4 text-left transition-all",
                 selected === v.strategyVaultAddr
-                  ? "border-accent/50 bg-accent/[0.04]"
+                  ? "border-accent/18 bg-accent/[0.04]"
                   : "border-white/[0.06] bg-[#141414] hover:border-white/20",
               )}
             >
@@ -408,7 +408,7 @@ export function SealedVaultFeed() {
             </div>
 
             {detail?.registryMatchesChain === false && (
-              <p role="alert" className="rounded-[var(--radius-sm)] border border-red-500/40 bg-red-500/5 p-2.5 text-[11px] text-red-300">
+              <p role="alert" className="rounded-[var(--radius-sm)] border border-red-500/16 bg-red-500/5 p-2.5 text-[11px] text-red-300">
                 On-chain state disagrees with the registry on: {detail.mismatches.join(", ")}. Treat
                 this listing as untrusted.
               </p>

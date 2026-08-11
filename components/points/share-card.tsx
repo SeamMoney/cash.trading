@@ -79,7 +79,7 @@ export function ShareCard({ points, rank, totalDeposited, dlpBalance }: ShareCar
       {/* Share Button */}
       <button
         onClick={handleShare}
-        className="flex items-center gap-2 px-4 py-2 bg-black/40 border border-white/10 hover:border-primary/50 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary"
+        className="flex items-center gap-2 px-4 py-2 bg-black/40 border border-white/10 hover:border-primary/18 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary"
       >
         <Share2 className="w-4 h-4" />
         Share Stats

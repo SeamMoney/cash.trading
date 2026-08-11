@@ -615,7 +615,7 @@ type PreviewState =
 
 const TYPE_LABELS = ["SMA Crossover", "EMA Crossover", "RSI", "MACD", "Bollinger Bands"];
 const CONFIDENCE_COLOR = { high: "text-green-400", medium: "text-yellow-400", low: "text-red-400" };
-const CONFIDENCE_BG    = { high: "bg-green-500/10 border-green-500/20", medium: "bg-yellow-500/10 border-yellow-500/20", low: "bg-red-500/10 border-red-500/20" };
+const CONFIDENCE_BG    = { high: "bg-green-500/10 border-green-500/20", medium: "bg-yellow-500/10 border-yellow-500/20", low: "bg-red-500/10 border-red-500/12" };
 
 // ─── Auto-extract meta from PineScript ───────────────────────────────────────
 
@@ -1421,7 +1421,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
   if (step === "done" && result) {
     const t = result.transpile;
     return (
-      <div className="border-t border-emerald-500/20 pt-5 space-y-3">
+      <div className="border-t border-emerald-500/12 pt-5 space-y-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
             ✓
@@ -1524,7 +1524,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
         )}
 
         {proprietaryTxHash && !error && (
-          <div className="bg-accent/10 border border-accent/20 rounded-lg px-3 py-2 flex items-center justify-between">
+          <div className="bg-accent/10 border border-accent/12 rounded-lg px-3 py-2 flex items-center justify-between">
             <span className="text-[10px] text-accent font-medium">Algorithm commitment confirmed ✓</span>
             <a
               href={`https://explorer.aptoslabs.com/txn/${proprietaryTxHash}?network=testnet`}
@@ -1538,7 +1538,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
         )}
 
         {error && (
-          <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2 text-[10px] text-amber-300">
+          <div className="bg-amber-500/8 border border-amber-500/12 rounded-lg px-3 py-2 text-[10px] text-amber-300">
             {error}
           </div>
         )}
@@ -1726,7 +1726,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
             </div>
 
             {activeTab === "vault" && (
-              <div className="flex shrink-0 items-center gap-3 border-b border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5">
+              <div className="flex shrink-0 items-center gap-3 border-b border-emerald-500/12 bg-emerald-500/[0.06] px-3 py-1.5">
                 <p className="min-w-0 flex-1 text-[10px] leading-relaxed text-emerald-300/90">
                   This module <span className="font-bold">is</span> the bot: deployed on-chain and delegated by a
                   Decibel vault, it can only trade this exact strategy — prices come from Decibel&apos;s oracle,
@@ -1735,7 +1735,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                 <select
                   value={vaultMarket}
                   onChange={(e) => setVaultMarket(e.target.value as keyof typeof VAULT_MARKETS)}
-                  className="shrink-0 rounded border border-emerald-500/30 bg-[#0d0d0d] px-1.5 py-1 font-mono text-[10px] text-emerald-300 outline-none"
+                  className="shrink-0 rounded border border-emerald-500/14 bg-[#0d0d0d] px-1.5 py-1 font-mono text-[10px] text-emerald-300 outline-none"
                   aria-label="Vault market"
                 >
                   {Object.keys(VAULT_MARKETS).map((m) => (
@@ -1756,7 +1756,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
             )}
 
             {activeTab === "vault" && compileServiceAvailable === false && (
-              <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/[0.06] px-3 py-1.5 text-[10px] text-amber-300/90">
+              <div className="shrink-0 border-b border-amber-500/12 bg-amber-500/[0.06] px-3 py-1.5 text-[10px] text-amber-300/90">
                 One-click deploy needs the Move compiler, which isn&apos;t available on this hosted deployment yet —
                 run cash.trading locally (or self-hosted) to deploy this module from the UI. The generated source
                 below is complete and compiles as-is.
@@ -1827,13 +1827,13 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                         onChange={(e) => setBindVaultAddr(e.target.value)}
                         placeholder="0x… funded Decibel vault you admin (testnet)"
                         spellCheck={false}
-                        className="min-w-0 flex-1 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500/40 focus:outline-none"
+                        className="min-w-0 flex-1 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500/16 focus:outline-none"
                       />
                       <input
                         value={bindOrderSize}
                         onChange={(e) => setBindOrderSize(e.target.value.replace(/[^0-9]/g, ""))}
                         title="Order size in engine units (market minimum 100000)"
-                        className="w-20 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 focus:border-emerald-500/40 focus:outline-none"
+                        className="w-20 rounded border border-[#2a2a2a] bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-300 focus:border-emerald-500/16 focus:outline-none"
                       />
                       <button
                         onClick={handleCreateVaultBinding}
@@ -2001,7 +2001,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
                     onChange={(e) => setNameOverride(e.target.value)}
                     onBlur={() => setEditingName(false)}
                     onKeyDown={(e) => e.key === "Enter" && setEditingName(false)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white focus:outline-none focus:border-accent/40"
+                    className="w-full bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white focus:outline-none focus:border-accent/16"
                   />
                 ) : (
                   <button onClick={() => setEditingName(true)} className="text-left group">
@@ -2122,7 +2122,7 @@ export function DeployForm({ onDeployed }: DeployFormProps) {
               className={cn(
                 "w-full py-2.5 rounded-xl text-[13px] font-semibold tracking-wide transition-all duration-200",
                 step === "done"
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 cursor-default"
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/12 cursor-default"
                   : "bg-accent text-black glow-accent hover:brightness-95 active:scale-[0.98]"
               )}
             >

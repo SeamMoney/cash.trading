@@ -59,7 +59,7 @@ export function OrderHistoryTable({ orders, currentSessionId }: OrderHistoryProp
               key={index}
               className={`p-3 rounded-lg border ${
                 isCurrentSession
-                  ? 'bg-primary/5 border-primary/20'
+                  ? 'bg-primary/5 border-primary/12'
                   : 'bg-black/20 border-white/5'
               }`}
             >
@@ -70,8 +70,8 @@ export function OrderHistoryTable({ orders, currentSessionId }: OrderHistoryProp
                     variant="outline"
                     className={`${
                       order.direction === 'long'
-                        ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                        : 'bg-red-500/10 text-red-400 border-red-500/30'
+                        ? 'bg-green-500/10 text-green-400 border-green-500/14'
+                        : 'bg-red-500/10 text-red-400 border-red-500/14'
                     } px-2 py-0.5`}
                   >
                     {order.direction === 'long' ? (
@@ -87,11 +87,11 @@ export function OrderHistoryTable({ orders, currentSessionId }: OrderHistoryProp
                 </div>
 
                 {order.success ? (
-                  <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/14 text-xs">
                     <Check className="w-3 h-3" />
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">
+                  <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/14 text-xs">
                     <X className="w-3 h-3" />
                   </Badge>
                 )}

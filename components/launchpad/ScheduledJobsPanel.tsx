@@ -250,9 +250,9 @@ export function ScheduledJobsPanel({ extraJobs = [] }: Props) {
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className={cn(
                     "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border",
-                    isExecuted ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" :
+                    isExecuted ? "border-emerald-500/14 bg-emerald-500/10 text-emerald-400" :
                       isCancelled ? "border-zinc-800 bg-zinc-900 text-zinc-600" :
-                        "border-amber-500/30 bg-amber-500/10 text-amber-400",
+                        "border-amber-500/14 bg-amber-500/10 text-amber-400",
                   )}>
                     {isExecuted ? "EXECUTED" : isCancelled ? "CANCELLED" : "PENDING"}
                   </span>
@@ -279,7 +279,7 @@ export function ScheduledJobsPanel({ extraJobs = [] }: Props) {
                     "shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold border transition-colors",
                     cancellingId === job.jobId
                       ? "border-zinc-800 text-zinc-600 cursor-wait"
-                      : "border-zinc-800 text-zinc-500 hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/5",
+                      : "border-zinc-800 text-zinc-500 hover:border-red-500/14 hover:text-red-400 hover:bg-red-500/5",
                   )}
                 >
                   {cancellingId === job.jobId ? "…" : "Cancel"}

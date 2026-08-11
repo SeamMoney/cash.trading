@@ -150,7 +150,7 @@ export function SealedBacktest(props: Props) {
 
       <div className="flex flex-col gap-3 p-4">
         {result && !result.ok && (
-          <div className="rounded-[var(--radius-sm)] border border-red-500/20 bg-red-500/10 px-3 py-2">
+          <div className="rounded-[var(--radius-sm)] border border-red-500/12 bg-red-500/10 px-3 py-2">
             <p className="text-[12px] text-red-300">{result.error}</p>
             {result.detail?.slice(0, 4).map((d) => (
               <p key={d} className="mt-0.5 font-mono text-[10px] text-red-400/80">• {d}</p>
@@ -226,7 +226,7 @@ export function SealedBacktest(props: Props) {
             {/* Named, not dropped. A market silently missing from a portfolio backtest makes
                 the remaining ones look like the whole answer. */}
             {result.unavailable && result.unavailable.length > 0 && (
-              <p className="rounded-[var(--radius-sm)] border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-400/90">
+              <p className="rounded-[var(--radius-sm)] border border-amber-500/12 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-400/90">
                 Not simulated: {result.unavailable.map((u) => u.asset).join(", ")} — {result.unavailable[0].error}
               </p>
             )}

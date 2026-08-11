@@ -64,7 +64,7 @@ export function FarmingTips() {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[11px] font-mono text-white">{strategy.title}</span>
                   {strategy.priority === 'high' && (
-                    <span className="text-[8px] font-mono uppercase px-1 py-px bg-primary/10 text-primary border border-primary/20 leading-tight">
+                    <span className="text-[8px] font-mono uppercase px-1 py-px bg-primary/10 text-primary border border-primary/12 leading-tight">
                       High
                     </span>
                   )}
@@ -87,7 +87,7 @@ export function FarmingTips() {
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-1 bg-black/40 border border-white/10 hover:border-primary/30 text-[9px] sm:text-[10px] font-mono text-zinc-400 hover:text-primary transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-black/40 border border-white/10 hover:border-primary/14 text-[9px] sm:text-[10px] font-mono text-zinc-400 hover:text-primary transition-colors"
             >
               {link.label}
               <ExternalLink className="w-2.5 h-2.5" />

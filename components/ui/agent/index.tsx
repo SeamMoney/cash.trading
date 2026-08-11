@@ -276,9 +276,9 @@ export function TaskList({ tasks }: { tasks: AgentTask[] }) {
           transition={{ duration: DUR, ease: EASE }}
           className={cn(
             "flex items-start gap-2.5 rounded-[10px] border px-3 py-2.5 transition-colors",
-            t.state === "done" && "border-accent/30 bg-accent/[0.04]",
+            t.state === "done" && "border-accent/14 bg-accent/[0.04]",
             t.state === "active" && "border-white/20 bg-white/[0.03]",
-            t.state === "failed" && "border-red-500/40 bg-red-500/[0.04]",
+            t.state === "failed" && "border-red-500/16 bg-red-500/[0.04]",
             t.state === "pending" && "border-white/[0.06] bg-[#141414]",
           )}
         >

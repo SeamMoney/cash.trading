@@ -84,7 +84,7 @@ export function WalletButton() {
         {/* Compact header button - address and balance on same line */}
         <button
           onClick={() => setShowAccountModal(true)}
-          className="group flex items-center gap-2 px-3 py-2 bg-black/60 border border-primary/20 hover:border-primary/40 transition-all hover:bg-black/80"
+          className="group flex items-center gap-2 px-3 py-2 bg-black/60 border border-primary/12 hover:border-primary/16 transition-all hover:bg-black/80"
         >
           {/* Wallet icon */}
           {isKeylessWallet ? (
@@ -113,7 +113,7 @@ export function WalletButton() {
 
         {/* Account Modal - Ticket style */}
         <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
-          <DialogContent className="bg-black border border-primary/30 w-[calc(100vw-2rem)] max-w-xs p-0 overflow-hidden">
+          <DialogContent className="bg-black border border-primary/14 w-[calc(100vw-2rem)] max-w-xs p-0 overflow-hidden">
             <DialogHeader className="sr-only">
               <DialogTitle>Account</DialogTitle>
               <DialogDescription>Your wallet details</DialogDescription>
@@ -170,14 +170,14 @@ export function WalletButton() {
             {(isXChainWallet || isKeylessWallet) && (
               <div className="mx-4 -mt-1 mb-2">
                 {isKeylessWallet && (
-                  <div className="p-2.5 bg-primary/10 border border-primary/30">
+                  <div className="p-2.5 bg-primary/10 border border-primary/14">
                     <div className="text-primary text-xs text-center">
                       Aptos Keyless via {wallet?.name?.includes('Google') ? 'Google' : 'Apple'}
                     </div>
                   </div>
                 )}
                 {isXChainWallet && (
-                  <div className="p-2.5 bg-orange-500/10 border border-orange-500/30">
+                  <div className="p-2.5 bg-orange-500/10 border border-orange-500/14">
                     <div className="text-orange-400 text-xs text-center">
                       Connected via X-Chain (AIP-113)
                     </div>
@@ -233,7 +233,7 @@ export function WalletButton() {
                   setShowAccountModal(false)
                   await disconnect()
                 }}
-                className="w-full mt-2 p-2.5 flex items-center justify-center gap-2 text-xs font-mono uppercase tracking-wide text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10 transition-all"
+                className="w-full mt-2 p-2.5 flex items-center justify-center gap-2 text-xs font-mono uppercase tracking-wide text-red-400 hover:text-red-300 border border-red-500/12 hover:border-red-500/16 hover:bg-red-500/10 transition-all"
               >
                 <LogOut className="size-3" />
                 Disconnect

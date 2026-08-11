@@ -161,7 +161,7 @@ export function WalletWatcher() {
           <button
             onClick={refreshAllWallets}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 hover:border-primary/50 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 hover:border-primary/18 transition-colors text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-primary disabled:opacity-50"
           >
             {loading ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -181,14 +181,14 @@ export function WalletWatcher() {
             placeholder="0x... wallet address"
             value={newAddress}
             onChange={(e) => setNewAddress(e.target.value)}
-            className="flex-1 px-4 py-2 bg-black/40 border border-white/10 text-white text-sm font-mono focus:border-primary/50 focus:outline-none"
+            className="flex-1 px-4 py-2 bg-black/40 border border-white/10 text-white text-sm font-mono focus:border-primary/18 focus:outline-none"
           />
           <input
             type="text"
             placeholder="Label (optional)"
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            className="w-full md:w-40 px-4 py-2 bg-black/40 border border-white/10 text-white text-sm font-mono focus:border-primary/50 focus:outline-none"
+            className="w-full md:w-40 px-4 py-2 bg-black/40 border border-white/10 text-white text-sm font-mono focus:border-primary/18 focus:outline-none"
           />
           <button
             onClick={addWallet}
@@ -221,7 +221,7 @@ export function WalletWatcher() {
           {watchedWallets.map((wallet) => (
             <div
               key={wallet.address}
-              className="bg-black/40 backdrop-blur-sm border border-white/10 p-4 relative group hover:border-primary/30 transition-colors"
+              className="bg-black/40 backdrop-blur-sm border border-white/10 p-4 relative group hover:border-primary/14 transition-colors"
             >
               <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/20 group-hover:border-primary transition-colors" />
               <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/20 group-hover:border-primary transition-colors" />

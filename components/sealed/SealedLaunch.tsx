@@ -732,8 +732,12 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
         <ProductPanel className="overflow-hidden">
           <header className="flex items-center justify-between gap-3 border-b border-card-border bg-card px-4 py-3 sm:px-5">
             <div className="min-w-0">
+              {/* Names this stage specifically. It used to repeat the enclosing
+                  panel's "Deploy a Strategy" verbatim, so the same four words
+                  appeared twice within ~110px and the tab looked like it had
+                  changed nothing. */}
               <h2 className="font-display text-[14px] font-semibold text-foreground sm:text-[15px]">
-                Deploy a Strategy
+                Launch a sealed vault
               </h2>
               <p className="mt-0.5 hidden text-[11px] text-muted-foreground sm:block">
                 Import Pine, verify the chart, then bind the strategy to a Decibel vault.

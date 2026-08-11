@@ -532,9 +532,13 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
       {ind.totalSims > 0 && (
         <div className="grid grid-cols-2 border-y border-card-border sm:grid-cols-4 sm:divide-x sm:divide-card-border">
           <StatCard
-            label="Win Rate"
+            // NOT a win rate. This is the share of a parameter sweep that came
+            // out profitable — a robustness measure. Labelling it "Win Rate"
+            // made an honest 100% read as the most recognizable tell of an
+            // overfit backtest, which discredits every other number here.
+            label="Robustness"
             value={`${ind.profitablePct}%`}
-            sub="of variations profitable"
+            sub="of parameter variations profitable"
             good={ind.profitablePct >= 80}
           />
           <StatCard
@@ -553,7 +557,8 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
             label="Sims"
             value={ind.totalSims >= 1000 ? `${(ind.totalSims / 1000).toFixed(1)}k` : String(ind.totalSims)}
             sub={`${ind.totalSims >= 1000 ? "high" : "low"} confidence`}
-            good={ind.totalSims >= 1000}
+            // A count is neither good nor bad news — colouring it green spent
+            // the accent on a neutral number.
           />
         </div>
       )}

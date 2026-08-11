@@ -254,9 +254,12 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                 )}
               </button>
             ) : (
+              // Outlined, not filled. As a solid accent pill it competed with
+              // the page's own primary action (e.g. "+ Deploy Strategy" sits
+              // ~74px below it in the same corner) — two primaries means none.
               <button
                 onClick={handleWalletClick}
-                className="px-5 py-2 rounded-[10px] text-[14px] font-semibold bg-accent text-black transition-[filter] hover:brightness-95"
+                className="rounded-[10px] border border-accent/30 px-5 py-2 text-[14px] font-semibold text-accent transition-colors hover:bg-accent/10"
               >
                 Sign In
               </button>

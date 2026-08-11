@@ -352,6 +352,7 @@ function BacktestBar({ ind, showBacktest, setShowBacktest }: {
           <BacktestViewer
             indicatorAddr={ind.address}
             indicatorName={ind.name}
+            indicatorType={ind.indicatorType}
             params={ind.params}
             asset={ind.assets[0] ?? "BTC/USD"}
           />

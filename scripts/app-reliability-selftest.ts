@@ -36,6 +36,10 @@ import {
   DEFAULT_DECIBEL_BUILDER_FEE_BPS,
   DEFAULT_DECIBEL_BUILDER_FEE_RATE,
 } from "../lib/decibel-builder-config";
+import {
+  runBacktest as runLegacyLaunchpadBacktest,
+  runRandomizedBacktests as runLegacyRandomizedBacktests,
+} from "../lib/launchpad/keeper";
 
 const vaultRoute = readFileSync("app/api/decibel/vaults/route.ts", "utf8");
 const decibelVaultList = readFileSync("lib/decibel-vault-list.ts", "utf8");
@@ -109,6 +113,8 @@ const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "u
 };
 const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
 const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
+const launchpadBacktestViewer = readFileSync("components/launchpad/BacktestViewer.tsx", "utf8");
+const launchpadKeeper = readFileSync("lib/launchpad/keeper.ts", "utf8");
 const launchpadCandlesRoute = readFileSync("app/api/launchpad/candles/route.ts", "utf8");
 const launchpadPyth = readFileSync("lib/launchpad/pyth.ts", "utf8");
 const launchpadPriceTickRoute = readFileSync("app/api/launchpad/price-tick/route.ts", "utf8");
@@ -786,6 +792,27 @@ for (const [name, source] of [
 assert.match(legacyBacktestRoute, /process\.env\.NODE_ENV === 'production'/);
 assert.match(launchpadBacktestRoute, /A valid indicatorAddr is required/);
 assert.match(launchpadBacktestRoute, /numSims must be an integer from 1 to 10,000/);
+assert.match(launchpadBacktestRoute, /indicatorType is required and must be an integer/);
+assert.match(launchpadBacktestRoute, /pine_backtester_required/);
+assert.ok(!launchpadBacktestRoute.includes("body.indicatorType ?? 0"));
+assert.match(launchpadBacktestViewer, /JSON\.stringify\(\{ indicatorAddr, indicatorType, numSims, asset, params \}\)/);
+assert.match(launchpadPage, /indicatorType=\{ind\.indicatorType\}/);
+assert.match(launchpadKeeper, /throw new RangeError\("Unsupported legacy backtest indicator type"\)/);
+assert.ok(!launchpadKeeper.includes("indicatorType = 0"));
+assert.throws(
+  () => runLegacyLaunchpadBacktest({
+    candles: [],
+    params: [10, 30],
+    initialCapital: 10_000,
+    positionSizePct: 100,
+    indicatorType: 5,
+  }),
+  /Unsupported legacy backtest indicator type/,
+);
+assert.throws(
+  () => runLegacyRandomizedBacktests([], [10, 30], 1, 1n, 5),
+  /Unsupported legacy backtest indicator type/,
+);
 assert.match(launchpadBacktestRoute, /checkApiRateLimit\(req, "launchpad-backtest"/);
 assert.match(launchpadBacktestRoute, /MAX_BODY_BYTES = 16_000/);
 assert.match(launchpadBacktestRoute, /AbortSignal\.any/);

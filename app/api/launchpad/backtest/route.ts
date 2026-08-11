@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runRandomizedBacktests, runBacktest } from "@/lib/launchpad/keeper";
+import {
+  isLegacyBacktestIndicatorType,
+  runRandomizedBacktests,
+  runBacktest,
+} from "@/lib/launchpad/keeper";
 import { fetchPythCandles } from "@/lib/launchpad/pyth";
 import { PYTH_FEED_IDS } from "@/lib/launchpad/constants";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
@@ -86,11 +90,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const indicatorType = Number(body.indicatorType ?? 0);
-    if (!Number.isInteger(indicatorType) || indicatorType < 0 || indicatorType > 4) {
+    const indicatorType = body.indicatorType;
+    if (typeof indicatorType !== "number" || !Number.isInteger(indicatorType)) {
       return NextResponse.json(
-        { error: "indicatorType must be an integer from 0 to 4" },
+        { error: "indicatorType is required and must be an integer" },
         { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (!isLegacyBacktestIndicatorType(indicatorType)) {
+      return NextResponse.json(
+        {
+          error: "This strategy requires the Pine backtester; the legacy marketplace backtester only supports SMA, EMA, RSI, MACD, and Bollinger Bands",
+          code: "pine_backtester_required",
+        },
+        { status: 422, headers: NO_STORE_HEADERS },
       );
     }
 
@@ -143,6 +156,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       indicatorAddr,
+      indicatorType,
       summary: {
         totalSims: numSims,
         profitableCount: profitable,

@@ -14,10 +14,10 @@ interface BacktestSummary {
   robustnessScore: number; seed: string; candlesUsed: number;
 }
 interface BacktestViewerProps {
-  indicatorAddr: string; indicatorName: string; params?: number[]; asset?: string;
+  indicatorAddr: string; indicatorName: string; indicatorType: number; params?: number[]; asset?: string;
 }
 
-export function BacktestViewer({ indicatorAddr, indicatorName, params = [5, 20], asset = "BTC/USD" }: BacktestViewerProps) {
+export function BacktestViewer({ indicatorAddr, indicatorName, indicatorType, params = [5, 20], asset = "BTC/USD" }: BacktestViewerProps) {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<BacktestSummary | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
@@ -31,7 +31,7 @@ export function BacktestViewer({ indicatorAddr, indicatorName, params = [5, 20],
       const res = await fetch("/api/launchpad/backtest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ indicatorAddr, numSims, asset, params }),
+        body: JSON.stringify({ indicatorAddr, indicatorType, numSims, asset, params }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
       const data = await res.json();

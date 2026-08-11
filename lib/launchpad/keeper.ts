@@ -48,11 +48,27 @@ export function detectCrossunder(a: number[], b: number[], idx: number): boolean
 // ─── Backtest Engine ─────────────────────────────────────────────────────────
 
 export interface ExtendedBacktestConfig extends BacktestConfig {
-  indicatorType?: number;   // 0=SMA, 1=EMA, 2=RSI, 3=MACD, 4=BB
+  indicatorType: number;   // 0=SMA, 1=EMA, 2=RSI, 3=MACD, 4=BB
+}
+
+export const LEGACY_BACKTEST_INDICATOR_TYPES = [0, 1, 2, 3, 4] as const;
+export type LegacyBacktestIndicatorType = (typeof LEGACY_BACKTEST_INDICATOR_TYPES)[number];
+
+export function isLegacyBacktestIndicatorType(value: unknown): value is LegacyBacktestIndicatorType {
+  return typeof value === "number"
+    && Number.isInteger(value)
+    && LEGACY_BACKTEST_INDICATOR_TYPES.includes(value as LegacyBacktestIndicatorType);
+}
+
+function requireLegacyBacktestIndicatorType(value: unknown): asserts value is number {
+  if (!isLegacyBacktestIndicatorType(value)) {
+    throw new RangeError("Unsupported legacy backtest indicator type");
+  }
 }
 
 export function runBacktest(config: ExtendedBacktestConfig): BacktestResult {
-  const { candles, params, initialCapital, positionSizePct, indicatorType = 0 } = config;
+  const { candles, params, initialCapital, positionSizePct, indicatorType } = config;
+  requireLegacyBacktestIndicatorType(indicatorType);
 
   const minCandles = indicatorType === 3 ? 60 : 50;
   if (candles.length < minCandles) {
@@ -132,7 +148,7 @@ function buildConfig(type: number, params: number[]): MultiSignalConfig {
     case 2: return { type: 2, shortPeriod: params[0] || 14, longPeriod: params[1] || 14, thirdPeriod: 0 };
     case 3: return { type: 3, shortPeriod: params[0] || 12, longPeriod: params[1] || 26, thirdPeriod: params[2] || 9 };
     case 4: return { type: 4, shortPeriod: params[0] || 20, longPeriod: params[1] || 20, thirdPeriod: params[2] || 20 }; // thirdPeriod = mult * 10
-    default: return { type: 0, shortPeriod: params[0] || 10, longPeriod: params[1] || 30, thirdPeriod: 0 };
+    default: throw new RangeError("Unsupported legacy backtest indicator type");
   }
 }
 
@@ -143,8 +159,9 @@ export function runRandomizedBacktests(
   params: number[],
   numSims: number,
   startSeed: bigint,
-  indicatorType = 0,
+  indicatorType: number,
 ): BacktestResult[] {
+  requireLegacyBacktestIndicatorType(indicatorType);
   const results: BacktestResult[] = [];
   const shortBase = params[0] || defaultShort(indicatorType);
   const longBase  = params[1] || defaultLong(indicatorType);

@@ -258,17 +258,19 @@ WHERE table_name = 'SealedVault' AND column_name IN ('retiredAt','retiredBy');
 Set in Vercel (Production). Every one was confirmed by grepping `process.env` across the
 sealed surface.
 
-### 4.1 Required for launching
+### 4.1 Required for launching and registering
 
 | Variable | Value | Missing ⇒ |
 |---|---|---|
-| `SEALED_VAULT_PACKAGE` | package address from §2 | `config.ready:false`, launch disabled |
-| `NEXT_PUBLIC_SEALED_VAULT_PACKAGE` | same value | client can't build payloads |
-| `SEALED_ATTESTOR_PUBLIC_KEY` | `0x` + 64 hex, printed by §2 | `config.ready:false` |
+| `SEALED_VAULT_PACKAGE` | package address from §2 | `config.launchReady:false` |
+| `NEXT_PUBLIC_SEALED_VAULT_PACKAGE` | same value; compatibility mirror | older tooling can build against the wrong package |
+| `SEALED_ATTESTOR_PUBLIC_KEY` | `0x` + 64 hex, printed by §2 | `config.launchReady:false` |
+| `DATABASE_URL` | migrated production registry | the launched vault cannot enter the cron working set |
 | `NEXT_PUBLIC_DECIBEL_NETWORK` | `mainnet` | defaults to testnet |
 
-Set both the server and `NEXT_PUBLIC_` forms of the package address. `lib/sealed-vaults.ts:594`
-falls back from one to the other, but the client build only sees `NEXT_PUBLIC_`.
+Set both forms of the package address to the same value. The server value is authoritative and
+`/api/sealed/config` serves the normalized address to the client; the public mirror remains for
+deployment tooling and older builds.
 
 ### 4.2 Required for vaults to actually trade
 
@@ -291,6 +293,20 @@ openssl rand -hex 32   # CRANK_SECRET
 > complete the launch flow and pay, and produced vaults that never placed a single order — with
 > the 401s visible only in Vercel's cron logs. Fixed, and `pnpm test:reliability` now fails if
 > it regresses.
+
+`/api/sealed/config` deliberately exposes three separate signals:
+
+- `launchReady`: the package, public key and registry are valid.
+- `managedReady`: the matching signer, cranker, encrypted-source key and Vercel cron are also
+  configured.
+- `ready`: currently equals `managedReady`, because managed execution is the default launch
+  mode. This fails closed until the full product can trade; it no longer sells an on-chain vault
+  that the scheduler cannot run. The endpoint cannot prove that the cranker wallet holds APT, so
+  the funded-wallet check in §5 remains mandatory.
+
+`POST /api/sealed/vaults` repeats this gate for managed source registration and also requires the
+on-chain attestor key to equal the configured platform key. A stale or custom client therefore
+cannot place an impossible-to-sign vault into the cron working set.
 
 **`SEALED_SOURCE_KEY` is not recoverable.** Lose it and every managed vault's stored strategy
 is undecryptable — those vaults stop trading permanently and creators must relaunch. Store it
@@ -667,6 +683,7 @@ pnpm db:migrate:deploy
 # Tests (all must pass before deploying)
 pnpm test:reliability      # invariants across the whole sealed surface
 pnpm test:source-vault     # encryption: nonces, tamper, cross-vault, rotation
+pnpm test:sealed-readiness # launch/registry/runner config and attestor keypair
 pnpm test:economics        # re-reads Decibel's limits from BOTH chains
 pnpm test:catalog          # every strategy commits; blurbs match their scripts
 pnpm test:sealed           # attestation BCS layout vs Move
@@ -674,7 +691,7 @@ pnpm test:transpiler       # transpiler rejects what it cannot honestly compile
 
 # Ops
 curl -s "https://<domain>/api/cron/sealed-tick?secret=$CRANK_SECRET" | jq
-curl -s "https://<domain>/api/sealed/config" | jq '.ready, .economics'
+curl -s "https://<domain>/api/sealed/config" | jq '{launchReady,managedReady,ready,missing,economics}'
 ```
 
 ## 11. Order of operations
@@ -685,10 +702,10 @@ curl -s "https://<domain>/api/sealed/config" | jq '.ready, .economics'
  3. pnpm sealed:publish --network mainnet                                      # §2
  4. Back up .sealed-e2e-mainnet/                                               # §2.3
  5. pnpm db:migrate:deploy                                                     # §3
- 6. Set §4.1 vars → redeploy → /api/sealed/config shows ready:true
+ 6. Set §4.1 vars → redeploy → config shows launchReady:true, managedReady:false
  7. Generate SEALED_SOURCE_KEY + CRANK_SECRET, set §4.2 vars                   # §4.2
  8. Fund the crank wallet                                                      # §5
- 9. Redeploy → curl the cron manually, expect ok:true                          # §6
+ 9. Redeploy → config shows ready:true; curl the cron, expect ok:true          # §6
 10. Smoke test one real vault                                                  # §7
 ```
 

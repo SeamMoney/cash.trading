@@ -1559,6 +1559,7 @@ const sealedTickLib = readFileSync("lib/sealed-tick.ts", "utf8");
 const sealedTickCron = readFileSync("app/api/cron/sealed-tick/route.ts", "utf8");
 const sealedAttestRoute = readFileSync("app/api/sealed/attest/route.ts", "utf8");
 const sourceVaultLib = readFileSync("lib/sealed-source-vault.ts", "utf8");
+const sealedReadinessLib = readFileSync("lib/sealed-readiness.ts", "utf8");
 
 assert.ok(
   sealedAttestRoute.includes("performTick") && sealedTickCron.includes("performTick"),
@@ -1663,10 +1664,26 @@ assert.ok(
 );
 const sealedConfigRoute = readFileSync("app/api/sealed/config/route.ts", "utf8");
 assert.ok(
-  sealedConfigRoute.includes("0x[0-9a-fA-F]{64}"),
+  sealedReadinessLib.includes("0x[0-9a-fA-F]{64}"),
   "config must validate the attestor pubkey FORMAT, not just its presence: a bare-hex key " +
     "reported ready:true and then failed on the LAST launch step, after the creator had " +
     "already paid to create the Decibel vault",
+);
+assert.ok(
+  sealedConfigRoute.includes("evaluateSealedReadiness") &&
+    sealedReadinessLib.includes("ready: managedReady") &&
+    sealedReadinessLib.includes("SEALED_ATTESTOR_PRIVATE_KEY") &&
+    sealedReadinessLib.includes("SEALED_CRANK_PRIVATE_KEY") &&
+    sealedReadinessLib.includes("SEALED_SOURCE_KEY") &&
+    sealedReadinessLib.includes("CRON_SECRET"),
+  "config.ready must mean the default managed bot can actually decrypt, sign and crank — " +
+    "package + public key alone can create a paid vault that never trades",
+);
+assert.ok(
+  sealedVaultsRoute2.includes("readiness.managedReady") &&
+    sealedVaultsRoute2.includes("must match the configured platform attestor key"),
+  "managed registration must reject an incomplete runner and an on-chain attestor key the " +
+    "platform cannot sign for",
 );
 const launchScript = readFileSync("scripts/sealed-vault-launch.ts", "utf8");
 assert.ok(

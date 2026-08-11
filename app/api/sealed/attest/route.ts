@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import { persistDecibelBuilderFills } from "@/lib/decibel-builder-revenue";
-import { performTick } from "@/lib/sealed-tick";
+import { attestorKeyMismatch, performTick } from "@/lib/sealed-tick";
 import {
   derivePrimarySubaccount,
   getSealedVault,
@@ -56,6 +56,14 @@ export async function POST(request: NextRequest) {
       { error: "SEALED_ATTESTOR_PRIVATE_KEY and SEALED_CRANK_PRIVATE_KEY must both be set" },
       { status: 501, headers: NO_STORE },
     );
+  }
+  const mismatch = attestorKeyMismatch(
+    attestorKeyRaw,
+    process.env.SEALED_ATTESTOR_PUBLIC_KEY ??
+      process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY,
+  );
+  if (mismatch) {
+    return NextResponse.json({ error: mismatch }, { status: 500, headers: NO_STORE });
   }
   if (!sealedRegistryAvailable()) {
     return NextResponse.json({ error: "registry unavailable" }, { status: 503, headers: NO_STORE });

@@ -42,6 +42,7 @@
     "test:economics": "tsx scripts/vault-economics-selftest.ts",
     "test:builder-revenue": "tsx scripts/decibel-builder-revenue-selftest.ts",
     "test:source-vault": "tsx scripts/sealed-source-vault-selftest.ts",
+    "test:sealed-readiness": "tsx scripts/sealed-readiness-selftest.ts",
     "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish"
   },
   "dependencies": {

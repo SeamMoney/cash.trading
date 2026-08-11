@@ -16,6 +16,7 @@ import {
   SealedRegistryProofError,
 } from "@/lib/sealed-registry-proof";
 import { encryptSource, sourceVaultAvailable } from "@/lib/sealed-source-vault";
+import { evaluateSealedReadiness } from "@/lib/sealed-readiness";
 import {
   MAX_PINE_BYTES,
   SEALED_PACKAGE,
@@ -185,6 +186,30 @@ export async function POST(request: NextRequest) {
       { error: "packageAddress does not match the configured sealed-vault package" },
       { status: 400, headers: NO_STORE },
     );
+  }
+
+  const wantsManagedAttestation =
+    typeof body.managedPine === "string" && body.managedPine.trim().length > 0;
+  if (wantsManagedAttestation) {
+    const readiness = evaluateSealedReadiness();
+    if (!readiness.managedReady) {
+      return NextResponse.json(
+        {
+          error: "managed attestation is not fully configured",
+          missing: readiness.missing,
+        },
+        { status: 503, headers: NO_STORE },
+      );
+    }
+    if ((body.attestorPubkey as string).toLowerCase() !== readiness.attestorPubkey) {
+      return NextResponse.json(
+        {
+          error:
+            "managed vault attestorPubkey must match the configured platform attestor key",
+        },
+        { status: 400, headers: NO_STORE },
+      );
+    }
   }
 
   // The allowlist, in order. Order is load-bearing — an action's `market_idx` addresses the

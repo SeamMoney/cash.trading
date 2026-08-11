@@ -13,10 +13,10 @@ import { checkApiRateLimit } from "@/lib/api-rate-limit";
 import {
   PORTFOLIO_DEFAULTS,
   SEALED_MARKETS,
-  SEALED_PACKAGE,
   readPlatformTerms,
 } from "@/lib/sealed-vaults";
 import { SEALED_PRESETS } from "@/lib/sealed-presets";
+import { evaluateSealedReadiness } from "@/lib/sealed-readiness";
 import {
   DECIBEL_VAULT_LIMITS,
   computeFeeBreakdown,
@@ -51,32 +51,12 @@ export async function GET(request: NextRequest) {
   // admin-settable on chain, and a stale constant would show a price that is no longer real.
   const terms = await readPlatformTerms();
 
-  const attestorPubkey =
-    process.env.SEALED_ATTESTOR_PUBLIC_KEY ??
-    process.env.NEXT_PUBLIC_SEALED_ATTESTOR_PUBLIC_KEY ??
-    null;
-
-  // Say exactly WHICH piece is missing. "Not configured" with no detail is a
-  // dead end for whoever has to fix it.
-  const missing: string[] = [];
-  if (!SEALED_PACKAGE) missing.push("SEALED_VAULT_PACKAGE");
-  if (!attestorPubkey) {
-    missing.push("SEALED_ATTESTOR_PUBLIC_KEY");
-  } else if (!/^0x[0-9a-fA-F]{64}$/.test(attestorPubkey.trim())) {
-    // Presence alone used to be enough, so a bare-hex key (what `aptos key generate` emits in
-    // some modes) reported ready:true — and the launch then 400'd on the FINAL step, after the
-    // creator had already paid to create the Decibel vault. Check the shape here instead.
-    missing.push("SEALED_ATTESTOR_PUBLIC_KEY (must be 0x + 64 hex)");
-  }
+  const readiness = evaluateSealedReadiness();
 
   return NextResponse.json(
     {
       ok: true,
-      packageAddress: SEALED_PACKAGE || null,
-      attestorPubkey,
-      missing,
-      // Honest readiness signal — the UI disables deploy and says why.
-      ready: missing.length === 0,
+      ...readiness,
       network:
         (process.env.NEXT_PUBLIC_DECIBEL_NETWORK ?? process.env.DECIBEL_NETWORK) === "mainnet"
           ? "mainnet"

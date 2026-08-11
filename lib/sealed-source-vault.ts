@@ -48,6 +48,20 @@ export function sourceVaultAvailable(): boolean {
   return keyProblem() === null;
 }
 
+/** Pure form used by deployment-readiness checks and their tests. */
+export function sourceKeyProblem(rawValue: string | null | undefined): string | null {
+  const raw = rawValue?.trim();
+  if (!raw) return "SEALED_SOURCE_KEY is not set";
+  const hex = raw.replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]*$/.test(hex)) {
+    return "SEALED_SOURCE_KEY contains non-hex characters — generate it with `openssl rand -hex 32`";
+  }
+  if (hex.length !== KEY_BYTES * 2) {
+    return `SEALED_SOURCE_KEY must be ${KEY_BYTES} bytes of hex (${KEY_BYTES * 2} characters); got ${hex.length}`;
+  }
+  return null;
+}
+
 /**
  * Why the key is unusable, or null if it is fine.
  *
@@ -58,16 +72,7 @@ export function sourceVaultAvailable(): boolean {
  * for a missing secret that was sitting right there.
  */
 export function keyProblem(): string | null {
-  const raw = process.env.SEALED_SOURCE_KEY?.trim();
-  if (!raw) return "SEALED_SOURCE_KEY is not set";
-  const hex = raw.replace(/^0x/i, "");
-  if (!/^[0-9a-fA-F]*$/.test(hex)) {
-    return "SEALED_SOURCE_KEY contains non-hex characters — generate it with `openssl rand -hex 32`";
-  }
-  if (hex.length !== KEY_BYTES * 2) {
-    return `SEALED_SOURCE_KEY must be ${KEY_BYTES} bytes of hex (${KEY_BYTES * 2} characters); got ${hex.length}`;
-  }
-  return null;
+  return sourceKeyProblem(process.env.SEALED_SOURCE_KEY);
 }
 
 function readKey(): Buffer {

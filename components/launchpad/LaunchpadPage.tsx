@@ -7,6 +7,7 @@ import { BacktestViewer } from "./BacktestViewer";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
+import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedSwap } from "@/components/sealed/SealedSwap";
 import { SealedVaultFeed } from "@/components/sealed/SealedVaultFeed";
 import { Header } from "@/components/layout/Header";
@@ -45,6 +46,8 @@ interface Indicator {
 // Restore the original Whop marketplace map. Each destination has one job and the labels
 // match the product model users already learned there.
 type Tab    = "explore" | "deploy" | "bots" | "creator";
+/** The Deploy tab hosts two stages: author a module, or take one live. */
+type DeployStage = "build" | "launch";
 type Sort   = "robustness" | "sharpe" | "raised";
 type Filter = "all" | "live" | "testing";
 
@@ -568,6 +571,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
 
 export function LaunchpadPage() {
   const [tab,        setTab]        = useState<Tab>("explore");
+  const [deployStage, setDeployStage] = useState<DeployStage>("build");
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [selected,   setSelected]   = useState<Indicator | null>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -741,8 +745,40 @@ export function LaunchpadPage() {
                     Back to marketplace
                   </button>
                 </header>
+                {/* Two genuinely different stages, both of which are "deploy a
+                    strategy": author/transpile Pine into a Move module, or take
+                    a strategy live as a sealed Decibel vault (where the source
+                    visibility, who-runs-it and launch-fee choices live). The
+                    launch flow was reachable from this tab before the workbench
+                    replaced it, and both need to be. */}
+                <div className="border-b border-card-border bg-[#161616] px-4 py-3">
+                  <div className="flex w-full max-w-md gap-0.5 rounded-[var(--radius-sm)] border border-white/[0.06] bg-[#0f0f0f] p-0.5">
+                    {([
+                      ["build", "Build from Pine"],
+                      ["launch", "Launch a vault"],
+                    ] as Array<[DeployStage, string]>).map(([s, label]) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setDeployStage(s)}
+                        aria-pressed={deployStage === s}
+                        className={cn(
+                          "flex-1 rounded-[calc(var(--radius-sm)-2px)] min-h-[36px] lg:min-h-[28px] font-display text-[12px] font-medium",
+                          PRODUCT_PRESSABLE_CLASS,
+                          deployStage === s ? "bg-accent/12 text-accent" : "text-[#9a9a9a] hover:text-zinc-200",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="bg-[#111] px-2 py-3 sm:px-4">
-                  <DeployForm onDeployed={handleDeployed} />
+                  {deployStage === "build" ? (
+                    <DeployForm onDeployed={handleDeployed} />
+                  ) : (
+                    <SealedLaunch onLaunched={() => { setTab("explore"); fetchIndicators(); }} />
+                  )}
                 </div>
               </div>
             </div>

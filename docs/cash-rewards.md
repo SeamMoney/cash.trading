@@ -34,21 +34,27 @@ boundary so an active week's cumulative entitlement does not change mid-week.
 
 ## Launch sequence
 
-Run `pnpm test:cash-rewards:mainnet-readiness` first. It verifies that the
-ignored offline keys match the public configuration, reads the manager's APT
-balance, and checks publication, initialization, caps, issuer, pause state,
-and vault funding. It is read-only and never prints private-key material.
+Run `pnpm cash-rewards:mainnet` first. Its default plan mode is read-only. It
+verifies both ignored keys, runs the five Move tests, compiles the exact
+production package, checks the manager's APT balance, and compares any
+published bytecode and initialized settings with this repository. It never
+prints private-key material.
 
 1. Back up `.cash-rewards/manager.key` offline. It is ignored by git.
 2. Send only enough mainnet APT to the public manager address for package
    publication and initialization.
-3. Publish `contracts/cash-rewards` with the manager named address.
-4. Initialize with the public issuer key and the caps in
-   `config/cash-rewards.json`; leave claims paused.
-5. Set the issuer private key in Vercel and verify a zero-value dry run.
-6. Fund the vault with a small CASH canary amount, claim to a test recipient,
+3. Run the guarded command printed by plan mode. It publishes only when the
+   module is absent, initializes only when the contract is uninitialized, and
+   verifies the bytecode, issuer, duration, and caps after each step. The
+   command is safe to rerun and always leaves claims paused.
+4. Set the issuer private key in Vercel and verify a zero-value dry run.
+5. Fund the vault with a small CASH canary amount, claim to a test recipient,
    verify balances/events/caps, then fund the intended pilot budget.
-7. Unpause only after the canary passes.
+6. Unpause only after the canary passes.
+
+`pnpm test:cash-rewards:mainnet-readiness` remains the final read-only launch
+check. It also verifies canary funding and the paused state, so it will remain
+blocked until the canary is funded and claims are deliberately enabled.
 
 Do not send the full token inventory to the distributor. Fund one pilot epoch
 at a time so the maximum economic exposure stays obvious and reversible.

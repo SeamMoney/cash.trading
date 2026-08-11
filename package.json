@@ -17,6 +17,8 @@
     "test:pine-marketplace": "tsx scripts/pine-marketplace-selftest.ts",
     "test:cash-rewards": "tsx scripts/cash-rewards-selftest.ts",
     "test:cash-rewards:mainnet-readiness": "tsx scripts/cash-rewards-mainnet-readiness.ts",
+    "test:cash-rewards:mainnet-deploy": "tsx scripts/cash-rewards-mainnet-deploy-selftest.ts",
+    "cash-rewards:mainnet": "tsx scripts/cash-rewards-mainnet-deploy.ts",
     "test:transpiler": "tsx scripts/transpiler-honesty-selftest.ts",
     "test:sealed": "tsx scripts/sealed-attestor-selftest.ts",
     "test:sealed-registry": "tsx scripts/sealed-registry-proof-selftest.ts",

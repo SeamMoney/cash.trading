@@ -317,8 +317,11 @@ function StatCard({ label, value, sub, good, warn }: { label: string; value: str
 
 // ─── Compact action bar: backtest toggle + deploy button ─────────────────────
 
-function BacktestBar({ ind }: { ind: Indicator }) {
-  const [showBacktest, setShowBacktest] = useState(false);
+function BacktestBar({ ind, showBacktest, setShowBacktest }: {
+  ind: Indicator;
+  showBacktest: boolean;
+  setShowBacktest: (fn: (v: boolean) => boolean) => void;
+}) {
   return (
     <>
       <div className="flex items-center justify-between px-5 py-3 border-t border-card-border">
@@ -361,6 +364,10 @@ function BacktestBar({ ind }: { ind: Indicator }) {
 // ─── Right panel: detail view ─────────────────────────────────────────────────
 
 function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: () => void }) {
+  // Lifted out of BacktestBar so the header can offer it as this strategy's
+  // primary action — the only accent control in the pane used to point at
+  // authoring a NEW strategy, not at doing anything with the selected one.
+  const [showBacktest, setShowBacktest] = useState(false);
   const live     = useLiveSignal(ind.address, ind.pkg);
   const flashing = useFlash(live.signal);
   const sig      = live.isLive ? live.signal : (ind.lastSignal ?? 0);
@@ -398,13 +405,31 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
           {ind.description && (
             <p className="mt-1 max-w-lg text-[12px] leading-relaxed text-[#a1a1a1]">{ind.description}</p>
           )}
-          <button
-            type="button"
-            onClick={onDeployOwn}
-            className={cn("mt-2 rounded-[var(--radius-xs)] font-mono text-[11px] text-accent/80 hover:text-accent", PRODUCT_PRESSABLE_CLASS)}
-          >
-            Deploy your own strategy from Pine Script →
-          </button>
+          {/* Primary action acts on THIS strategy. Backtesting is the real one
+              available today — the bonding curve and vault graduation are not
+              deployed (see the notice below), so an "invest" button here would
+              promise something the contract cannot do. Authoring a new strategy
+              is a different job and no longer wears the accent. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowBacktest((v) => !v)}
+              aria-expanded={showBacktest}
+              className={cn(
+                "rounded-[var(--radius-sm)] bg-accent px-3.5 py-2 text-[12px] font-display font-semibold text-black shadow-[0_2px_14px_-2px_rgba(57,255,20,0.35)] transition-all duration-200 hover:shadow-[0_4px_20px_-2px_rgba(57,255,20,0.5)] hover:brightness-[1.03]",
+                PRODUCT_PRESSABLE_CLASS,
+              )}
+            >
+              {showBacktest ? "Hide backtest" : "Backtest this strategy"}
+            </button>
+            <button
+              type="button"
+              onClick={onDeployOwn}
+              className={cn("rounded-[var(--radius-xs)] px-1 font-mono text-[11px] text-[#a1a1a1] hover:text-white", PRODUCT_PRESSABLE_CLASS)}
+            >
+              Deploy your own from Pine Script →
+            </button>
+          </div>
           {/* On-chain provenance — trustless means you can inspect it. Shown
               only for real on-chain vaults (testnet); links are explicit
               testnet so they resolve regardless of the app's network. */}
@@ -467,24 +492,6 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
         )}
       </div>
 
-      {/* ── Chart — edge-to-edge, no side padding ── */}
-      <div className="w-full">
-        <OnChainChart
-          indicatorAddr={ind.address}
-          packageAddress={ind.pkg}
-          asset={ind.assets[0] ?? "BTC/USD"}
-          indicatorType={ind.indicatorType ?? 0}
-          shortPeriod={ind.params?.[0] ?? 10}
-          longPeriod={ind.params?.[1] ?? 30}
-          thirdPeriod={ind.params?.[2] ?? 0}
-          refreshMs={15_000}
-          decibelMarket={
-            ind.address === CONTRACT ? ind.assets[0] ?? "BTC/USD" : undefined
-          }
-          decibelSize={0.001}
-        />
-      </div>
-
       {/* ── Key stats — floating, no cards ── */}
       {/* 2x2 below sm — four columns at 390px collapse into each other
           (labels crossing dividers, values overflowing cells). */}
@@ -517,6 +524,26 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
         </div>
       )}
 
+      {/* Chart sits BELOW the stats. Above them it filled the visible pane on
+          load, so the numbers a depositor actually judges a strategy by — win
+          rate, Sharpe, drawdown — were pushed off-screen on every viewport. */}
+      <div className="w-full">
+        <OnChainChart
+          indicatorAddr={ind.address}
+          packageAddress={ind.pkg}
+          asset={ind.assets[0] ?? "BTC/USD"}
+          indicatorType={ind.indicatorType ?? 0}
+          shortPeriod={ind.params?.[0] ?? 10}
+          longPeriod={ind.params?.[1] ?? 30}
+          thirdPeriod={ind.params?.[2] ?? 0}
+          refreshMs={15_000}
+          decibelMarket={
+            ind.address === CONTRACT ? ind.assets[0] ?? "BTC/USD" : undefined
+          }
+          decibelSize={0.001}
+        />
+      </div>
+
       {/* The production bonding curve is intentionally unavailable until its
           package and vault handoff are deployed and verifiable. */}
       {!ind.isGraduated && (
@@ -531,7 +558,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
         </div>
       )}
 
-      <BacktestBar ind={ind} />
+      <BacktestBar ind={ind} showBacktest={showBacktest} setShowBacktest={setShowBacktest} />
     </div>
   );
 }

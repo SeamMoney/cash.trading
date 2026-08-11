@@ -17,6 +17,13 @@ export interface BotConfig {
   marketName: string // Display name
   strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid' // Trading strategy
   aggressiveness?: number // 1-10 scale for order frequency (optional, defaults to 5)
+  /**
+   * Leverage multiple to size positions at. Defaults to DEFAULT_LEVERAGE_X (5).
+   * Previously every position was opened at the MARKET MAXIMUM (40x on BTC)
+   * with no way to ask for less, which is not something a user should get by
+   * omission. Clamped to the market max at use time.
+   */
+  leverageX?: number
 }
 
 export interface OrderHistory {
@@ -207,6 +214,39 @@ const MARKET_CONFIG: Record<string, MarketParams> = getActiveNetwork() === 'main
 // Decibel testnet DLP vault "backstop_liquidator" subaccount (observed on-chain)
 // Used for mirroring the vault's market making grid.
 const DLP_VAULT_SUBACCOUNT = '0x1aa8a40a749aacc063fd541f17ab13bd1e87f3eca8de54d73b6552263571e3d9'
+
+/**
+ * Exit thresholds for the directional (high_risk) strategy — ONE definition.
+ *
+ * These were previously copy-pasted into three places (entry sizing, the TP/SL
+ * placer, and the rapid monitor) and had drifted to TP +0.2% / SL -0.05% while
+ * the comment above the entry path still described 0.5%/0.3%. That combination
+ * is unprofitable by construction: a round trip costs ~0.17% (0.05% entry
+ * slippage + 0.05% exit slippage + 0.034% taker fee x2), which is more than
+ * THREE TIMES the 0.05% stop — so a position that never moves against you at
+ * all still closes at a loss, and the stop sits deep inside normal noise.
+ *
+ * The stop must clear costs by a sensible margin and the target must exceed the
+ * stop. 0.5%/0.3% restores the documented 1.4:1 and leaves ~0.33% net on a
+ * winner and ~0.47% on a loser after costs.
+ */
+export const HIGH_RISK_EXITS = {
+  /** Take profit, as a fraction of entry price. */
+  profitTargetPct: 0.005,
+  /** Stop loss, as a fraction of entry price. Must stay > round-trip cost. */
+  stopLossPct: 0.003,
+  /**
+   * The in-process monitor exits slightly before the on-chain stop so the two
+   * cannot race to close the same position.
+   */
+  emergencyStopMultiplier: 0.8,
+  /** Round-trip cost estimate the stop is checked against. */
+  roundTripCostPct: 0.0017,
+} as const
+
+/** Default leverage when a bot does not specify one. Was previously the market
+ *  maximum (40x on BTC), which is not a default anyone should get implicitly. */
+const DEFAULT_LEVERAGE_X = 5
 
 // Price history for momentum detection
 interface PricePoint {
@@ -630,7 +670,7 @@ export class VolumeBotEngine {
         size,
         entryPrice: Number.isFinite(avgPxRaw) ? avgPxRaw / 1_000_000 : 0,
         // Position leverage isn't consumed downstream; report the market max.
-        leverage: this.getMarketMaxLeverage(),
+        leverage: this.getEffectiveLeverage(),
       }
     } catch (error) {
       console.error('Error fetching position via perp_engine views:', error)
@@ -1542,11 +1582,10 @@ export class VolumeBotEngine {
       const { getWriteDex } = await import('./decibel-sdk')
       const writeDex = getWriteDex()
 
-      // MOMENTUM SCALPING - Risk parameters matching placeHighRiskOrderWithIOC
-      // Wider targets to actually cover trading costs and be profitable
-      // At 40x leverage: TP = 20% gain, SL = 12% loss
-      const PROFIT_TARGET_PCT = 0.002    // 0.2% price move = +8% leveraged profit at 40x
-      const STOP_LOSS_PCT = 0.0005       // 0.05% price move = -2% leveraged loss at 40x (tight!)
+      // Same thresholds as the entry path — imported, not re-typed, because
+      // these three copies had already drifted apart once.
+      const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
+      const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
 
       const tpPrice = isLong
         ? entryPrice * (1 + PROFIT_TARGET_PCT)
@@ -1820,15 +1859,15 @@ export class VolumeBotEngine {
     // - Fees: 0.034% taker x 2 = ~0.07%
     // - Total: ~0.17%
     //
-    // Strategy parameters:
-    // - TP: 0.5% price move → 20% at 40x (net ~0.33% after costs)
-    // - SL: 0.3% price move → 12% at 40x (net ~0.47% loss)
+    // Strategy parameters — see HIGH_RISK_EXITS for why these values and not
+    // the tighter ones this comment used to describe.
+    // - TP: 0.5% price move (net ~0.33% after ~0.17% round-trip costs)
+    // - SL: 0.3% price move (net ~0.47% loss)
     // - Risk/Reward: 1.4:1 (need ~60% win rate to profit)
-    // - Momentum entry should push win rate above 55%
     // ═══════════════════════════════════════════════════════════════════
     const IOC_SLIPPAGE_PCT = 0.05      // 5% slippage for guaranteed IOC fills on testnet
-    const PROFIT_TARGET_PCT = 0.002    // 0.2% price move → 8% at 40x leverage (tight TP for quick exits)
-    const STOP_LOSS_PCT = 0.0005       // 0.05% price move → 2% at 40x leverage (TIGHT stop to cut losses fast!)
+    const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
+    const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
     const CAPITAL_USAGE_PCT = 0.90     // Use 90% of capital (aggressive - maximize volume)
     const USE_TWAP_FALLBACK = true     // Enable TWAP fallback when IOC doesn't fill (testnet has no liquidity)
 
@@ -1924,18 +1963,24 @@ export class VolumeBotEngine {
 
         // ALWAYS check and place TP/SL if position exists
         // (TWAP fallback doesn't set TP/SL, so we need to do it here)
+        // A leveraged position without a stop is the single worst state this
+        // bot can be in: the in-process monitor dies with the serverless
+        // instance, so the on-chain TP/SL is the only protection that survives.
+        // If we cannot place it, close the position now rather than carry
+        // unprotected exposure to the next tick that may never come.
         try {
           console.log(`📊 [IOC] Ensuring TP/SL orders exist for position...`)
           await this.cancelTpSlForPosition() // Cancel any stale TP/SL first
-          await this.placeTpSlForPosition(
+          const tpsl = await this.placeTpSlForPosition(
             onChainPosition.entryPrice,
             onChainPosition.size,
             onChainPosition.isLong
           )
+          if (!tpsl.success) throw new Error(tpsl.error || 'TP/SL placement returned failure')
           console.log(`✅ [IOC] TP/SL orders placed/updated`)
         } catch (tpslError) {
-          console.warn(`⚠️ [IOC] Failed to place TP/SL:`, tpslError)
-          // Continue monitoring - we'll try again next tick
+          console.error(`🚨 [IOC] Could not protect position — closing it:`, tpslError)
+          return await this.forceClosePosition(onChainPosition)
         }
 
         // Check if volume target reached - force close
@@ -2107,7 +2152,7 @@ export class VolumeBotEngine {
       // if (!shouldEnter) { return { success: true, txHash: 'momentum_skip', ... } }
 
       console.log(`\n🎰 [IOC] Opening ${isLong ? 'LONG' : 'SHORT'} position with IOC...`)
-      const maxLeverage = this.getMarketMaxLeverage()
+      const maxLeverage = this.getEffectiveLeverage()
       const pxDecimals = this.getMarketConfig().pxDecimals
       const sizeDecimals = this.getMarketSizeDecimals()
 
@@ -2231,17 +2276,25 @@ export class VolumeBotEngine {
               }
             })
 
-            // Place TP/SL using actual entry price
+            // Place TP/SL using actual entry price. If it fails we unwind the
+            // position we just opened — carrying leverage with no stop is worse
+            // than paying the round trip to get flat again.
             try {
               console.log(`📊 [GTC] Placing TP/SL at entry $${newPosition.entryPrice.toFixed(2)}...`)
-              await this.placeTpSlForPosition(
+              const tpsl = await this.placeTpSlForPosition(
                 newPosition.entryPrice,
                 newPosition.size,
                 isLong
               )
+              if (!tpsl.success) throw new Error(tpsl.error || 'TP/SL placement returned failure')
               console.log(`✅ [GTC] TP/SL orders placed!`)
             } catch (tpslError) {
-              console.warn(`⚠️ [GTC] Failed to place TP/SL:`, tpslError)
+              console.error(`🚨 [GTC] Could not protect the new position — unwinding:`, tpslError)
+              return await this.forceClosePosition({
+                size: newPosition.size,
+                isLong,
+                entryPrice: newPosition.entryPrice,
+              })
             }
 
             this.startRapidPositionMonitor({
@@ -2503,10 +2556,10 @@ export class VolumeBotEngine {
 
     const elapsedMs = Date.now() - startTime
 
-    // Use same thresholds as main monitoring
-    const PROFIT_TARGET_PCT = 0.002  // 0.2% → 8% at 40x
-    const STOP_LOSS_PCT = 0.0005     // 0.05% → 2% at 40x (tight!)
-    const EMERGENCY_SL_PCT = STOP_LOSS_PCT * 0.8 // 0.24%
+    // Use same thresholds as main monitoring — one shared definition.
+    const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
+    const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
+    const EMERGENCY_SL_PCT = STOP_LOSS_PCT * HIGH_RISK_EXITS.emergencyStopMultiplier
 
     // Log every check with timing (compact format)
     console.log(`⚡ [${elapsedMs}ms] PnL: ${(pnlPct * 100).toFixed(3)}% | $${currentPrice.toFixed(0)} | TP:+${(PROFIT_TARGET_PCT*100).toFixed(2)}% SL:-${(EMERGENCY_SL_PCT*100).toFixed(2)}%`)
@@ -2763,11 +2816,17 @@ export class VolumeBotEngine {
           // This provides automatic on-chain exit triggers
           console.log(`📊 [SDK] Attempting to place TP/SL for new position...`)
           await this.cancelTpSlForPosition()  // Cancel any existing TP/SL first (max 10 limit)
-          await this.placeTpSlForPosition(
+          const adopted = await this.placeTpSlForPosition(
             onChainPosition.entryPrice,
             onChainPosition.size,
             onChainPosition.isLong
           )
+          // Same rule as the entry paths: an adopted position we cannot protect
+          // gets closed rather than tracked unprotected.
+          if (!adopted.success) {
+            console.error(`🚨 [SDK] Could not protect the adopted position — closing it: ${adopted.error}`)
+            return await this.forceClosePosition(onChainPosition)
+          }
         }
       }
 
@@ -2942,7 +3001,7 @@ export class VolumeBotEngine {
           // Calculate volume and PnL
           const positionValueUSD = (positionSize / Math.pow(10, sizeDecimals)) * currentPrice
           const estimatedPnl = positionValueUSD * priceChange
-          const maxLeverage = this.getMarketMaxLeverage()
+          const maxLeverage = this.getEffectiveLeverage()
           const leveragedPnlPercent = priceChangePercent * maxLeverage
 
           console.log(`   Expected PnL: $${estimatedPnl.toFixed(2)} (${leveragedPnlPercent.toFixed(2)}% with ${maxLeverage}x)`)
@@ -3035,7 +3094,7 @@ export class VolumeBotEngine {
         console.warn('⚠️ [HFT] No live price — skipping entry (never size an order on an unknown price)')
         return { success: false, txHash: 'no_price', volumeGenerated: 0, direction: isLong ? 'long' : 'short', size: 0, error: 'no live price' }
       }
-      const maxLeverage = this.getMarketMaxLeverage()
+      const maxLeverage = this.getEffectiveLeverage()
 
       // Use 90% of capital (maximize volume)
       const capitalToUse = this.config.capitalUSDC * 0.90
@@ -3322,6 +3381,19 @@ export class VolumeBotEngine {
   /**
    * Get max leverage for current market
    */
+  /**
+   * Leverage actually used to size a position: what the bot asked for, clamped
+   * to what the market allows. Every sizing path and every recorded order goes
+   * through this — previously they all called getMarketMaxLeverage() directly,
+   * so a bot silently traded at 40x whatever the user intended.
+   */
+  private getEffectiveLeverage(): number {
+    const marketMax = this.getMarketMaxLeverage()
+    const requested = this.config.leverageX ?? DEFAULT_LEVERAGE_X
+    if (!Number.isFinite(requested) || requested <= 0) return Math.min(DEFAULT_LEVERAGE_X, marketMax)
+    return Math.max(1, Math.min(requested, marketMax))
+  }
+
   private getMarketMaxLeverage(): number {
     // Chain-read leverage (populated at start) wins. The static map is stale
     // (e.g. HYPE is 5x now, not 3x) and only covers a fraction of live markets.
@@ -3573,7 +3645,7 @@ export class VolumeBotEngine {
               pnl: result.pnl || 0,
               positionHeldMs: result.positionHeldMs || 0,
               market: this.config.marketName,  // Save market name
-              leverage: this.getMarketMaxLeverage(),  // Save leverage used
+              leverage: this.getEffectiveLeverage(),  // Save leverage used
               userSubaccount: this.config.userSubaccount,  // Track which subaccount this trade was on
             }
           })
@@ -3649,7 +3721,7 @@ export class VolumeBotEngine {
                 pnl: result.pnl || 0,
                 positionHeldMs: result.positionHeldMs || 0,
                 market: this.config.marketName,
-                leverage: this.getMarketMaxLeverage(),
+                leverage: this.getEffectiveLeverage(),
                 userSubaccount: this.config.userSubaccount,
               }
             })

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { Header } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
@@ -983,6 +983,13 @@ export function TradePageClient({
     marketName?: string;
   }>({ id: "BTC/USD", pair: "BTC/USD", leverage: 40 });
   const [currentPrice, setCurrentPrice] = useState(0);
+  // The main area used to be three fixed columns (chart | book | trade panel).
+  // The two right-hand columns have hard min widths, so as the viewport shrinks
+  // — or the user zooms in, which is the same thing in CSS pixels — the chart is
+  // squeezed to roughly a third and becomes unreadable. Chart and order book now
+  // SHARE one wide region switched by these tabs, so whichever is visible gets
+  // the full combined width at any zoom.
+  const [mainView, setMainView] = useState<"chart" | "book" | "trades">("chart");
   const [vaultAction, setVaultAction] = useState<{
     mode: VaultActionMode;
     indicator: GraduatedIndicator;
@@ -1092,6 +1099,20 @@ export function TradePageClient({
     [signAndSubmitDecibelTransaction],
   );
 
+  // Switching tabs must not re-render the chart — it repaints its canvas and
+  // makes the click feel laggy. A stable element lets React skip the subtree.
+  const chartNode = useMemo(
+    () => (
+      <BTCChart
+        initialHistory={initialBtcCandles}
+        onMarketChange={handleMarketChange}
+        onPriceUpdate={handlePriceUpdate}
+        className="xl:h-full"
+      />
+    ),
+    [initialBtcCandles, handleMarketChange, handlePriceUpdate],
+  );
+
   return (
     <div className="min-h-screen pb-24 lg:pb-0">
       <Header />
@@ -1100,31 +1121,70 @@ export function TradePageClient({
         {/* ── Desktop: side-by-side. Mobile: stacked ── */}
         <div
           id="trade"
-          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,390px)_minmax(320px,380px)] xl:items-stretch xl:gap-4"
+          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:items-stretch xl:gap-4"
         >
-          {/* BTC Chart */}
-          <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">
-            <BTCChart
-              initialHistory={initialBtcCandles}
-              onMarketChange={handleMarketChange}
-              onPriceUpdate={handlePriceUpdate}
-              className="xl:h-full"
-            />
-          </div>
+          {/* Chart and order book share this column, switched by the tab bar, so
+              each gets the full width instead of a squeezed third. */}
+          <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px] xl:flex xl:flex-col">
+            <div
+              role="tablist"
+              aria-label="Market view"
+              className="mb-2 hidden shrink-0 items-center gap-5 xl:flex"
+            >
+              {([
+                ["chart", "Chart"],
+                ["book", "Order Book"],
+                ["trades", "Trades"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={mainView === key}
+                  onClick={() => setMainView(key)}
+                  className={cn(
+                    "group relative py-1 font-mono text-[10px] uppercase tracking-[0.14em] outline-none",
+                    mainView === key ? "text-zinc-100" : "text-zinc-600 hover:text-zinc-400",
+                  )}
+                >
+                  {label}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute -bottom-px left-0 h-px w-full origin-left bg-accent transition-transform duration-150 ease-out",
+                      mainView === key ? "scale-x-100" : "scale-x-0",
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
 
-          <div className="hidden min-w-0 animate-enter animate-enter-delay-2 xl:block xl:h-[672px]">
-            <OrderBook
-              key={decibelMarketAddress ?? decibelMarketName}
-              marketName={decibelMarketName}
-              marketAddress={decibelMarketAddress}
-              currentPrice={currentPrice}
-              rowCount={21}
-              className="h-full min-h-0"
-            />
+            {/* Both stay mounted: the chart keeps its websocket, candle history
+                and zoom state instead of remounting on every tab switch. */}
+            <div className={cn("min-h-0 xl:flex-1", mainView !== "chart" && "xl:hidden")}>
+              {chartNode}
+            </div>
+            <div className={cn("hidden min-h-0 xl:flex-1", mainView !== "chart" && "xl:block")}>
+              <OrderBook
+                key={decibelMarketAddress ?? decibelMarketName}
+                marketName={decibelMarketName}
+                marketAddress={decibelMarketAddress}
+                currentPrice={currentPrice}
+                rowCount={21}
+                view={mainView === "trades" ? "trades" : "book"}
+                layout="wide"
+                className="h-full min-h-0"
+              />
+            </div>
           </div>
 
           {/* Trade Panel — right sidebar on desktop */}
-          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:h-[672px] xl:max-w-none">
+          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:flex xl:h-[672px] xl:max-w-none xl:flex-col">
+            {/* Mirrors the tab row's height so this card shares its top and
+                bottom edges with the chart card next to it. */}
+            <div aria-hidden className="mb-2 hidden shrink-0 items-center xl:flex">
+              <span className="py-1 font-mono text-[10px] uppercase tracking-[0.14em] opacity-0">Chart</span>
+            </div>
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1132,7 +1192,7 @@ export function TradePageClient({
               marketAddress={decibelMarketAddress}
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
-              className="xl:h-full"
+              className="xl:min-h-0 xl:flex-1"
             />
             <div className="mt-3 xl:hidden">
               <OrderBook

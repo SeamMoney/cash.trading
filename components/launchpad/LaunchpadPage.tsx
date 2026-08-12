@@ -346,59 +346,47 @@ function StatCard({ label, value, sub, good, warn }: { label: string; value: str
   );
 }
 
-// ─── Compact action bar: backtest toggle + deploy button ─────────────────────
+// ─── Backtest panel ──────────────────────────────────────────────────────────
 
-function BacktestBar({ ind, showBacktest, setShowBacktest }: {
-  ind: Indicator;
-  showBacktest: boolean;
-  setShowBacktest: (fn: (v: boolean) => boolean) => void;
-}) {
+/**
+ * Just the panel. It used to carry its own "▶ Backtest" toggle and a
+ * permanently-disabled "Automation unavailable" button, but the header already
+ * owns the toggle — two controls for one job — and a button that can never be
+ * pressed is not information, it is furniture.
+ */
+function BacktestBar({ ind, showBacktest }: { ind: Indicator; showBacktest: boolean }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // The panel opens below the stats and a full-height chart — roughly 700px
+  // under the button that opened it. Without this, pressing "Backtest this
+  // strategy" looks like it did nothing at all.
+  useEffect(() => {
+    if (!showBacktest || !panelRef.current) return;
+    // "center", not "nearest": the panel has just mounted, so it is never
+    // usefully on screen already, and a minimal scroll leaves it pinned to the
+    // bottom edge where it still reads as nothing having happened.
+    panelRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [showBacktest]);
+
+  if (!showBacktest) return null;
   return (
-    <>
-      <div className="flex items-center justify-between px-5 py-3 border-t border-card-border">
-        <button
-          type="button"
-          onClick={() => setShowBacktest((v) => !v)}
-          aria-expanded={showBacktest}
-          className={cn("flex items-center gap-1.5 rounded-[var(--radius-xs)] font-mono text-[11px] text-[#a1a1a1] hover:text-zinc-300", PRODUCT_PRESSABLE_CLASS)}
-        >
-          <span style={{
-            display: "inline-block",
-            transform: showBacktest ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 0.15s",
-          }}>▶</span>
-          Backtest
-        </button>
-        <button
-          type="button"
-          disabled
-          title="Persistent, wallet-authorized launchpad automation is not deployed"
-          className="px-4 py-2 rounded-[var(--radius-sm)] text-[12px] font-display font-bold flex items-center gap-1.5 border border-card-border bg-[#181818] text-[#8a8a8a] cursor-not-allowed"
-        >
-          Automation unavailable
-        </button>
-      </div>
-      {showBacktest && (
-        <div className="px-5 pb-5">
-          <BacktestViewer
-            indicatorAddr={ind.address}
-            indicatorName={ind.name}
-            indicatorType={ind.indicatorType}
-            params={ind.params}
-            asset={ind.assets[0] ?? "BTC/USD"}
-          />
-        </div>
-      )}
-    </>
+    <div ref={panelRef} className="border-t border-card-border px-5 py-5">
+      <BacktestViewer
+        indicatorAddr={ind.address}
+        indicatorName={ind.name}
+        indicatorType={ind.indicatorType}
+        params={ind.params}
+        asset={ind.assets[0] ?? "BTC/USD"}
+      />
+    </div>
   );
 }
 
 // ─── Right panel: detail view ─────────────────────────────────────────────────
 
-function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: () => void }) {
-  // Lifted out of BacktestBar so the header can offer it as this strategy's
-  // primary action — the only accent control in the pane used to point at
-  // authoring a NEW strategy, not at doing anything with the selected one.
+function IndicatorDetail({ ind }: { ind: Indicator }) {
+  // The header owns the backtest toggle: it is the one thing you can actually
+  // do to the selected strategy today.
   const [showBacktest, setShowBacktest] = useState(false);
   const live     = useLiveSignal(ind.address, ind.pkg);
   const flashing = useFlash(live.signal);
@@ -439,12 +427,10 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
           {ind.description && (
             <p className="mt-1 max-w-lg text-[12px] leading-relaxed text-[#a1a1a1]">{ind.description}</p>
           )}
-          {/* Primary action acts on THIS strategy. Backtesting is the real one
-              available today — the bonding curve and vault graduation are not
-              deployed (see the notice below), so an "invest" button here would
-              promise something the contract cannot do. Authoring a new strategy
-              is a different job and no longer wears the accent. */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          {/* One action, acting on THIS strategy. Authoring a new one is a
+              different job and already has the page's "+ Deploy Strategy"
+              button — repeating it here as a second link only split attention. */}
+          <div className="mt-3">
             <button
               type="button"
               onClick={() => setShowBacktest((v) => !v)}
@@ -455,13 +441,6 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
               )}
             >
               {showBacktest ? "Hide backtest" : "Backtest this strategy"}
-            </button>
-            <button
-              type="button"
-              onClick={onDeployOwn}
-              className={cn("rounded-[var(--radius-xs)] px-1 font-mono text-[11px] text-[#a1a1a1] hover:text-white", PRODUCT_PRESSABLE_CLASS)}
-            >
-              Deploy your own from Pine Script →
             </button>
           </div>
           {/* On-chain provenance — trustless means you can inspect it. Shown
@@ -597,7 +576,7 @@ function IndicatorDetail({ ind, onDeployOwn }: { ind: Indicator; onDeployOwn: ()
         </div>
       )}
 
-      <BacktestBar ind={ind} showBacktest={showBacktest} setShowBacktest={setShowBacktest} />
+      <BacktestBar ind={ind} showBacktest={showBacktest} />
     </div>
   );
 }
@@ -959,7 +938,6 @@ export function LaunchpadPage() {
                       <IndicatorDetail
                         key={selected.address}
                         ind={selected}
-                        onDeployOwn={() => setTab("deploy")}
                       />
                     ) : (
                       <EmptyState onDeploy={() => setTab("deploy")} />

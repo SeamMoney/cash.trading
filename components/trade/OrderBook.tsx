@@ -20,18 +20,6 @@ interface OrderBookProps {
   currentPrice?: number;
   className?: string;
   rowCount?: number;
-  /**
-   * When the parent owns the Book/Trades switch (the trade page's combined
-   * Chart | Book | Trades tab bar), pass it here. The component's own header
-   * toggle is hidden so there is only one row of tabs, not two.
-   */
-  view?: "book" | "trades";
-  /**
-   * "wide" splits the book into side-by-side bid and ask ladders and adds
-   * Side/Size columns to the trades table — for when this owns the full
-   * chart-width pane rather than a narrow sidebar.
-   */
-  layout?: "compact" | "wide";
 }
 
 interface Level {
@@ -58,12 +46,6 @@ interface LadderRow {
   price: number;
   bidSize: number;
   askSize: number;
-}
-
-interface SideRow {
-  price: number;
-  size: number;
-  total: number;
 }
 
 const DISPLAY_LEVELS = 20;
@@ -172,29 +154,6 @@ function buildLadderRows(book: OrderBookData, centerPrice: number, step: number,
       bidSize: bidMap.get(price) ?? 0,
       askSize: askMap.get(price) ?? 0,
     };
-  });
-}
-
-/**
- * One side of the book as its own ladder with a running cumulative size, for
- * the wide two-sided layout. Only price levels that actually carry size are
- * returned — a contiguous grid of mostly-empty buckets reads as a dead book.
- */
-function buildSideRows(levels: Level[], step: number, rowCount: number, direction: -1 | 1): SideRow[] {
-  const map = new Map<number, number>();
-  levels.slice(0, DISPLAY_LEVELS * 4).forEach((level) => {
-    addToBucket(map, level.price, level.size, step);
-  });
-
-  const sorted = [...map.entries()]
-    .filter(([, size]) => size > 0)
-    .sort((a, b) => (direction === -1 ? b[0] - a[0] : a[0] - b[0]))
-    .slice(0, rowCount);
-
-  let cumulative = 0;
-  return sorted.map(([price, size]) => {
-    cumulative += size;
-    return { price, size, total: cumulative };
   });
 }
 
@@ -448,125 +407,20 @@ function LadderRowView({
   );
 }
 
-/**
- * Bids and asks side by side, each with its own Price/Size/Total columns and a
- * depth bar radiating out from the spread. Used when the book owns the full
- * chart-width pane, where a single centred ladder would leave dead space.
- */
-function SideLadder({
-  side,
-  rows,
-  maxSize,
-  onPriceClick,
-}: {
-  side: "bid" | "ask";
-  rows: SideRow[];
-  maxSize: number;
-  onPriceClick?: (price: number) => void;
-}) {
-  const isBid = side === "bid";
-  const color = isBid ? POSITIVE : NEGATIVE;
-  const barColor = isBid ? POSITIVE_ALPHA : NEGATIVE_ALPHA;
-  const columns = isBid ? "1fr 1fr 1.15fr" : "1.15fr 1fr 1fr";
-  const headings = isBid ? ["Total", "Size", "Price"] : ["Price", "Size", "Total"];
-
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        className="grid shrink-0 gap-x-3 border-b border-white/[0.06] px-3 pb-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600"
-        style={{ gridTemplateColumns: columns }}
-      >
-        {headings.map((heading, index) => (
-          <span key={heading} className={index === headings.length - 1 ? "text-right" : index === 0 ? "text-left" : "text-right"}>
-            {heading}
-          </span>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
-        {/* Fixed row height, not 1fr: a thin book has few real levels and
-            stretching them to fill the pane makes 80px-tall rows. */}
-        <div className="grid" style={{ gridTemplateRows: `repeat(${rows.length}, 28px)` }}>
-          {rows.map((row) => {
-            const pct = maxSize > 0 ? Math.min(100, (row.size / maxSize) * 100) : 0;
-            return (
-              <button
-                key={row.price}
-                type="button"
-                onClick={() => onPriceClick?.(row.price)}
-                className="relative grid h-full w-full items-center gap-x-3 overflow-hidden px-3 text-left font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.04]"
-                style={{ gridTemplateColumns: columns }}
-              >
-                {row.size > 0 && (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-y-[3px] rounded-[3px]"
-                    style={{
-                      [isBid ? "right" : "left"]: 0,
-                      width: `${pct}%`,
-                      backgroundColor: barColor,
-                    }}
-                  />
-                )}
-                {isBid ? (
-                  <>
-                    <span className="relative truncate text-left text-zinc-600">
-                      {row.total > 0 ? formatSize(row.total) : ""}
-                    </span>
-                    <span className="relative truncate text-right text-zinc-300">
-                      {row.size > 0 ? formatSize(row.size) : ""}
-                    </span>
-                    <span className="relative truncate text-right font-semibold" style={{ color }}>
-                      {formatPrice(row.price)}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="relative truncate text-left font-semibold" style={{ color }}>
-                      {formatPrice(row.price)}
-                    </span>
-                    <span className="relative truncate text-right text-zinc-300">
-                      {row.size > 0 ? formatSize(row.size) : ""}
-                    </span>
-                    <span className="relative truncate text-right text-zinc-600">
-                      {row.total > 0 ? formatSize(row.total) : ""}
-                    </span>
-                  </>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function TradesTable({
   trades,
   network,
   status,
-  layout = "compact",
 }: {
-  layout?: "compact" | "wide";
   trades: TradePrint[];
   network: DecibelPublicNetwork;
   status: "loading" | "live" | "waiting" | "unavailable";
 }) {
-  const wide = layout === "wide";
-  const columns = wide
-    ? "110px 64px 1fr 1fr 1fr 64px"
-    : "72px 1fr 1fr 52px";
-
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col px-3 py-2">
-      <div
-        className="grid shrink-0 gap-x-3 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase tracking-wider text-zinc-600"
-        style={{ gridTemplateColumns: columns }}
-      >
+    <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
+      <div className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
         <span>Time</span>
-        {wide && <span>Side</span>}
         <span className="text-right">Price</span>
-        {wide && <span className="text-right">Size</span>}
         <span className="text-right">USD</span>
         <span className="text-right">Tx</span>
       </div>
@@ -579,27 +433,15 @@ function TradesTable({
             {trades.map((trade) => (
               <div
                 key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
-                className="grid h-full min-h-7 items-center gap-x-3 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
-                style={{ gridTemplateColumns: columns }}
+                className="grid h-full min-h-7 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
               >
                 <span className="truncate text-zinc-600">{formatTime(trade.timestamp)}</span>
-                {wide && (
-                  <span
-                    className="truncate uppercase"
-                    style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#71717a" }}
-                  >
-                    {trade.side === "unknown" ? "—" : trade.side}
-                  </span>
-                )}
                 <span
                   className="text-right font-semibold"
                   style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
                 >
                   {formatPrice(trade.price)}
                 </span>
-                {wide && (
-                  <span className="truncate text-right text-zinc-500">{formatSize(trade.size)}</span>
-                )}
                 <span className="truncate text-right text-zinc-400">
                   {formatUsdNotional(trade.price, trade.size)}
                 </span>
@@ -635,8 +477,6 @@ export function OrderBook({
   currentPrice,
   className,
   rowCount = DEFAULT_LADDER_ROWS,
-  view,
-  layout = "compact",
 }: OrderBookProps) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [book, setBook] = useState<OrderBookData>({
@@ -647,12 +487,7 @@ export function OrderBook({
   const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
   const [trades, setTrades] = useState<TradePrint[]>([]);
   const [tradesStatus, setTradesStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
-  const [internalTab, setInternalTab] = useState<"book" | "trades">("book");
-  // Parent-controlled when `view` is passed (the combined tab bar), otherwise
-  // self-managed via the header toggle.
-  const controlled = view != null;
-  const activeTab = view ?? internalTab;
-  const setActiveTab = setInternalTab;
+  const [activeTab, setActiveTab] = useState<"book" | "trades">("book");
   const previousPriceRef = useRef(currentPrice ?? 0);
 
   const resolvedMarketAddress =
@@ -832,22 +667,6 @@ export function OrderBook({
     [rows],
   );
 
-  const wide = layout === "wide";
-  const sideRowCount = wide ? Math.max(12, Math.min(40, visibleRowCount)) : 0;
-  const bidRows = useMemo(
-    () => (wide ? buildSideRows(book.bids, step, sideRowCount, -1) : []),
-    [wide, book.bids, step, sideRowCount],
-  );
-  const askRows = useMemo(
-    () => (wide ? buildSideRows(book.asks, step, sideRowCount, 1) : []),
-    [wide, book.asks, step, sideRowCount],
-  );
-  const sideMaxSize = useMemo(
-    () => Math.max(1, ...bidRows.map((row) => row.size), ...askRows.map((row) => row.size)),
-    [bidRows, askRows],
-  );
-  const spread = bestBid && bestAsk ? bestAsk - bestBid : null;
-
   const statusText =
     activeTab === "trades"
       ? tradesStatus === "live"
@@ -871,65 +690,46 @@ export function OrderBook({
       <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
         <div className="flex items-center gap-3">
           <span>{symbol}</span>
-          {wide && activeTab === "book" && spread != null && spread >= 0 && (
-            <span className="text-zinc-500">
-              {/* Priced in the market's own tick precision, not the spread's —
-                  a $0.10 spread on BTC is "$0.10", never "$0.100000". */}
-              Spread ${spread.toFixed(priceDecimals(midPrice || spread))}
-              {midPrice ? ` · ${((spread / midPrice) * 10_000).toFixed(2)} bp` : ""}
-            </span>
-          )}
-          {/* Hidden when the parent owns the switch, so the combined
-              Chart | Book | Trades bar is the only set of tabs. */}
-          {!controlled && (
-            <div className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5">
-              {(["book", "trades"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    "rounded-[5px] px-2 py-0.5 text-[9px] transition-colors",
-                    activeTab === tab
-                      ? "bg-white/[0.08] text-zinc-200"
-                      : "text-zinc-600 hover:text-zinc-400",
-                  )}
-                >
-                  {tab === "book" ? "Book" : "Trades"}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5">
+            {(["book", "trades"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "rounded-[5px] px-2 py-0.5 text-[9px] transition-colors",
+                  activeTab === tab
+                    ? "bg-white/[0.08] text-zinc-200"
+                    : "text-zinc-600 hover:text-zinc-400",
+                )}
+              >
+                {tab === "book" ? "Book" : "Trades"}
+              </button>
+            ))}
+          </div>
         </div>
         <span>{statusText}</span>
       </div>
 
       {activeTab === "book" ? (
-        wide ? (
-          <div className="flex min-h-0 flex-1 divide-x divide-white/[0.06] pt-2">
-            <SideLadder side="bid" rows={bidRows} maxSize={sideMaxSize} onPriceClick={onPriceClick} />
-            <SideLadder side="ask" rows={askRows} maxSize={sideMaxSize} onPriceClick={onPriceClick} />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+          <div
+            className="grid min-h-full py-1"
+            style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
+          >
+            {rows.map((row) => (
+              <LadderRowView
+                key={row.price}
+                row={row}
+                center={center}
+                maxSize={maxSize}
+                onPriceClick={onPriceClick}
+              />
+            ))}
           </div>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
-            <div
-              className="grid min-h-full py-1"
-              style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
-            >
-              {rows.map((row) => (
-                <LadderRowView
-                  key={row.price}
-                  row={row}
-                  center={center}
-                  maxSize={maxSize}
-                  onPriceClick={onPriceClick}
-                />
-              ))}
-            </div>
-          </div>
-        )
+        </div>
       ) : (
-        <TradesTable trades={trades} network={network} status={tradesStatus} layout={layout} />
+        <TradesTable trades={trades} network={network} status={tradesStatus} />
       )}
 
       <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-700">

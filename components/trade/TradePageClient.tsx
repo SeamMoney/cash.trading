@@ -1096,11 +1096,15 @@ export function TradePageClient({
     <div className="min-h-screen pb-24 lg:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
-        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
-        {/* ── Desktop: side-by-side. Mobile: stacked ── */}
+        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
+        {/* ── Desktop: side-by-side. Mobile: stacked ──
+            Between xl and 2xl the two side columns took their maximum width and
+            left the chart barely a third of the row — very visible at 125%
+            browser zoom. Hold them at their designed minimum until there is
+            genuinely room to grow, so the spare width goes to the chart. */}
         <div
           id="trade"
-          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,390px)_minmax(320px,380px)] xl:items-stretch xl:gap-4"
+          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px_336px] xl:items-stretch 2xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)_minmax(340px,380px)] 2xl:gap-4"
         >
           {/* BTC Chart */}
           <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">

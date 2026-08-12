@@ -84,13 +84,21 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
-      style={{ backgroundColor: "#000000" }}
+      data-theme="dark"
+      style={{ colorScheme: "dark" }}
     >
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Resolve the stored theme before first paint, or a light-theme user
+            sees a black flash on every navigation. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("cash-trading-theme");if(t!=="light"&&t!=="dark")t="dark";document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
+          }}
+        />
       </head>
-      <body className="font-mono antialiased" style={{ backgroundColor: "#000000" }}>
+      <body className="font-mono antialiased">
         <ChunkReload />
         <ClientProviders>
           <Suspense fallback={null}>{children}</Suspense>
@@ -100,9 +108,9 @@ export default function RootLayout({
           duration={2000}
           toastOptions={{
             style: {
-              background: '#000',
-              border: '1px solid #39ff14',
-              color: '#fff',
+              background: 'var(--toast-background)',
+              border: '1px solid var(--accent)',
+              color: 'var(--toast-foreground)',
               fontWeight: 500,
             },
             className: 'font-mono',

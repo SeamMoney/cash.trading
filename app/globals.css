@@ -15,6 +15,15 @@
    ============================================================================= */
 
 :root {
+  /* Page chrome behind every surface. The light theme overrides these two and
+     nothing else at this level — everything else flows from .cash-trade-theme. */
+  --page-background: #000000;
+  --page-color-scheme: dark;
+  /* Toasts render in a portal outside .cash-trade-theme, so they read their
+     colours from the document root rather than the product theme block. */
+  --toast-background: #000000;
+  --toast-foreground: #ffffff;
+
   /* ---------------------------------------------------------------------------
      CORE COLORS
      Using OKLch for perceptually uniform color space
@@ -289,16 +298,18 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Token-driven, not a literal black: the light theme redefines
+     --page-background, and an !important literal here would outrank it. */
   html {
-    background-color: black !important;
-    color-scheme: dark;
+    background-color: var(--page-background) !important;
+    color-scheme: var(--page-color-scheme);
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-color: black !important;
+    background-color: var(--page-background) !important;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -819,3 +830,396 @@
     background-color: rgba(255, 255, 255, 0.24);
   }
 }
+
+/* =============================================================================
+   LIGHT THEME — activated by data-theme="light" on <html>
+   Set by the boot script in app/layout.tsx and toggled by
+   components/layout/theme-toggle.tsx.
+
+   Unlayered on purpose: unlayered rules outrank every @layer, so these beat
+   both Tailwind utilities and the .cash-trade-theme block above. Implemented
+   as token and palette overrides so no component needs a light-mode variant.
+   ============================================================================= */
+
+:root[data-theme="light"] {
+  --page-background: #ffffff;
+  --page-color-scheme: light;
+  --toast-background: #ffffff;
+  --toast-foreground: #18181b;
+
+  /* Shared ladder — everything below references these so the two token blocks
+     can never drift apart. */
+  --lt-ink:        #18181b;  /* primary ink,   17.0:1 on #fafafa */
+  --lt-ink-2:      #3f3f46;  /* secondary ink, 10.0:1 */
+  --lt-ink-3:      #5c5c63;  /* muted ink,      6.6:1 */
+  --lt-page:       #ffffff;
+  --lt-surface-1:  #fafafa;
+  --lt-surface-2:  #f4f4f5;
+  --lt-surface-3:  #eeeef0;
+  --lt-surface-4:  #e7e7ea;
+  --lt-hairline:        rgba(9, 9, 11, 0.11);
+  --lt-hairline-strong: rgba(9, 9, 11, 0.22);
+  --lt-neon:       #39ff14;  /* brand green — kept for BACKGROUNDS only */
+  --lt-green-ink:  #1e860a;  /* brand green as TEXT: 4.50:1 on #fafafa */
+  --lt-green-line: #22a30c;  /* brand green as BORDER/RING: 2.6:1, still neon */
+  --lt-danger:     #d01414;  /* #f21a1a is 4.07:1 on white — darkened to 5.4:1 */
+  --lt-warning:    #9c6916;  /* #f5a623 is 1.94:1 on white — darkened to 4.5:1 */
+
+  /* --- :root token set (pages that do NOT use the .cash-trade-theme wrapper
+         and all shadcn primitives) --------------------------------------- */
+  --background: var(--lt-page);
+  --foreground: var(--lt-ink);
+  --card: #ffffff;
+  --card-foreground: var(--lt-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--lt-ink);
+  --primary: var(--lt-neon);
+  --primary-foreground: #0a0a0a;
+  --secondary: var(--lt-surface-2);
+  --secondary-foreground: #27272a;
+  --muted: #e8e8eb;               /* shadcn semantics: a subtle SURFACE */
+  --muted-foreground: var(--lt-ink-3);
+  --accent: var(--lt-surface-3);  /* at :root --accent is a surface, not brand */
+  --accent-foreground: var(--lt-ink);
+  --destructive: var(--lt-danger);
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  --input: var(--lt-surface-2);
+  --ring: var(--lt-green-line);
+  --success: #148f2e;
+  --success-foreground: #ffffff;
+  --warning: var(--lt-warning);
+  --warning-foreground: #ffffff;
+  --info: #1447e6;
+  --info-foreground: #ffffff;
+
+  --chart-1: var(--lt-green-ink);
+  --chart-2: #2f7d32;
+  --chart-3: #1f6b4a;
+  --chart-4: #148f2e;
+  --chart-5: #b45309;
+  --chart-background: #ffffff;
+  --chart-foreground: var(--lt-ink-3);
+  --chart-grid: rgba(9, 9, 11, 0.10);
+  --chart-line-primary: var(--lt-green-ink);
+  --chart-line-secondary: #2f7d32;
+  --chart-crosshair: rgba(9, 9, 11, 0.35);
+  --chart-tooltip-background: rgba(255, 255, 255, 0.95);
+  --chart-tooltip-foreground: var(--lt-ink);
+  --chart-area-fill: rgba(30, 134, 10, 0.12);
+
+  /* Dark-mode shadows are near-opaque black; on white they read as smudges. */
+  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.06);
+  --shadow-md: 0 4px 6px rgba(9, 9, 11, 0.08);
+  --shadow-lg: 0 10px 15px rgba(9, 9, 11, 0.10);
+  --shadow-xl: 0 20px 25px rgba(9, 9, 11, 0.12);
+  --shadow-glow: 0 0 20px rgba(30, 134, 10, 0.18);
+  --shadow-glow-strong: 0 0 40px rgba(30, 134, 10, 0.28);
+
+  --sidebar: var(--lt-surface-1);
+  --sidebar-foreground: var(--lt-ink);
+  --sidebar-primary: var(--lt-green-ink);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--lt-surface-3);
+  --sidebar-accent-foreground: var(--lt-ink);
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: var(--lt-green-line);
+
+  /* --- white/black -----------------------------------------------------
+     Flips 216 `text-white`, 35 `hover:text-white` and ~500 white/N alpha
+     overlays at once. --color-black is deliberately NOT overridden: 44
+     `text-black` sites are the foreground on neon-green CTAs that stay neon
+     here, and ~95 `bg-black/N` modal scrims are correct as black on white too.
+     Solid `.bg-black` is flipped by class further down instead. */
+  --color-white: #101014;
+
+  /* --- zinc scale (the only palette scale in real use) ---
+     Mirrored around 500, which measures 4.10:1 on #0a0a0a and 4.62:1 on
+     #fafafa — the natural pivot, so it stays put. */
+  --color-zinc-50:  #09090b;
+  --color-zinc-100: #18181b;  /* brightest fg -> darkest ink  (17.0:1) */
+  --color-zinc-200: #27272a;  /* 14.3:1 */
+  --color-zinc-300: #3f3f46;  /* 10.0:1 */
+  --color-zinc-400: #52525c;  /*  7.4:1 — secondary text */
+  --color-zinc-500: #71717b;  /*  4.6:1 — dominant muted text */
+  --color-zinc-600: #a1a1aa;  /*  2.5:1 — deliberately faint tertiary */
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-800: #e4e4e7;  /* bg/border surfaces */
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-950: #f1f1f2;  /* not #fafafa: keeps code blocks sunken */
+
+  /* neutral is unused today; mirrored so a future `bg-neutral-900` behaves. */
+  --color-neutral-50:  #0a0a0a;
+  --color-neutral-100: #171717;
+  --color-neutral-200: #262626;
+  --color-neutral-300: #404040;
+  --color-neutral-400: #525252;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #a1a1a1;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-800: #e5e5e5;
+  --color-neutral-900: #f5f5f5;
+  --color-neutral-950: #f2f2f2;
+
+  /* Hue scales: text-red-400 (103), text-amber-400 (30) etc. measure 2.0-2.6:1
+     on white. Only the 200-400 steps shift — those are used ~10:1 as text. The
+     500+ steps are left alone because they are overwhelmingly backgrounds. */
+  --color-red-200: #c10007;
+  --color-red-300: #c10007;
+  --color-red-400: #e7000b;
+  --color-amber-200: #bb4d00;
+  --color-amber-300: #bb4d00;
+  --color-amber-400: #bb4d00;
+  --color-yellow-200: #a65f00;
+  --color-yellow-300: #a65f00;
+  --color-yellow-400: #a65f00;
+  --color-orange-300: #ca3500;
+  --color-orange-400: #ca3500;
+  --color-purple-300: #8200db;
+  --color-purple-400: #8200db;
+  --color-violet-300: #7008e7;
+  --color-violet-400: #7008e7;
+  --color-blue-300: #1447e6;
+  --color-blue-400: #1447e6;
+  --color-sky-300: #0069a8;
+  --color-sky-400: #0069a8;
+  --color-cyan-400: #005f78;
+  --color-pink-400: #c6005c;
+}
+
+/* .cash-trade-theme is on WRAPPER DIVS, not <html>. An element's own custom
+   property declaration always beats an inherited one, so the block above cannot
+   reach these — the descendant selector is mandatory, not stylistic. */
+:root[data-theme="light"] .cash-trade-theme {
+  --background: var(--lt-surface-1);
+  --background-secondary: var(--lt-surface-2);
+  --background-tertiary: var(--lt-surface-3);
+  --background-elevated: var(--lt-surface-4);
+  --foreground: var(--lt-ink);
+  --foreground-secondary: var(--lt-ink-2);
+  --card: rgba(9, 9, 11, 0.035);
+  --card-solid: #ffffff;
+  --card-border: var(--lt-hairline);
+  --card-hover: rgba(9, 9, 11, 0.06);
+
+  /* Brand green stays neon: bg-accent (128) / bg-primary (93) are CTAs paired
+     with text-black and work in both themes. Green-as-TEXT is redirected by
+     class below, because neon on white is 1.30:1. */
+  --primary: var(--lt-neon);
+  --primary-foreground: #0a0a0a;
+  --accent: var(--lt-neon);
+  --accent-dim: var(--lt-neon);
+  --accent-foreground: #0a0a0a;
+  --secondary: var(--lt-neon);
+  --secondary-dim: var(--lt-neon);
+  --brand-blue: var(--lt-neon);
+  --success: var(--lt-neon);
+
+  --muted: #e8e8eb;
+  --muted-foreground: var(--lt-ink-3);
+  --danger: var(--lt-danger);
+  --warning: var(--lt-warning);
+  --border: var(--lt-hairline);
+  --ring: var(--lt-green-line);
+  --border-accent: rgba(30, 134, 10, 0.35);
+  --border-strong: var(--lt-hairline-strong);
+
+  --chart-1: var(--lt-green-ink);
+  --chart-2: var(--lt-green-ink);
+  --chart-3: var(--lt-green-ink);
+  --chart-4: var(--lt-green-ink);
+  --chart-5: var(--lt-green-ink);
+  --chart-background: #ffffff;
+  --chart-foreground: var(--lt-ink);
+  --chart-foreground-muted: #6b6b73;
+  --chart-line-primary: var(--lt-green-ink);
+  --chart-line-secondary: rgba(30, 134, 10, 0.55);
+  --chart-crosshair: rgba(9, 9, 11, 0.28);
+  --chart-grid: rgba(9, 9, 11, 0.10);
+  --chart-tooltip-background: rgba(255, 255, 255, 0.95);
+  --chart-tooltip-foreground: var(--lt-ink);
+  --chart-tooltip-muted: #6b6b73;
+  --chart-marker-background: #ffffff;
+  --chart-marker-border: rgba(9, 9, 11, 0.14);
+  --chart-marker-foreground: var(--lt-ink);
+  --chart-marker-badge-background: var(--lt-neon);
+  --chart-marker-badge-foreground: #0a0a0a;
+  --chart-ring-background: rgba(30, 134, 10, 0.18);
+  --chart-label: #6b6b73;
+  --chart-segment-background: rgba(30, 134, 10, 0.12);
+  --chart-segment-line: rgba(30, 134, 10, 0.45);
+  --chart-indicator-color: var(--lt-green-ink);
+  --chart-indicator-secondary-color: rgba(9, 9, 11, 0.35);
+
+  /* text-green-400 (75) + text-emerald-400 (49) dwarf the background uses, so
+     the variable goes to the readable ink and the few solid green backgrounds
+     are restored by class below. */
+  --color-green-300: var(--lt-green-ink);
+  --color-green-400: var(--lt-green-ink);
+  --color-green-500: var(--lt-green-ink);
+  --color-green-600: var(--lt-green-ink);
+  --color-emerald-300: var(--lt-green-ink);
+  --color-emerald-400: var(--lt-green-ink);
+  --color-emerald-500: var(--lt-green-ink);
+}
+
+/* The dark rule above hardcodes `color: #fff`. */
+:root[data-theme="light"] .cash-trade-theme ::selection {
+  background: rgba(30, 134, 10, 0.22);
+  color: #0a0a0a;
+}
+
+/* --- brand green: split TEXT from BACKGROUND ---
+   .text-accent/70 compiles to color-mix(... var(--accent) 70% ...), so the
+   attribute selectors are needed to catch the opacity variants too. */
+:root[data-theme="light"] .text-accent,
+:root[data-theme="light"] .text-primary,
+:root[data-theme="light"] .text-success,
+:root[data-theme="light"] .hover\:text-accent:hover,
+:root[data-theme="light"] .hover\:text-primary:hover,
+:root[data-theme="light"] .group:hover .group-hover\:text-accent,
+:root[data-theme="light"] [class*="text-accent/"],
+:root[data-theme="light"] [class*="text-primary/"],
+:root[data-theme="light"] [class*="text-success/"] { color: var(--lt-green-ink); }
+
+:root[data-theme="light"] .border-primary,
+:root[data-theme="light"] .border-accent,
+:root[data-theme="light"] .group:hover .group-hover\:border-primary,
+:root[data-theme="light"] .data-\[state\=checked\]\:border-primary[data-state="checked"] {
+  border-color: var(--lt-green-line);
+}
+:root[data-theme="light"] .fill-primary { fill: var(--lt-green-line); }
+:root[data-theme="light"] .ring-accent,
+:root[data-theme="light"] .ring-primary { --tw-ring-color: var(--lt-green-line); }
+
+/* Solid green backgrounds keep the neon (the variable went to ink above). */
+:root[data-theme="light"] .bg-green-400,
+:root[data-theme="light"] .bg-green-500,
+:root[data-theme="light"] .bg-emerald-400,
+:root[data-theme="light"] .bg-emerald-500,
+:root[data-theme="light"] .hover\:bg-green-600:hover,
+:root[data-theme="light"] .hover\:bg-emerald-400:hover { background-color: var(--lt-neon); }
+
+/* The -500 steps used as text. */
+:root[data-theme="light"] .text-red-500    { color: #c10007; }
+:root[data-theme="light"] .text-blue-500   { color: #1447e6; }
+:root[data-theme="light"] .text-amber-500,
+:root[data-theme="light"] .text-yellow-500 { color: #a65f00; }
+:root[data-theme="light"] .text-orange-500 { color: #ca3500; }
+:root[data-theme="light"] .text-purple-500 { color: #8200db; }
+
+/* --- black: flip solid surfaces, keep the modal scrims ---
+   The full-screen backdrops are `fixed inset-0 bg-black` with animated
+   opacity — they must stay black or the scrim vanishes. */
+:root[data-theme="light"] .bg-black:not(.fixed) { background-color: #ffffff; }
+:root[data-theme="light"] .bg-black.shader-background { background-color: var(--lt-surface-1); }
+
+/* --- solid bg-white exceptions (all 6 sites) --- */
+:root[data-theme="light"] .bg-white { background-color: #18181b; }
+:root[data-theme="light"] .bg-white.text-black,
+:root[data-theme="light"] .bg-white .text-black { color: #fafafa; }
+:root[data-theme="light"] .hover\:bg-white:hover { background-color: #000000; }
+:root[data-theme="light"] .hover\:bg-gray-100:hover,
+:root[data-theme="light"] .hover\:bg-zinc-100:hover { background-color: #27272a; }
+:root[data-theme="light"] .bg-zinc-200 { background-color: #18181b; color: #fafafa; }
+
+/* Restore true white on saturated red buttons. */
+:root[data-theme="light"] .bg-destructive.text-white,
+:root[data-theme="light"] .bg-danger.text-white,
+:root[data-theme="light"] .bg-red-500.text-white,
+:root[data-theme="light"] .bg-red-600.text-white { color: #ffffff; }
+
+/* =============================================================================
+   ARBITRARY HEX — Tailwind emits a literal escaped class for each, so CSS can
+   reach them even though no variable is involved. Grayscales are mirrored so
+   the darkest dark-mode value becomes the lightest light-mode value, which
+   preserves depth ordering.
+   ============================================================================= */
+
+:root[data-theme="light"] .bg-\[\#0d0d0d\]  { background-color: #fafafa; }
+:root[data-theme="light"] .bg-\[\#111\]     { background-color: #f6f6f7; }
+:root[data-theme="light"] .bg-\[\#141414\]  { background-color: #f2f2f4; }
+:root[data-theme="light"] .bg-\[\#181818\]  { background-color: #eeeef0; }
+:root[data-theme="light"] .bg-\[\#101010\]  { background-color: #f7f7f8; }
+:root[data-theme="light"] .bg-\[\#0f0f0f\]  { background-color: #f8f8f9; }
+:root[data-theme="light"] .bg-\[\#0e0e0e\]  { background-color: #f9f9fa; }
+:root[data-theme="light"] .bg-\[\#161616\]  { background-color: #f0f0f2; }
+:root[data-theme="light"] .bg-\[\#050505\]  { background-color: #ffffff; }
+:root[data-theme="light"] .bg-\[\#202020\]  { background-color: #e5e5e8; }
+:root[data-theme="light"] .bg-\[\#1e1e1e\]  { background-color: #e7e7ea; }
+:root[data-theme="light"] .bg-\[\#1a1a1a\]  { background-color: #ebebee; }
+:root[data-theme="light"] .bg-\[\#171717\]  { background-color: #efeff1; }
+:root[data-theme="light"] .bg-\[\#1d1d1d\]  { background-color: #e8e8eb; }
+:root[data-theme="light"] .bg-\[\#2a2a2a\]  { background-color: #d9d9de; }
+:root[data-theme="light"] .bg-\[\#333\]     { background-color: #cccdd2; }
+:root[data-theme="light"] .bg-\[\#888\]     { background-color: #67676d; }
+:root[data-theme="light"] .bg-\[\#242424\]  { background-color: #e0e0e4; }
+:root[data-theme="light"] .bg-\[\#111111\]  { background-color: #f6f6f7; }
+:root[data-theme="light"] .bg-\[\#0a0a0a\]  { background-color: #fcfcfc; }
+:root[data-theme="light"] .bg-\[\#090909\]  { background-color: #fdfdfd; }
+:root[data-theme="light"] .bg-\[\#160e1a\]  { background-color: #f6f1fa; }
+:root[data-theme="light"] .bg-\[\#0d0d14\]  { background-color: #f8f8fc; }
+:root[data-theme="light"] .bg-\[\#0b1110\]  { background-color: #f3faf6; }
+
+/* Opacity variants bake the alpha into a literal (#141414e6), so the base-class
+   rules above do NOT reach them — they need their own declarations. */
+:root[data-theme="light"] .bg-\[\#141414\]\/90 { background-color: rgba(242, 242, 244, 0.90); }
+:root[data-theme="light"] .bg-\[\#141414\]\/85 { background-color: rgba(242, 242, 244, 0.85); }
+:root[data-theme="light"] .bg-\[\#111\]\/95    { background-color: rgba(246, 246, 247, 0.95); }
+:root[data-theme="light"] .bg-\[\#101010\]\/95 { background-color: rgba(247, 247, 248, 0.95); }
+:root[data-theme="light"] .bg-\[\#181818\]\/50 { background-color: rgba(238, 238, 240, 0.50); }
+:root[data-theme="light"] .bg-\[\#160e1a\]\/40 { background-color: rgba(246, 241, 250, 0.40); }
+:root[data-theme="light"] .bg-\[\#39ff14\]\/10 { background-color: rgba(30, 134, 10, 0.12); }
+:root[data-theme="light"] .via-\[\#141414\]\/80 { --tw-gradient-via: rgba(242, 242, 244, 0.80); }
+
+/* Borders: one step stronger than the equivalent background so a hairline
+   still reads as a line rather than a fill. */
+:root[data-theme="light"] .border-\[\#2a2a2a\] { border-color: #d8d8de; }
+:root[data-theme="light"] .border-\[\#242424\] { border-color: #dedee3; }
+:root[data-theme="light"] .border-\[\#1a1a1a\] { border-color: #e7e7ea; }
+:root[data-theme="light"] .border-\[\#1e1e1e\] { border-color: #e3e3e7; }
+:root[data-theme="light"] .border-\[\#241a2e\] { border-color: #e2d9ec; }
+:root[data-theme="light"] .border-\[\#4a3d5c\] { border-color: #c0b3d0; }
+:root[data-theme="light"] .border-\[\#303030\] { border-color: #cecdd4; }
+:root[data-theme="light"] .border-\[\#252525\] { border-color: #dcdce1; }
+:root[data-theme="light"] .border-\[\#222\]    { border-color: #e1e1e5; }
+
+/* Grayscale text: each value keeps the perceived faintness it had against
+   #0d0d0d, recomputed against #fafafa. #444 was a 2.0:1 decorative grey in
+   dark mode, so it maps to #b4b4ba (1.99:1), not to a readable ink. */
+:root[data-theme="light"] .text-\[\#a1a1a1\] { color: #515157; }
+:root[data-theme="light"] .text-\[\#8a8a8a\] { color: #65656b; }
+:root[data-theme="light"] .text-\[\#888\]    { color: #67676d; }
+:root[data-theme="light"] .text-\[\#555\]    { color: #9c9ca2; }
+:root[data-theme="light"] .text-\[\#444\]    { color: #b4b4ba; }
+:root[data-theme="light"] .text-\[\#777\]    { color: #77777d; }
+:root[data-theme="light"] .text-\[\#9a9a9a\] { color: #57575d; }
+:root[data-theme="light"] .text-\[\#c4c4c4\] { color: #39393e; }
+:root[data-theme="light"] .text-\[\#666\]    { color: #88888e; }
+:root[data-theme="light"] .text-\[\#4a4a4a\] { color: #acacb2; }
+:root[data-theme="light"] .text-\[\#333\]    { color: #cccdd2; }
+:root[data-theme="light"] .text-\[\#e5e5e5\] { color: #212124; }
+:root[data-theme="light"] .text-\[\#ccc\]    { color: #333338; }
+:root[data-theme="light"] .text-\[\#999\]    { color: #57575d; }
+:root[data-theme="light"] .text-\[\#6f6f6f\] { color: #7f7f85; }
+
+/* Non-grayscale text: hue preserved, darkened only where the original fails on
+   a light background (measured ratio vs #fafafa in the comment). */
+:root[data-theme="light"] .text-\[\#e8774f\] { color: #b15b3c; } /* was 2.80 -> 4.54 */
+:root[data-theme="light"] .text-\[\#ff744d\] { color: #ba5538; } /* was 2.56 -> 4.53 */
+:root[data-theme="light"] .text-\[\#c49ae8\] { color: #84689d; } /* was 2.20 -> 4.52 */
+:root[data-theme="light"] .text-\[\#a5cf7c\] { color: #627b4a; } /* was 1.70 -> 4.52 */
+:root[data-theme="light"] .text-\[\#8fb7e8\] { color: #5c7594; } /* was 1.99 -> 4.54 */
+:root[data-theme="light"] .text-\[\#78a9f4\] { color: #5274a7; } /* was 2.29 -> 4.56 */
+:root[data-theme="light"] .text-\[\#6f9f72\] { color: #577c59; } /* was 2.93 -> 4.54 */
+:root[data-theme="light"] .text-\[\#58c4c7\] { color: #397e80; } /* was 1.99 -> 4.50 */
+:root[data-theme="light"] .text-\[\#e4cf83\] { color: #7f7349; } /* was 1.48 -> 4.52 */
+:root[data-theme="light"] .text-\[\#d7a36e\] { color: #8f6c49; } /* was 2.15 -> 4.56 */
+:root[data-theme="light"] .text-\[\#39ff14\] { color: #1e860a; } /* was 1.30 -> 4.50 */
+
+/* Gradients */
+:root[data-theme="light"] .from-\[\#0d0d0d\] { --tw-gradient-from: #fafafa; }
+:root[data-theme="light"] .from-\[\#141414\] { --tw-gradient-from: #f2f2f4; }
+:root[data-theme="light"] .from-\[\#232323\] { --tw-gradient-from: #e1e1e5; }
+:root[data-theme="light"] .via-\[\#141414\]  { --tw-gradient-via:  #f2f2f4; }
+:root[data-theme="light"] .to-\[\#1c1c1c\]   { --tw-gradient-to:   #e9e9ec; }

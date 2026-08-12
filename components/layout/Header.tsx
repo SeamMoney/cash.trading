@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet, getPreferredWalletIcon } from "@/lib/wallet-utils";
@@ -230,8 +231,9 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
             </nav>
           </div>
 
-          {/* Right: balance + wallet button */}
+          {/* Right: theme + balance + wallet button */}
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             {connected && (
               <button
                 type="button"

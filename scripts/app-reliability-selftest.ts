@@ -2181,6 +2181,10 @@ const pinePreviewUi = readFileSync("components/launchpad/PineVisualPreview.tsx",
 const marketPermissionsUi = readFileSync("components/launchpad/MarketPermissionsModal.tsx", "utf8");
 const productSurfaceUi = readFileSync("components/ui/product-surface.tsx", "utf8");
 const launchpadRoute = readFileSync("app/launchpad/page.tsx", "utf8");
+// The <Theme> wrapper moved out of the route so `appearance` can follow the
+// light/dark toggle, which needs a client component. The route still has to
+// render it — asserted below against both files.
+const launchpadTheme = readFileSync("components/launchpad/launchpad-theme.tsx", "utf8");
 const rootLayout = readFileSync("app/layout.tsx", "utf8");
 const globalsCss = readFileSync("app/globals.css", "utf8");
 const surfaceTokens = readFileSync("lib/surface.ts", "utf8");
@@ -2274,12 +2278,18 @@ assert.ok(
   "Frosted UI styles must NOT be imported unlayered in the root layout",
 );
 assert.ok(
-  launchpadRoute.includes('from "frosted-ui"')
-    && launchpadRoute.includes("<Theme")
-    && launchpadRoute.includes('appearance="dark"')
-    && launchpadRoute.includes('accentColor="lime"')
-    && launchpadRoute.includes('className="cash-trade-theme"'),
+  launchpadRoute.includes("<LaunchpadTheme>")
+    && launchpadTheme.includes('from "frosted-ui"')
+    && launchpadTheme.includes("<Theme")
+    && launchpadTheme.includes('accentColor="lime"')
+    && launchpadTheme.includes('className="cash-trade-theme"'),
   "the launchpad route must scope Frosted UI to the cash.trading theme",
+);
+// frosted-ui picks its token set from `appearance`, so hardcoding it would
+// leave every frosted surface on this route dark on a light page.
+assert.ok(
+  launchpadTheme.includes("appearance={theme}") && launchpadTheme.includes("useThemeName"),
+  "the launchpad Frosted UI appearance must follow the active theme, not be hardcoded",
 );
 assert.ok(
   productSurfaceUi.includes('from "frosted-ui"')

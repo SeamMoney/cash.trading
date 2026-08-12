@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { cn } from "@/lib/utils";
 import { BacktestViewer } from "./BacktestViewer";
-import { ExploreStepRail, CompareTable, COMPARE_LIMIT, type ExploreStep } from "./ExploreSteps";
 import { DeployForm } from "./DeployForm";
 import { OnChainChart } from "./OnChainChart";
 import { CreatorDashboard } from "./CreatorDashboard";
@@ -23,7 +22,7 @@ const TYPE_LABEL: Record<number, string> = {
   3: "MACD Divergence", 4: "Bollinger Bands",
 };
 
-export interface Indicator {
+interface Indicator {
   address: string; creator: string; name: string; symbol: string;
   description: string; assets: string[]; createdAt: number;
   curveAddr: string; aptReserves: number; totalRaised: number;
@@ -175,24 +174,7 @@ function metricFor(ind: Indicator, sort: Sort): { value: string; label: string }
   return { value: String(ind.robustnessScore), label: "Score" };
 }
 
-function IndicatorItem({
-  ind,
-  selected,
-  rank,
-  sort,
-  onClick,
-  compareMode = false,
-  compareChecked = false,
-}: {
-  ind: Indicator;
-  selected: boolean;
-  rank: number;
-  sort: Sort;
-  onClick: () => void;
-  /** Step 2 turns the list into a picker: the rank becomes a checkbox. */
-  compareMode?: boolean;
-  compareChecked?: boolean;
-}) {
+function IndicatorItem({ ind, selected, rank, sort, onClick }: { ind: Indicator; selected: boolean; rank: number; sort: Sort; onClick: () => void }) {
   // Live strategies read the SAME on-chain state the detail header shows —
   // the seed lastSignal drifted ("SELL 42d ago" row vs "LAST BUY · 94d ago"
   // detail) and contradicted it in both direction and age.
@@ -220,12 +202,11 @@ function IndicatorItem({
         "group w-full rounded-[calc(var(--radius)-7px)] px-2.5 py-2.5 text-left",
         PRODUCT_PRESSABLE_CLASS,
         // Same selection language as the tabs and filters: accent, not grey.
-        (compareMode ? compareChecked : selected)
+        selected
           ? "border border-accent/13 bg-accent/[0.07]"
           // Hover was a 3/255 lift on #0f0f0f — effectively invisible.
           : "border border-transparent hover:border-white/[0.10] hover:bg-white/[0.06]",
-      )}
-      aria-pressed={compareMode ? compareChecked : undefined}>
+      )}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {/* No wrapping: a long name used to push itself onto a second line and
@@ -236,23 +217,9 @@ function IndicatorItem({
                 grey on every row, encoding nothing — while still pushing every
                 title 14px off the panel's text axis. An ordinal keeps the
                 ordering legible even when the sort is a composite score. */}
-            {compareMode ? (
-              <span
-                aria-hidden
-                className={cn(
-                  "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border text-[10px] leading-none transition-colors",
-                  compareChecked
-                    ? "border-accent bg-accent text-black"
-                    : "border-white/[0.20] text-transparent group-hover:border-white/[0.35]",
-                )}
-              >
-                ✓
-              </span>
-            ) : (
-              <span className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-[#6f6f6f]">
-                {String(rank).padStart(2, "0")}
-              </span>
-            )}
+            <span className="w-4 shrink-0 font-mono text-[10px] tabular-nums text-[#6f6f6f]">
+              {String(rank).padStart(2, "0")}
+            </span>
             {/* min-w-0 (not flex-1) so the name shrinks and truncates when long
                 but still sizes to content when short — otherwise it grows and
                 shoves the PROP badge to the far edge, away from its label. */}
@@ -642,31 +609,7 @@ export function LaunchpadPage() {
   const [deployStage, setDeployStage] = useState<DeployStage>("build");
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [selected,   setSelected]   = useState<Indicator | null>(null);
-  // Explore's three jobs, named. Step 3 hands off to the deploy workbench,
-  // which is why the rail is rendered above that tab too.
-  const [step,       setStep]       = useState<ExploreStep>(1);
-  const [compare,    setCompare]    = useState<string[]>([]);
   const detailPanelRef = useRef<HTMLDivElement>(null);
-
-  const compareItems = compare
-    .map((address) => indicators.find((i) => i.address === address))
-    .filter((i): i is Indicator => Boolean(i));
-
-  const toggleCompare = useCallback((address: string) => {
-    setCompare((current) =>
-      current.includes(address)
-        ? current.filter((a) => a !== address)
-        // Silently dropping the click past the limit reads as a broken
-        // checkbox, so the oldest pick makes way for the newest.
-        : [...current, address].slice(-COMPARE_LIMIT),
-    );
-  }, []);
-
-  const goToStep = useCallback((next: ExploreStep) => {
-    setStep(next);
-    if (next === 3) setTab("deploy");
-    else setTab("explore");
-  }, []);
 
   // Below lg the detail panel stacks under the full 16-row list (~1700px
   // down) — without this scroll, tapping a strategy appears to do nothing.
@@ -825,17 +768,6 @@ export function LaunchpadPage() {
               );
             })}
           </div>
-
-          {/* Explore and Deploy are steps of one flow, so the rail spans both. */}
-          {(tab === "explore" || tab === "deploy") && (
-            <ExploreStepRail
-              step={tab === "deploy" ? 3 : step}
-              onStep={goToStep}
-              hasSelection={Boolean(selected)}
-              compareCount={compare.length}
-              className="mb-4"
-            />
-          )}
 
           {/* ── Deploy — Whop's original workbench: paste Pine → transpile → deploy ── */}
           {tab === "deploy" && (
@@ -1012,15 +944,7 @@ export function LaunchpadPage() {
                             rank={i + 1}
                             sort={sort}
                             selected={selected?.address === ind.address}
-                            compareMode={step === 2}
-                            compareChecked={compare.includes(ind.address)}
-                            onClick={() => {
-                              userPickedRef.current = true;
-                              // In compare mode the row's job is to add or drop
-                              // a column, not to change the detail pane.
-                              if (step === 2) toggleCompare(ind.address);
-                              else setSelected(ind);
-                            }}
+                            onClick={() => { userPickedRef.current = true; setSelected(ind); }}
                           />
                         ))
                       )}
@@ -1031,21 +955,14 @@ export function LaunchpadPage() {
                 {/* Right: detail panel */}
                 <div ref={detailPanelRef} className="w-full scroll-mt-16 overflow-hidden rounded-[var(--radius)] border border-card-border shadow-[0_16px_50px_-12px_rgba(0,0,0,0.7)]">
                   <div className="bg-[#111] min-h-[480px]">
-                    {step === 2 ? (
-                      <CompareTable
-                        items={compareItems}
-                        onRemove={toggleCompare}
-                        onOpen={(ind) => { userPickedRef.current = true; setSelected(ind); setStep(1); }}
-                        onDeploy={() => goToStep(3)}
-                      />
-                    ) : selected ? (
+                    {selected ? (
                       <IndicatorDetail
                         key={selected.address}
                         ind={selected}
-                        onDeployOwn={() => goToStep(3)}
+                        onDeployOwn={() => setTab("deploy")}
                       />
                     ) : (
-                      <EmptyState onDeploy={() => goToStep(3)} />
+                      <EmptyState onDeploy={() => setTab("deploy")} />
                     )}
                   </div>
                 </div>

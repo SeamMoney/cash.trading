@@ -64,6 +64,8 @@ export interface OrderResult {
 
 // Package address - resolved from SDK config based on active network
 import { TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, TimeInForce } from './decibel-sdk'
+import { getDecibelBuilderConfig, readApprovedBuilderFee } from './decibel-builder'
+import { builderFeeBpsToChainUnits } from './decibel'
 function getDecibelPackage(): string {
   const net = getActiveNetwork();
   if (net === 'mainnet') return MAINNET_CONFIG.deployment.package;
@@ -272,6 +274,11 @@ export class VolumeBotEngine {
   private static readonly RAPID_MONITOR_INTERVAL_MS = 1500 // 1.5 seconds for fast PnL checks
   private lastRapidCheckTime: number = 0
 
+  // Builder-code args for order entry functions, resolved once per instance.
+  // Every place_*_to_subaccount call passed `undefined, undefined` here, so
+  // bot volume earned the cash.trading builder code nothing.
+  private builderArgsCache: [string, string] | [undefined, undefined] | null = null
+
   // Live market params/leverage read from chain at start(). The hardcoded
   // MARKET_CONFIG / leverageMap tables are stale (5-market Feb snapshot vs the
   // ~60 markets live today) and are only a last-resort fallback now — reading
@@ -374,6 +381,68 @@ export class VolumeBotEngine {
     console.log('Capital:', `$${config.capitalUSDC} USDC`)
     console.log('Volume Target:', `$${config.volumeTargetUSDC} USDC`)
     console.log('Bias:', config.bias)
+  }
+
+  /**
+   * Builder-code args (`[builder_address, max_builder_fee]`) for order entry
+   * functions. Attached ONLY when the bot's subaccount has an on-chain
+   * approval covering the configured fee — the same rule as the manual order
+   * route — because the chain aborts an order citing an unapproved builder,
+   * and a bot that suddenly cannot trade is worse than one earning no code.
+   * Resolved once, then cached: approvals change rarely, orders fire every
+   * few seconds, and a restart re-resolves.
+   */
+  private async builderArgs(): Promise<[string, string] | [undefined, undefined]> {
+    if (this.builderArgsCache) return this.builderArgsCache
+    const none: [undefined, undefined] = [undefined, undefined]
+    try {
+      const network = getActiveNetwork() === 'mainnet' ? 'mainnet' as const : 'testnet' as const
+      const config = getDecibelBuilderConfig(network)
+      if (!config.enabled) {
+        this.builderArgsCache = none
+        return none
+      }
+      const requiredChainUnits = builderFeeBpsToChainUnits(config.feeBps)
+      const approvedChainUnits = await readApprovedBuilderFee({
+        network,
+        subaccount: this.config.userSubaccount,
+        builderAddress: config.builderAddress,
+      })
+      if (approvedChainUnits !== null && approvedChainUnits >= Number(requiredChainUnits)) {
+        this.builderArgsCache = [config.builderAddress, requiredChainUnits]
+        console.log(`🏗️ Builder code active: ${config.builderAddress.slice(0, 10)}… @ ${config.feeBps} bp`)
+      } else {
+        this.builderArgsCache = none
+        console.log('🏗️ Builder code skipped: subaccount has not approved the builder fee')
+      }
+    } catch (error) {
+      // Approval lookup is best-effort — never let it block trading.
+      console.warn('🏗️ Builder approval lookup failed; orders will not carry the code:', error)
+      this.builderArgsCache = none
+    }
+    return this.builderArgsCache
+  }
+
+  /**
+   * Build a place_* order transaction with the builder-code args filled in.
+   * Every `dex_accounts_entry::place_*_to_subaccount` entry ends with
+   * `Option<address> builder_address, Option<u64> max_builder_fee` (verified
+   * against the upgrade-22 ABI for all four variants), so the last two
+   * functionArguments are overwritten rather than each of the 15 call sites
+   * maintaining its own copy of the pair.
+   */
+  private async buildPlaceOrderTx(
+    input: Parameters<Aptos['transaction']['build']['simple']>[0],
+  ) {
+    const data = input.data as { functionArguments?: unknown[] }
+    if (Array.isArray(data.functionArguments) && data.functionArguments.length >= 2) {
+      const [builderAddress, maxBuilderFee] = await this.builderArgs()
+      const args = [...data.functionArguments]
+      args[args.length - 2] = builderAddress
+      args[args.length - 1] = maxBuilderFee
+      input = { ...input, data: { ...input.data, functionArguments: args } as typeof input.data }
+    }
+    return this.aptos.transaction.build.simple(input)
   }
 
   /**
@@ -726,7 +795,7 @@ export class VolumeBotEngine {
       console.log(`   TWAP will fill over 1-2 minutes (IOC has no liquidity on testnet)`)
 
       // Use TWAP order for guaranteed close
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -954,7 +1023,7 @@ export class VolumeBotEngine {
       // Monotonic sequence number per-market (timestamp-based)
       const seq = Date.now().toString()
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_bulk_orders_to_subaccount`,
@@ -1233,7 +1302,7 @@ export class VolumeBotEngine {
       // For now, use a small fixed size for testing
       const contractSize = 10000 // 0.0001 BTC
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -1309,7 +1378,7 @@ export class VolumeBotEngine {
 
       const contractSize = this.calculateContractSize(size)
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_market_order_to_subaccount`,
@@ -1405,7 +1474,7 @@ export class VolumeBotEngine {
         Number(mmConfig.minSize),
       )
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -1483,7 +1552,7 @@ export class VolumeBotEngine {
       // Convert price to contract format (price * 10^6 for 6 decimals)
       const priceInContractFormat = Math.floor(price * 1_000_000)
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
@@ -2218,7 +2287,7 @@ export class VolumeBotEngine {
         console.log(`📝 [GTC] Building order + process_pending_requests...`)
 
         const [orderTx, triggerTx] = await Promise.all([
-          this.aptos.transaction.build.simple({
+          this.buildPlaceOrderTx({
             sender: this.botAccount.accountAddress,
             data: {
               function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
@@ -2403,7 +2472,7 @@ export class VolumeBotEngine {
       // Build close order TX + process_pending_requests TX + cancel TP/SL all in parallel
       const [, orderTx, triggerTx] = await Promise.all([
         this.cancelTpSlForPosition().catch(() => {}),
-        this.aptos.transaction.build.simple({
+        this.buildPlaceOrderTx({
           sender: this.botAccount.accountAddress,
           data: {
             function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_order_to_subaccount`,
@@ -2629,7 +2698,7 @@ export class VolumeBotEngine {
     const currentPrice = await this.getCurrentMarketPrice()
     const sizeDecimals = this.getMarketSizeDecimals()
 
-    const transaction = await this.aptos.transaction.build.simple({
+    const transaction = await this.buildPlaceOrderTx({
       sender: this.botAccount.accountAddress,
       data: {
         function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -2692,7 +2761,7 @@ export class VolumeBotEngine {
   ): Promise<OrderResult> {
     console.log(`\n📝 [TWAP] Opening position with TWAP fallback...`)
 
-    const transaction = await this.aptos.transaction.build.simple({
+    const transaction = await this.buildPlaceOrderTx({
       sender: this.botAccount.accountAddress,
       data: {
         function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -2871,7 +2940,7 @@ export class VolumeBotEngine {
 
           console.log(`   Closing with TWAP: size=${positionSize}, direction=${closeDirection ? 'SHORT' : 'LONG'}`)
 
-          const closeTransaction = await this.aptos.transaction.build.simple({
+          const closeTransaction = await this.buildPlaceOrderTx({
             sender: this.botAccount.accountAddress,
             data: {
               function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -2977,7 +3046,7 @@ export class VolumeBotEngine {
           console.log(`   TWAP will fill over 1-2 minutes (IOC has no liquidity on testnet)`)
 
           // Use TWAP order for guaranteed close - IOC simply doesn't work on testnet
-          const closeTransaction = await this.aptos.transaction.build.simple({
+          const closeTransaction = await this.buildPlaceOrderTx({
             sender: this.botAccount.accountAddress,
             data: {
               function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -3128,7 +3197,7 @@ export class VolumeBotEngine {
       console.log(`   Order type: TWAP (1-2 min fill)`)
 
       // Use TWAP order - testnet has no IOC liquidity
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -3259,7 +3328,7 @@ export class VolumeBotEngine {
       console.log(`   Direction: ${isLong ? 'LONG' : 'SHORT'}`)
 
       // Use shortest possible TWAP (60-120 seconds)
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,
@@ -3337,7 +3406,7 @@ export class VolumeBotEngine {
       console.log(`   Order type: TWAP (1-2 min fill - IOC has no liquidity on testnet)`)
 
       // Use TWAP order for guaranteed close
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await this.buildPlaceOrderTx({
         sender: this.botAccount.accountAddress,
         data: {
           function: `${DECIBEL_PACKAGE}::dex_accounts_entry::place_twap_order_to_subaccount`,

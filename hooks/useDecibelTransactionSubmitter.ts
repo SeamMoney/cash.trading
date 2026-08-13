@@ -9,7 +9,9 @@ import {
   DECIBEL_APP_DERIVED_URI,
   needsSponsoredGas,
   submitEvmDerivedAptosPayload,
+  submitSponsoredNativeAptosPayload,
 } from "@/lib/evm-derived-aptos";
+import { isSponsorableEntryFunction } from "@/lib/decibel-sponsor-allowlist";
 
 export type DecibelTransactionInput = {
   data: InputGenerateTransactionPayloadData;
@@ -22,7 +24,7 @@ export type DecibelTransactionInput = {
  * use the gas sponsor when that derived account has no APT.
  */
 export function useDecibelTransactionSubmitter() {
-  const { account, connected, signAndSubmitTransaction, wallet } = useWallet();
+  const { account, connected, signAndSubmitTransaction, signTransaction, wallet } = useWallet();
   const identity = useDecibelWalletIdentity();
 
   const signAndSubmitDecibelTransaction = useCallback(
@@ -34,6 +36,23 @@ export function useDecibelTransactionSubmitter() {
       if (!identity.usesDecibelDomainIdentity) {
         if (!signAndSubmitTransaction) {
           throw new Error("Wallet transaction signing is not available.");
+        }
+        // A brand-new native wallet (e.g. fresh Backpack) has no APT and no
+        // on-chain account, so it cannot pay for its own first transaction —
+        // account creation always failed there. Route sponsorable Decibel
+        // calls through the fee-payer flow instead; everything else keeps the
+        // wallet's normal submission.
+        const fn =
+          "function" in data && typeof data.function === "string" ? data.function : "";
+        if (isSponsorableEntryFunction(fn)) {
+          const gasless = await needsSponsoredGas(account.address.toString()).catch(() => false);
+          if (gasless) {
+            return submitSponsoredNativeAptosPayload({
+              senderAddress: account.address.toString(),
+              payload: data,
+              signTransaction,
+            });
+          }
         }
         return signAndSubmitTransaction({ data });
       }

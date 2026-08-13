@@ -12,6 +12,9 @@ import {
 import { aptos } from "@/lib/aptos";
 import { DECIBEL_PACKAGE, MAINNET_DECIBEL_PACKAGE } from "@/lib/decibel";
 import { checkApiRateLimit, checkRateLimitForKey } from "@/lib/api-rate-limit";
+// Shared with the client, which uses it to decide whether a gasless wallet
+// should attempt a sponsored submission at all.
+import { SPONSORABLE_DEX_ACCOUNT_FUNCTIONS as ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS } from "@/lib/decibel-sponsor-allowlist";
 import cashRewardConfig from "@/config/cash-rewards.json";
 
 export const runtime = "nodejs";
@@ -26,16 +29,6 @@ const NO_STORE_HEADERS = {
 // max_gas_amount * gas_unit_price <= 0.05 APT.
 const MAX_SPONSORED_GAS_OCTAS = 5_000_000n;
 const MAX_BODY_BYTES = 256_000;
-
-const ALLOWED_DECIBEL_ACCOUNT_FUNCTIONS = new Set([
-  "approve_max_builder_fee_for_subaccount",
-  "cancel_order_to_subaccount",
-  "create_new_subaccount",
-  "deposit_to_subaccount_at",
-  "place_order_to_subaccount",
-  "revoke_max_builder_fee_for_subaccount",
-  "withdraw_from_subaccount",
-]);
 
 function getSponsorAccount(): Account | null {
   const raw = process.env.SPONSOR_PRIVATE_KEY || "";

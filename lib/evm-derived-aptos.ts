@@ -5,7 +5,12 @@ import {
   EIP1193DerivedPublicKey,
   type EthereumAddress,
 } from "@aptos-labs/derived-wallet-ethereum";
-import type { InputGenerateTransactionPayloadData } from "@aptos-labs/ts-sdk";
+import type {
+  AccountAuthenticator,
+  AnyRawTransaction,
+  InputGenerateTransactionPayloadData,
+  SimpleTransaction,
+} from "@aptos-labs/ts-sdk";
 import { AccountAddress, AptosApiError } from "@aptos-labs/ts-sdk";
 import { BrowserProvider, getAddress } from "ethers";
 import { aptos } from "@/lib/aptos";
@@ -82,6 +87,69 @@ async function getSponsoredAccountSequenceNumber(accountAddress: string): Promis
   throw new Error("Could not verify the Aptos account sequence. Please try the claim again.");
 }
 
+async function postSponsoredTransaction(
+  transaction: SimpleTransaction,
+  senderAuthenticator: AccountAuthenticator,
+): Promise<{ hash: string }> {
+  const res = await fetch("/api/decibel/sponsor-submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      transactionHex: transaction.bcsToHex().toString(),
+      senderAuthenticatorHex: senderAuthenticator.bcsToHex().toString(),
+    }),
+  });
+  const data = (await res.json().catch(() => null)) as
+    | { hash?: string; error?: string; reason?: string; vmStatus?: string }
+    | null;
+  if (!res.ok || !data?.hash) {
+    const reason = data?.reason === "sponsor_not_configured"
+      ? "Trading gas sponsor is temporarily unavailable. Please try again shortly."
+      : data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
+    throw new Error(data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason);
+  }
+  return { hash: data.hash };
+}
+
+/**
+ * Sponsored submission for NATIVE Aptos wallets (Petra, Backpack, …).
+ *
+ * A brand-new wallet holds no APT and its Aptos account does not exist yet, so
+ * `signAndSubmitTransaction` cannot even pay for the account-creation
+ * transaction — which made first-time onboarding fail at "create account".
+ * Fee-payer transactions cover both: the sponsor pays gas and the chain
+ * creates the sender account as part of the transaction.
+ *
+ * The wallet signs the raw fee-payer transaction (adapter `signTransaction`);
+ * the server route validates the payload against its allowlist and co-signs.
+ */
+export async function submitSponsoredNativeAptosPayload(args: {
+  senderAddress: string;
+  payload: InputGenerateTransactionPayloadData;
+  signTransaction: (input: {
+    transactionOrPayload: AnyRawTransaction;
+  }) => Promise<{ authenticator: AccountAuthenticator }>;
+  onStep?: (message: string) => void;
+}): Promise<{ hash: string }> {
+  const sender = normalizeAptosAddress(args.senderAddress);
+  args.onStep?.("Build sponsored Aptos transaction...");
+  const accountSequenceNumber = await getSponsoredAccountSequenceNumber(sender);
+  const transaction = await aptos.transaction.build.simple({
+    sender,
+    data: args.payload,
+    withFeePayer: true,
+    // First-time account creation runs the whole account + subaccount setup
+    // and measures over 20k gas units, so this budget is higher than the EVM
+    // claim path's. 50k * 100 octas sits exactly at the sponsor route's
+    // 0.05 APT ceiling.
+    options: { maxGasAmount: 50_000, gasUnitPrice: 100, accountSequenceNumber },
+  });
+  args.onStep?.("Sign the transaction in your wallet...");
+  const { authenticator } = await args.signTransaction({ transactionOrPayload: transaction });
+  args.onStep?.("Submit via gas sponsor...");
+  return postSponsoredTransaction(transaction, authenticator);
+}
+
 export async function submitEvmDerivedAptosPayload(args: {
   domain: string;
   expectedSenderAddress?: string;
@@ -125,11 +193,12 @@ export async function submitEvmDerivedAptosPayload(args: {
     sender,
     data: args.payload,
     withFeePayer: args.sponsored === true,
-    // The sponsor route caps max_gas_amount * gas_unit_price at 0.05 APT;
-    // the SDK's 200k-unit default would blow through that, and these claim/
-    // deposit transactions use well under 20k units.
+    // The sponsor route caps max_gas_amount * gas_unit_price at 0.05 APT; the
+    // SDK's 200k-unit default would blow through that. 50k covers first-time
+    // account creation, which measures ~20.1k units — a 20k budget made
+    // exactly that transaction die with "Out of gas".
     options: args.sponsored
-      ? { maxGasAmount: 20_000, accountSequenceNumber }
+      ? { maxGasAmount: 50_000, gasUnitPrice: 100, accountSequenceNumber }
       : undefined,
   });
 
@@ -158,26 +227,7 @@ export async function submitEvmDerivedAptosPayload(args: {
 
   if (args.sponsored) {
     args.onStep?.("Submit via gas sponsor...");
-    const res = await fetch("/api/decibel/sponsor-submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        transactionHex: transaction.bcsToHex().toString(),
-        senderAuthenticatorHex: senderAuthenticator.bcsToHex().toString(),
-      }),
-    });
-    const data = (await res.json().catch(() => null)) as
-      | { hash?: string; error?: string; reason?: string; vmStatus?: string }
-      | null;
-    if (!res.ok || !data?.hash) {
-      const reason = data?.reason === "sponsor_not_configured"
-        ? "Trading gas sponsor is temporarily unavailable. Please try again shortly."
-        : data?.error || data?.reason || `Gas sponsor rejected the transaction (${res.status}).`;
-      throw new Error(
-        data?.vmStatus ? `${reason}: ${data.vmStatus}` : reason,
-      );
-    }
-    return { hash: data.hash };
+    return postSponsoredTransaction(transaction, senderAuthenticator);
   }
 
   args.onStep?.("Submit Aptos transaction...");

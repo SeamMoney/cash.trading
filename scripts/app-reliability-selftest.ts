@@ -157,6 +157,9 @@ const depthStorage = readFileSync("scripts/lib/depth-storage.mjs", "utf8");
 const depthCompactionCron = readFileSync("app/api/cron/depth-compact/route.ts", "utf8");
 const depthVercelConfig = JSON.parse(readFileSync("vercel.json", "utf8"));
 const sponsorSubmitRoute = readFileSync("app/api/decibel/sponsor-submit/route.ts", "utf8");
+// The allowlist moved to a shared module so the client can pre-check whether a
+// gasless wallet's payload is even worth signing. The route must import it.
+const sponsorAllowlist = readFileSync("lib/decibel-sponsor-allowlist.ts", "utf8");
 const evmDerivedAptos = readFileSync("lib/evm-derived-aptos.ts", "utf8");
 const txUtils = readFileSync("lib/tx-utils.ts", "utf8");
 const legacyBotRoutes = [
@@ -1025,16 +1028,30 @@ assert.ok(
 for (const functionName of [
   "approve_max_builder_fee_for_subaccount",
   "cancel_order_to_subaccount",
+  "create_new_subaccount",
   "deposit_to_subaccount_at",
   "place_order_to_subaccount",
   "revoke_max_builder_fee_for_subaccount",
   "withdraw_from_subaccount",
 ] as const) {
   assert.ok(
-    sponsorSubmitRoute.includes(`"${functionName}"`),
+    sponsorAllowlist.includes(`"${functionName}"`),
     `${functionName} must be explicitly sponsorable for gasless Decibel-domain owners`,
   );
 }
+assert.ok(
+  sponsorSubmitRoute.includes("SPONSORABLE_DEX_ACCOUNT_FUNCTIONS"),
+  "the sponsor route must enforce the shared sponsorable-function allowlist",
+);
+// A fresh native wallet (no APT, no on-chain account) cannot pay for its own
+// first transaction; the submitter hook must route sponsorable calls through
+// the fee-payer flow or first-time account creation fails in the wallet.
+assert.ok(
+  readFileSync("hooks/useDecibelTransactionSubmitter.ts", "utf8").includes(
+    "submitSponsoredNativeAptosPayload",
+  ),
+  "native wallets must fall back to sponsored submission when gasless",
+);
 assert.ok(
   !sponsorSubmitRoute.includes("BOT_OPERATOR_PRIVATE_KEY"),
   "gas sponsorship must use a dedicated sponsor key",

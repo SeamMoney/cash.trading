@@ -219,6 +219,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [bridgeTxHash, setBridgeTxHash] = useState("");
   const [solanaSourceBalance, setSolanaSourceBalance] = useState<number | null>(null);
   const [solanaSourceLoading, setSolanaSourceLoading] = useState(false);
+  const [solanaRecipientCopied, setSolanaRecipientCopied] = useState(false);
   const [bridgeTransfer, setBridgeTransfer] =
     useState<CctpStatusResponse | null>(null);
   const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
@@ -1459,24 +1460,30 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 Cross-chain USDC
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
-                Bridge native USDC from EVM with Circle CCTP, or paste an existing
-                transfer hash to claim and deposit.
+                {isSolanaWallet
+                  ? "Move your Solana USDC to Aptos once — after that, everything runs here."
+                  : "Bridge native USDC from EVM with Circle CCTP, or paste an existing transfer hash to claim and deposit."}
               </p>
             </div>
-            <span
-              className={cn(
-                "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
-                isEvmWallet
-                  ? "bg-accent/10 text-accent"
-                  : "bg-white/[0.04] text-zinc-500"
-              )}
-            >
-              {isEvmWallet
-                ? `${formatWalletConnectionName(wallet?.name ?? "EVM", activeEvmSourceChain)} detected`
-                : "Optional"}
-            </span>
+            {/* For a Solana wallet with no Aptos USDC this section is the only
+                way in — calling it "Optional" was a lie. */}
+            {!(isSolanaWallet && !walletUsdcBalance) && (
+              <span
+                className={cn(
+                  "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
+                  isEvmWallet
+                    ? "bg-accent/10 text-accent"
+                    : "bg-white/[0.04] text-zinc-500"
+                )}
+              >
+                {isEvmWallet
+                  ? `${formatWalletConnectionName(wallet?.name ?? "EVM", activeEvmSourceChain)} detected`
+                  : "Optional"}
+              </span>
+            )}
           </div>
 
+          {!isSolanaWallet && (
           <div className="mt-2 grid grid-cols-4 gap-1 rounded-md bg-white/[0.03] p-1">
             {BRIDGE_SOURCE_CHAINS.map((chain) => (
               <button
@@ -1494,6 +1501,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               </button>
             ))}
           </div>
+          )}
 
           {bridgeSourceChain === "Solana" ? (
             /* No in-app Solana burn yet — the wallet signs it in an external
@@ -1516,12 +1524,48 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   </span>
                 )}
               </div>
-              <p className="mt-2 px-1 text-[11px] leading-relaxed text-zinc-500">
-                Bridge USDC from Solana with any Circle CCTP app (e.g.
-                transfer.circle.com): destination Aptos, recipient your connected
-                address above. Then paste the Solana transaction signature below —
-                the claim and deposit run here, gas sponsored.
-              </p>
+              <div className="mt-2 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(owner).then(
+                      () => {
+                        setSolanaRecipientCopied(true);
+                        window.setTimeout(() => setSolanaRecipientCopied(false), 2500);
+                      },
+                      () => setSolanaRecipientCopied(false),
+                    );
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-md bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06]"
+                >
+                  <span className="text-[11px] text-zinc-300">
+                    <span className="font-mono text-[10px] text-zinc-600">1&nbsp;&nbsp;</span>
+                    Copy your Aptos recipient address
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-accent">
+                    {solanaRecipientCopied ? "Copied ✓" : "Copy"}
+                  </span>
+                </button>
+                <a
+                  href="https://transfer.circle.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex w-full items-center justify-between gap-3 rounded-md bg-white/[0.03] px-3 py-2.5 transition-colors hover:bg-white/[0.06]"
+                >
+                  <span className="text-[11px] text-zinc-300">
+                    <span className="font-mono text-[10px] text-zinc-600">2&nbsp;&nbsp;</span>
+                    Bridge on Circle: Solana → Aptos, paste that address
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-accent">Open ↗</span>
+                </a>
+                <div className="flex items-center gap-3 rounded-md px-3 pt-1">
+                  <span className="text-[11px] text-zinc-500">
+                    <span className="font-mono text-[10px] text-zinc-600">3&nbsp;&nbsp;</span>
+                    Paste the Solana signature below — claim and deposit run here,
+                    gas covered.
+                  </span>
+                </div>
+              </div>
             </>
           ) : (
             <>

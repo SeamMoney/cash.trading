@@ -61,7 +61,10 @@ interface WalletBalanceResponse {
   error?: string;
 }
 
-type BridgeSourceChain = EvmCctpSourceChain;
+// Solana is claim-only: the burn happens in an external CCTP bridge signed by
+// the Solana wallet, then the transfer hash is pasted here — the status and
+// claim backends are already domain-generic (Solana is CCTP domain 5).
+type BridgeSourceChain = EvmCctpSourceChain | "Solana";
 
 interface CctpStatusResponse {
   amount?: number;
@@ -78,7 +81,7 @@ interface CctpStatusResponse {
   txHash?: string;
 }
 
-const BRIDGE_SOURCE_CHAINS: BridgeSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
+const BRIDGE_SOURCE_CHAINS: BridgeSourceChain[] = ["Arbitrum", "Base", "Ethereum", "Solana"];
 
 async function relayAptosCctpClaim(args: {
   attestation: string;
@@ -285,7 +288,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   const selectBridgeSourceChain = useCallback((chain: BridgeSourceChain) => {
     setBridgeSourceChain(chain);
-    storeEvmSourceChain(chain);
+    // Solana is claim-only; the stored preference tracks the EVM burn source.
+    if (chain !== "Solana") storeEvmSourceChain(chain);
   }, []);
 
   useEffect(() => {
@@ -507,7 +511,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   useEffect(() => {
     let active = true;
-    if (!connected || !account || !isEvmWallet) {
+    if (!connected || !account || !isEvmWallet || bridgeSourceChain === "Solana") {
       setEvmSourceBalance(null);
       setEvmSourceAddress("");
       setEvmSourceError("");
@@ -984,7 +988,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         aptosRecipientAddress: owner,
         network: decibelNetwork,
         preferredWalletName: wallet?.name,
-        sourceChain: bridgeSourceChain,
+        // Unreachable with Solana selected — the burn button is not rendered
+        // there — but the EVM burn call needs the narrowed type.
+        sourceChain: bridgeSourceChain as EvmCctpSourceChain,
         onStep: (message) => {
           if (isCurrentAccountAction(action)) setBridgeMessage(message);
         },
@@ -1435,7 +1441,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             </span>
           </div>
 
-          <div className="mt-2 grid grid-cols-3 gap-1 rounded-md bg-white/[0.03] p-1">
+          <div className="mt-2 grid grid-cols-4 gap-1 rounded-md bg-white/[0.03] p-1">
             {BRIDGE_SOURCE_CHAINS.map((chain) => (
               <button
                 key={chain}
@@ -1453,41 +1459,54 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             ))}
           </div>
 
-          <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
-            <span className={evmSourceError ? "text-yellow-300/80" : ""}>
-              {bridgeSourceChain}{" "}
-              {evmSourceLoading
-                ? "..."
-                : evmSourceBalance !== null
-                  ? `${evmSourceBalance.toLocaleString("en-US", {
-                      maximumFractionDigits: 6,
-                    })} USDC`
-                  : "-- USDC"}
-            </span>
-            {evmSourceAddress && (
-              <span className="truncate text-zinc-700">
-                {evmSourceAddress.slice(0, 6)}...{evmSourceAddress.slice(-4)}
-              </span>
-            )}
-          </div>
+          {bridgeSourceChain === "Solana" ? (
+            /* No in-app Solana burn yet — the wallet signs it in an external
+               CCTP bridge. The claim half below is chain-agnostic. */
+            <p className="mt-2 px-1 text-[11px] leading-relaxed text-zinc-500">
+              Bridge USDC from Solana with any Circle CCTP app (e.g.
+              transfer.circle.com): destination Aptos, recipient your connected
+              address above. Then paste the Solana transaction signature below —
+              the claim and deposit run here, gas sponsored.
+            </p>
+          ) : (
+            <>
+              <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
+                <span className={evmSourceError ? "text-yellow-300/80" : ""}>
+                  {bridgeSourceChain}{" "}
+                  {evmSourceLoading
+                    ? "..."
+                    : evmSourceBalance !== null
+                      ? `${evmSourceBalance.toLocaleString("en-US", {
+                          maximumFractionDigits: 6,
+                        })} USDC`
+                      : "-- USDC"}
+                </span>
+                {evmSourceAddress && (
+                  <span className="truncate text-zinc-700">
+                    {evmSourceAddress.slice(0, 6)}...{evmSourceAddress.slice(-4)}
+                  </span>
+                )}
+              </div>
 
-          <button
-            type="button"
-            onClick={() => void handleStartEvmBridge()}
-            disabled={!canStartEvmBridge}
-            className={cn(
-              "mt-2 w-full rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-              canStartEvmBridge
-                ? "bg-accent/15 text-accent hover:bg-accent/20"
-                : "bg-white/[0.03] text-zinc-600"
-            )}
-          >
-            {status === "submitting"
-              ? "Bridge pending..."
-              : isEvmWallet
-                ? `Bridge from ${bridgeSourceChain}`
-                : "Connect EVM wallet to bridge"}
-          </button>
+              <button
+                type="button"
+                onClick={() => void handleStartEvmBridge()}
+                disabled={!canStartEvmBridge}
+                className={cn(
+                  "mt-2 w-full rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  canStartEvmBridge
+                    ? "bg-accent/15 text-accent hover:bg-accent/20"
+                    : "bg-white/[0.03] text-zinc-600"
+                )}
+              >
+                {status === "submitting"
+                  ? "Bridge pending..."
+                  : isEvmWallet
+                    ? `Bridge from ${bridgeSourceChain}`
+                    : "Connect EVM wallet to bridge"}
+              </button>
+            </>
+          )}
 
           <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input
@@ -1500,7 +1519,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 setBridgeMessage("");
               }}
               className="min-w-0 rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-white/[0.06]"
-              placeholder="0x... transfer hash"
+              placeholder="transfer hash or signature"
             />
             <button
               type="button"

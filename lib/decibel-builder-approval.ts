@@ -21,15 +21,24 @@ type SignAndSubmit = (input: { data: never }) => Promise<{ hash: string }>;
 /** Subaccounts confirmed approved (or builder disabled) this session. */
 const settled = new Set<string>();
 
+export type BuilderApprovalOutcome =
+  /** Consent already on-chain, builder disabled, or freshly signed. */
+  | "settled"
+  /** Wallet prompt was shown and the user declined (or signing failed). */
+  | "declined"
+  /** Could not even ask — lookup or payload build failed. */
+  | "unavailable";
+
 export async function ensureBuilderApproval(args: {
   subaccount: string;
   network: string;
   signAndSubmit: SignAndSubmit;
   onStep?: (message: string) => void;
-}): Promise<void> {
+}): Promise<BuilderApprovalOutcome> {
   const key = `${args.network}:${args.subaccount}`.toLowerCase();
-  if (settled.has(key)) return;
+  if (settled.has(key)) return "settled";
 
+  let prompted = false;
   try {
     const params = new URLSearchParams({ subaccount: args.subaccount, network: args.network });
     const statusRes = await fetch(`/api/decibel/builder?${params}`, { cache: "no-store" });
@@ -38,14 +47,14 @@ export async function ensureBuilderApproval(args: {
       enrollmentOpen?: boolean;
       approval?: { approved?: boolean; readable?: boolean };
     } | null;
-    if (!statusRes.ok || !status) return; // transient — retry on the next trade
+    if (!statusRes.ok || !status) return "unavailable"; // transient — retry later
     if (!status.enabled || !status.enrollmentOpen) {
       settled.add(key);
-      return;
+      return "settled";
     }
     if (status.approval?.approved) {
       settled.add(key);
-      return;
+      return "settled";
     }
     // An unreadable approval is indistinguishable from "not approved"; asking
     // for a redundant approval signature is safe (it is idempotent on-chain),
@@ -59,14 +68,17 @@ export async function ensureBuilderApproval(args: {
     const payloadBody = (await payloadRes.json().catch(() => null)) as
       | { payload?: unknown; error?: string }
       | null;
-    if (!payloadRes.ok || !payloadBody?.payload) return;
+    if (!payloadRes.ok || !payloadBody?.payload) return "unavailable";
 
     args.onStep?.("One-time setup: approve fee routing in your wallet...");
+    prompted = true;
     const { hash } = await args.signAndSubmit({ data: payloadBody.payload as never });
     args.onStep?.("Confirming fee routing approval...");
     await waitForTransactionConfirmation(hash);
     settled.add(key);
+    return "settled";
   } catch {
     // Degrade to a code-less order rather than blocking the trade.
+    return prompted ? "declined" : "unavailable";
   }
 }

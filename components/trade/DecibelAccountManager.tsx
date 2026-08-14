@@ -1659,28 +1659,34 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             </>
           )}
 
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <input
-              type="text"
-              value={bridgeTxHash}
-              onChange={(e) => {
-                setBridgeTxHash(e.target.value.trim());
-                setBridgeTransfer(null);
-                setBridgeLookupStatus("idle");
-                setBridgeMessage("");
-              }}
-              className="min-w-0 rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-white/[0.06]"
-              placeholder="transfer hash or signature"
-            />
-            <button
-              type="button"
-              onClick={() => void lookupBridgeTransfer()}
-              disabled={bridgeLookupStatus === "loading"}
-              className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {bridgeLookupStatus === "loading" ? "Checking" : "Resume"}
-            </button>
-          </div>
+          {/* Hidden for Solana wallets: the one-click burn sets the hash
+              itself and an interrupted transfer auto-resumes from
+              localStorage, so a paste box is pure noise there. EVM keeps it
+              for transfers started in external apps. */}
+          {!isSolanaWallet && (
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <input
+                type="text"
+                value={bridgeTxHash}
+                onChange={(e) => {
+                  setBridgeTxHash(e.target.value.trim());
+                  setBridgeTransfer(null);
+                  setBridgeLookupStatus("idle");
+                  setBridgeMessage("");
+                }}
+                className="min-w-0 rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-white/[0.06]"
+                placeholder="transfer hash or signature"
+              />
+              <button
+                type="button"
+                onClick={() => void lookupBridgeTransfer()}
+                disabled={bridgeLookupStatus === "loading"}
+                className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {bridgeLookupStatus === "loading" ? "Checking" : "Resume"}
+              </button>
+            </div>
+          )}
 
           {bridgeTransfer && (
             <div className="mt-2 space-y-2 rounded-[10px] bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-400">

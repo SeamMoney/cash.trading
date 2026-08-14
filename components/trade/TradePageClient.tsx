@@ -8,6 +8,8 @@ import { Positions as DecibelPositions } from "@/components/trade/Positions";
 import { TradePanel } from "@/components/trade/TradePanel";
 import { VaultActionModal } from "@/components/trade/VaultActionModal";
 import { MobilePortfolioSheet } from "@/components/trade/MobilePortfolioSheet";
+import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
+import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { VaultPositionsTable } from "@/components/trade/VaultPositionsTable";
 import type { VaultActionMode } from "@/components/trade/VaultActionTypes";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
@@ -996,6 +998,10 @@ export function TradePageClient({
   } | null>(null);
   const [vaultHoldingsRefreshNonce, setVaultHoldingsRefreshNonce] = useState(0);
   const [strategyVaultsByIndicator, setStrategyVaultsByIndicator] = useState<Record<string, StrategyVaultSummary>>({});
+  // Mobile: the balance sheet covers the header's balance chip, which was the
+  // only way into the deposit flow.
+  const [mobileDepositOpen, setMobileDepositOpen] = useState(false);
+  const [mobileConnectOpen, setMobileConnectOpen] = useState(false);
   const { owner, selectedSubaccount } = useDecibelSubaccounts();
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const isMobile = useIsMobile();
@@ -1180,8 +1186,23 @@ export function TradePageClient({
       </div>
       {isMobile && (
         <MobilePortfolioSheet>
+          {/* Funding was only reachable through the header's balance chip,
+              which the sheet covers on mobile — deposits need a way in here. */}
+          <button
+            type="button"
+            onClick={() => (owner ? setMobileDepositOpen(true) : setMobileConnectOpen(true))}
+            className="mb-3 w-full rounded-[10px] bg-accent px-4 py-2.5 text-[13px] font-display font-semibold text-black transition-[filter] hover:brightness-95"
+          >
+            Deposit USDC
+          </button>
           <DecibelPositions showOverview={false} />
         </MobilePortfolioSheet>
+      )}
+      {isMobile && (
+        <>
+          <WalletAccountModal open={mobileDepositOpen} onClose={() => setMobileDepositOpen(false)} />
+          <WalletSelector open={mobileConnectOpen} onClose={() => setMobileConnectOpen(false)} />
+        </>
       )}
 
       {vaultAction && (

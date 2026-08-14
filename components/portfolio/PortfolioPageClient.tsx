@@ -26,6 +26,8 @@ import { isValidAptosAddress } from "@/lib/decibel";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { CashRewardsPanel } from "@/components/portfolio/CashRewardsPanel";
+import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
+import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 
 type Position = {
   market: string;
@@ -385,6 +387,10 @@ export function PortfolioPageClient() {
   const [feeSummaryLoading, setFeeSummaryLoading] = useState(false);
   const [feeSummaryError, setFeeSummaryError] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  // Deposit reuses the full account modal (wallet, account creation, bridge)
+  // rather than a second bespoke deposit form.
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
@@ -1028,14 +1034,25 @@ export function PortfolioPageClient() {
               {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setWithdrawOpen(true)}
-            disabled={!connected || !hasDecibelAccount || withdrawing}
-            className="rounded-[4px] bg-zinc-200 px-4 py-2 text-[12px] font-semibold text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
-          >
-            {withdrawing ? "Withdrawing..." : "Withdraw USDC"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Never disabled: disconnected users get the wallet selector,
+                which beats a dead button. */}
+            <button
+              type="button"
+              onClick={() => (connected ? setDepositOpen(true) : setConnectOpen(true))}
+              className="rounded-[4px] bg-accent px-4 py-2 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95"
+            >
+              Deposit USDC
+            </button>
+            <button
+              type="button"
+              onClick={() => setWithdrawOpen(true)}
+              disabled={!connected || !hasDecibelAccount || withdrawing}
+              className="rounded-[4px] bg-zinc-200 px-4 py-2 text-[12px] font-semibold text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+            >
+              {withdrawing ? "Withdrawing..." : "Withdraw USDC"}
+            </button>
+          </div>
         </div>
 
         <section className="grid gap-px overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#1a1a1a] md:grid-cols-4">
@@ -1554,6 +1571,8 @@ export function PortfolioPageClient() {
         )}
       </main>
 
+      <WalletAccountModal open={depositOpen} onClose={() => setDepositOpen(false)} />
+      <WalletSelector open={connectOpen} onClose={() => setConnectOpen(false)} />
       <AlertDialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
         <AlertDialogContent className="border-[#242424] bg-[#101010] text-zinc-100">
           <AlertDialogHeader>

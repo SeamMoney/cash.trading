@@ -1397,6 +1397,16 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             Deposit
           </button>
         </div>
+        {/* A silently disabled button reads as broken. Say why: the usual case
+            is a wallet whose funds live on another chain (Solana/EVM) while
+            deposits move USDC that already sits on Aptos at this address. */}
+        {hasDepositAmount && depositExceedsWallet && (
+          <p className="px-1 text-[10px] leading-relaxed text-yellow-300/70">
+            {walletUsdcBalance === 0
+              ? "This wallet holds no USDC on Aptos. Deposits move Aptos USDC — balances on Solana or other chains don't count. Send USDC to this address on Aptos, or bridge from EVM below."
+              : `Amount exceeds this wallet's Aptos USDC balance (${walletUsdcBalance?.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC).`}
+          </p>
+        )}
       </div>
 
       {connected && hasDecibelAccount && (

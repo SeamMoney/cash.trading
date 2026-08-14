@@ -19,6 +19,7 @@ import {
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
+import { ensureBuilderApproval } from "@/lib/decibel-builder-approval";
 import {
   COLLATERAL_TOKENS,
   type CollateralToken,
@@ -354,6 +355,22 @@ export function TradePanel({
     setStatusHash("");
 
     try {
+      // First trade only: sign the one-time builder-fee consent so this and
+      // every later order carries the cash.trading code. Must land BEFORE the
+      // order is built — the order route reads the approval on-chain.
+      if (selectedSubaccount) {
+        await ensureBuilderApproval({
+          subaccount: selectedSubaccount,
+          network: decibelNetwork,
+          signAndSubmit: signAndSubmitDecibelTransaction as never,
+          onStep: (message) => {
+            if (isCurrentSubmission()) setStatusMessage(message);
+          },
+        });
+        if (!isCurrentSubmission()) return;
+        setStatusMessage("Build Decibel market order...");
+      }
+
       const orderValue = collateral * leverage;
       const size = orderValue / currentPrice;
       const res = await fetch("/api/decibel/order", {

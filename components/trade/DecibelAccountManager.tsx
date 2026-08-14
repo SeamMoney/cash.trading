@@ -227,6 +227,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [solanaSourceLoading, setSolanaSourceLoading] = useState(false);
   const [solanaBridging, setSolanaBridging] = useState(false);
   const [solanaBalanceNonce, setSolanaBalanceNonce] = useState(0);
+  const [solanaBridgeAmount, setSolanaBridgeAmount] = useState("");
   const [bridgeTransfer, setBridgeTransfer] =
     useState<CctpStatusResponse | null>(null);
   const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
@@ -636,8 +637,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         throw new Error("No USDC found in this Solana wallet.");
       }
       if (!context.blockhash) throw new Error("Could not fetch a Solana blockhash.");
-      const requested = Number.isFinite(depositValue) && depositValue > 0
-        ? Math.min(depositValue, context.balance)
+      const typed = Number(solanaBridgeAmount);
+      const requested = Number.isFinite(typed) && typed > 0
+        ? Math.min(typed, context.balance)
         : context.balance;
       const amountBaseUnits = BigInt(Math.round(requested * 1_000_000));
       if (amountBaseUnits <= 0n) throw new Error("Bridge amount is too small.");
@@ -668,7 +670,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     } finally {
       setSolanaBridging(false);
     }
-  }, [depositValue, owner, solanaBridging, solanaOriginAddress]);
+  }, [owner, solanaBridgeAmount, solanaBridging, solanaOriginAddress]);
 
   const lookupBridgeTransfer = useCallback(
     async (options?: {
@@ -1518,8 +1520,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           <p className="px-1 text-[10px] leading-relaxed text-yellow-300/70">
             {walletUsdcBalance === 0
               ? isSolanaWallet && solanaSourceBalance
-                ? `Your ${solanaSourceBalance.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC is on Solana — deposits move Aptos USDC. Bridge it in the Solana tab below, then deposit.`
-                : "This wallet holds no USDC on Aptos. Deposits move Aptos USDC — balances on Solana or other chains don't count. Send USDC to this address on Aptos, or bridge below."
+                ? "Your USDC is on Solana — bridge it below first."
+                : "No USDC on Aptos yet — send some to this address, or bridge below."
               : `Amount exceeds this wallet's Aptos USDC balance (${walletUsdcBalance?.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC).`}
           </p>
         )}
@@ -1534,7 +1536,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
                 {isSolanaWallet
-                  ? "Move your Solana USDC to Aptos once — after that, everything runs here."
+                  ? "One signature. Claim and deposit run automatically, gas covered."
                   : "Bridge native USDC from EVM with Circle CCTP, or paste an existing transfer hash to claim and deposit."}
               </p>
             </div>
@@ -1597,6 +1599,38 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   </span>
                 )}
               </div>
+              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={solanaBridgeAmount}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/[^0-9.]/g, "");
+                      if (next.split(".").length <= 2) setSolanaBridgeAmount(next);
+                    }}
+                    placeholder={
+                      solanaSourceBalance
+                        ? solanaSourceBalance.toLocaleString("en-US", { maximumFractionDigits: 6 })
+                        : "0.00"
+                    }
+                    className="min-w-0 flex-1 bg-transparent text-[13px] font-mono font-semibold text-white outline-none placeholder:text-zinc-600"
+                  />
+                  <span className="text-[11px] font-mono text-zinc-500">USDC</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (solanaSourceBalance) {
+                      setSolanaBridgeAmount(formatDepositInputAmount(solanaSourceBalance));
+                    }
+                  }}
+                  disabled={!solanaSourceBalance}
+                  className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Max
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -1605,7 +1639,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                     // null = the lookup failed, not an empty wallet — retry it.
                     : setSolanaBalanceNonce((n) => n + 1)
                 }
-                disabled={solanaBridging || solanaSourceLoading || solanaSourceBalance === 0}
+                disabled={
+                  solanaBridging
+                  || solanaSourceLoading
+                  || solanaSourceBalance === 0
+                  || (Boolean(solanaBridgeAmount)
+                    && !(Number(solanaBridgeAmount) > 0
+                      && Number(solanaBridgeAmount) <= (solanaSourceBalance ?? 0) + 0.000001))
+                }
                 className={cn(
                   "mt-2 w-full rounded-md px-3 py-2.5 text-[12px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                   !solanaBridging && solanaSourceBalance
@@ -1616,20 +1657,13 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 {solanaBridging
                   ? "Confirm in wallet..."
                   : solanaSourceLoading
-                    ? "Checking Solana balance..."
+                    ? "Checking balance..."
                     : solanaSourceBalance
-                      ? `Bridge ${(hasDepositAmount
-                          ? Math.min(depositValue, solanaSourceBalance)
-                          : solanaSourceBalance
-                        ).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC from Solana`
+                      ? "Bridge to Aptos"
                       : solanaSourceBalance === 0
                         ? "No Solana USDC found"
                         : "Balance check failed — tap to retry"}
               </button>
-              <p className="mt-1.5 px-1 text-[10px] leading-relaxed text-zinc-600">
-                One signature in your wallet. The claim and deposit to Decibel run
-                here automatically, gas covered.
-              </p>
             </>
           ) : (
             <>

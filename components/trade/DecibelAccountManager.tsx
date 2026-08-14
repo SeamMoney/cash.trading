@@ -35,6 +35,7 @@ import {
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
+import { fetchSolanaUsdcBalance, getSolanaAddressFromPublicKey } from "@/lib/solana-usdc";
 import { formatWalletConnectionName } from "@/lib/wallet-utils";
 
 interface AccountOverview {
@@ -216,6 +217,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [bridgeSourceChain, setBridgeSourceChain] =
     useState<BridgeSourceChain>("Arbitrum");
   const [bridgeTxHash, setBridgeTxHash] = useState("");
+  const [solanaSourceBalance, setSolanaSourceBalance] = useState<number | null>(null);
+  const [solanaSourceLoading, setSolanaSourceLoading] = useState(false);
   const [bridgeTransfer, setBridgeTransfer] =
     useState<CctpStatusResponse | null>(null);
   const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
@@ -508,6 +511,37 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     void refreshWalletUsdcBalance(controller.signal);
     return () => controller.abort();
   }, [refreshWalletUsdcBalance]);
+
+  // Solana-derived connection: read the Solana-side USDC so the UI can show
+  // the money the user actually holds instead of a bare "Wallet 0 USDC".
+  const solanaOriginAddress = getSolanaAddressFromPublicKey(account?.publicKey);
+  const isSolanaWallet = Boolean(solanaOriginAddress);
+
+  useEffect(() => {
+    if (!connected || !solanaOriginAddress) {
+      setSolanaSourceBalance(null);
+      setSolanaSourceLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSolanaSourceLoading(true);
+    fetchSolanaUsdcBalance(solanaOriginAddress, controller.signal)
+      .then((balance) => {
+        if (!controller.signal.aborted) setSolanaSourceBalance(balance);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSolanaSourceBalance(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSolanaSourceLoading(false);
+      });
+    return () => controller.abort();
+  }, [connected, solanaOriginAddress]);
+
+  // A Solana wallet's only bridge path is the Solana tab — preselect it.
+  useEffect(() => {
+    if (isSolanaWallet) setBridgeSourceChain("Solana");
+  }, [isSolanaWallet]);
 
   useEffect(() => {
     let active = true;
@@ -1409,7 +1443,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         {hasDepositAmount && depositExceedsWallet && (
           <p className="px-1 text-[10px] leading-relaxed text-yellow-300/70">
             {walletUsdcBalance === 0
-              ? "This wallet holds no USDC on Aptos. Deposits move Aptos USDC — balances on Solana or other chains don't count. Send USDC to this address on Aptos, or bridge from EVM below."
+              ? isSolanaWallet && solanaSourceBalance
+                ? `Your ${solanaSourceBalance.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC is on Solana — deposits move Aptos USDC. Bridge it in the Solana tab below, then deposit.`
+                : "This wallet holds no USDC on Aptos. Deposits move Aptos USDC — balances on Solana or other chains don't count. Send USDC to this address on Aptos, or bridge below."
               : `Amount exceeds this wallet's Aptos USDC balance (${walletUsdcBalance?.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC).`}
           </p>
         )}
@@ -1462,12 +1498,31 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           {bridgeSourceChain === "Solana" ? (
             /* No in-app Solana burn yet — the wallet signs it in an external
                CCTP bridge. The claim half below is chain-agnostic. */
-            <p className="mt-2 px-1 text-[11px] leading-relaxed text-zinc-500">
-              Bridge USDC from Solana with any Circle CCTP app (e.g.
-              transfer.circle.com): destination Aptos, recipient your connected
-              address above. Then paste the Solana transaction signature below —
-              the claim and deposit run here, gas sponsored.
-            </p>
+            <>
+              <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
+                <span>
+                  Solana{" "}
+                  {solanaSourceLoading
+                    ? "..."
+                    : solanaSourceBalance !== null
+                      ? `${solanaSourceBalance.toLocaleString("en-US", {
+                          maximumFractionDigits: 6,
+                        })} USDC`
+                      : "-- USDC"}
+                </span>
+                {solanaOriginAddress && (
+                  <span className="truncate text-zinc-700">
+                    {solanaOriginAddress.slice(0, 4)}...{solanaOriginAddress.slice(-4)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 px-1 text-[11px] leading-relaxed text-zinc-500">
+                Bridge USDC from Solana with any Circle CCTP app (e.g.
+                transfer.circle.com): destination Aptos, recipient your connected
+                address above. Then paste the Solana transaction signature below —
+                the claim and deposit run here, gas sponsored.
+              </p>
+            </>
           ) : (
             <>
               <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">

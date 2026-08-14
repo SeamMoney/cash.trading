@@ -36,6 +36,7 @@ import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSub
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
 import { fetchSolanaUsdcBalance, getSolanaAddressFromPublicKey } from "@/lib/solana-usdc";
+import { ensureBuilderApproval } from "@/lib/decibel-builder-approval";
 import {
   buildDepositForBurnTransaction,
   fetchSolanaUsdcContext,
@@ -608,6 +609,23 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
   // lookupBridgeTransfer is declared below; the burn handler fires it after
   // submission without creating a circular useCallback dependency.
+  /**
+   * Fee-routing consent, chained onto setup signatures (account creation and
+   * deposits) where the user is already signing — so the trade flow itself
+   * never grows an extra prompt. Quiet failure: the first trade still has the
+   * ensureBuilderApproval fallback.
+   */
+  const approveBuilderDuringSetup = useCallback((subaccountOverride?: string) => {
+    const target = subaccountOverride ?? selectedSubaccount;
+    if (!target) return;
+    void ensureBuilderApproval({
+      subaccount: target,
+      network: decibelNetwork,
+      signAndSubmit: signAndSubmitDecibelTransaction as never,
+      onStep: (message) => setStatusMessage(message),
+    });
+  }, [decibelNetwork, selectedSubaccount, signAndSubmitDecibelTransaction]);
+
   const lookupBridgeTransferRef = useRef<
     ((options?: { silent?: boolean; sourceChain?: BridgeSourceChain; txHash?: string }) => Promise<void>) | null
   >(null);
@@ -896,6 +914,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       setBridgeMessage("USDC claimed on Aptos and deposited to Decibel.");
       setStatus("success");
       setStatusMessage("USDC claimed and deposited to Decibel.");
+      approveBuilderDuringSetup();
     } catch (err) {
       if (!isCurrentAccountAction(action)) return;
       setStatus("error");
@@ -1187,6 +1206,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           ? "Decibel trading account ready."
           : "Account confirmed. Decibel indexer may take a moment to show it."
       );
+      if (next.length > 0) approveBuilderDuringSetup(next[0]?.address);
     } catch (err) {
       if (!isCurrentAccountAction(action)) return;
       const message = err instanceof Error ? err.message : "Account creation failed";
@@ -1307,6 +1327,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       void refreshWalletUsdcBalance();
       setStatusMessage("USDC collateral deposited to Decibel.");
       setStatus("success");
+      approveBuilderDuringSetup();
     } catch (err) {
       if (!isCurrentAccountAction(action)) return;
       setStatusMessage(err instanceof Error ? err.message : "USDC collateral deposit failed.");

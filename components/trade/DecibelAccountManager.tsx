@@ -36,6 +36,12 @@ import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSub
 import { TokenLogo } from "@/components/trade/StablecoinLogo";
 import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
 import { fetchSolanaUsdcBalance, getSolanaAddressFromPublicKey } from "@/lib/solana-usdc";
+import {
+  buildDepositForBurnTransaction,
+  findUsdcTokenAccount,
+  getInjectedSolanaProvider,
+  signAndSendWithProvider,
+} from "@/lib/solana-cctp";
 import { formatWalletConnectionName } from "@/lib/wallet-utils";
 
 interface AccountOverview {
@@ -219,7 +225,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [bridgeTxHash, setBridgeTxHash] = useState("");
   const [solanaSourceBalance, setSolanaSourceBalance] = useState<number | null>(null);
   const [solanaSourceLoading, setSolanaSourceLoading] = useState(false);
-  const [solanaRecipientCopied, setSolanaRecipientCopied] = useState(false);
+  const [solanaBridging, setSolanaBridging] = useState(false);
   const [bridgeTransfer, setBridgeTransfer] =
     useState<CctpStatusResponse | null>(null);
   const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
@@ -598,6 +604,69 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     void refreshWalletUsdcBalance();
   }, [refreshAccountState, refreshSubaccounts, refreshWalletUsdcBalance]);
 
+  // lookupBridgeTransfer is declared below; the burn handler fires it after
+  // submission without creating a circular useCallback dependency.
+  const lookupBridgeTransferRef = useRef<
+    ((options?: { silent?: boolean; sourceChain?: BridgeSourceChain; txHash?: string }) => Promise<void>) | null
+  >(null);
+
+  /**
+   * One-click Solana → Aptos: build Circle's deposit_for_burn ourselves, have
+   * the injected Solana wallet sign it in place, then hand the signature to
+   * the existing attestation → claim → deposit rail. Transaction construction
+   * is mainnet-simulation-verified (see lib/solana-cctp.ts).
+   */
+  const handleStartSolanaBridge = useCallback(async () => {
+    if (!solanaOriginAddress || solanaBridging) return;
+    const provider = getInjectedSolanaProvider();
+    if (!provider) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        "No Solana wallet found in this browser. Open cash.trading inside Backpack (or another Solana wallet app) to sign the bridge.",
+      );
+      return;
+    }
+    setSolanaBridging(true);
+    setBridgeLookupStatus("idle");
+    setBridgeMessage("Preparing the Solana bridge transaction...");
+    try {
+      const tokenAccount = await findUsdcTokenAccount(solanaOriginAddress);
+      if (!tokenAccount || tokenAccount.balance <= 0) {
+        throw new Error("No USDC found in this Solana wallet.");
+      }
+      const requested = Number.isFinite(depositValue) && depositValue > 0
+        ? Math.min(depositValue, tokenAccount.balance)
+        : tokenAccount.balance;
+      const amountBaseUnits = BigInt(Math.round(requested * 1_000_000));
+      if (amountBaseUnits <= 0n) throw new Error("Bridge amount is too small.");
+
+      const { transaction } = await buildDepositForBurnTransaction({
+        owner: solanaOriginAddress,
+        tokenAccount: tokenAccount.address,
+        amountBaseUnits,
+        aptosRecipient: owner,
+      });
+      setBridgeMessage("Confirm the bridge in your wallet...");
+      const signature = await signAndSendWithProvider(provider, transaction);
+
+      // Hand off to the existing rail: persistence, polling, claim, deposit.
+      setBridgeTxHash(signature);
+      setBridgeTransfer(null);
+      setBridgeMessage("Burn submitted on Solana. Waiting for Circle attestation...");
+      setBridgeLookupStatus("loading");
+      window.setTimeout(() => {
+        void lookupBridgeTransferRef.current?.({ txHash: signature, sourceChain: "Solana" });
+      }, 4_000);
+    } catch (err) {
+      setBridgeLookupStatus("error");
+      setBridgeMessage(
+        err instanceof Error ? err.message : "Solana bridge failed before submission.",
+      );
+    } finally {
+      setSolanaBridging(false);
+    }
+  }, [depositValue, owner, solanaBridging, solanaOriginAddress]);
+
   const lookupBridgeTransfer = useCallback(
     async (options?: {
       silent?: boolean;
@@ -650,6 +719,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     },
     [bridgeSourceChain, bridgeTxHash, decibelNetwork]
   );
+  lookupBridgeTransferRef.current = lookupBridgeTransfer;
 
   useEffect(() => {
     if (bridgeTransfer?.status !== "pending" || !bridgeTxHash) return;
@@ -1524,48 +1594,30 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   </span>
                 )}
               </div>
-              <div className="mt-2 space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard?.writeText(owner).then(
-                      () => {
-                        setSolanaRecipientCopied(true);
-                        window.setTimeout(() => setSolanaRecipientCopied(false), 2500);
-                      },
-                      () => setSolanaRecipientCopied(false),
-                    );
-                  }}
-                  className="flex w-full items-center justify-between gap-3 rounded-md bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06]"
-                >
-                  <span className="text-[11px] text-zinc-300">
-                    <span className="font-mono text-[10px] text-zinc-600">1&nbsp;&nbsp;</span>
-                    Copy your Aptos recipient address
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] text-accent">
-                    {solanaRecipientCopied ? "Copied ✓" : "Copy"}
-                  </span>
-                </button>
-                <a
-                  href="https://transfer.circle.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex w-full items-center justify-between gap-3 rounded-md bg-white/[0.03] px-3 py-2.5 transition-colors hover:bg-white/[0.06]"
-                >
-                  <span className="text-[11px] text-zinc-300">
-                    <span className="font-mono text-[10px] text-zinc-600">2&nbsp;&nbsp;</span>
-                    Bridge on Circle: Solana → Aptos, paste that address
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] text-accent">Open ↗</span>
-                </a>
-                <div className="flex items-center gap-3 rounded-md px-3 pt-1">
-                  <span className="text-[11px] text-zinc-500">
-                    <span className="font-mono text-[10px] text-zinc-600">3&nbsp;&nbsp;</span>
-                    Paste the Solana signature below — claim and deposit run here,
-                    gas covered.
-                  </span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleStartSolanaBridge()}
+                disabled={solanaBridging || !solanaSourceBalance}
+                className={cn(
+                  "mt-2 w-full rounded-md px-3 py-2.5 text-[12px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  !solanaBridging && solanaSourceBalance
+                    ? "bg-accent text-black hover:brightness-95"
+                    : "bg-white/[0.03] text-zinc-600",
+                )}
+              >
+                {solanaBridging
+                  ? "Confirm in wallet..."
+                  : solanaSourceBalance
+                    ? `Bridge ${(hasDepositAmount
+                        ? Math.min(depositValue, solanaSourceBalance)
+                        : solanaSourceBalance
+                      ).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC from Solana`
+                    : "No Solana USDC found"}
+              </button>
+              <p className="mt-1.5 px-1 text-[10px] leading-relaxed text-zinc-600">
+                One signature in your wallet. The claim and deposit to Decibel run
+                here automatically, gas covered.
+              </p>
             </>
           ) : (
             <>

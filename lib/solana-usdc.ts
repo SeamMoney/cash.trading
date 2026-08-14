@@ -7,7 +7,6 @@
  * the Solana side so the UI can show the balance and point it at the bridge.
  */
 
-const SOLANA_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 /** Circle's native USDC mint on Solana mainnet. */
 const SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -32,40 +31,23 @@ export function getSolanaAddressFromPublicKey(publicKey: unknown): string {
   }
 }
 
-/** Sum of the owner's USDC token accounts on Solana mainnet, or null on failure. */
+/**
+ * Sum of the owner's USDC token accounts on Solana mainnet, or null on
+ * failure. Read through our own API route: Solana's public RPC 403s/429s
+ * requests straight from mobile browsers, which made real balances render as
+ * "No Solana USDC found" on phones.
+ */
 export async function fetchSolanaUsdcBalance(
   owner: string,
   signal?: AbortSignal,
 ): Promise<number | null> {
-  const res = await fetch(SOLANA_MAINNET_RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getTokenAccountsByOwner",
-      params: [owner, { mint: SOLANA_USDC_MINT }, { encoding: "jsonParsed" }],
-    }),
+  const res = await fetch(`/api/solana/usdc?owner=${encodeURIComponent(owner)}`, {
+    cache: "no-store",
     signal,
   });
   if (!res.ok) return null;
-  const body = (await res.json().catch(() => null)) as {
-    result?: {
-      value?: Array<{
-        account?: {
-          data?: {
-            parsed?: { info?: { tokenAmount?: { uiAmount?: number | null } } };
-          };
-        };
-      }>;
-    };
-  } | null;
-  const accounts = body?.result?.value;
-  if (!Array.isArray(accounts)) return null;
-  let total = 0;
-  for (const entry of accounts) {
-    const amount = entry.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
-    if (typeof amount === "number" && Number.isFinite(amount)) total += amount;
-  }
-  return total;
+  const body = (await res.json().catch(() => null)) as { balance?: number } | null;
+  return typeof body?.balance === "number" && Number.isFinite(body.balance)
+    ? body.balance
+    : null;
 }

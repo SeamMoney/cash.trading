@@ -20,8 +20,6 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 
-const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
-
 /** Circle CCTP v1 programs on Solana mainnet (same IDs on devnet). */
 export const TOKEN_MESSENGER_MINTER_PROGRAM = new PublicKey(
   "CCTPiPYPc6AsJuwueEnWgSgucamXDZwBd53dQ11YiKX3",
@@ -38,41 +36,32 @@ const APTOS_DOMAIN = 9;
 /** Anchor discriminator for `deposit_for_burn`, from Circle's IDL. */
 const DEPOSIT_FOR_BURN_DISCRIMINATOR = Uint8Array.from([215, 60, 61, 46, 114, 55, 128, 176]);
 
-async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(SOLANA_RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+/**
+ * Owner's USDC state + a fresh blockhash, via our server-side RPC proxy —
+ * public Solana RPC blocks direct calls from mobile browsers.
+ */
+export async function fetchSolanaUsdcContext(owner: string): Promise<{
+  balance: number;
+  tokenAccount: string | null;
+  blockhash: string | null;
+}> {
+  const res = await fetch(`/api/solana/usdc?owner=${encodeURIComponent(owner)}`, {
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Solana RPC ${method} failed (${res.status})`);
-  const body = (await res.json()) as { result?: T; error?: { message?: string } };
-  if (body.error) throw new Error(body.error.message || `Solana RPC ${method} error`);
-  return body.result as T;
-}
-
-/** The owner's largest USDC token account — source of the burn. */
-export async function findUsdcTokenAccount(
-  owner: string,
-): Promise<{ address: string; balance: number } | null> {
-  const result = await rpc<{
-    value?: Array<{
-      pubkey: string;
-      account?: { data?: { parsed?: { info?: { tokenAmount?: { uiAmount?: number | null } } } } };
-    }>;
-  }>("getTokenAccountsByOwner", [
-    owner,
-    { mint: SOLANA_USDC_MINT.toBase58() },
-    { encoding: "jsonParsed" },
-  ]);
-  const accounts = result?.value ?? [];
-  let best: { address: string; balance: number } | null = null;
-  for (const entry of accounts) {
-    const balance = entry.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0;
-    if (typeof balance === "number" && (!best || balance > best.balance)) {
-      best = { address: entry.pubkey, balance };
-    }
+  const body = (await res.json().catch(() => null)) as {
+    balance?: number;
+    tokenAccount?: string | null;
+    blockhash?: string | null;
+    error?: string;
+  } | null;
+  if (!res.ok || !body || typeof body.balance !== "number") {
+    throw new Error(body?.error || `Solana lookup failed (${res.status})`);
   }
-  return best;
+  return {
+    balance: body.balance,
+    tokenAccount: body.tokenAccount ?? null,
+    blockhash: body.blockhash ?? null,
+  };
 }
 
 function findPda(programId: PublicKey, seeds: Array<Uint8Array | Buffer>): PublicKey {
@@ -101,6 +90,8 @@ export async function buildDepositForBurnTransaction(args: {
   amountBaseUnits: bigint;
   /** 0x… Aptos address that receives the minted USDC. */
   aptosRecipient: string;
+  /** Recent blockhash from the RPC proxy. */
+  blockhash: string;
 }): Promise<{ transaction: Transaction; eventKeypair: Keypair }> {
   const owner = new PublicKey(args.owner);
   const burnTokenAccount = new PublicKey(args.tokenAccount);
@@ -155,15 +146,9 @@ export async function buildDepositForBurnTransaction(args: {
     data: Buffer.from(data),
   });
 
-  const latest = await rpc<{ value?: { blockhash?: string } }>("getLatestBlockhash", [
-    { commitment: "confirmed" },
-  ]);
-  const blockhash = latest?.value?.blockhash;
-  if (!blockhash) throw new Error("Could not fetch a Solana blockhash");
-
   const transaction = new Transaction();
   transaction.feePayer = owner;
-  transaction.recentBlockhash = blockhash;
+  transaction.recentBlockhash = args.blockhash;
   transaction.add(instruction);
   transaction.partialSign(eventKeypair);
   return { transaction, eventKeypair };

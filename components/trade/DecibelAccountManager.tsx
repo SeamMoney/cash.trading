@@ -38,7 +38,7 @@ import { useEvmSourceChain } from "@/hooks/useEvmSourceChain";
 import { fetchSolanaUsdcBalance, getSolanaAddressFromPublicKey } from "@/lib/solana-usdc";
 import {
   buildDepositForBurnTransaction,
-  findUsdcTokenAccount,
+  fetchSolanaUsdcContext,
   getInjectedSolanaProvider,
   signAndSendWithProvider,
 } from "@/lib/solana-cctp";
@@ -226,6 +226,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
   const [solanaSourceBalance, setSolanaSourceBalance] = useState<number | null>(null);
   const [solanaSourceLoading, setSolanaSourceLoading] = useState(false);
   const [solanaBridging, setSolanaBridging] = useState(false);
+  const [solanaBalanceNonce, setSolanaBalanceNonce] = useState(0);
   const [bridgeTransfer, setBridgeTransfer] =
     useState<CctpStatusResponse | null>(null);
   const [bridgeLookupStatus, setBridgeLookupStatus] = useState<
@@ -543,7 +544,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         if (!controller.signal.aborted) setSolanaSourceLoading(false);
       });
     return () => controller.abort();
-  }, [connected, solanaOriginAddress]);
+  }, [connected, solanaOriginAddress, solanaBalanceNonce]);
 
   // A Solana wallet's only bridge path is the Solana tab — preselect it.
   useEffect(() => {
@@ -630,21 +631,23 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     setBridgeLookupStatus("idle");
     setBridgeMessage("Preparing the Solana bridge transaction...");
     try {
-      const tokenAccount = await findUsdcTokenAccount(solanaOriginAddress);
-      if (!tokenAccount || tokenAccount.balance <= 0) {
+      const context = await fetchSolanaUsdcContext(solanaOriginAddress);
+      if (!context.tokenAccount || context.balance <= 0) {
         throw new Error("No USDC found in this Solana wallet.");
       }
+      if (!context.blockhash) throw new Error("Could not fetch a Solana blockhash.");
       const requested = Number.isFinite(depositValue) && depositValue > 0
-        ? Math.min(depositValue, tokenAccount.balance)
-        : tokenAccount.balance;
+        ? Math.min(depositValue, context.balance)
+        : context.balance;
       const amountBaseUnits = BigInt(Math.round(requested * 1_000_000));
       if (amountBaseUnits <= 0n) throw new Error("Bridge amount is too small.");
 
       const { transaction } = await buildDepositForBurnTransaction({
         owner: solanaOriginAddress,
-        tokenAccount: tokenAccount.address,
+        tokenAccount: context.tokenAccount,
         amountBaseUnits,
         aptosRecipient: owner,
+        blockhash: context.blockhash,
       });
       setBridgeMessage("Confirm the bridge in your wallet...");
       const signature = await signAndSendWithProvider(provider, transaction);
@@ -1596,23 +1599,32 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               </div>
               <button
                 type="button"
-                onClick={() => void handleStartSolanaBridge()}
-                disabled={solanaBridging || !solanaSourceBalance}
+                onClick={() =>
+                  solanaSourceBalance
+                    ? void handleStartSolanaBridge()
+                    // null = the lookup failed, not an empty wallet — retry it.
+                    : setSolanaBalanceNonce((n) => n + 1)
+                }
+                disabled={solanaBridging || solanaSourceLoading || solanaSourceBalance === 0}
                 className={cn(
                   "mt-2 w-full rounded-md px-3 py-2.5 text-[12px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                   !solanaBridging && solanaSourceBalance
                     ? "bg-accent text-black hover:brightness-95"
-                    : "bg-white/[0.03] text-zinc-600",
+                    : "bg-white/[0.03] text-zinc-400",
                 )}
               >
                 {solanaBridging
                   ? "Confirm in wallet..."
-                  : solanaSourceBalance
-                    ? `Bridge ${(hasDepositAmount
-                        ? Math.min(depositValue, solanaSourceBalance)
-                        : solanaSourceBalance
-                      ).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC from Solana`
-                    : "No Solana USDC found"}
+                  : solanaSourceLoading
+                    ? "Checking Solana balance..."
+                    : solanaSourceBalance
+                      ? `Bridge ${(hasDepositAmount
+                          ? Math.min(depositValue, solanaSourceBalance)
+                          : solanaSourceBalance
+                        ).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC from Solana`
+                      : solanaSourceBalance === 0
+                        ? "No Solana USDC found"
+                        : "Balance check failed — tap to retry"}
               </button>
               <p className="mt-1.5 px-1 text-[10px] leading-relaxed text-zinc-600">
                 One signature in your wallet. The claim and deposit to Decibel run

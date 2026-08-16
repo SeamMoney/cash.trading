@@ -169,7 +169,10 @@ async function view<T = unknown[]>(
     });
 
   let response = await fetchView(apiKey);
-  if (apiKey && (response.status === 401 || response.status === 403)) {
+  // 429 included: a capped org key made every keyed read fail while the
+  // anonymous endpoint stayed up — which surfaced as funded accounts
+  // rendering as "create account".
+  if (apiKey && (response.status === 401 || response.status === 403 || response.status === 429)) {
     response = await fetchView();
   }
 
@@ -655,29 +658,112 @@ export async function hasAssetsOrPositionsOnChain(
   return Number.isFinite(navValue) && navValue !== 0;
 }
 
+/**
+ * Keyless discovery of NON-primary subaccounts. Accounts made through
+ * `create_new_subaccount` (every wallet onboarded by this app) are objects,
+ * not the derived primary, and enumerating them used to require the keyed
+ * Decibel REST API — when the org key got capped, funded accounts rendered
+ * as "create account". The public indexer lists an owner's objects without
+ * any key; the fullnode (which already falls back keyless) confirms which of
+ * them are Subaccounts.
+ */
+async function getSubaccountsViaIndexer(
+  owner: string,
+  network?: DecibelNetwork
+): Promise<ChainDecibelSubaccount[]> {
+  const net = network ?? getActiveNetwork();
+  const graphqlUrl =
+    net === "mainnet"
+      ? "https://api.mainnet.aptoslabs.com/v1/graphql"
+      : "https://api.testnet.aptoslabs.com/v1/graphql";
+  const pkg = getDecibelPackage(network);
+
+  const response = await fetch(graphqlUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      query:
+        "query($owner: String!) { current_objects(where: {owner_address: {_eq: $owner}}, limit: 25) { object_address } }",
+      variables: { owner },
+    }),
+    signal: AbortSignal.timeout(6_000),
+  });
+  if (!response.ok) return [];
+  const body = (await response.json().catch(() => null)) as {
+    data?: { current_objects?: Array<{ object_address?: string }> };
+  } | null;
+  const candidates = (body?.data?.current_objects ?? [])
+    .map((entry) => entry.object_address)
+    .filter((address): address is string => Boolean(address));
+  if (candidates.length === 0) return [];
+
+  const confirmed: Array<ChainDecibelSubaccount | null> = await Promise.all(
+    candidates.map(async (address): Promise<ChainDecibelSubaccount | null> => {
+      // Only genuine Subaccount objects survive this view; anything else
+      // (NFTs, other objects) aborts and maps to null.
+      const isActive = await safeView<boolean>(
+        {
+          function: `${pkg}::dex_accounts::view_is_subaccount_active`,
+          functionArguments: [address],
+        },
+        network
+      );
+      if (isActive === null) return null;
+      const hasAssetsOrPositions = await hasAssetsOrPositionsOnChain(address, network).catch(
+        () => false
+      );
+      return {
+        address,
+        name: null,
+        isPrimary: false,
+        isActive: Boolean(isActive),
+        hasAssetsOrPositions,
+      };
+    })
+  );
+  return confirmed.filter(
+    (item): item is ChainDecibelSubaccount =>
+      item !== null && (item.isActive || item.hasAssetsOrPositions)
+  );
+}
+
 export async function getFastSubaccounts(
   owner: string,
   network?: DecibelNetwork
 ): Promise<ChainDecibelSubaccount[]> {
   const primary = await getPrimarySubaccountOnChain(owner, network);
-  if (!primary) return [];
+  const results: ChainDecibelSubaccount[] = [];
 
-  const [isActive, hasAssetsOrPositions] = await Promise.all([
-    isSubaccountActiveOnChain(primary, network),
-    hasAssetsOrPositionsOnChain(primary, network),
-  ]);
+  if (primary) {
+    const [isActive, hasAssetsOrPositions] = await Promise.all([
+      isSubaccountActiveOnChain(primary, network),
+      hasAssetsOrPositionsOnChain(primary, network),
+    ]);
+    if (isActive || hasAssetsOrPositions) {
+      results.push({
+        address: primary,
+        name: "Primary",
+        isPrimary: true,
+        isActive,
+        hasAssetsOrPositions,
+      });
+    }
+  }
 
-  if (!isActive && !hasAssetsOrPositions) return [];
+  // Object subaccounts (create_new_subaccount) are invisible to the primary
+  // derivation — discover them through the keyless indexer path.
+  try {
+    const viaIndexer = await getSubaccountsViaIndexer(owner, network);
+    for (const item of viaIndexer) {
+      if (!results.some((existing) => existing.address.toLowerCase() === item.address.toLowerCase())) {
+        results.push(item);
+      }
+    }
+  } catch {
+    // Indexer down — primary-only result is still better than nothing.
+  }
 
-  return [
-    {
-      address: primary,
-      name: "Primary",
-      isPrimary: true,
-      isActive,
-      hasAssetsOrPositions,
-    },
-  ];
+  return results;
 }
 
 async function getPositionFromMarketViews(

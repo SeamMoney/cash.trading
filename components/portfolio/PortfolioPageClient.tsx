@@ -611,10 +611,33 @@ export function PortfolioPageClient() {
     return () => abortRef.current?.abort();
   }, [fetchAccountState]);
 
+  // 20s, and only while the tab is visible. At 4s this refetched chain state
+  // ~21,600 times per open hour per tab, which is what exhausted the RPC
+  // provider's monthly credit and took the whole app's data offline.
   useEffect(() => {
     if (!connected || !selectedSubaccount) return;
-    const interval = setInterval(() => void fetchAccountState(), 4_000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (interval || document.hidden) return;
+      interval = setInterval(() => void fetchAccountState(), 20_000);
+    };
+    const stop = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else {
+        void fetchAccountState();
+        start();
+      }
+    };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [connected, fetchAccountState, selectedSubaccount]);
 
   useEffect(() => {

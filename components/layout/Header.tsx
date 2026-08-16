@@ -132,15 +132,36 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
     }
   }, [connected, decibelNetwork, owner, selectedSubaccount]);
 
+  // 30s and visibility-gated: the header mounts on every page, so a 5s poll
+  // ran on every open tab all day for a number that changes on deposits and
+  // fills, both of which already trigger their own refresh.
   useEffect(() => {
     const controller = new AbortController();
     void refreshBalance(controller.signal);
-    const interval = connected
-      ? setInterval(() => void refreshBalance(), 5_000)
-      : null;
+    if (!connected) return () => controller.abort();
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (interval || document.hidden) return;
+      interval = setInterval(() => void refreshBalance(), 30_000);
+    };
+    const stop = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else {
+        void refreshBalance();
+        start();
+      }
+    };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       controller.abort();
-      if (interval) clearInterval(interval);
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [connected, refreshBalance]);
 

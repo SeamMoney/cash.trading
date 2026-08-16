@@ -730,12 +730,18 @@ assert.ok(!farmingTips.includes("Automated volume generation"), "points tips mus
 assert.match(vaultTotalRoute, /getActiveDecibelVaults/);
 assert.match(vaultTotalRoute, /vault\.status === 'active'/);
 assert.match(vaultTotalRoute, /protocolTvl/);
+// Warm every 5 minutes, not every minute. Cold vault reads take ~10s, so the
+// warm must stay frequent enough to keep the feed hot — but the route's own
+// stale-while-revalidate window is 300s, so a per-minute cron re-warmed a
+// cache that was still fresh, and 43,200 expensive multi-call reads a month
+// exhausted the RPC provider's monthly credit, taking every data surface in
+// the app offline. */5 covers the same staleness window at a fifth the cost.
 assert.ok(
   depthVercelConfig.crons.some(
     (cron: { path?: string; schedule?: string }) =>
-      cron.path === "/api/decibel/vaults" && cron.schedule === "* * * * *",
+      cron.path === "/api/decibel/vaults" && cron.schedule === "*/5 * * * *",
   ),
-  "production must warm the shared vault cache every minute",
+  "production must warm the shared vault cache within its stale-while-revalidate window",
 );
 assert.match(vaultUserRoute, /'mainnet', true/);
 assert.match(decibelPoints, /typeof value !== 'number'/);

@@ -79,21 +79,30 @@ export async function readApprovedBuilderFee(args: {
   const signal = args.signal
     ? AbortSignal.any([args.signal, timeoutSignal])
     : timeoutSignal
-  const response = await fetch(`${getFullnodeUrl(args.network)}/view`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-aptos-client': 'cash-trading/decibel-builder',
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      function: `${getDecibelPackage(args.network)}::builder_code_registry::get_approved_max_fee`,
-      type_arguments: [],
-      arguments: [subaccount, builderAddress],
-    }),
-    cache: 'no-store',
-    signal,
-  })
+  const request = (withKey: boolean) =>
+    fetch(`${getFullnodeUrl(args.network)}/view`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-aptos-client': 'cash-trading/decibel-builder',
+        ...(withKey && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        function: `${getDecibelPackage(args.network)}::builder_code_registry::get_approved_max_fee`,
+        type_arguments: [],
+        arguments: [subaccount, builderAddress],
+      }),
+      cache: 'no-store',
+      signal,
+    })
+
+  let response = await request(true)
+  // A capped or invalid org key must not silence the builder code: when this
+  // read fails, `approval.readable` goes false and every order stops carrying
+  // the fee. The anonymous endpoint stays up (per-IP limited) — fall back.
+  if (!response.ok && apiKey && (response.status === 429 || response.status === 401 || response.status === 403)) {
+    response = await request(false)
+  }
   if (!response.ok) {
     throw new Error(`Builder approval lookup failed (${response.status})`)
   }

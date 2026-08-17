@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
+import { cn } from "@/lib/utils";
+
 export type ThemeName = "dark" | "light";
 
 export const THEME_STORAGE_KEY = "cash-trading-theme";
@@ -79,12 +81,16 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={toggle}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       title={isDark ? "Light theme" : "Dark theme"}
-      className={[
+      // cn(), not a plain join: a caller passing `hidden md:inline-flex` was
+      // losing to the base `inline-flex` in the compiled CSS, so the toggle
+      // stayed visible on mobile. twMerge resolves the display conflict in
+      // the caller's favour.
+      className={cn(
         "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
         "text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200",
         "focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent/50",
-        className ?? "",
-      ].join(" ")}
+        className,
+      )}
     >
       <svg
         viewBox="0 0 20 20"

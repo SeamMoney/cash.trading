@@ -193,8 +193,15 @@ export async function GET(req: NextRequest) {
   const startedAt = Date.now();
 
   try {
-    const dayStatsPromise = fetchAssetContexts(network);
-    let markets = await fetchSdkMarkets(network);
+    // Both of these hit the keyed Decibel REST API. A capped/absent key makes
+    // them THROW, which used to skip the chain fallback below and return a
+    // degraded empty payload — the whole app rendered dashes even though the
+    // fullnode serves every market anonymously. Swallow their failure here so
+    // the chain path can do its job.
+    const dayStatsPromise = fetchAssetContexts(network).catch(
+      () => new Map<string, DayStats>(),
+    );
+    let markets = await fetchSdkMarkets(network).catch(() => []);
     let sources = {
       config: "sdk",
       markOracle: "rest",

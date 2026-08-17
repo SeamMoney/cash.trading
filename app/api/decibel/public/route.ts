@@ -5,6 +5,7 @@ import {
   type DecibelNetwork,
 } from "@/lib/decibel";
 import { checkApiRateLimit } from "@/lib/api-rate-limit";
+import { getFastMarkets } from "@/lib/decibel-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,8 +145,28 @@ export async function GET(req: NextRequest) {
     }
 
     if (resource === "prices") {
-      const prices = await fetchUpstream<DecibelRestPrice[]>("/prices", network, timeoutMs);
-      return NextResponse.json(prices, { headers: NO_STORE_HEADERS });
+      // Prices drive the whole trade page (header, order panel, mark). The
+      // keyed Decibel REST API 429s once the org credit is capped, which used
+      // to 502 this route and leave every price on the page as a dash — while
+      // the fullnode served the same marks anonymously. Fall back to chain.
+      try {
+        const prices = await fetchUpstream<DecibelRestPrice[]>("/prices", network, timeoutMs);
+        return NextResponse.json(prices, { headers: NO_STORE_HEADERS });
+      } catch (upstreamError) {
+        const chainMarkets = await getFastMarkets(network);
+        if (chainMarkets.length === 0) throw upstreamError;
+        const prices: DecibelRestPrice[] = chainMarkets.map((market) => ({
+          funding_rate_bps: market.fundingRateBps ?? 0,
+          is_funding_positive: market.isFundingPositive ?? true,
+          mark_px: market.markPrice ?? market.oraclePrice ?? 0,
+          market: market.name,
+          mid_px: market.midPrice ?? market.markPrice ?? market.oraclePrice ?? 0,
+          open_interest: market.openInterest ?? 0,
+          oracle_px: market.oraclePrice ?? market.markPrice ?? 0,
+          transaction_unix_ms: market.priceUpdatedAt ?? Date.now(),
+        }));
+        return NextResponse.json(prices, { headers: NO_STORE_HEADERS });
+      }
     }
 
     if (resource === "bundle" || resource === "bootstrap") {

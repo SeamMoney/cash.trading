@@ -1504,36 +1504,37 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             Max
           </button>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
-            <TokenLogo token="USDC" size={18} />
-            <input
-              type="text"
-              inputMode="decimal"
-              value={depositAmount}
-              onChange={(e) => {
-                const next = e.target.value.replace(/[^0-9.]/g, "");
-                if (next.split(".").length <= 2) setDepositAmount(next);
-              }}
-              className="min-w-0 flex-1 bg-transparent text-[13px] font-mono font-semibold text-white outline-none placeholder:text-zinc-700"
-              placeholder="0.00"
-            />
-            <span className="text-[11px] font-mono text-zinc-500">USDC</span>
-          </label>
-          <button
-            type="button"
-            onClick={handleDeposit}
-            disabled={!canDeposit}
-            className={cn(
-              "rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-              canDeposit
-                ? "bg-white/[0.08] text-zinc-100 hover:bg-white/[0.12]"
-                : "bg-white/[0.03] text-zinc-600"
-            )}
-          >
-            Deposit
-          </button>
-        </div>
+        {/* Funding is the whole job of this sheet, so the deposit CTA is a
+            full-width accent button under the amount rather than a small grey
+            chip beside it. */}
+        <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-3">
+          <TokenLogo token="USDC" size={20} />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={depositAmount}
+            onChange={(e) => {
+              const next = e.target.value.replace(/[^0-9.]/g, "");
+              if (next.split(".").length <= 2) setDepositAmount(next);
+            }}
+            className="min-w-0 flex-1 bg-transparent text-[16px] font-mono font-semibold text-white outline-none placeholder:text-zinc-700"
+            placeholder="0.00"
+          />
+          <span className="text-[12px] font-mono text-zinc-500">USDC</span>
+        </label>
+        <button
+          type="button"
+          onClick={handleDeposit}
+          disabled={!canDeposit}
+          className={cn(
+            "mt-2 w-full rounded-md px-3 py-3 text-[14px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            canDeposit
+              ? "bg-accent text-black hover:brightness-95"
+              : "bg-white/[0.03] text-zinc-600"
+          )}
+        >
+          Deposit to Decibel
+        </button>
         {/* A silently disabled button reads as broken. Say why: the usual case
             is a wallet whose funds live on another chain (Solana/EVM) while
             deposits move USDC that already sits on Aptos at this address. */}

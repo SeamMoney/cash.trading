@@ -249,12 +249,18 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                   </Link>
                 );
               })}
+              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] px-3 pt-3">
+                <span className="text-[15px] font-medium text-zinc-300">Theme</span>
+                <ThemeToggle />
+              </div>
             </nav>
           </div>
 
           {/* Right: theme + balance + wallet button */}
           <div className="flex items-center gap-3">
-            <ThemeToggle />
+            {/* Desktop only: on mobile this moves into the nav sheet so the
+                header keeps just balance + wallet. */}
+            <ThemeToggle className="hidden md:inline-flex" />
             {connected && (
               <button
                 type="button"
@@ -322,6 +328,10 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                   </Link>
                 );
               })}
+              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] px-3 pt-3">
+                <span className="text-[15px] font-medium text-zinc-300">Theme</span>
+                <ThemeToggle />
+              </div>
             </nav>
           </>
         )}

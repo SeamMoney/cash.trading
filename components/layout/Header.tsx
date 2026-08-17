@@ -249,10 +249,6 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                   </Link>
                 );
               })}
-              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] px-3 pt-3">
-                <span className="text-[15px] font-medium text-zinc-300">Theme</span>
-                <ThemeToggle />
-              </div>
             </nav>
           </div>
 

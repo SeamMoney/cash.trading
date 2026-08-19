@@ -9,7 +9,7 @@ authors = ["SeamMoney"]
 cash_strategy = "_"
 
 [dependencies]
-AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "aptos-cli-v9.2.0" }
 # Compile-time interface packages mirroring the on-chain Decibel/AptosTrading packages BY NAME so the
 # publish-time dependency check (0x1::code) resolves them. The real modules are already on-chain; these
 # deps are never published. See deps/*/.

@@ -3,7 +3,7 @@
 # proxy, where the npm wrapper's own downloader fails (Node fetch ignores
 # HTTPS_PROXY) but curl succeeds. Verified working in the CCR sandbox.
 set -euo pipefail
-VERSION="${APTOS_CLI_VERSION:-8.1.0}"
+VERSION="${APTOS_CLI_VERSION:-9.2.0}"
 PLATFORM="${APTOS_CLI_PLATFORM:-Ubuntu-22.04-x86_64}"
 DEST="${1:-.aptos-cli}"
 mkdir -p "$DEST"

@@ -14,7 +14,7 @@ This document assumes you do and only covers getting it live.
 
 | | Status |
 |---|---|
-| Contract on **testnet** | **Current zero-builder-fee checkout still needs a fresh directional proof.** The preceding package at `0x4ad6f9f4f650bf26417255db304c5131b94136ea63063fef176bb2c515c7c0e9` completed creation, delegation and three neutral ticks, then exposed the builder-identity bug on its first forced buy. See §0.1. |
+| Contract on **testnet** | **PROVEN both directions on the live engine, 2026-08-19.** The current zero-builder-fee checkout at [`0x45df…cabc`](https://explorer.aptoslabs.com/account/0x45df0217333103c86f4be0e707071c2293adcd2ceb84dacae59d92301675cabc/modules?network=testnet) filled a forced buy AND the flip to a short, each verified end to end by `verify-execution`. See §0.3. This was the release gate left open by §0.2. |
 | Contract on **mainnet** | **Published and initialized.** Package [`0x3590…5105`](https://explorer.aptoslabs.com/account/0x3590fbae95f65fd00d01be6bf2d5e0049b5b447e749ed269d8cca744d71b5105/modules?network=mainnet); publish [`0x19ee…c6b`](https://explorer.aptoslabs.com/txn/0x19ee80346da94d44a13434808656b2047802ab1737577ad0a69dc62d18da5c6b?network=mainnet); platform init [`0x1e50…611`](https://explorer.aptoslabs.com/txn/0x1e50ab268a3d3732e5a772897d59d713c111818130616306ab3e6b6ac19e4611?network=mainnet). No vault was created and no USDC was spent during publication. |
 | Automated-vault builder fee | **Locked to 0 bp.** Decibel validates approval against the vault's actual trading subaccount, which a delegated strategy cannot approve through the current public API. Direct user orders still use the separately configured 1 bp builder fee. See §8.5b. |
 | Prod database | **Current.** All 18 repository migrations were applied and verified on 2026-08-11 (§3). |
@@ -48,6 +48,29 @@ byte:
 The live `platform_terms` view returns a 50 USDC launch fee, treasury and builder address
 `0x69d3…39fa`, and an automated-vault builder fee of 0 bp. The package registry reports policy
 `1` (`compatible`) and upgrade number `0`.
+
+### 0.3 Testnet directional proof — the release gate, closed (2026-08-19)
+
+A fresh clean-room run of the **current checkout** (v2 attestation, automated builder fee
+locked to 0) against the live testnet engine, state in `.sealed-e2e-v2-testnet/`:
+
+- Package: [`0x45df…cabc`](https://explorer.aptoslabs.com/account/0x45df0217333103c86f4be0e707071c2293adcd2ceb84dacae59d92301675cabc/modules?network=testnet)
+- Decibel vault: `0x7593809f6ee8ecb6894f5142f831505f2d7fe81f429c914c807796d1ccf8e65c`; strategy vault: `0xe865…96ba`
+- **Forced buy** (seq 0): [`0xd7d829…4213`](https://explorer.aptoslabs.com/txn/0xd7d829723fad65556b07bb33f9714b92a24775bcf3cd96baf9d02a03cc984213?network=testnet) — long, `order=140000 traded=140000`, live position confirmed
+- **Forced sell / flip** (seq 3): [`0xed255d…8315`](https://explorer.aptoslabs.com/txn/0xed255d73721f1dcdf4e3e425bbb28c49cb4a1594c3d29457203ed3170dff8315?network=testnet) — two taker orders in one tick (reduce-only close of the long, then the short), `order=140000 traded=140000`, live short confirmed
+- Both adjudicated by `verify-execution`, which checks the OrderEvent direction, VaultTraded,
+  AttestedTick, zero builder fee on platform and vault, the emitting subaccount, and the live
+  position. To verify the flip, pass its hash: the default verifies the FIRST directional tick,
+  whose long has legitimately been flipped away.
+
+Failure the run surfaced, fixed in the same commit: **`rev = "mainnet"` on the AptosFramework
+dependency is a moving branch.** The branch tip had outgrown every released CLI, so `aptos move
+compile` failed on framework spec files this checkout never touched — the build changed under
+us with zero diff. All five Move.toml files now pin `rev = "aptos-cli-v9.2.0"` (the framework
+source at the CLI's own release tag is parseable by that CLI, by construction) and
+`install-aptos-cli.sh` installs 9.2.0. `verify-package` against the mainnet package still
+reports all five modules byte-for-byte identical under the pinned toolchain, so the pin
+changes nothing about what is deployed — it only stops the ground moving.
 
 ### 0.2 Previous testnet release evidence and the directional failure
 

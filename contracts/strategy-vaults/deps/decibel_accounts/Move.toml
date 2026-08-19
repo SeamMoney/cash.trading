@@ -10,6 +10,6 @@ version = "0.1.0"
 decibel = "_"
 
 [dependencies]
-AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "aptos-cli-v9.2.0" }
 decibel_perp_dex = { local = "../decibel_perp_dex" }
 AptosTrading = { local = "../AptosTrading" }

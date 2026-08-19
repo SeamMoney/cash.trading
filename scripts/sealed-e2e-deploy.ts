@@ -26,7 +26,7 @@
  *        decibel-vault → sealed-vault → delegate → seal → attest
  *
  * Requires the aptos CLI for the publish step. If it's not on PATH, run
- * scripts/install-aptos-cli.sh (pins v8.1.0) or set APTOS_BIN.
+ * scripts/install-aptos-cli.sh (pins v9.2.0, matching the framework pin in Move.toml) or set APTOS_BIN.
  */
 import { execFileSync } from "node:child_process";
 import {

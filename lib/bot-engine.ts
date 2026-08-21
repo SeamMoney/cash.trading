@@ -15,7 +15,16 @@ export interface BotConfig {
   bias: 'long' | 'short' | 'neutral' // Directional bias
   market: string // Market address (BTC/USD, ETH/USD, etc.)
   marketName: string // Display name
-  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid' // Trading strategy
+  /**
+   * Trading strategy.
+   *
+   * `pine` is the Personal Strategy Runner: the direction comes from a catalog
+   * Pine strategy evaluated on closed candles by lib/personal-runner.ts, which
+   * drives this engine through `executeSignal()`. It is deliberately NOT part
+   * of the `runLoop()` rotation — a pine bot must only ever trade on a bar
+   * signal, never on the timer that the volume strategies use.
+   */
+  strategy: 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid' | 'pine'
   aggressiveness?: number // 1-10 scale for order frequency (optional, defaults to 5)
   /**
    * Leverage multiple to size positions at. Defaults to DEFAULT_LEVERAGE_X (5).
@@ -24,6 +33,13 @@ export interface BotConfig {
    * omission. Clamped to the market max at use time.
    */
   leverageX?: number
+  /**
+   * Per-bot exit overrides, as FRACTIONS of entry price (0.02 = 2%) — the same
+   * unit as HIGH_RISK_EXITS and lib/backtest.ts, never whole percents.
+   * `null`/omitted means the strategy default; see `getExitThresholds()`.
+   */
+  stopLossPct?: number | null
+  takeProfitPct?: number | null
 }
 
 export interface OrderHistory {
@@ -60,6 +76,23 @@ export interface OrderResult {
   exitPrice?: number
   pnl?: number
   positionHeldMs?: number
+}
+
+/**
+ * What `executeSignal()` did with one Pine signal. Reported so the caller can
+ * log and persist the outcome without re-deriving it from `txHash` sentinels.
+ */
+export type SignalAction =
+  | 'noop_flat'        // neutral signal, no position
+  | 'noop_same_side'   // already positioned the way the signal asks
+  | 'protected'        // neutral signal, position kept and its stop refreshed
+  | 'closed'           // position closed, nothing (re)opened this bar
+  | 'flipped'          // closed one side and opened the other
+  | 'opened'           // entered from flat
+  | 'blocked'          // refused to act (unreadable position, failed close/entry)
+
+export interface SignalExecutionResult extends OrderResult {
+  action: SignalAction
 }
 
 // Package address - resolved from SDK config based on active network
@@ -229,8 +262,14 @@ const DLP_VAULT_SUBACCOUNT = '0x1aa8a40a749aacc063fd541f17ab13bd1e87f3eca8de54d7
  * all still closes at a loss, and the stop sits deep inside normal noise.
  *
  * The stop must clear costs by a sensible margin and the target must exceed the
- * stop. 0.5%/0.3% restores the documented 1.4:1 and leaves ~0.33% net on a
- * winner and ~0.47% on a loser after costs.
+ * stop. The live values are TP 0.5% / SL 0.3%: 1.67:1 gross, and after the
+ * ~0.17% round trip a winner nets ~0.33% against a loser's ~0.47%, so the
+ * strategy needs a ~59% win rate to break even. (The comment here used to
+ * claim "1.4:1", which matched neither the gross nor the net ratio.)
+ *
+ * These are the DEFAULTS for the directional strategies. A bot may carry its
+ * own stop/target — see BotConfig.stopLossPct / takeProfitPct and
+ * `getExitThresholds()`, which is what every exit path actually reads.
  */
 export const HIGH_RISK_EXITS = {
   /** Take profit, as a fraction of entry price. */
@@ -285,14 +324,33 @@ export class VolumeBotEngine {
   // truth from chain is what keeps order tick/lot/min sizing from aborting.
   private chainMarketParams: MarketParams | null = null
   private chainMaxLeverage: number | null = null
+  // In-flight/settled market-params load, so the entry points that must
+  // guarantee live params (start, executeSingleTrade, executeSignal) can each
+  // await it without paying for five view calls per tick.
+  private marketParamsLoad: Promise<void> | null = null
 
   /**
    * Read the flow's market params + max leverage straight from the perp_engine
-   * views for this bot's market. Called once at start(); tolerant of failure
-   * (falls back to the static table) so a transient node hiccup can't strand a
-   * running bot with no config.
+   * views for this bot's market, at most once per instance.
+   *
+   * Idempotent and cached: repeated calls share one in-flight promise and, once
+   * it has succeeded, return immediately. A load that produced nothing (node
+   * hiccup, view gone) clears the cache so the next caller retries instead of
+   * being stuck on the stale static fallback table for the life of the process.
    */
   private async loadMarketParamsFromChain(): Promise<void> {
+    if (this.chainMarketParams) return
+    if (!this.marketParamsLoad) {
+      this.marketParamsLoad = this.readMarketParamsFromChain().finally(() => {
+        // Only a successful read is worth caching; a failure must stay retryable.
+        if (!this.chainMarketParams) this.marketParamsLoad = null
+      })
+    }
+    return this.marketParamsLoad
+  }
+
+  /** The actual chain read behind `loadMarketParamsFromChain()`'s cache. */
+  private async readMarketParamsFromChain(): Promise<void> {
     const pkg = DECIBEL_PACKAGE
     const args = [this.config.market]
     const num = (v: unknown): bigint | null => {
@@ -1666,14 +1724,17 @@ export class VolumeBotEngine {
       const { getWriteDex } = await import('./decibel-sdk')
       const writeDex = getWriteDex()
 
-      // Same thresholds as the entry path — imported, not re-typed, because
-      // these three copies had already drifted apart once.
-      const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
-      const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
+      // Same thresholds as the entry path — resolved in ONE place, not
+      // re-typed, because these copies had already drifted apart once. A null
+      // target means this bot exits on signal only (pine): the SL leg is placed
+      // alone and the TP arguments go to the chain as Option::none.
+      const { profitTargetPct: PROFIT_TARGET_PCT, stopLossPct: STOP_LOSS_PCT } = this.getExitThresholds()
 
-      const tpPrice = isLong
-        ? entryPrice * (1 + PROFIT_TARGET_PCT)
-        : entryPrice * (1 - PROFIT_TARGET_PCT)
+      const tpPrice = PROFIT_TARGET_PCT === null
+        ? null
+        : isLong
+          ? entryPrice * (1 + PROFIT_TARGET_PCT)
+          : entryPrice * (1 - PROFIT_TARGET_PCT)
 
       const slPrice = isLong
         ? entryPrice * (1 - STOP_LOSS_PCT)
@@ -1689,22 +1750,28 @@ export class VolumeBotEngine {
       // - For SHORT TP: we're buying, limit should be slightly above trigger
       // - For SHORT SL: we're buying, limit should be slightly above trigger
       const LIMIT_SLIPPAGE = 0.002 // 0.2% slippage allowance for guaranteed fills
-      const tpLimitPrice = isLong
-        ? tpPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
-        : tpPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
+      const tpLimitPrice = tpPrice === null
+        ? null
+        : isLong
+          ? tpPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
+          : tpPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
       const slLimitPrice = isLong
         ? slPrice * (1 - LIMIT_SLIPPAGE)  // Long: sell at or above this
         : slPrice * (1 + LIMIT_SLIPPAGE)  // Short: buy at or below this
 
       // CRITICAL: Round to ticker size to avoid EPRICE_NOT_RESPECTING_TICKER_SIZE errors
-      const tpTriggerChain = Number(this.roundPriceToTickerSize(tpPrice))
-      const tpLimitChain = Number(this.roundPriceToTickerSize(tpLimitPrice))
+      const tpTriggerChain = tpPrice === null ? undefined : Number(this.roundPriceToTickerSize(tpPrice))
+      const tpLimitChain = tpLimitPrice === null ? undefined : Number(this.roundPriceToTickerSize(tpLimitPrice))
       const slTriggerChain = Number(this.roundPriceToTickerSize(slPrice))
       const slLimitChain = Number(this.roundPriceToTickerSize(slLimitPrice))
 
-      console.log(`📊 [SDK] Placing TP/SL orders...`)
+      console.log(`📊 [SDK] Placing ${tpTriggerChain === undefined ? 'SL' : 'TP/SL'} orders...`)
       console.log(`   Entry: $${entryPrice.toFixed(2)}, Position: ${isLong ? 'LONG' : 'SHORT'}`)
-      console.log(`   TP: trigger $${tpPrice.toFixed(2)} → limit $${tpLimitPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`)
+      console.log(
+        tpPrice === null || tpLimitPrice === null || PROFIT_TARGET_PCT === null
+          ? `   TP: off (this bot exits on signal)`
+          : `   TP: trigger $${tpPrice.toFixed(2)} → limit $${tpLimitPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`,
+      )
       console.log(`   SL: trigger $${slPrice.toFixed(2)} → limit $${slLimitPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
       console.log(`   Size: ${size}, Market: ${this.config.market.slice(0, 20)}...`)
 
@@ -1712,7 +1779,9 @@ export class VolumeBotEngine {
         marketAddr: this.config.market,
         tpTriggerPrice: tpTriggerChain,
         tpLimitPrice: tpLimitChain,
-        tpSize: size,
+        // The three TP arguments travel together: omitting them all is what
+        // makes the chain-side Option::none, i.e. "stop only, no target".
+        tpSize: tpTriggerChain === undefined ? undefined : size,
         slTriggerPrice: slTriggerChain,
         slLimitPrice: slLimitChain,
         slSize: size,
@@ -1920,10 +1989,17 @@ export class VolumeBotEngine {
    * 3. If IOC doesn't fill: Fallback to TWAP
    * 4. If position exists: Monitor for TP/SL trigger or force close
    *
-   * Risk parameters (configurable):
-   * - IOC_SLIPPAGE_PCT: 2% for aggressive fills
-   * - PROFIT_TARGET_PCT: 0.03% price move (+1.2% at 40x)
-   * - STOP_LOSS_PCT: 0.02% price move (-0.8% at 40x)
+   * Risk parameters:
+   * - IOC_SLIPPAGE_PCT: 5% — an aggressive limit price to guarantee the fill,
+   *   not a real 5% cost; the order still fills at the book's price.
+   * - Exits come from `getExitThresholds()`: HIGH_RISK_EXITS (TP 0.5% /
+   *   SL 0.3%) unless the bot carries its own. This comment used to advertise
+   *   0.03%/0.02%, values that have not been in the code for a long time.
+   *
+   * Also the shared ENTRY for the Personal Strategy Runner: `executeSignal()`
+   * calls this once a Pine signal says to be in the market, so a pine entry
+   * gets the same fill path, the same builder code and the same
+   * "unprotected position is unwound" guarantee, differing only in its exits.
    */
   private async placeHighRiskOrderWithIOC(
     isLong: boolean
@@ -1947,11 +2023,11 @@ export class VolumeBotEngine {
     // the tighter ones this comment used to describe.
     // - TP: 0.5% price move (net ~0.33% after ~0.17% round-trip costs)
     // - SL: 0.3% price move (net ~0.47% loss)
-    // - Risk/Reward: 1.4:1 (need ~60% win rate to profit)
+    // - Risk/Reward: 1.67:1 gross, 0.33 : 0.47 net ⇒ ~59% win rate to break even
+    // A pine bot arrives here with its own thresholds (stop only, no target).
     // ═══════════════════════════════════════════════════════════════════
     const IOC_SLIPPAGE_PCT = 0.05      // 5% slippage for guaranteed IOC fills on testnet
-    const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
-    const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
+    const { profitTargetPct: PROFIT_TARGET_PCT, stopLossPct: STOP_LOSS_PCT } = this.getExitThresholds()
     const CAPITAL_USAGE_PCT = 0.90     // Use 90% of capital (aggressive - maximize volume)
     const USE_TWAP_FALLBACK = true     // Enable TWAP fallback when IOC doesn't fill (testnet has no liquidity)
 
@@ -2080,22 +2156,25 @@ export class VolumeBotEngine {
           : (onChainPosition.entryPrice - currentPrice) / onChainPosition.entryPrice
 
         console.log(`   Entry: $${onChainPosition.entryPrice.toFixed(2)}, Current: $${currentPrice.toFixed(2)}`)
-        console.log(`   PnL: ${(pnlPct * 100).toFixed(4)}% (TP: +${(PROFIT_TARGET_PCT * 100).toFixed(3)}%, SL: -${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
+        console.log(`   PnL: ${(pnlPct * 100).toFixed(4)}% (TP: ${PROFIT_TARGET_PCT === null ? 'off' : `+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`}, SL: -${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
 
         // ═══════════════════════════════════════════════════════════════════
         // MANUAL TP/SL CHECK - Don't rely on on-chain TP/SL (it's unreliable!)
         // Close immediately when thresholds are hit
         // ═══════════════════════════════════════════════════════════════════
 
-        // Take profit at target
-        if (pnlPct >= PROFIT_TARGET_PCT) {
+        // Take profit at target (a bot with no target rides the position until
+        // its own signal flips — only the stop can take it out early)
+        if (PROFIT_TARGET_PCT !== null && pnlPct >= PROFIT_TARGET_PCT) {
           console.log(`🎯 [IOC] TAKE PROFIT! PnL ${(pnlPct * 100).toFixed(3)}% >= target ${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`)
           console.log(`   Force closing position NOW...`)
           return await this.forceClosePosition(onChainPosition)
         }
 
-        // Emergency stop loss - close at 80% of target to account for execution lag
-        const EMERGENCY_SL_PCT = STOP_LOSS_PCT * 0.8 // 0.24% instead of 0.3%
+        // Emergency stop loss - exit just inside the on-chain stop so the two
+        // cannot race to close the same position (same multiplier the rapid
+        // monitor uses; it was a second hardcoded 0.8 here).
+        const EMERGENCY_SL_PCT = STOP_LOSS_PCT * HIGH_RISK_EXITS.emergencyStopMultiplier
         if (pnlPct <= -EMERGENCY_SL_PCT) {
           console.log(`🛑 [IOC] STOP LOSS! PnL ${(pnlPct * 100).toFixed(3)}% <= emergency SL -${(EMERGENCY_SL_PCT * 100).toFixed(3)}%`)
           console.log(`   Force closing position NOW to limit damage...`)
@@ -2252,24 +2331,31 @@ export class VolumeBotEngine {
         ? entryPrice * (1 + IOC_SLIPPAGE_PCT)
         : entryPrice * (1 - IOC_SLIPPAGE_PCT)
 
-      // Calculate TP/SL prices
-      const tpPrice = isLong
-        ? entryPrice * (1 + PROFIT_TARGET_PCT)
-        : entryPrice * (1 - PROFIT_TARGET_PCT)
+      // Calculate TP/SL prices (a null target means "stop only" — see
+      // getExitThresholds(); the real orders are placed after the fill)
+      const tpPrice = PROFIT_TARGET_PCT === null
+        ? null
+        : isLong
+          ? entryPrice * (1 + PROFIT_TARGET_PCT)
+          : entryPrice * (1 - PROFIT_TARGET_PCT)
       const slPrice = isLong
         ? entryPrice * (1 - STOP_LOSS_PCT)
         : entryPrice * (1 + STOP_LOSS_PCT)
 
       // Convert all prices to chain units WITH ticker size rounding
       const iocPriceChain = this.roundPriceToTickerSize(iocPrice)
-      const tpPriceChain = this.roundPriceToTickerSize(tpPrice)
+      const tpPriceChain = tpPrice === null ? null : this.roundPriceToTickerSize(tpPrice)
       const slPriceChain = this.roundPriceToTickerSize(slPrice)
 
       console.log(`   Market: ${this.config.marketName}, Leverage: ${maxLeverage}x`)
       console.log(`   Capital: $${capitalToUse.toFixed(2)}, Notional: $${notionalUSD.toFixed(2)}`)
       console.log(`   Size: ${positionSize} (${sizeInBaseAsset.toFixed(6)} ${this.config.marketName.split('/')[0]})`)
       console.log(`   IOC Price: $${iocPrice.toFixed(2)} (${IOC_SLIPPAGE_PCT * 100}% slippage)`)
-      console.log(`   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`)
+      console.log(
+        tpPrice === null || PROFIT_TARGET_PCT === null
+          ? `   TP: off (exits on signal)`
+          : `   TP: $${tpPrice.toFixed(2)} (+${(PROFIT_TARGET_PCT * 100).toFixed(3)}%)`,
+      )
       console.log(`   SL: $${slPrice.toFixed(2)} (-${(STOP_LOSS_PCT * 100).toFixed(3)}%)`)
 
       // CRITICAL: Update lastOrderTime BEFORE placing order to prevent race conditions
@@ -2640,16 +2726,17 @@ export class VolumeBotEngine {
 
     const elapsedMs = Date.now() - startTime
 
-    // Use same thresholds as main monitoring — one shared definition.
-    const PROFIT_TARGET_PCT = HIGH_RISK_EXITS.profitTargetPct
-    const STOP_LOSS_PCT = HIGH_RISK_EXITS.stopLossPct
+    // Use same thresholds as main monitoring — one shared, per-bot definition.
+    const { profitTargetPct: PROFIT_TARGET_PCT, stopLossPct: STOP_LOSS_PCT } = this.getExitThresholds()
     const EMERGENCY_SL_PCT = STOP_LOSS_PCT * HIGH_RISK_EXITS.emergencyStopMultiplier
 
     // Log every check with timing (compact format)
-    console.log(`⚡ [${elapsedMs}ms] PnL: ${(pnlPct * 100).toFixed(3)}% | $${currentPrice.toFixed(0)} | TP:+${(PROFIT_TARGET_PCT*100).toFixed(2)}% SL:-${(EMERGENCY_SL_PCT*100).toFixed(2)}%`)
+    const tpLabel = PROFIT_TARGET_PCT === null ? 'off' : `+${(PROFIT_TARGET_PCT * 100).toFixed(2)}%`
+    console.log(`⚡ [${elapsedMs}ms] PnL: ${(pnlPct * 100).toFixed(3)}% | $${currentPrice.toFixed(0)} | TP:${tpLabel} SL:-${(EMERGENCY_SL_PCT*100).toFixed(2)}%`)
 
-    // TAKE PROFIT
-    if (pnlPct >= PROFIT_TARGET_PCT) {
+    // TAKE PROFIT — skipped entirely when this bot has no target (pine exits on
+    // its next signal, so the monitor must not close a winner early).
+    if (PROFIT_TARGET_PCT !== null && pnlPct >= PROFIT_TARGET_PCT) {
       console.log(`\n🎯🎯🎯 [RAPID] TAKE PROFIT HIT! ${(pnlPct * 100).toFixed(3)}% >= ${(PROFIT_TARGET_PCT * 100).toFixed(3)}%`)
       this.stopRapidPositionMonitor()
 
@@ -3500,6 +3587,54 @@ export class VolumeBotEngine {
   }
 
   /**
+   * The exit thresholds THIS bot's positions actually use, as fractions of
+   * entry price. Every exit path reads this instead of HIGH_RISK_EXITS directly
+   * so one bot's stop can never leak into another's.
+   *
+   * Resolution order:
+   * 1. An explicit per-bot override (BotConfig.stopLossPct / takeProfitPct,
+   *    persisted on BotInstance) wins. Values are fractions — 0.02 is 2%, not
+   *    2 — and anything non-finite, <= 0, or wider than 50% is rejected as a
+   *    unit mistake rather than trusted: a bad stop is unbounded risk, and
+   *    falling back to the default is always the tighter, safer answer.
+   * 2. 'pine' (Personal Strategy Runner) defaults: stop at
+   *    min(2%, 0.5 / leverage) — never risk more than half the margin on a
+   *    single bar — and NO take profit. A Pine strategy states its own exit
+   *    through the next bar's signal, so a fixed TP would cut short exactly
+   *    the winners the strategy is still holding.
+   * 3. Every other strategy keeps HIGH_RISK_EXITS unchanged.
+   */
+  private getExitThresholds(): { profitTargetPct: number | null; stopLossPct: number } {
+    const asFraction = (value: number | null | undefined, label: string): number | null => {
+      if (value === null || value === undefined) return null
+      if (!Number.isFinite(value) || value <= 0 || value > 0.5) {
+        console.warn(
+          `⚠️ Ignoring out-of-range ${label} override ${value} — expected a fraction of entry price (0.02 = 2%); using the strategy default`,
+        )
+        return null
+      }
+      return value
+    }
+
+    const overrideStop = asFraction(this.config.stopLossPct, 'stopLossPct')
+    const overrideTarget = asFraction(this.config.takeProfitPct, 'takeProfitPct')
+
+    if (this.config.strategy === 'pine') {
+      const leverage = Math.max(1, this.getEffectiveLeverage())
+      const defaultStop = Math.min(0.02, 0.5 / leverage)
+      return {
+        profitTargetPct: overrideTarget,
+        stopLossPct: overrideStop ?? defaultStop,
+      }
+    }
+
+    return {
+      profitTargetPct: overrideTarget ?? HIGH_RISK_EXITS.profitTargetPct,
+      stopLossPct: overrideStop ?? HIGH_RISK_EXITS.stopLossPct,
+    }
+  }
+
+  /**
    * Get size decimals for current market
    * Uses the szDecimals from MARKET_CONFIG which is based on on-chain sz_precision.decimals
    */
@@ -3540,6 +3675,17 @@ export class VolumeBotEngine {
    */
   private async runLoop() {
     console.log('\n🔄 Bot loop iteration...')
+
+    // The Personal Strategy Runner is signal-driven, never timer-driven: its
+    // direction comes from a Pine evaluation on a CLOSED bar, delivered through
+    // executeSignal(). Falling through to the switch below would put it in the
+    // `default:` twap case and open a position the user's strategy never asked
+    // for, so a pine bot leaves the loop here. (Volume/capital caps for pine
+    // are enforced by the cron before it calls the runner.)
+    if (this.config.strategy === 'pine') {
+      console.log('🧠 [pine] Signal-driven strategy — the timer loop does not trade it')
+      return
+    }
 
     // For high_risk strategy, check if we have an open position that needs closing
     // We must close positions before stopping, even if volume target is reached
@@ -3656,6 +3802,9 @@ export class VolumeBotEngine {
         result = await this.placeTxSpammerOrder(isLong)
         break
 
+      // No 'pine' case: the guard at the top of runLoop() returns first, and
+      // that narrowing removes 'pine' from `strategy`'s type here, so the
+      // compiler itself rejects a pine order slipping into the twap default.
       case 'twap':
       default:
         result = await this.placeOrder(orderSize, isLong)
@@ -4016,6 +4165,12 @@ export class VolumeBotEngine {
    */
   async executeSingleTrade(): Promise<boolean> {
     try {
+      // A cron-driven bot never calls start(), which was the ONLY caller of the
+      // chain params load — so every cron trade sized itself with the static
+      // fallback table, i.e. BTC's lot/tick/min for any market not in that
+      // five-row snapshot. Load here too; it is cached per instance, so the
+      // repeated calls inside a multi-trade tick cost nothing.
+      await this.loadMarketParamsFromChain()
       await this.runLoop()
       if (this.config.strategy === 'dlp_grid') {
         return !this.status.error
@@ -4025,6 +4180,185 @@ export class VolumeBotEngine {
       console.error('Error in single trade execution:', error)
       return false
     }
+  }
+
+  /**
+   * Cancel any TP/SL orders left on the subaccount for this bot's market.
+   *
+   * Public wrapper over the internal canceller so a stop path outside the
+   * engine (the bot stop route, which does not run stop()'s full cleanup for
+   * signal-driven bots) can leave the user's subaccount clean. Safe to call
+   * when there is nothing to cancel, and never throws: order cleanup must not
+   * be what prevents a bot from being stopped.
+   */
+  async cancelResidualTpSl(): Promise<boolean> {
+    try {
+      return await this.cancelTpSlForPosition()
+    } catch (error) {
+      console.warn('⚠️ Residual TP/SL cleanup failed (non-critical):', error)
+      return false
+    }
+  }
+
+  /**
+   * Personal Strategy Runner entry point: bring the position in line with one
+   * Pine signal evaluated on a CLOSED bar.
+   *
+   * The state machine, given the position read from chain (never from the DB,
+   * which can lag a fill):
+   *
+   *   read fails        → BLOCKED. Do nothing. An unknown position is the one
+   *                       state where acting can double exposure, so a failed
+   *                       read is never treated as "flat".
+   *   'neutral', flat   → no-op.
+   *   'neutral', in     → ensure the stop is live (cancel stale, re-place). If
+   *                       it cannot be placed, close the position — the same
+   *                       rule the directional strategies use, because an
+   *                       unprotected leveraged position outlives this process.
+   *   same side         → no-op. The strategy is still in the trade it asked
+   *                       for; re-entering would only pay fees.
+   *   opposite side     → close first, then re-read. Only once the chain says
+   *                       flat do we open the other way; if the close fell back
+   *                       to a TWAP that is still filling, we stop here and let
+   *                       the next bar open the new side rather than run long
+   *                       and short at once.
+   *   flat, buy/sell    → open through the shared high-risk entry path (GTC +
+   *                       forced matching, builder code attached, stop placed
+   *                       on fill or the position is unwound).
+   *
+   * Sizing uses this bot's capital and leverage caps; exits use
+   * `getExitThresholds()` (for pine: stop only, no target — the strategy's next
+   * signal is the take-profit).
+   *
+   * The caller owns bookkeeping: this method does not write OrderHistory and
+   * does not advance cumulativeVolume / currentCapitalUsed. lib/personal-runner
+   * records the trade, which is also what keeps the capital-cap auto-stop
+   * meaningful for pine bots.
+   */
+  /**
+   * Decide which `SignalAction` a result from the shared entry path really is.
+   *
+   * `placeHighRiskOrderWithIOC` does not only open: it answers with a sentinel
+   * txHash for the states in which it declines (order cooldown, unreadable
+   * API, an already-monitored position, no live price), and it can return a
+   * CLOSE if it finds the position was taken out by its stop. Calling all of
+   * those 'opened' would have the caller write an OrderHistory row for a bar
+   * that never traded, or book a close as an entry — so the result decides the
+   * action, not the call site.
+   */
+  private classifyEntryResult(result: OrderResult, intended: 'opened' | 'flipped'): SignalAction {
+    if (!result.success) return 'blocked'
+    const QUIET_SENTINELS = [
+      'cooldown',
+      'monitoring',
+      'waiting_for_api',
+      'api_error_monitoring',
+      'no_price',
+      'incompatible_package',
+    ]
+    if (QUIET_SENTINELS.includes(result.txHash)) return 'blocked'
+    // Every close path fills in an exit price; an entry never does.
+    if (result.exitPrice !== undefined) return 'closed'
+    return intended
+  }
+
+  async executeSignal(signal: 'buy' | 'sell' | 'neutral'): Promise<SignalExecutionResult> {
+    // Live tick/lot/min/leverage before ANY sizing decision (cached per
+    // instance) — the same bug as executeSingleTrade: no start(), no params.
+    await this.loadMarketParamsFromChain()
+
+    const position = await this.getOnChainPosition()
+
+    // Position read failed: refuse to trade blind.
+    if (position?.error) {
+      console.warn('⚠️ [signal] Position read failed — skipping this bar rather than guessing')
+      return {
+        success: false,
+        txHash: 'position_read_failed',
+        volumeGenerated: 0,
+        direction: signal === 'sell' ? 'short' : 'long',
+        size: 0,
+        error: 'Could not read on-chain position',
+        action: 'blocked',
+      }
+    }
+
+    const hasPosition = Boolean(position && position.size > 0)
+
+    if (signal === 'neutral') {
+      if (!position || !hasPosition) {
+        console.log('🧠 [signal] neutral & flat — nothing to do')
+        return {
+          success: true,
+          txHash: 'flat',
+          volumeGenerated: 0,
+          direction: 'long',
+          size: 0,
+          action: 'noop_flat',
+        }
+      }
+
+      console.log(`🧠 [signal] neutral & holding ${position.isLong ? 'LONG' : 'SHORT'} — refreshing protection`)
+      try {
+        await this.cancelTpSlForPosition()
+        const protection = await this.placeTpSlForPosition(position.entryPrice, position.size, position.isLong)
+        if (!protection.success) throw new Error(protection.error || 'TP/SL placement returned failure')
+        return {
+          success: true,
+          // Sentinel, NOT the TP/SL transaction hash: nothing traded on this
+          // bar, and a real hash here would be counted as an executed trade
+          // and written to OrderHistory as if a position had changed.
+          txHash: 'protected',
+          volumeGenerated: 0,
+          direction: position.isLong ? 'long' : 'short',
+          size: position.size,
+          entryPrice: position.entryPrice,
+          action: 'protected',
+        }
+      } catch (error) {
+        console.error('🚨 [signal] Could not protect the open position — closing it:', error)
+        const closed = await this.forceClosePosition(position)
+        return { ...closed, action: 'closed' }
+      }
+    }
+
+    const wantLong = signal === 'buy'
+
+    if (position && hasPosition) {
+      if (position.isLong === wantLong) {
+        console.log(`🧠 [signal] ${signal} & already ${position.isLong ? 'LONG' : 'SHORT'} — holding`)
+        return {
+          success: true,
+          txHash: 'same_side',
+          volumeGenerated: 0,
+          direction: position.isLong ? 'long' : 'short',
+          size: position.size,
+          entryPrice: position.entryPrice,
+          action: 'noop_same_side',
+        }
+      }
+
+      console.log(`🧠 [signal] ${signal} flips the ${position.isLong ? 'LONG' : 'SHORT'} position — closing first`)
+      const closed = await this.forceClosePosition(position)
+      if (!closed.success) {
+        return { ...closed, action: 'blocked' }
+      }
+
+      // forceClosePosition can fall back to a TWAP that fills over minutes and
+      // still reports success. Confirm flat before opening the other side.
+      const after = await this.getOnChainPosition()
+      if (after?.error || (after && after.size > 0)) {
+        console.log('🧠 [signal] Close still settling — leaving the new side to the next bar')
+        return { ...closed, action: 'closed' }
+      }
+
+      const reopened = await this.placeHighRiskOrderWithIOC(wantLong)
+      return { ...reopened, action: this.classifyEntryResult(reopened, 'flipped') }
+    }
+
+    console.log(`🧠 [signal] ${signal} from flat — opening ${wantLong ? 'LONG' : 'SHORT'}`)
+    const opened = await this.placeHighRiskOrderWithIOC(wantLong)
+    return { ...opened, action: this.classifyEntryResult(opened, 'opened') }
   }
 
   /**

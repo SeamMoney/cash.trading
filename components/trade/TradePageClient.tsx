@@ -65,8 +65,10 @@ const PANEL_META = "text-[11px] text-zinc-500";
 const PANEL_EMPTY = "p-6 text-center text-[13px] text-zinc-500";
 const CARD = "w-full shrink-0 snap-start border-r border-card-border p-4 last:border-r-0 xl:w-[calc(100%/3)] xl:min-w-[calc(100%/3)]";
 const CARD_TITLE = "truncate font-display text-sm font-semibold text-foreground";
-const CARD_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-zinc-500";
-const CARD_CHIP = "shrink-0 rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-semibold uppercase";
+/* Label/value pair shared with the Portfolio stat grid: a plain sentence-case
+   label, a mono tabular value. No uppercase, no tracking. */
+const CARD_LABEL = "text-[11px] font-medium text-zinc-400";
+const CARD_CHIP = "shrink-0 rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-semibold";
 const DETAIL_ROW = "flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums text-zinc-500";
 const DETAIL_VALUE = "text-zinc-300";
 const CARD_BTN = "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold";
@@ -820,7 +822,7 @@ function SignalProductsPanel({
                   </span>
                   {live?.inPosition && (
                     <span className="rounded-[var(--radius-xs)] border border-success/20 bg-success/10 px-2 py-1 font-mono text-[11px] font-bold text-success">
-                      IN POSITION
+                      In position
                     </span>
                   )}
                   {live && (
@@ -847,8 +849,8 @@ function SignalProductsPanel({
                 {/* Chart */}
                 {frozenFlatChart ? (
                   <div className="mt-3 flex h-[180px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-dashed border-card-border">
-                    <span className="rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-warning">
-                      frozen {engineAgeLabel}
+                    <span className="rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-warning">
+                      Frozen {engineAgeLabel}
                     </span>
                     <span className="text-[11px] text-zinc-500">
                       No price movement since the last crank
@@ -857,8 +859,8 @@ function SignalProductsPanel({
                 ) : (
                 <div className="relative mt-3 h-[180px] touch-pan-x">
                   {engineStale && liveChart && (
-                    <span className="absolute right-1 top-0 z-10 rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-warning">
-                      frozen {engineAgeLabel}
+                    <span className="absolute right-1 top-0 z-10 rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-warning">
+                      Frozen {engineAgeLabel}
                     </span>
                   )}
                   {chartPoints.length >= 2 ? (
@@ -1136,8 +1138,10 @@ export function TradePageClient({
             />
           </div>
 
-          {/* Trade Panel — right sidebar on desktop */}
-          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:h-[672px] xl:max-w-none">
+          {/* Trade Panel — right sidebar on desktop. It sizes to its content
+              and self-aligns to the top: pinning it to the chart's 672px left
+              ~200px of empty column under the primary CTA. */}
+          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:max-w-none xl:self-start">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1145,7 +1149,6 @@ export function TradePageClient({
               marketAddress={decibelMarketAddress}
               maxLeverage={market.leverage}
               currentPrice={currentPrice}
-              className="xl:h-full"
             />
             <div className="mt-3 xl:hidden">
               <OrderBook

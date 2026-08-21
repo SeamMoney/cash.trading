@@ -197,7 +197,7 @@ function PlotLines({ lines }: { lines: BklitPlotLine[] }) {
               y={(point) => yScale(point.value) ?? 0}
             />
             {line.label && last && (
-              <text fill={line.color} fontSize={8} fontWeight={700} x={labelX} y={labelY}>
+              <text fill={line.color} fontSize={11} fontWeight={700} x={labelX} y={labelY}>
                 {line.label}
               </text>
             )}
@@ -285,7 +285,7 @@ function PlotZones({ zones }: { zones: BklitPlotZone[] }) {
               y={y}
             />
             {zone.label && width > 42 && (
-              <text fill={zone.color} fontSize={8} fontWeight={700} x={x + 5} y={y + 12}>
+              <text fill={zone.color} fontSize={11} fontWeight={700} x={x + 5} y={y + 12}>
                 {zone.label}
               </text>
             )}
@@ -315,7 +315,7 @@ function PlotMarkers({ markers }: { markers: BklitPlotMarker[] }) {
             <polygon fill={color} points={points} />
             <text
               fill={color}
-              fontSize={8}
+              fontSize={11}
               fontWeight={800}
               textAnchor="middle"
               x={x}
@@ -362,7 +362,7 @@ function PlotAxes({ intervalSeconds }: { intervalSeconds: number }) {
       {xTicks.map((tick) => (
         <text
           fill="var(--chart-label, #7f7f7f)"
-          fontSize={10}
+          fontSize={11}
           key={tick.getTime()}
           textAnchor="middle"
           x={xScale(tick) ?? 0}
@@ -398,7 +398,7 @@ function CurrentPrice({ candle, price, priceDecimals }: { candle: PlotPoint; pri
       <text
         dominantBaseline="middle"
         fill={color}
-        fontSize={10}
+        fontSize={11}
         fontWeight={700}
         textAnchor="end"
         x={innerWidth - 9}

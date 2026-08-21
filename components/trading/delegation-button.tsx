@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Shield, ShieldCheck, Loader2, ShieldOff } from "lucide-react"
 import { useDelegation } from "@/hooks/use-delegation"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { cn } from "@/lib/utils"
 
@@ -14,7 +15,11 @@ interface DelegationButtonProps {
 
 export function DelegationButton({ className, variant = "default" }: DelegationButtonProps) {
   const { connected } = useWallet()
-  const { isDelegated, isChecking, isSubmitting, delegateTrading, revokeDelegation, checkDelegation } = useDelegation()
+  // useDelegation no longer discovers a subaccount for you — it delegates
+  // exactly the one it is handed. This is the same subaccount it used to read
+  // internally, so the button's behaviour is unchanged.
+  const { subaccount } = useWalletBalance()
+  const { isDelegated, isChecking, isSubmitting, delegateTrading, revokeDelegation, checkDelegation } = useDelegation(subaccount)
 
   // Check delegation status when wallet connects
   useEffect(() => {

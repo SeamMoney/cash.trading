@@ -1675,7 +1675,7 @@ function BtcPerpsChartComponent({
             prop flips Liveline to self-managed window state seeded from
             windows[0], which ignores the `window` prop and breaks wheel zoom. */}
         <div
-          className="absolute left-2 top-2 z-10 flex items-center gap-0.5 rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm"
+          className="absolute left-2 top-2 z-10 flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary/85 p-0.5 backdrop-blur-sm"
           onPointerDown={(event) => event.stopPropagation()}
         >
           {LINE_WINDOW_OPTIONS.map((option) => (
@@ -1687,7 +1687,7 @@ function BtcPerpsChartComponent({
                   clamp(option.secs, MIN_LINE_WINDOW_SECS, MAX_LINE_WINDOW_SECS)
                 )
               }
-              className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
+              className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold uppercase transition-colors ${
                 Math.abs(lineWindowSecs - option.secs) < option.secs * 0.25
                   ? "bg-white/[0.12] text-white"
                   : "text-zinc-500 hover:text-zinc-300"

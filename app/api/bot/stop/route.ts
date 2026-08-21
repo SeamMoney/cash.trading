@@ -5,6 +5,7 @@ import { getMarkPrice } from '@/lib/price-feed'
 import { createAuthenticatedAptos, TESTNET_CONFIG, MAINNET_CONFIG, getActiveNetwork, getAllMarketAddresses } from '@/lib/decibel-sdk'
 import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
 import { checkRateLimitForKey } from '@/lib/api-rate-limit'
+import type { BotConfig } from '@/lib/bot-engine'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes - need time for TWAP cancellation and close
@@ -190,7 +191,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (bot.strategy === 'high_risk') {
+    // 'pine' (Personal Strategy Runner) is flattened the same way: it holds a
+    // single directional position on one market and leaves TP/SL triggers
+    // behind it. Stopping the row without closing that position would leave the
+    // user levered into a strategy that is no longer being evaluated.
+    if (bot.strategy === 'high_risk' || bot.strategy === 'pine') {
       const aptos = createAuthenticatedAptos()
 
       // First, cancel ALL pending TWAP orders to prevent more position buildup.
@@ -376,6 +381,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // The runner places a stop-loss (and optionally a take-profit) trigger
+    // behind every position. Those survive the position being flattened above,
+    // so a later manual trade on the same subaccount would inherit a stale exit
+    // it never asked for. Cancel them last, after the close has been submitted,
+    // so the position is never left unprotected while the close is in flight.
+    let cancelledResidualTriggers = false
+    if (bot.strategy === 'pine') {
+      try {
+        const { VolumeBotEngine } = await import('@/lib/bot-engine')
+        const engine = new VolumeBotEngine({
+          userWalletAddress: bot.userWalletAddress,
+          userSubaccount: bot.userSubaccount,
+          capitalUSDC: bot.capitalUSDC,
+          volumeTargetUSDC: bot.volumeTargetUSDC,
+          bias: bot.bias as 'long' | 'short' | 'neutral',
+          strategy: bot.strategy as BotConfig['strategy'],
+          market: bot.market,
+          marketName: bot.marketName,
+          leverageX: bot.leverageX ?? undefined,
+        })
+        // Never throws: it reports whether it had anything to cancel.
+        cancelledResidualTriggers = await engine.cancelResidualTpSl()
+      } catch (e: any) {
+        console.error('⚠️  Failed to cancel residual TP/SL triggers:', e?.message || e)
+        // Continue: the bot must still stop even if the cancel fails.
+      }
+    }
+
     // For dlp_grid strategy, cancel bulk orders so the passive grid doesn't keep trading after stop.
     if (bot.strategy === 'dlp_grid') {
       const aptos = createAuthenticatedAptos()
@@ -469,6 +502,7 @@ export async function POST(request: NextRequest) {
       closeResult,
       cancelledTwaps,
       cancelledBulkOrders,
+      cancelledResidualTriggers,
       status: {
         isRunning: false,
         cumulativeVolume: updatedBot.cumulativeVolume,

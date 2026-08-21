@@ -370,7 +370,7 @@ assert.ok(
   !decibelPortfolioChartRoute.includes("Math.random"),
   "portfolio history must come from Decibel rather than generated points",
 );
-assert.match(portfolioPage, /Total Fees Paid/);
+assert.match(portfolioPage, /Total fees paid/i);
 assert.match(portfolioPage, /\/api\/decibel\/fees/);
 assert.match(decibelFeesRoute, /MAX_TRADE_HISTORY/);
 assert.match(decibelFeesRoute, /strict: true/);

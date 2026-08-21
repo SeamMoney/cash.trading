@@ -21,11 +21,40 @@ import {
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
+import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { isValidAptosAddress } from "@/lib/decibel";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { CashRewardsPanel } from "@/components/portfolio/CashRewardsPanel";
+import {
+  BUTTON_NEUTRAL,
+  BUTTON_PRIMARY,
+  CARD_ROW,
+  CARD_ROW_GRID,
+  CARD_ROW_LABEL,
+  CARD_ROW_VALUE,
+  INPUT,
+  INPUT_LABEL,
+  PANEL,
+  ROW_ACTION,
+  SECTION_GAP,
+  SECTION_TITLE,
+  SEGMENTED,
+  SEGMENTED_ITEM,
+  SEGMENTED_ITEM_ACTIVE,
+  STAT_GRID_PANEL,
+  STAT_LABEL,
+  STAT_TILE,
+  STAT_VALUE,
+  TAB,
+  TAB_ACTIVE,
+  TABLE,
+  TABLE_EMPTY,
+  TABLE_HEAD,
+  TABLE_ROW,
+  signTone,
+} from "@/components/portfolio/portfolio-surface";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 
@@ -139,18 +168,12 @@ type ActionStatus = {
   hash?: string;
 };
 
-const TABS = [
-  "Balances",
-  "Collateral",
-  "Positions",
-  "Open Orders",
-  "TWAPs",
-  "TWAP History",
-  "Trade History",
-  "Funding History",
-  "Order History",
-  "Transfers",
-] as const;
+// Only surfaces that are actually wired to a Decibel read. The page used to
+// carry seven more tabs (TWAPs, TWAP History, Trade History, Funding History,
+// Order History, Transfers, and a Collateral tab that rendered the Balances
+// table verbatim); none of them had a fetch behind it, so every one promised
+// rows that could never arrive.
+const TABS = ["Positions", "Open orders", "Balances"] as const;
 
 const PORTFOLIO_CHART_RANGES: ReadonlyArray<{
   value: PortfolioChartRange;
@@ -347,11 +370,13 @@ function decibelWsOpenOrderToOpenOrder(
   };
 }
 
+// The dashed underline this row used to carry read as "hover me for a
+// definition" and nothing was ever bound to it.
 function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 py-1 text-[13px]">
-      <span className="text-zinc-500 underline decoration-dashed underline-offset-4">{label}</span>
-      <span className={cn("font-mono tabular-nums text-zinc-300", tone)}>{value}</span>
+    <div className="flex items-baseline justify-between gap-6 py-1.5 text-[13px]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-mono tabular-nums text-foreground", tone)}>{value}</span>
     </div>
   );
 }
@@ -378,6 +403,7 @@ export function PortfolioPageClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Positions");
+  const tabPanelId = "portfolio-tabpanel";
   const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">("pnl");
   const [chartRange, setChartRange] = useState<PortfolioChartRange>("30d");
   const [historyPoints, setHistoryPoints] = useState<PortfolioHistoryPoint[]>([]);
@@ -417,7 +443,7 @@ export function PortfolioPageClient() {
     (selectedSubaccount ? shortAddress(selectedSubaccount) : "No Decibel account");
   const chartColor =
     chartMetric === "pnl" && (historyPoints.at(-1)?.value ?? 0) < 0
-      ? "#e8774f"
+      ? "var(--danger)"
       : "var(--accent)";
   const chartData = useMemo(
     () => historyPoints as unknown as Record<string, unknown>[],
@@ -784,6 +810,14 @@ export function PortfolioPageClient() {
     totalPnl != null && overview?.totalMargin && overview.totalMargin > 0
       ? (totalPnl / overview.totalMargin) * 100
       : null;
+  // A disabled control has to say why it is disabled (D4).
+  const withdrawDisabledReason = !connected
+    ? "Connect a wallet first"
+    : withdrawing
+      ? "A withdrawal is already in flight"
+      : !hasDecibelAccount
+        ? "No Decibel trading account on this wallet"
+        : undefined;
 
   const handleWithdraw = useCallback(async () => {
     if (withdrawingRef.current || withdrawalTokenRef.current) return;
@@ -1047,13 +1081,13 @@ export function PortfolioPageClient() {
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
-    <div className="cash-trade-theme min-h-screen bg-black text-zinc-200">
+    <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
       <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
-        <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-balance text-[18px] font-semibold text-zinc-200">Portfolio</h1>
-            <p className="mt-1 text-pretty text-[12px] text-zinc-600">
+            <h1 className={SECTION_TITLE}>Portfolio</h1>
+            <p className="mt-1 text-pretty text-xs text-muted-foreground">
               {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
             </p>
           </div>
@@ -1063,25 +1097,27 @@ export function PortfolioPageClient() {
             <button
               type="button"
               onClick={() => (connected ? setDepositOpen(true) : setConnectOpen(true))}
-              className="rounded-[4px] bg-accent px-4 py-2 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95"
+              className={BUTTON_PRIMARY}
             >
               Deposit USDC
             </button>
+            {/* Neutral, not a second accent fill: one primary per screen. */}
             <button
               type="button"
               onClick={() => setWithdrawOpen(true)}
-              disabled={!connected || !hasDecibelAccount || withdrawing}
-              className="rounded-[4px] bg-zinc-200 px-4 py-2 text-[12px] font-semibold text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+              disabled={Boolean(withdrawDisabledReason)}
+              title={withdrawDisabledReason}
+              className={BUTTON_NEUTRAL}
             >
-              {withdrawing ? "Withdrawing..." : "Withdraw USDC"}
+              {withdrawing ? "Withdrawing…" : "Withdraw USDC"}
             </button>
           </div>
         </div>
 
-        <section className="grid gap-px overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#1a1a1a] md:grid-cols-4">
+        <section className={cn(STAT_GRID_PANEL, "md:grid-cols-4")}>
           {[
             {
-              label: "Portfolio Value",
+              label: "Portfolio value",
               value: formatUsd(overview?.equity),
               raw: overview?.equity,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
@@ -1090,19 +1126,19 @@ export function PortfolioPageClient() {
               label: "PnL",
               value: formatUsd(totalPnl, true),
               raw: totalPnl,
-              tone: totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]",
+              tone: signTone(totalPnl),
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
             },
             {
-              label: "30 Day Volume",
+              label: "30-day volume",
               value: formatVolume(overview?.volume30d),
               raw: overview?.volume30d,
               format: { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 },
             },
             {
-              label: "Total Fees Paid",
+              label: "Total fees paid",
               value: feeSummaryLoading
-                ? "..."
+                ? "…"
                 : feeSummaryError || !feeSummary
                   ? "—"
                   : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
@@ -1110,9 +1146,9 @@ export function PortfolioPageClient() {
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
           ].map((item) => (
-            <div key={item.label} className="bg-[#050505] px-6 py-5">
-              <p className="text-[13px] text-zinc-500">{item.label}</p>
-              <p className={cn("mt-2 font-mono text-[26px] font-semibold tabular-nums text-zinc-200", "tone" in item && item.tone)}>
+            <div key={item.label} className={STAT_TILE}>
+              <p className={STAT_LABEL}>{item.label}</p>
+              <p className={cn(STAT_VALUE, "tone" in item && item.tone)}>
                 {"raw" in item && item.raw != null ? (
                   <NumberTicker
                     value={item.raw}
@@ -1134,40 +1170,38 @@ export function PortfolioPageClient() {
           subaccount={selectedSubaccount}
         />
 
-        <section className="mt-10 grid gap-10 lg:grid-cols-[310px_minmax(0,1fr)]">
+        <section className={cn(SECTION_GAP, "grid gap-8 lg:grid-cols-[310px_minmax(0,1fr)]")}>
           <aside>
-            <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Overview</h2>
-            <div className="mt-6">
-              <OverviewRow label="Open Position Return" value={formatPct(openPositionReturn)} tone={openPositionReturn != null && openPositionReturn >= 0 ? "text-green-400" : "text-[#e8774f]"} />
-              <OverviewRow label="30d Volume" value={formatVolume(overview?.volume30d)} />
+            <h2 className={SECTION_TITLE}>Overview</h2>
+            {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
+                and a "Trading portfolio" row that restated Portfolio value all
+                lived here as permanent em dashes with no reader behind them. */}
+            <div className="mt-4">
+              <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} />
+              <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} />
               <OverviewRow
-                label="Total Fees Paid"
+                label="Total fees paid"
                 value={
                   feeSummaryLoading
-                    ? "..."
+                    ? "…"
                     : feeSummaryError || !feeSummary
                       ? "—"
                       : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
                 }
               />
-              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={(overview?.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"} />
-              <OverviewRow label="Trading Portfolio" value={formatUsd(overview?.equity)} tone="text-green-400" />
-              <OverviewRow label="Vault Allocation" value="—" />
-              <OverviewRow label="Sharpe Ratio" value="—" />
-              <OverviewRow label="Max Drawdown" value="—" />
-              <OverviewRow label="Weekly Win Rate (12w)" value="—" />
-              <OverviewRow label="Withdrawable Share" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(4)}%` : "—"} />
-              <OverviewRow label="Avg. Leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
-              <OverviewRow label="Cross-margin Ratio" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} tone="text-green-400" />
-              <OverviewRow label="Cross-account Position" value={formatUsd(overview?.totalNotional)} />
+              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} />
+              <OverviewRow label="Withdrawable share" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} />
+              <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
+              <OverviewRow label="Cross-margin ratio" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} />
+              <OverviewRow label="Cross-account position" value={formatUsd(overview?.totalNotional)} />
             </div>
           </aside>
 
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-balance text-[18px] font-semibold text-zinc-200">
-                  {chartMetric === "pnl" ? "Profit/Loss" : "Portfolio Value"}
+                <h2 className={SECTION_TITLE}>
+                  {chartMetric === "pnl" ? "Profit/loss" : "Portfolio value"}
                 </h2>
                 <NumberTicker
                   value={chartMetric === "pnl" ? totalPnl : overview?.equity}
@@ -1179,40 +1213,34 @@ export function PortfolioPageClient() {
                     maximumFractionDigits: 2,
                     signDisplay: chartMetric === "pnl" ? "always" : "auto",
                   }}
-                  className="mt-3 block font-mono text-[28px] font-semibold text-zinc-200"
+                  className="mt-2 block font-mono text-2xl font-semibold text-foreground"
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 text-[12px]">
-                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className={SEGMENTED} role="group" aria-label="Chart metric">
                   {[
                     ["pnl", "PnL"],
-                    ["portfolio", "Portfolio Val."],
+                    ["portfolio", "Portfolio value"],
                   ].map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setChartMetric(value as "pnl" | "portfolio")}
                       aria-pressed={chartMetric === value}
-                      className={cn(
-                        "rounded-[3px] px-2 py-1 text-zinc-500",
-                        chartMetric === value && "bg-[#2a2a2a] text-zinc-200",
-                      )}
+                      className={cn(SEGMENTED_ITEM, chartMetric === value && SEGMENTED_ITEM_ACTIVE)}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
+                <div className={SEGMENTED} role="group" aria-label="Chart range">
                   {PORTFOLIO_CHART_RANGES.map((range) => (
                     <button
                       key={range.value}
                       type="button"
                       onClick={() => setChartRange(range.value)}
                       aria-pressed={chartRange === range.value}
-                      className={cn(
-                        "rounded-[3px] px-2 py-1 text-zinc-500",
-                        chartRange === range.value && "bg-[#2a2a2a] text-zinc-200",
-                      )}
+                      className={cn(SEGMENTED_ITEM, chartRange === range.value && SEGMENTED_ITEM_ACTIVE)}
                     >
                       {range.label}
                     </button>
@@ -1262,17 +1290,20 @@ export function PortfolioPageClient() {
                   <XAxis numTicks={5} />
                 </AreaChart>
               ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a] px-6 text-center">
-                  <span className="text-[13px] text-zinc-500">
+                <div
+                  role="status"
+                  className="flex h-full flex-col items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed border-card-border px-6 text-center"
+                >
+                  <span className="text-[13px] text-foreground">
                     {!connected
                       ? "Connect a wallet to see your Decibel portfolio"
                       : !selectedSubaccount
                         ? "Select a Decibel account to load portfolio history"
                         : historyLoading
-                          ? `Loading ${chartRange} portfolio history...`
+                          ? `Loading ${chartRange} portfolio history…`
                           : historyError || `No ${chartRange} portfolio history was returned`}
                   </span>
-                  <span className="text-[11px] text-zinc-700">
+                  <span className="text-[11px] text-muted-foreground">
                     {connected
                       ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
                       : "Live equity, PnL, positions, and orders will load after connection."}
@@ -1283,63 +1314,71 @@ export function PortfolioPageClient() {
           </section>
         </section>
 
-        <section className="mt-8 overflow-hidden rounded-[4px] border border-[#242424] bg-[#141414]">
-          <div className="flex items-center justify-between gap-4 overflow-x-auto border-b border-[#242424] px-3">
-            <div className="flex min-w-max items-center gap-4">
-              {TABS.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    "py-3 text-[13px] text-zinc-500 transition-colors hover:text-zinc-300",
-                    activeTab === tab && "border-b-2 border-zinc-200 text-zinc-200",
-                  )}
-                >
-                  {tab}{tab === "Positions" && positions.length > 0 ? ` (${positions.length})` : ""}
-                </button>
-              ))}
-            </div>
-            <span className="shrink-0 text-[12px] text-zinc-500">All</span>
+        <section className={cn(SECTION_GAP, PANEL)}>
+          <div
+            role="tablist"
+            aria-label="Account detail"
+            className="flex items-center gap-1 overflow-x-auto border-b border-card-border px-2"
+          >
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                id={`${tabPanelId}-${tab.replace(/\s+/g, "-").toLowerCase()}`}
+                aria-selected={activeTab === tab}
+                aria-controls={tabPanelId}
+                onClick={() => setActiveTab(tab)}
+                className={cn(TAB, activeTab === tab && TAB_ACTIVE)}
+              >
+                {tab}{tab === "Positions" && positions.length > 0 ? ` (${positions.length})` : ""}
+              </button>
+            ))}
           </div>
 
-          {activeTab === "Balances" || activeTab === "Collateral" ? (
+          <div
+            id={tabPanelId}
+            role="tabpanel"
+            aria-labelledby={`${tabPanelId}-${activeTab.replace(/\s+/g, "-").toLowerCase()}`}
+          >
+          {activeTab === "Balances" ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-left text-[13px]">
-                <thead className="text-zinc-500">
-                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
-                    <th>Coin</th>
-                    <th>Total Balance</th>
-                    <th>Available Balance</th>
-                    <th>USD Value</th>
-                    <th>PnL</th>
+              <table className={cn(TABLE, "min-w-[680px]")}>
+                <caption className="sr-only">Decibel collateral balances</caption>
+                <thead>
+                  <tr className={TABLE_HEAD}>
+                    <th scope="col">Coin</th>
+                    <th scope="col">Total balance</th>
+                    <th scope="col">Available balance</th>
+                    <th scope="col">USD value</th>
+                    <th scope="col">PnL</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
+                  <tr className={TABLE_ROW}>
                     <td>USDC</td>
                     <td>{formatUsd(overview?.collateral)}</td>
                     <td>{formatUsd(overview?.crossWithdrawable)}</td>
                     <td>{formatUsd(overview?.equity)}</td>
-                    <td className={totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(totalPnl, true)}</td>
+                    <td className={signTone(totalPnl)}>{formatUsd(totalPnl, true)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          ) : activeTab === "Open Orders" ? (
+          ) : activeTab === "Open orders" ? (
             <>
             <div className="md:hidden">
               {openOrders.length === 0 ? (
-                <div className="px-4 py-12 text-center text-zinc-600">No open orders</div>
+                <div className={TABLE_EMPTY}>No open orders</div>
               ) : openOrders.map((order) => {
                 const orderId = String(order.orderId);
                 const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
                 return (
-                <div key={orderId} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
+                <div key={orderId} className={CARD_ROW}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-zinc-100">{order.market}</div>
-                      <div className={cn("mt-1 text-[11px] font-semibold uppercase", order.isBuy ? "text-green-400" : "text-[#e8774f]")}>
+                      <div className="truncate font-semibold text-foreground">{order.market}</div>
+                      <div className={cn("mt-1 text-[11px] font-semibold uppercase tracking-wide", order.isBuy ? "text-success" : "text-danger")}>
                         {order.isBuy ? "Buy" : "Sell"} · {order.status ?? "Open"}
                       </div>
                     </div>
@@ -1347,21 +1386,22 @@ export function PortfolioPageClient() {
                       type="button"
                       onClick={() => void handleCancelOrder(order)}
                       disabled={!canCancel}
-                      className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                      title={order.marketAddress ? undefined : "This order has no market address to cancel against"}
+                      className={ROW_ACTION}
                     >
                       {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
                     </button>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                  <div className={CARD_ROW_GRID}>
                     <div>
-                      <div className="text-zinc-600">Remaining / Original</div>
-                      <div className="mt-0.5 font-mono tabular-nums">
+                      <div className={CARD_ROW_LABEL}>Remaining / original</div>
+                      <div className={CARD_ROW_VALUE}>
                         {formatNumber(order.remainingSize)} / {formatNumber(order.origSize)}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-zinc-600">Price</div>
-                      <div className="mt-0.5 font-mono tabular-nums">
+                      <div className={CARD_ROW_LABEL}>Price</div>
+                      <div className={CARD_ROW_VALUE}>
                         {formatPrice(order.price)}
                       </div>
                     </div>
@@ -1372,40 +1412,42 @@ export function PortfolioPageClient() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[820px] text-left text-[13px]">
-                <thead className="text-zinc-500">
-                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
-                    <th>Market</th>
-                    <th>Side</th>
-                    <th>Remaining</th>
-                    <th>Original</th>
-                    <th>Price</th>
-                    <th>Status</th>
-                    <th>Order ID</th>
-                    <th>Action</th>
+              <table className={cn(TABLE, "min-w-[820px]")}>
+                <caption className="sr-only">Open Decibel orders</caption>
+                <thead>
+                  <tr className={TABLE_HEAD}>
+                    <th scope="col">Market</th>
+                    <th scope="col">Side</th>
+                    <th scope="col">Remaining</th>
+                    <th scope="col">Original</th>
+                    <th scope="col">Price</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Order ID</th>
+                    <th scope="col">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {openOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-12 text-center text-zinc-600">No open orders</td></tr>
+                    <tr><td colSpan={8} className={TABLE_EMPTY}>No open orders</td></tr>
                   ) : openOrders.map((order) => {
                     const orderId = String(order.orderId);
                     const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
                     return (
-                    <tr key={orderId} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
+                    <tr key={orderId} className={TABLE_ROW}>
                       <td>{order.market}</td>
-                      <td className={order.isBuy ? "text-green-400" : "text-[#e8774f]"}>{order.isBuy ? "Buy" : "Sell"}</td>
+                      <td className={order.isBuy ? "text-success" : "text-danger"}>{order.isBuy ? "Buy" : "Sell"}</td>
                       <td>{formatNumber(order.remainingSize)}</td>
                       <td>{formatNumber(order.origSize)}</td>
                       <td>{formatPrice(order.price)}</td>
                       <td>{order.status ?? "Open"}</td>
-                      <td className="font-mono text-zinc-500">{orderId.slice(-8)}</td>
+                      <td className="font-mono text-muted-foreground">{orderId.slice(-8)}</td>
                       <td>
                         <button
                           type="button"
                           onClick={() => void handleCancelOrder(order)}
                           disabled={!canCancel}
-                          className="underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                          title={order.marketAddress ? undefined : "This order has no market address to cancel against"}
+                          className={ROW_ACTION}
                         >
                           {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
                         </button>
@@ -1421,22 +1463,22 @@ export function PortfolioPageClient() {
             <>
             <div className="md:hidden">
               {positions.length === 0 ? (
-                <div className="px-4 py-12 text-center text-zinc-600">No open positions</div>
+                <div className={TABLE_EMPTY}>No open positions</div>
               ) : positions.map((position) => {
                 const key = positionKey(position);
                 const pnl = position.estimatedPnl;
                 const pnlPct = pnl != null && position.marginUsed > 0 ? (pnl / position.marginUsed) * 100 : null;
                 return (
-                  <div key={key} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
+                  <div key={key} className={CARD_ROW}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-semibold text-zinc-100">
+                        <div className="truncate font-semibold text-foreground">
                           {position.market.replace("/USD", "")} {position.leverage.toFixed(0)}x
                         </div>
                         <div
                           className={cn(
-                            "mt-1 text-[11px] font-semibold uppercase",
-                            position.isLong ? "text-green-400" : "text-[#e8774f]",
+                            "mt-1 text-[11px] font-semibold uppercase tracking-wide",
+                            position.isLong ? "text-success" : "text-danger",
                           )}
                         >
                           {position.isLong ? "Long" : "Short"}
@@ -1446,37 +1488,37 @@ export function PortfolioPageClient() {
                         type="button"
                         onClick={() => void handleClosePosition(position)}
                         disabled={closingKeys.has(key)}
-                        className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                        className={ROW_ACTION}
                       >
                         {closingKeys.has(key) ? "Closing" : "Close"}
                       </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                    <div className={CARD_ROW_GRID}>
                       <div>
-                        <div className="text-zinc-600">Size</div>
-                        <div className="mt-0.5 font-mono tabular-nums">
+                        <div className={CARD_ROW_LABEL}>Size</div>
+                        <div className={CARD_ROW_VALUE}>
                           {formatNumber(Math.abs(position.size))} {position.market.split("/")[0]}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Value</div>
-                        <div className="mt-0.5 font-mono tabular-nums">
+                        <div className={CARD_ROW_LABEL}>Value</div>
+                        <div className={CARD_ROW_VALUE}>
                           {formatUsd(position.value)}
                         </div>
                       </div>
                       <div>
-                        <div className="text-zinc-600">Entry / Mark</div>
-                        <div className="mt-0.5 font-mono tabular-nums">
+                        <div className={CARD_ROW_LABEL}>Entry / mark</div>
+                        <div className={CARD_ROW_VALUE}>
                           {formatPrice(position.entryPrice)} / {formatPrice(position.markPrice)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Est. PnL</div>
-                        <div className={cn("mt-0.5 font-mono tabular-nums", pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                        <div className={CARD_ROW_LABEL}>Est. PnL</div>
+                        <div className={cn(CARD_ROW_VALUE, signTone(pnl))}>
                           {formatUsd(pnl, true)}
                           {pnlPct !== null && (
-                            <span className="ml-1 text-zinc-500">
+                            <span className="ml-1 text-muted-foreground">
                               ({pnlPct >= 0 ? "+" : ""}
                               {pnlPct.toFixed(1)}%)
                             </span>
@@ -1484,18 +1526,24 @@ export function PortfolioPageClient() {
                         </div>
                       </div>
                       <div>
-                        <div className="text-zinc-600">Liq.</div>
-                        <div className="mt-0.5 font-mono tabular-nums">
+                        <div className={CARD_ROW_LABEL}>Est. liq. price</div>
+                        <div className={CARD_ROW_VALUE}>
                           {formatPrice(position.estimatedLiquidationPrice)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Margin / Funding</div>
-                        <div className="mt-0.5 font-mono tabular-nums">
+                        <div className={CARD_ROW_LABEL}>Margin / funding</div>
+                        <div className={CARD_ROW_VALUE}>
                           {formatUsd(position.marginUsed)}
-                          <span className={cn("ml-2", position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]")}>
+                          <span className={cn("ml-2", signTone(position.unrealizedFunding))}>
                             {formatUsd(position.unrealizedFunding, true)}
                           </span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className={CARD_ROW_LABEL}>Take profit / stop loss</div>
+                        <div className={CARD_ROW_VALUE}>
+                          {formatPrice(position.tpTriggerPrice)} / {formatPrice(position.slTriggerPrice)}
                         </div>
                       </div>
                     </div>
@@ -1505,33 +1553,34 @@ export function PortfolioPageClient() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[1160px] text-left text-[13px]">
-                <thead className="text-zinc-500">
-                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
-                    <th>Coin/Side</th>
-                    <th>Size</th>
-                    <th>Value</th>
-                    <th>Entry Price</th>
-                    <th>Mark Price</th>
-                    <th>Est. PnL</th>
-                    <th>Est. Liq. Price</th>
-                    <th>Margin</th>
-                    <th>Funding</th>
-                    <th>TP/SL</th>
-                    <th>Close</th>
+              <table className={cn(TABLE, "min-w-[1160px]")}>
+                <caption className="sr-only">Open Decibel positions</caption>
+                <thead>
+                  <tr className={TABLE_HEAD}>
+                    <th scope="col">Coin/side</th>
+                    <th scope="col">Size</th>
+                    <th scope="col">Value</th>
+                    <th scope="col">Entry price</th>
+                    <th scope="col">Mark price</th>
+                    <th scope="col">Est. PnL</th>
+                    <th scope="col">Est. liq. price</th>
+                    <th scope="col">Margin</th>
+                    <th scope="col">Funding</th>
+                    <th scope="col">TP / SL</th>
+                    <th scope="col">Close</th>
                   </tr>
                 </thead>
                 <tbody>
                   {positions.length === 0 ? (
-                    <tr><td colSpan={11} className="px-4 py-12 text-center text-zinc-600">No open positions</td></tr>
+                    <tr><td colSpan={11} className={TABLE_EMPTY}>No open positions</td></tr>
                   ) : positions.map((position) => {
                     const key = positionKey(position);
                     const pnl = position.estimatedPnl;
                     return (
-                      <tr key={key} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
+                      <tr key={key} className={TABLE_ROW}>
                         <td>
                           <span>{position.market.replace("/USD", "")} {position.leverage.toFixed(0)}x</span>{" "}
-                          <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[11px]", position.isLong ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-300")}>
+                          <span className={cn("rounded-[var(--radius-xs)] px-1.5 py-0.5 text-[11px]", position.isLong ? "bg-success/15 text-success" : "bg-danger/15 text-danger")}>
                             {position.isLong ? "Long" : "Short"}
                           </span>
                         </td>
@@ -1539,17 +1588,19 @@ export function PortfolioPageClient() {
                         <td>{formatUsd(position.value)}</td>
                         <td>{formatPrice(position.entryPrice)}</td>
                         <td>{formatPrice(position.markPrice)}</td>
-                        <td className={pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(pnl, true)}</td>
+                        <td className={signTone(pnl)}>{formatUsd(pnl, true)}</td>
                         <td>{formatPrice(position.estimatedLiquidationPrice)}</td>
                         <td>{formatUsd(position.marginUsed)} {position.isIsolated ? "(Iso)" : "(Cross)"}</td>
-                        <td className={position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(position.unrealizedFunding, true)}</td>
-                        <td>-- / --</td>
+                        <td className={signTone(position.unrealizedFunding)}>{formatUsd(position.unrealizedFunding, true)}</td>
+                        {/* Was a hard-coded "-- / --" while the real trigger
+                            prices were already on the position. */}
+                        <td>{formatPrice(position.tpTriggerPrice)} / {formatPrice(position.slTriggerPrice)}</td>
                         <td>
                           <button
                             type="button"
                             onClick={() => void handleClosePosition(position)}
                             disabled={closingKeys.has(key)}
-                            className="underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
+                            className={ROW_ACTION}
                           >
                             {closingKeys.has(key) ? "Closing" : "Close"}
                           </button>
@@ -1561,20 +1612,17 @@ export function PortfolioPageClient() {
               </table>
             </div>
             </>
-          ) : (
-            <div className="px-4 py-12 text-center text-[13px] text-zinc-600">
-              {activeTab} will appear here when Decibel returns rows for this account.
-            </div>
-          )}
+          ) : null}
+          </div>
         </section>
 
         {(loading || error || actionStatus || !connected || (connected && !hasDecibelAccount && !isLoadingSubaccounts)) && (
-          <div className="mt-4 text-[12px]">
-            {loading && <span className="text-zinc-600">updating...</span>}
-            {error && <span className="text-[#e8774f]">{error}</span>}
-            {!connected && <span className="text-zinc-600">Connect wallet to load your Decibel portfolio.</span>}
+          <div className={cn(SECTION_GAP, "text-xs")} role="status" aria-live="polite">
+            {loading && <span className="text-muted-foreground">Updating…</span>}
+            {error && <span className="text-danger">{error}</span>}
+            {!connected && <span className="text-muted-foreground">Connect wallet to load your Decibel portfolio.</span>}
             {connected && !hasDecibelAccount && !isLoadingSubaccounts && (
-              <span className="text-zinc-600">
+              <span className="text-muted-foreground">
                 {lookupError || lookupIncomplete
                   ? `Decibel account lookup is incomplete${lookupError ? `: ${lookupError}` : "."}`
                   : "No Decibel trading account detected."}
@@ -1582,12 +1630,23 @@ export function PortfolioPageClient() {
             )}
             {actionStatus && (
               <div className={cn(
-                "mt-2 rounded-[4px] px-3 py-2",
-                actionStatus.tone === "error" ? "bg-red-500/10 text-red-300" :
-                  actionStatus.tone === "success" ? "bg-green-500/10 text-green-300" :
-                    "bg-white/[0.04] text-zinc-400",
+                "mt-2 rounded-[var(--radius-sm)] px-3 py-2",
+                actionStatus.tone === "error" ? "bg-danger/10 text-danger" :
+                  actionStatus.tone === "success" ? "bg-success/10 text-success" :
+                    "bg-card text-muted-foreground",
               )}>
                 {actionStatus.message}
+                {/* The hash was carried through every action and never shown. */}
+                {actionStatus.hash && (
+                  <a
+                    href={explorerTxUrl(actionStatus.hash, decibelNetwork)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-2 inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
+                  >
+                    View transaction
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -1597,38 +1656,38 @@ export function PortfolioPageClient() {
       <WalletAccountModal open={depositOpen} onClose={() => setDepositOpen(false)} />
       <WalletSelector open={connectOpen} onClose={() => setConnectOpen(false)} />
       <AlertDialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-        <AlertDialogContent className="border-[#242424] bg-[#101010] text-zinc-100">
+        <AlertDialogContent className="rounded-[var(--radius)] border-card-border bg-background-secondary text-foreground">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-balance">Withdraw USDC</AlertDialogTitle>
-            <AlertDialogDescription className="text-pretty text-zinc-500">
+            <AlertDialogTitle className="text-balance text-[13px] font-semibold">Withdraw USDC</AlertDialogTitle>
+            <AlertDialogDescription className="text-pretty text-[13px] text-muted-foreground">
               Decibel withdraws collateral to your wallet first. If the recipient differs, you will sign a second USDC transfer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3">
             <label className="block">
-              <span className="text-[11px] text-zinc-500">Amount</span>
+              <span className={INPUT_LABEL}>Amount</span>
               <input
                 value={withdrawAmount}
                 onChange={(event) => setWithdrawAmount(event.target.value.replace(/[^0-9.]/g, ""))}
                 disabled={withdrawing}
                 inputMode="decimal"
                 placeholder="0.00"
-                className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
+                className={INPUT}
               />
             </label>
             <label className="block">
-              <span className="text-[11px] text-zinc-500">Recipient Aptos address</span>
+              <span className={INPUT_LABEL}>Recipient Aptos address</span>
               <input
                 value={withdrawRecipient}
                 onChange={(event) => setWithdrawRecipient(event.target.value)}
                 disabled={withdrawing}
-                placeholder={owner || "0x..."}
-                className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
+                placeholder={owner || "0x…"}
+                className={INPUT}
               />
             </label>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#303030] bg-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-white">
+            <AlertDialogCancel className="rounded-[var(--radius-sm)] border-card-border bg-transparent text-foreground hover:border-border-strong hover:bg-card">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -1637,9 +1696,9 @@ export function PortfolioPageClient() {
                 event.preventDefault();
                 void handleWithdraw();
               }}
-              className="bg-zinc-200 text-black hover:bg-white"
+              className="rounded-[var(--radius-sm)] bg-accent text-accent-foreground hover:brightness-95"
             >
-              {withdrawing ? "Withdrawing..." : "Withdraw"}
+              {withdrawing ? "Withdrawing…" : "Withdraw"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

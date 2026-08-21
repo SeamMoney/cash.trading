@@ -29,9 +29,14 @@ import {
 // import { OrderBook } from "@/components/trade/OrderBook";
 
 const LEVERAGE_MIN = 1.1;
-const SLIDER_CONTENT_HEIGHT = 72;
+/** Drawer height: pt-4 + 44px slider hit area + mt-2 + the min/max caption. */
+const SLIDER_CONTENT_HEIGHT = 92;
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/* House style is sentence case: no uppercase, no letter-spacing. min-h-11
+   keeps the side switch a 44px touch target without a visible box. */
+const SIDE_BUTTON =
+  "inline-flex min-h-11 items-center rounded-[var(--radius-xs)] px-1 text-sm font-display font-semibold transition-colors";
 
 type OrderLifecycle =
   | "idle"
@@ -533,12 +538,12 @@ export function TradePanel({
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
             }}
             className={cn(
-              "rounded-[var(--radius-xs)] text-sm font-display font-black uppercase tracking-wider transition-colors",
+              SIDE_BUTTON,
               FOCUS_RING,
               isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
             )}
           >
-            {isLong ? "You are LONG" : "Long"}
+            {isLong ? "You are long" : "Long"}
           </button>
           <span className="text-zinc-600">/</span>
           <button
@@ -549,12 +554,12 @@ export function TradePanel({
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
             }}
             className={cn(
-              "rounded-[var(--radius-xs)] text-sm font-display font-black uppercase tracking-wider transition-colors",
+              SIDE_BUTTON,
               FOCUS_RING,
               !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
             )}
           >
-            {!isLong ? "You are SHORT" : "Short"}
+            {!isLong ? "You are short" : "Short"}
           </button>
         </div>
         <span className="rounded-[var(--radius-xs)] bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
@@ -580,7 +585,10 @@ export function TradePanel({
             }}
             disabled={availableUsdc == null || availableUsdc <= 0}
             className={cn(
-              "rounded-[var(--radius-xs)] px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-600",
+              // The chip stays small, but an invisible 44px-tall band centred
+              // on it carries the tap so the control is thumb-reachable.
+              "relative rounded-[var(--radius-xs)] px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-600",
+              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
               FOCUS_RING,
             )}
           >
@@ -623,7 +631,7 @@ export function TradePanel({
               aria-haspopup="menu"
               onClick={() => setCollateralOpen((open) => !open)}
               className={cn(
-                "flex items-center gap-2 rounded-[var(--radius-sm)] bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]",
+                "flex min-h-11 items-center gap-2 rounded-[var(--radius-sm)] bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]",
                 FOCUS_RING,
               )}
             >
@@ -654,7 +662,7 @@ export function TradePanel({
                         }
                       }}
                       className={cn(
-                        "flex w-full items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2.5 py-2 text-left transition-colors",
+                        "flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2.5 py-2 text-left transition-colors",
                         FOCUS_RING,
                         active
                           ? "bg-white/[0.05] text-foreground"
@@ -702,7 +710,10 @@ export function TradePanel({
                 aria-valuenow={leverage}
                 aria-valuetext={`${leverage.toFixed(1)} times`}
                 className={cn(
-                  "relative h-6 cursor-pointer touch-none overflow-hidden rounded-full bg-zinc-800",
+                  // 44px tall hit area, 24px visible bar. updateLeverage reads
+                  // only rect.left/rect.width, so the taller box is inert to
+                  // the drag math.
+                  "relative flex h-11 cursor-pointer touch-none items-center rounded-full",
                   FOCUS_RING,
                 )}
                 onKeyDown={handleLeverageKeyDown}
@@ -712,17 +723,19 @@ export function TradePanel({
                 role="slider"
                 tabIndex={leverageOpen ? 0 : -1}
               >
-                {leveragePct > 0 && (
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full"
-                    style={{
-                      width: `calc(${leveragePct}% + 12px)`,
-                      background: isLong ? "var(--accent)" : "var(--danger)",
-                    }}
-                  />
-                )}
+                <div className="relative h-6 w-full overflow-hidden rounded-full bg-zinc-800">
+                  {leveragePct > 0 && (
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full"
+                      style={{
+                        width: `calc(${leveragePct}% + 12px)`,
+                        background: isLong ? "var(--accent)" : "var(--danger)",
+                      }}
+                    />
+                  )}
+                </div>
                 <div
-                  className="absolute top-0.5 z-[2] h-5 w-5 rounded-full"
+                  className="absolute top-1/2 z-[2] h-5 w-5 -translate-y-1/2 rounded-full"
                   style={{
                     left: `clamp(2px, calc(${leveragePct}% - 10px), calc(100% - 22px))`,
                     background: isLong ? "var(--accent)" : "var(--danger)",
@@ -746,12 +759,12 @@ export function TradePanel({
             aria-expanded={leverageOpen}
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
             className={cn(
-              "flex w-full flex-col items-center gap-1 rounded-[var(--radius-xs)] px-5 pb-3 pt-2",
+              "flex min-h-11 w-full flex-col items-center justify-center gap-1 rounded-[var(--radius-xs)] px-5 pb-3 pt-2",
               FOCUS_RING,
             )}
           >
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-display font-semibold uppercase tracking-wide text-zinc-500">
+              <span className="text-[11px] font-display font-semibold text-zinc-500">
                 Leverage
               </span>
               <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
@@ -763,32 +776,48 @@ export function TradePanel({
         </div>
       </div>
 
-      {/* Order details — auto-shows when amount is entered. Liquidation,
-          order value, slippage and fees are shown at every width; leverage
+      {/* Order details — present at rest, not only after an amount is typed.
+          Est. liquidation depends on price, side and leverage alone, so a
+          leveraged-perp UI can and must show it before the user commits;
+          amount-dependent rows read "—" until there is an amount. Leverage
           (already in the drawer above) and margin fold away on phones. */}
-      {amount && parseFloat(amount) > 0 && currentPrice > 0 && (() => {
+      {(() => {
         const amt = parseFloat(amount);
-        const orderValue = amt * leverage;
-        const orderBtc = orderValue / currentPrice;
+        const hasAmount = Number.isFinite(amt) && amt > 0;
+        const hasPrice = currentPrice > 0;
+        const orderValue = hasAmount ? amt * leverage : null;
+        const orderBase = orderValue != null && hasPrice ? orderValue / currentPrice : null;
         const marginRequired = orderValue;
-        const estLiqPrice = getEstimatedLiquidationPrice(currentPrice, side, leverage);
+        const estLiqPrice = hasPrice
+          ? getEstimatedLiquidationPrice(currentPrice, side, leverage)
+          : null;
+        const usd = (value: number) =>
+          `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         return (
-          <dl className="mt-3 space-y-2.5 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-4 font-mono text-[11px] tabular-nums animate-enter">
+          <dl className="mt-3 space-y-2.5 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-4 font-mono text-[11px] tabular-nums">
             <div className="hidden justify-between sm:flex">
               <dt className="text-zinc-500">Leverage</dt>
               <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Order Value</dt>
-              <dd className="text-right text-foreground">{orderBtc.toFixed(4)} {market.split("/")[0]} / {orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</dd>
+              <dt className="text-zinc-500">Order value</dt>
+              <dd className="text-right text-foreground">
+                {orderValue == null || orderBase == null
+                  ? "—"
+                  : `${orderBase.toFixed(4)} ${market.split("/")[0]} / ${orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`}
+              </dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Est. Liquidation</dt>
-              <dd className="text-foreground">${estLiqPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
+              <dt className="text-zinc-500">Est. liquidation</dt>
+              <dd className="text-foreground">
+                {estLiqPrice == null ? "—" : usd(estLiqPrice)}
+              </dd>
             </div>
             <div className="hidden justify-between sm:flex">
-              <dt className="text-zinc-500">Margin Required</dt>
-              <dd className="text-foreground">${marginRequired.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
+              <dt className="text-zinc-500">Margin required</dt>
+              <dd className="text-foreground">
+                {marginRequired == null ? "—" : usd(marginRequired)}
+              </dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-zinc-500">Slippage</dt>
@@ -814,7 +843,7 @@ export function TradePanel({
         }
         disabled={connected && !canSubmitDecibel}
         className={cn(
-          "mt-3 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-bold uppercase tracking-wider disabled:cursor-not-allowed sm:mt-4",
+          "mt-3 min-h-11 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-semibold disabled:cursor-not-allowed sm:mt-4",
           PRESSABLE_CONTROL,
           FOCUS_RING,
           isOrderSuccess
@@ -836,7 +865,7 @@ export function TradePanel({
         ) : isOrderSuccess ? (
           <span className="flex items-center justify-center gap-2">
             <Check className="h-4 w-4" aria-hidden="true" strokeWidth={3} />
-            Order Submitted
+            Order submitted
           </span>
         ) : (
           <>{submitLabel}</>

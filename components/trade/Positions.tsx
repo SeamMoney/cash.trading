@@ -29,6 +29,11 @@ const INDEXED_REFRESH_MS = 6000;
 // House surfaces (lib/surface.ts) instead of the legacy glass `.surface-1`.
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const PANEL = "rounded-[var(--radius)] border border-card-border bg-background-secondary";
+/* The canonical panel header. The below-fold vault/signal panels on the trade
+   page copy these three strings verbatim — keep them identical. */
+const PANEL_HEADER = "flex items-center justify-between gap-3 border-b border-card-border px-4 py-3";
+const PANEL_TITLE = "font-display text-[13px] font-semibold text-foreground";
+const PANEL_META = "text-[11px] text-zinc-500";
 const CARD = "rounded-[var(--radius-sm)] border border-card-border bg-card";
 const ROW_BUTTON = `rounded-[var(--radius-sm)] border border-card-border px-3 py-1.5 text-[11px] font-medium text-zinc-200 hover:border-border-strong hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
 
@@ -1235,12 +1240,12 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
       {/* Open Positions */}
       <div className={`${PANEL} overflow-hidden`}>
-        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-          <h3 className="text-[13px] font-display font-semibold">
+        <div className={PANEL_HEADER}>
+          <h3 className={PANEL_TITLE}>
             Open Positions ({positions.length})
           </h3>
           {(loading || refreshing) && (
-            <span className="text-[11px] text-zinc-500">updating...</span>
+            <span className={PANEL_META}>updating...</span>
           )}
         </div>
 
@@ -1291,7 +1296,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
                     transition={{ duration: 0.16, ease: "easeOut" }}
-                    className="border-b border-white/5 px-4 py-3 last:border-b-0"
+                    className="border-b border-card-border px-4 py-3 last:border-b-0"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1299,7 +1304,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                           {p.market}
                         </div>
                         <div
-                          className={`mt-1 text-[11px] font-semibold uppercase ${
+                          className={`mt-1 text-[11px] font-semibold ${
                             p.isLong ? "text-success" : "text-danger"
                           }`}
                         >
@@ -1379,7 +1384,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-[12px]">
               <thead>
-                <tr className="border-b border-white/5 text-zinc-500">
+                <tr className="border-b border-card-border text-zinc-500">
                   <th className="text-left px-4 py-2 font-medium">Market</th>
                   <th className="text-right px-4 py-2 font-medium">Side</th>
                   <th className="text-right px-4 py-2 font-medium">Size</th>
@@ -1430,7 +1435,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                   return (
                     <tr
                       key={`${p.marketAddress ?? p.market}:${p.isLong ? "L" : "S"}:${i}`}
-                      className="border-b border-white/5"
+                      className="border-b border-card-border"
                     >
                       <td className="px-4 py-3 font-medium">{p.market}</td>
                       <td
@@ -1514,16 +1519,16 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       {/* Omit this surface entirely when the account has no vault holdings. */}
       {vaultHoldings.length > 0 ? (
       <div id="vault-positions" className={`${PANEL} overflow-hidden`}>
-        <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-          <h3 className="text-[13px] font-display font-semibold">
+        <div className={PANEL_HEADER}>
+          <h3 className={PANEL_TITLE}>
             Vault Positions ({vaultHoldings.length})
           </h3>
           {vaultHoldingsLoading ? (
-            <span className="text-[11px] text-zinc-500">updating...</span>
+            <span className={PANEL_META}>updating...</span>
           ) : null}
         </div>
 
-          <div className="grid gap-px bg-white/5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-px bg-card-border md:grid-cols-2 xl:grid-cols-3">
             {vaultHoldings.map((holding) => {
               const pnlColor = holding.pnl > 0
                 ? "text-success"
@@ -1541,7 +1546,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         {holding.address.slice(0, 8)}...{holding.address.slice(-6)}
                       </div>
                     </div>
-                    <span className="rounded-[var(--radius-xs)] bg-white/5 px-2 py-0.5 text-[11px] font-semibold uppercase text-zinc-500">
+                    <span className="rounded-[var(--radius-xs)] bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">
                       {holding.vaultType === "protocol" ? "Protocol" : "Vault"}
                     </span>
                   </div>
@@ -1599,8 +1604,8 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       {/* Open Orders */}
       {openOrders.length > 0 && (
         <div className={`${PANEL} overflow-hidden`}>
-          <div className="px-4 py-3 border-b border-white/5">
-            <h3 className="text-[13px] font-display font-semibold">
+          <div className={PANEL_HEADER}>
+            <h3 className={PANEL_TITLE}>
               Open Orders ({openOrders.length})
             </h3>
           </div>
@@ -1623,7 +1628,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.16, ease: "easeOut" }}
-                  className="border-b border-white/5 px-4 py-3 last:border-b-0"
+                  className="border-b border-card-border px-4 py-3 last:border-b-0"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -1631,7 +1636,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         {o.market}
                       </div>
                       <div
-                        className={`mt-1 text-[11px] font-semibold uppercase ${
+                        className={`mt-1 text-[11px] font-semibold ${
                           o.isBuy ? "text-success" : "text-danger"
                         }`}
                       >
@@ -1671,7 +1676,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-[12px]">
               <thead>
-                <tr className="border-b border-white/5 text-zinc-500">
+                <tr className="border-b border-card-border text-zinc-500">
                   <th className="text-left px-4 py-2 font-medium">Market</th>
                   <th className="text-right px-4 py-2 font-medium">Side</th>
                   <th className="text-right px-4 py-2 font-medium">Price</th>
@@ -1696,7 +1701,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                   return (
                     <tr
                       key={orderId}
-                      className="border-b border-white/5"
+                      className="border-b border-card-border"
                     >
                       <td className="px-4 py-3 font-medium">{o.market}</td>
                       <td
@@ -1716,7 +1721,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         {o.details}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center rounded-full border border-accent/12 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold uppercase text-accent">
+                        <span className="inline-flex items-center rounded-full border border-accent/12 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">
                           {o.status ?? "Open"}
                         </span>
                       </td>

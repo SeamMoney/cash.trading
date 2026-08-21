@@ -60,6 +60,9 @@ const WINDOWS = [
   { label: "5m", secs: 300 },
 ];
 const CHART_PADDING = { top: 8, right: 80, bottom: 24, left: 8 } as const;
+/* Portfolio stat-grid type pair, scaled to the compact market header. */
+const STAT_LABEL = "text-[11px] font-medium leading-4 text-zinc-400";
+const STAT_VALUE = "mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 tabular-nums";
 const CANDLE_SECS = 2;
 const CANDLE_WINDOW_BUFFER = 0.05;
 const MARKET_REFRESH_MS = 60_000;
@@ -719,11 +722,11 @@ export function MarketModal({
       <div className="pr-1 md:max-h-[min(62dvh,600px)] md:overflow-y-auto md:overscroll-contain md:scrollbar-thin">
         <div>
           <div className="sticky top-0 z-[1] flex items-center gap-2 bg-background-secondary/95 px-2 pb-1 pt-3 sm:px-3">
-            <span className="text-[11px] font-bold uppercase text-zinc-400">
+            <span className="text-[11px] font-semibold text-zinc-400">
               {activeCategoryLabel}
             </span>
             {loading && (
-              <span className="text-[11px] font-bold uppercase text-accent">
+              <span className="text-[11px] font-semibold text-accent">
                 Syncing
               </span>
             )}
@@ -778,7 +781,7 @@ export function MarketModal({
                       <Check className="size-3 shrink-0 text-accent" aria-hidden="true" />
                     )}
                     {isDisabled && (
-                      <span className="shrink-0 rounded-[var(--radius-xs)] border border-card-border bg-white/[0.05] px-1.5 py-0.5 text-[11px] uppercase tracking-wider text-zinc-400">{disabledLabel}</span>
+                      <span className="shrink-0 rounded-[var(--radius-xs)] border border-card-border bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-zinc-400">{disabledLabel}</span>
                     )}
                   </span>
                   <span className="hidden text-right text-xs tabular-nums text-zinc-400 sm:block">
@@ -1126,7 +1129,7 @@ export function BTCChart({
   return (
     <div ref={chartRef} className={cn("overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary lg:flex lg:flex-col", className)}>
       {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-card-border">
         <div className="flex items-center gap-3">
           {/* Market selector trigger */}
           <button
@@ -1163,51 +1166,62 @@ export function BTCChart({
               minimumFractionDigits: displayPriceDecimals,
               maximumFractionDigits: displayPriceDecimals,
             }}
-            className="font-mono text-base font-bold text-foreground"
+            className="font-mono text-base font-semibold tabular-nums text-foreground"
           />
         </div>
       </div>
 
-      {/* Market stats bar */}
-      <div className="border-b border-white/5">
-        <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[11px] tabular-nums sm:gap-x-5">
+      {/* Market stats bar — same label/value type pair as the Portfolio stat
+          grid: a plain sentence-case label above a mono tabular value. */}
+      <div className="border-b border-card-border">
+        <dl className="grid grid-cols-5 gap-x-2 px-4 py-2.5 sm:gap-x-5">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] leading-3 text-zinc-400">Oracle</span>
-            <NumberTicker
-              value={displayOracle > 0 ? displayOracle : null}
-              fallback="—"
-              format={{
-                minimumFractionDigits: displayStatDecimals,
-                maximumFractionDigits: displayStatDecimals,
-              }}
-              className="mt-0.5 truncate font-semibold leading-4 text-foreground"
-            />
+            <dt className={STAT_LABEL}>Oracle</dt>
+            <dd className={cn(STAT_VALUE, "text-foreground")}>
+              <NumberTicker
+                value={displayOracle > 0 ? displayOracle : null}
+                fallback="—"
+                format={{
+                  minimumFractionDigits: displayStatDecimals,
+                  maximumFractionDigits: displayStatDecimals,
+                }}
+                className="truncate"
+              />
+            </dd>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] leading-3 text-zinc-400">24h</span>
-            <span className={`${displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-danger" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <dt className={STAT_LABEL}>24h</dt>
+            <dd className={cn(STAT_VALUE, displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-danger" : "text-accent")}>
               {displayChange}
-            </span>
+            </dd>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] leading-3 text-zinc-400">Volume</span>
-            <span className="mt-0.5 truncate font-semibold leading-4 text-foreground">{displayVolume}</span>
+            <dt className={STAT_LABEL}>Volume</dt>
+            <dd className={cn(STAT_VALUE, "text-foreground")}>{displayVolume}</dd>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] leading-3 text-zinc-400">OI</span>
-            <span className="mt-0.5 truncate font-semibold leading-4 text-foreground">{displayOpenInterest}</span>
+            <dt className={STAT_LABEL}>OI</dt>
+            <dd className={cn(STAT_VALUE, "text-foreground")}>{displayOpenInterest}</dd>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] leading-3 text-zinc-400">Funding</span>
-            <span className={`${displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-danger" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <dt className={STAT_LABEL}>Funding</dt>
+            <dd className={cn(STAT_VALUE, displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-danger" : "text-accent")}>
               {displayFunding}
-            </span>
+            </dd>
           </div>
-        </div>
+        </dl>
       </div>
 
-      {/* Chart + subtle overlay controls */}
-      <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1">
+      {/* Chart + subtle overlay controls.
+          The plot surface is plain. Both chart paths paint their legacy
+          dotted lattice from --chart-grid; scoping that token to transparent
+          here retires the decibrrr-terminal pattern without reaching into
+          the shared chart components. The card keeps its border-token frame,
+          so no extra rules are drawn behind the price. */}
+      <div
+        className="relative h-[340px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
+        style={{ "--chart-grid": "transparent" } as React.CSSProperties}
+      >
         {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
           <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-background-secondary" />
@@ -1261,7 +1275,7 @@ export function BTCChart({
                 }`}
                 title={hasStrategy ? "Overlay moving averages (off → SMA → EMA → Vault 3/5)" : "Overlay moving averages (off → SMA → EMA)"}
               >
-                {overlayMode === "ema" ? "EMA" : overlayMode === "strategy" ? "VAULT 3/5" : "SMA"}
+                {overlayMode === "ema" ? "EMA" : overlayMode === "strategy" ? "Vault 3/5" : "SMA"}
               </button>
             );
           })()}
@@ -1331,7 +1345,7 @@ export function BTCChart({
                       }}
                     />
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border px-2 py-1 text-[11px] font-mono font-semibold uppercase tracking-wide text-white"
+                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border px-2 py-1 text-[11px] font-mono font-semibold text-white"
                       style={{
                         right: 12,
                         background: "rgba(9, 9, 11, 0.86)",

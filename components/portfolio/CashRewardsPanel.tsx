@@ -417,7 +417,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
           <div>
             <h2 className={PANEL_TITLE}>CASH rewards</h2>
             <p className="mt-1 max-w-2xl text-pretty text-xs leading-5 text-muted-foreground">
-              Earn from verified fees and capital kept in Decibel positions. Rewards use actual activity, not inflated leverage notional.
+              Earn CASH from the fees you pay and the capital you keep in Decibel positions.
             </p>
           </div>
         </div>

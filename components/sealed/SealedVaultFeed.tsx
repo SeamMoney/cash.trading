@@ -161,8 +161,11 @@ export function SealedVaultFeed({
   }
 
   if (vaults.length === 0) {
+    // Unframed: the page centres this block in the viewport rather than wrapping
+    // a panel around it, so the 48px of vertical padding that once held the box
+    // open is dead weight.
     return (
-      <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+      <div className="flex flex-col items-center gap-3 px-6 text-center">
         <p className="text-[13px] font-semibold text-foreground">No vaults yet</p>
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
           A sealed vault trades on Decibel under rules the chain enforces.

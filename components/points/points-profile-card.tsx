@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import {
+  BUTTON_PRIMARY,
   PANEL,
   STAT_GRID,
   STAT_LABEL,
   STAT_NOTE,
   STAT_TILE,
   STAT_VALUE,
-  signTone,
 } from "@/components/portfolio/portfolio-surface";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,7 +17,7 @@ import { shortAddress } from "@/hooks/useDecibelSubaccounts";
 import { explorerAccountUrl } from "@/lib/constants";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
-import { formatAge, formatAmps, formatPnl, formatRank, formatSignedAmps, tierLabel } from "./format";
+import { formatAge, formatAmps, formatPnl, formatRank, formatSignedAmps, pnlTone, tierLabel } from "./format";
 import type { PointsProfile } from "./use-points-data";
 
 type Props = {
@@ -27,6 +27,7 @@ type Props = {
   loading: boolean;
   error: string | null;
   totalTraders: number | null;
+  onConnect?: () => void;
   onClose?: () => void;
 };
 
@@ -49,15 +50,20 @@ function useAge(fetchedAt: number | null | undefined) {
   return formatAge(fetchedAt, now);
 }
 
-export function PointsProfileCard({ owner, variant, profile, loading, error, totalTraders, onClose }: Props) {
+export function PointsProfileCard({ owner, variant, profile, loading, error, totalTraders, onConnect, onClose }: Props) {
   const age = useAge(profile?.fetchedAt);
 
   if (!owner) {
+    // The page's one primary action lives here, inside the panel whose contents
+    // it unlocks — not in a header CTA competing with it from the far corner.
     return (
-      <section
-        className={cn(PANEL, "border-dashed px-4 py-10 text-center text-[13px] text-muted-foreground")}
-      >
-        Connect to see your rank, tier and streak
+      <section className={cn(PANEL, "border-dashed px-4 py-10 text-center")}>
+        <p className="text-[13px] text-muted-foreground">Connect to see your rank, tier and streak</p>
+        {onConnect && (
+          <button type="button" onClick={onConnect} className={cn(BUTTON_PRIMARY, "mt-4")}>
+            Connect wallet
+          </button>
+        )}
       </section>
     );
   }
@@ -105,7 +111,11 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
                   <NumberTicker value={profile?.totalAmps} format={{ maximumFractionDigits: 0 }} fallback="—" />
                 )}
               </p>
-              <p className={STAT_NOTE}>Last 7d {gone("last7d") ? "—" : formatSignedAmps(profile?.last7d)}</p>
+              {/* What an AMP is belongs next to the number, not in a page
+                  sub-line a disconnected visitor reads before seeing one. */}
+              <p className={STAT_NOTE}>
+                Activity points · last 7d {gone("last7d") ? "—" : formatSignedAmps(profile?.last7d)}
+              </p>
             </>,
           )}
         </div>
@@ -155,8 +165,10 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
                     {streak.days === 1 ? "day" : "days"}
                   </span>
                 </p>
+                {/* "grace" was a term the page taught before it showed one;
+                    the plain reading of the same two numbers needs no gloss. */}
                 <p className={STAT_NOTE}>
-                  {streak.graceLeft}/{streak.graceTotal} grace left
+                  {streak.graceLeft} of {streak.graceTotal} missed days left
                 </p>
               </>
             ),
@@ -179,7 +191,7 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
               {(profile?.bySource?.bonus ?? 0) > 0 && <span> · Bonus {formatAmps(profile?.bySource?.bonus)}</span>}
               <span>
                 {" "}· Realized PnL{" "}
-                <span className={gone("points") ? undefined : signTone(profile?.realizedPnl)}>
+                <span className={gone("points") ? undefined : pnlTone(profile?.realizedPnl)}>
                   {gone("points") ? "—" : formatPnl(profile?.realizedPnl)}
                 </span>
               </span>

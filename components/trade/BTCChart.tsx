@@ -281,33 +281,6 @@ const MARKET_LABELS: Record<string, string> = {
   ZRO: "LayerZero",
 };
 
-const MARKET_COLORS: Record<string, string> = {
-  APT: "#39ff14",
-  BTC: "#f7931a",
-  BNB: "#f3ba2f",
-  DOGE: "#c2a633",
-  ETH: "#627eea",
-  GOLD: "#d4a017",
-  HYPE: "#50e3c2",
-  KPEPE: "#8bc34a",
-  LINK: "#2a5ada",
-  MEGA: "#d9d9d9",
-  NEAR: "#d9d9d9",
-  SILVER: "#c0c0c0",
-  SOL: "#9945ff",
-  SPY: "#39ff14",
-  QQQ: "#39ff14",
-  EWY: "#39ff14",
-  SUI: "#6dd6ff",
-  TAO: "#d9d9d9",
-  TRUMP: "#d9d9d9",
-  WTIOIL: "#1f7a1f",
-  XPL: "#d9d9d9",
-  XRP: "#d9d9d9",
-  ZEC: "#f4b728",
-  ZRO: "#d9d9d9",
-};
-
 const STOCK_SYMBOLS = new Set([
   "AAPL",
   "AMD",
@@ -426,8 +399,17 @@ function getMarketLabel(marketName: string) {
   return MARKET_LABELS[base] ?? base;
 }
 
+/**
+ * Seed colour for a market's price line. It is not a per-asset palette: every
+ * market is `chartKind: "perps"`, and BtcPerpsChart repaints the line from the
+ * resolved `--chart-line-primary` token before first paint, so the 24 brand
+ * hexes this used to carry never reached a pixel. The colours that do exist
+ * live with the rest of the market record in perpMarketConfig.
+ */
+const CHART_LINE_TOKEN = "var(--chart-line-primary)";
+
 function getMarketColor(marketName: string) {
-  return MARKET_COLORS[getBaseSymbol(marketName)] ?? "#39ff14";
+  return PERP_MARKET_DATA[marketName]?.color ?? CHART_LINE_TOKEN;
 }
 
 function classifyMarketCategory(
@@ -1225,13 +1207,14 @@ export function BTCChart({
         className="relative h-[248px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
         style={{ "--chart-grid": "transparent" } as React.CSSProperties}
       >
-        {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
           <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-background-secondary" />
         )}
-        {/* Right-side fade to prevent x-axis labels from touching the button */}
-        <div className="absolute bottom-0 right-0 z-[15] w-[120px] h-[32px] pointer-events-none bg-gradient-to-l from-background-secondary via-background-secondary/80 to-transparent" />
-        <div className="absolute bottom-2 right-2 z-20 flex items-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary/90 p-0.5">
+        {/* Chart-type switch. It used to float bottom-right, where it sat on
+            top of the x-axis and clipped the last time label — the gradient
+            that hid the clipping is gone with it. It now joins the interval
+            strip (1m / 1d) in the plot's top-left control cluster. */}
+        <div className="absolute left-2 top-12 z-20 flex items-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary/90 p-0.5">
           <button
             type="button"
             aria-pressed={(isPerpsMarket ? perpsMode : mode) === "line"}
@@ -1327,7 +1310,10 @@ export function BTCChart({
               .map((line) => {
                 const { ratio, isCompressed } = getLiquidationLinePosition(line.price, visibleRange);
                 const top = `calc(${CHART_PADDING.top}px + ${ratio} * (100% - ${CHART_PADDING.top + CHART_PADDING.bottom}px))`;
-                const accent = line.side === "long" ? "#f97316" : "#f43f5e";
+                // Same pair the candle chart already draws its liquidation
+                // levels with (ProCandleChart), so the two paths agree and the
+                // light theme's remap reaches both.
+                const accent = line.side === "long" ? "var(--warning)" : "var(--danger)";
 
                 return (
                   <div
@@ -1348,12 +1334,10 @@ export function BTCChart({
                       }}
                     />
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border px-2 py-1 text-[11px] font-mono font-semibold text-white"
+                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border bg-background/90 px-2 py-1 text-[11px] font-mono font-semibold text-foreground"
                       style={{
                         right: 12,
-                        background: "rgba(9, 9, 11, 0.86)",
-                        borderColor: `${accent}33`,
-                        boxShadow: `0 0 0 1px ${accent}14 inset`,
+                        borderColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
                         opacity: isCompressed ? 0.86 : 1,
                       }}
                     >

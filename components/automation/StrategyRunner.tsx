@@ -19,14 +19,32 @@
  *     and `capitalUSDC` is both the position size and the realised-loss budget
  *     the cron stops on. Both are stated on the page rather than discovered.
  *
- * House style: docs/UX-GRADING.md § 4. Shell copied from
- * components/portfolio/PortfolioPageClient.tsx.
+ * House style: docs/UX-GRADING.md § 4 — every panel, button, input and segment
+ * on the page is a recipe imported from components/portfolio/portfolio-surface.ts,
+ * so this page has no private palette to drift.
+ *
+ * Layout: the strategy list is one column, the form and its status the other, so
+ * the one accent-filled control on the page ("Run on my account") sits inside the
+ * first screen instead of below seven boxes.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
+import {
+  BUTTON_NEUTRAL,
+  BUTTON_PRIMARY,
+  INPUT,
+  INPUT_LABEL,
+  PANEL,
+  PANEL_TITLE,
+  ROW_ACTION,
+  SECTION_TITLE,
+  SEGMENTED,
+  SEGMENTED_ITEM,
+  SEGMENTED_ITEM_ACTIVE,
+} from "@/components/portfolio/portfolio-surface";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { useDelegation } from "@/hooks/use-delegation";
@@ -37,26 +55,23 @@ import { cn } from "@/lib/utils";
 
 /* ── Surfaces ────────────────────────────────────────────────────────────── */
 
-const PANEL =
-  "rounded-[var(--radius)] border border-card-border bg-background-secondary";
+/**
+ * Every shape on this page now comes from components/portfolio/portfolio-surface.ts
+ * — the file that named this one in its own TODO. What is left below is the two
+ * panel strips and three layout strings that carry no colour, radius or type of
+ * their own, so nothing here can drift away from the rest of the app.
+ */
 const PANEL_HEAD =
   "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-card-border px-4 py-3";
-const PANEL_TITLE = "text-[13px] font-semibold text-foreground";
 const PANEL_BODY = "px-4 py-3.5";
-const FIELD_LABEL = "text-[11px] uppercase tracking-wide text-muted-foreground";
 const HELP = "text-[11px] leading-snug text-muted-foreground";
 
-const SEGMENTED =
-  "flex items-center gap-1 rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary p-1";
-const SEGMENTED_ITEM = `inline-flex min-h-11 flex-1 items-center justify-center rounded-[var(--radius-xs)] px-2 text-[13px] text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 sm:min-h-9 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
-const SEGMENTED_ITEM_ACTIVE = "bg-card text-foreground";
-
-/* 16px on mobile so iOS does not zoom the page when the field takes focus. */
-const CONTROL = `min-h-11 w-full rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-base text-foreground hover:border-border-strong disabled:pointer-events-none disabled:opacity-40 sm:text-[13px] ${FOCUS_RING}`;
-
-const BUTTON_PRIMARY = `inline-flex min-h-11 w-full items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:opacity-40 sm:w-auto ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
-const BUTTON_NEUTRAL = `inline-flex min-h-11 w-full items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary px-4 text-sm font-medium text-foreground hover:border-border-strong disabled:pointer-events-none disabled:opacity-40 sm:w-auto ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
-const TEXT_LINK = `inline-flex min-h-11 items-center text-[13px] text-muted-foreground underline underline-offset-4 hover:text-foreground disabled:pointer-events-none disabled:no-underline disabled:opacity-40 ${FOCUS_RING}`;
+/** One height rule for every control: 44px on a phone, the canonical 40 above. */
+const TOUCH = "min-h-11 sm:min-h-10";
+/** Buttons fill the row on a phone and size to their label from `sm` up. */
+const ACTION = `${TOUCH} w-full sm:w-auto`;
+/** Segmented options share their row and dim while the runner is live. */
+const SEGMENT = "flex-1 justify-center disabled:pointer-events-none disabled:opacity-40";
 
 const ROW = "flex items-baseline justify-between gap-3 py-2";
 const ROW_LABEL = "shrink-0 text-[13px] text-muted-foreground";
@@ -90,10 +105,28 @@ const ORDERED_CATALOG: CatalogStrategy[] = [...SEALED_CATALOG].sort((a, b) => {
 
 const DEFAULT_STRATEGY_ID = ORDERED_CATALOG[0]?.id ?? "breakout-channel";
 
+/**
+ * The catalog's `turnover` grade in words. "High turnover" is desk jargon for
+ * "it flips sides a lot", which is the part that costs the user fees — so say
+ * that instead. No number is claimed: the catalog only grades it.
+ */
+const FLIP_RATE: Record<CatalogStrategy["turnover"], string> = {
+  Low: "changes side rarely",
+  Medium: "changes side sometimes",
+  High: "changes side often",
+};
+
 /* ── Settings ────────────────────────────────────────────────────────────── */
 
 const BAR_INTERVALS = ["1m", "5m", "15m"] as const;
 type BarInterval = (typeof BAR_INTERVALS)[number];
+
+/** The interval in words, so the helper line reads as a sentence. */
+const INTERVAL_WORD: Record<BarInterval, string> = {
+  "1m": "minute",
+  "5m": "5 minutes",
+  "15m": "15 minutes",
+};
 
 /** Matches PINE_DEFAULT_MAX_LEVERAGE_X in app/api/bot/start/route.ts. */
 const LEVERAGE_CHOICES = [1, 2, 3] as const;
@@ -463,6 +496,14 @@ export function StrategyRunner() {
   const busy = phase !== "idle";
   const locked = running || busy;
 
+  /**
+   * The Running/Stopped badge is a claim about THIS account, so it may only
+   * render once a status has actually come back for it. Disconnected, still
+   * loading, no subaccount, or a failed read all mean "not known" — and the
+   * body of the panel says so in words.
+   */
+  const statusKnown = connected && bot !== null && !botError;
+
   const startBlockedReason = !connected
     ? ""
     : noSubaccount
@@ -640,73 +681,74 @@ export function StrategyRunner() {
   return (
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
-      <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-8">
         <div className="mb-6">
-          <h1 className="text-lg font-semibold text-zinc-200">Strategy runner</h1>
+          <h1 className={SECTION_TITLE}>Strategy runner</h1>
           <p className="mt-1 text-pretty text-xs text-muted-foreground">
-            Run one Pine strategy on your own Decibel account. No vault, no shares —
-            the position and the points are yours.
+            It trades your own Decibel account. No vault, no shares — the position
+            and the points are yours.
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid content-start gap-6">
-            {/* ── Strategy ─────────────────────────────────────────────── */}
-            <section className={PANEL}>
-              <div className={PANEL_HEAD}>
-                <h2 className={PANEL_TITLE}>Strategy</h2>
-                <p className={HELP}>Evaluated on closed candles only</p>
-              </div>
-              <div className={cn(PANEL_BODY, "grid gap-1.5")} role="radiogroup" aria-label="Strategy">
-                {ORDERED_CATALOG.map((s) => {
-                  const active = s.id === strategyId;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      disabled={locked}
-                      onClick={() => setStrategyId(s.id)}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
+          {/* ── Strategy ───────────────────────────────────────────────── */}
+          <section className={PANEL}>
+            <div className={PANEL_HEAD}>
+              <h2 className={PANEL_TITLE}>Strategy</h2>
+              <p className={HELP}>Acts when a period ends, never mid-move</p>
+            </div>
+            <div role="radiogroup" aria-label="Strategy">
+              {ORDERED_CATALOG.map((s) => {
+                const active = s.id === strategyId;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={locked}
+                    onClick={() => setStrategyId(s.id)}
+                    className={cn(
+                      "flex w-full items-start gap-3 border-t border-card-border px-4 py-3 text-left first:border-t-0 disabled:pointer-events-none disabled:opacity-40",
+                      PRESSABLE_CONTROL,
+                      FOCUS_RING,
+                      active ? "bg-accent/[0.06]" : "hover:bg-card",
+                    )}
+                  >
+                    <span
+                      aria-hidden
                       className={cn(
-                        "flex min-h-11 w-full items-start gap-3 rounded-[var(--radius-sm)] border px-3 py-3 text-left disabled:pointer-events-none disabled:opacity-40",
-                        PRESSABLE_CONTROL,
-                        FOCUS_RING,
-                        active
-                          ? "border-accent/30 bg-accent/[0.06]"
-                          : "border-card-border bg-background-tertiary hover:border-border-strong",
+                        "mt-1.5 size-2 shrink-0 rounded-full",
+                        active ? "bg-accent" : "border border-border-strong",
                       )}
-                    >
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "mt-1.5 size-2 shrink-0 rounded-full",
-                          active ? "bg-accent" : "border border-border-strong",
-                        )}
-                      />
-                      <span className="min-w-0 flex-1">
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline justify-between gap-x-3">
                         <span
                           className={cn(
-                            "block text-[13px] font-semibold",
+                            "text-[13px] font-semibold",
                             active ? "text-foreground" : "text-foreground-secondary",
                           )}
                         >
                           {s.label}
                         </span>
-                        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                          {s.blurb}
-                        </span>
-                        <span className="mt-1 block text-[11px] text-muted-foreground">
-                          {s.category} · {s.turnover} turnover
-                          {s.selfSizing ? " · sizes itself, capped by your limits" : ""}
+                        <span className="text-[11px] text-muted-foreground">
+                          {s.category} · {FLIP_RATE[s.turnover]}
+                          {s.selfSizing ? " · capped by your limits" : ""}
                         </span>
                       </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                        {s.blurb}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
+          {/* ── Settings, then Status ──────────────────────────────────── */}
+          <div className="grid content-start gap-6">
             {/* ── Settings ─────────────────────────────────────────────── */}
             <section className={PANEL}>
               <div className={PANEL_HEAD}>
@@ -718,12 +760,12 @@ export function StrategyRunner() {
 
               <div className={cn(PANEL_BODY, "grid gap-4 sm:grid-cols-2")}>
                 <div>
-                  <label htmlFor="runner-market" className={FIELD_LABEL}>
+                  <label htmlFor="runner-market" className={INPUT_LABEL}>
                     Market
                   </label>
                   {markets === null ? (
                     <div
-                      className={cn(CONTROL, "mt-1.5 animate-pulse bg-background-tertiary")}
+                      className={cn(INPUT, TOUCH, "animate-pulse bg-background-tertiary")}
                       aria-hidden
                     />
                   ) : (
@@ -732,7 +774,7 @@ export function StrategyRunner() {
                       value={marketName}
                       disabled={locked || markets.length === 0}
                       onChange={(e) => setMarketName(e.target.value)}
-                      className={cn(CONTROL, "mt-1.5")}
+                      className={cn(INPUT, TOUCH)}
                     >
                       {markets.map((m) => (
                         <option key={m.address} value={m.name}>
@@ -751,10 +793,10 @@ export function StrategyRunner() {
                 </div>
 
                 <div>
-                  <span className={FIELD_LABEL} id="runner-interval-label">
-                    Bar interval
+                  <span className={INPUT_LABEL} id="runner-interval-label">
+                    Decides every
                   </span>
-                  <div className={cn(SEGMENTED, "mt-1.5")} role="group" aria-labelledby="runner-interval-label">
+                  <div className={cn(SEGMENTED, "mt-1")} role="group" aria-labelledby="runner-interval-label">
                     {BAR_INTERVALS.map((value) => (
                       <button
                         key={value}
@@ -762,20 +804,26 @@ export function StrategyRunner() {
                         aria-pressed={barInterval === value}
                         disabled={locked}
                         onClick={() => setBarInterval(value)}
-                        className={cn(SEGMENTED_ITEM, barInterval === value && SEGMENTED_ITEM_ACTIVE)}
+                        className={cn(
+                          SEGMENTED_ITEM,
+                          SEGMENT,
+                          barInterval === value && SEGMENTED_ITEM_ACTIVE,
+                        )}
                       >
                         {value}
                       </button>
                     ))}
                   </div>
-                  <p className={cn(HELP, "mt-1.5")}>One decision per closed bar.</p>
+                  <p className={cn(HELP, "mt-1.5")}>
+                    Checks the price once every {INTERVAL_WORD[barInterval]}.
+                  </p>
                 </div>
 
                 <div>
-                  <span className={FIELD_LABEL} id="runner-leverage-label">
+                  <span className={INPUT_LABEL} id="runner-leverage-label">
                     Leverage
                   </span>
-                  <div className={cn(SEGMENTED, "mt-1.5")} role="group" aria-labelledby="runner-leverage-label">
+                  <div className={cn(SEGMENTED, "mt-1")} role="group" aria-labelledby="runner-leverage-label">
                     {leverageChoices.map((value) => (
                       <button
                         key={value}
@@ -783,22 +831,26 @@ export function StrategyRunner() {
                         aria-pressed={leverageX === value}
                         disabled={locked}
                         onClick={() => setLeverageX(value)}
-                        className={cn(SEGMENTED_ITEM, leverageX === value && SEGMENTED_ITEM_ACTIVE)}
+                        className={cn(
+                          SEGMENTED_ITEM,
+                          SEGMENT,
+                          leverageX === value && SEGMENTED_ITEM_ACTIVE,
+                        )}
                       >
                         {value}×
                       </button>
                     ))}
                   </div>
                   <p className={cn(HELP, "mt-1.5")}>
-                    Capped at 3×. A strategy asking for more is clamped down.
+                    Capped at 3×. A strategy asking for more is held to it.
                   </p>
                 </div>
 
                 <div>
-                  <span className={FIELD_LABEL} id="runner-size-label">
+                  <span className={INPUT_LABEL} id="runner-size-label">
                     Size
                   </span>
-                  <div className={cn(SEGMENTED, "mt-1.5")} role="group" aria-labelledby="runner-size-label">
+                  <div className={cn(SEGMENTED, "mt-1")} role="group" aria-labelledby="runner-size-label">
                     {SIZE_PCTS.map((value) => (
                       <button
                         key={value}
@@ -807,7 +859,11 @@ export function StrategyRunner() {
                         disabled={locked || equity == null}
                         title={equity == null ? "Needs your account equity" : undefined}
                         onClick={() => setSizePct(value)}
-                        className={cn(SEGMENTED_ITEM, sizePct === value && SEGMENTED_ITEM_ACTIVE)}
+                        className={cn(
+                          SEGMENTED_ITEM,
+                          SEGMENT,
+                          sizePct === value && SEGMENTED_ITEM_ACTIVE,
+                        )}
                       >
                         {value}%
                       </button>
@@ -815,13 +871,13 @@ export function StrategyRunner() {
                   </div>
                   <p className={cn(HELP, "mt-1.5")}>
                     {equity == null
-                      ? "Percent of equity — enter capital directly until your account loads."
+                      ? "Percent of equity — type an amount until your account loads."
                       : `Percent of your ${usd(equity)} equity.`}
                   </p>
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label htmlFor="runner-capital" className={FIELD_LABEL}>
+                  <label htmlFor="runner-capital" className={INPUT_LABEL}>
                     Capital (USDC)
                   </label>
                   <input
@@ -836,76 +892,77 @@ export function StrategyRunner() {
                       setCapitalInput(next);
                       setSizePct(null);
                     }}
-                    className={cn(CONTROL, "mt-1.5 font-mono tabular-nums")}
+                    className={cn(INPUT, TOUCH, "tabular-nums")}
                   />
                   <p className={cn(HELP, "mt-1.5")}>
                     Sizes every entry and caps realised loss. The runner stops when losses
                     reach it.{" "}
                     {capitalUSDC > 0
-                      ? `Estimated ${usd(notionalPerEntry)} notional per entry at ${leverageX}×.`
+                      ? `About ${usd(notionalPerEntry)} of position per entry at ${leverageX}×.`
                       : ""}
                   </p>
                 </div>
               </div>
 
               <div className={cn(PANEL_BODY, "border-t border-card-border")}>
-                <p className={cn(HELP, "mb-3")}>
+                <p className={cn(HELP, "mb-2")}>
                   Taker fees and a 0.10% builder fee apply on every fill
                 </p>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  {running ? (
-                    <button
-                      type="button"
-                      onClick={() => void stop()}
-                      disabled={phase === "stopping"}
-                      className={BUTTON_NEUTRAL}
-                    >
-                      {phase === "stopping" ? "Stopping…" : "Stop runner"}
-                    </button>
+                {running ? (
+                  <button
+                    type="button"
+                    onClick={() => void stop()}
+                    disabled={phase === "stopping"}
+                    className={cn(BUTTON_NEUTRAL, TOUCH, "w-full")}
+                  >
+                    {phase === "stopping" ? "Stopping…" : "Stop runner"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void run()}
+                    disabled={busy || Boolean(startBlockedReason)}
+                    title={startBlockedReason || undefined}
+                    className={cn(BUTTON_PRIMARY, TOUCH, "w-full")}
+                  >
+                    {primaryLabel}
+                  </button>
+                )}
+                <p className={cn(HELP, "mt-2")} aria-live="polite">
+                  {error ? (
+                    <span className="text-danger">{error}</span>
+                  ) : note ? (
+                    note
+                  ) : startBlockedReason ? (
+                    startBlockedReason
+                  ) : connected ? (
+                    "One signature the first time, then it trades on its own."
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => void run()}
-                      disabled={busy || Boolean(startBlockedReason)}
-                      title={startBlockedReason || undefined}
-                      className={BUTTON_PRIMARY}
-                    >
-                      {primaryLabel}
-                    </button>
+                    "Connect a wallet to run a strategy on your own account."
                   )}
-                  <p className={cn(HELP, "sm:ml-1")} aria-live="polite">
-                    {error ? (
-                      <span className="text-danger">{error}</span>
-                    ) : note ? (
-                      note
-                    ) : startBlockedReason ? (
-                      startBlockedReason
-                    ) : connected ? (
-                      "One signature the first time, then the cron trades each closed bar."
-                    ) : (
-                      "Connect a wallet to run a strategy on your own account."
-                    )}
-                  </p>
-                </div>
+                </p>
               </div>
             </section>
-          </div>
 
-          {/* ── Status ─────────────────────────────────────────────────── */}
-          <aside className="grid content-start gap-6">
-            <section className={PANEL}>
+            {/* ── Status ───────────────────────────────────────────────── */}
+            <aside aria-labelledby="runner-status-title" className={PANEL}>
               <div className={PANEL_HEAD}>
-                <h2 className={PANEL_TITLE}>Status</h2>
-                <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "size-2 rounded-full",
-                      running ? "bg-accent" : "bg-muted-foreground",
-                    )}
-                  />
-                  {running ? "Running" : "Stopped"}
-                </span>
+                <h2 id="runner-status-title" className={PANEL_TITLE}>
+                  Status
+                </h2>
+                {/* Only claim a state once this account's status has been read. */}
+                {statusKnown ? (
+                  <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-2 rounded-full",
+                        running ? "bg-accent" : "bg-muted-foreground",
+                      )}
+                    />
+                    {running ? "Running" : "Stopped"}
+                  </span>
+                ) : null}
               </div>
 
               <div className={PANEL_BODY}>
@@ -919,26 +976,17 @@ export function StrategyRunner() {
                     ))}
                   </div>
                 ) : !connected ? (
-                  <>
-                    <p className="text-[13px] text-muted-foreground">
-                      Connect a wallet to see whether a runner is live on your account.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.dispatchEvent(new Event("cash:open-wallet-selector"))
-                      }
-                      className={cn(BUTTON_NEUTRAL, "mt-3")}
-                    >
-                      Connect wallet
-                    </button>
-                  </>
+                  /* The action lives once on this page — the primary button
+                     directly above already reads "Connect wallet". */
+                  <p className="text-[13px] text-muted-foreground">
+                    Connect a wallet to see whether a runner is live on your account.
+                  </p>
                 ) : noSubaccount ? (
                   <>
                     <p className="text-[13px] text-muted-foreground">
                       No Decibel account on this wallet yet. Deposit USDC to open one.
                     </p>
-                    <Link href="/portfolio" className={cn(BUTTON_NEUTRAL, "mt-3")}>
+                    <Link href="/portfolio" className={cn(BUTTON_NEUTRAL, ACTION, "mt-3")}>
                       Deposit USDC
                     </Link>
                   </>
@@ -948,7 +996,7 @@ export function StrategyRunner() {
                     <button
                       type="button"
                       onClick={() => void refreshBot()}
-                      className={cn(BUTTON_NEUTRAL, "mt-3")}
+                      className={cn(BUTTON_NEUTRAL, ACTION, "mt-3")}
                     >
                       Try again
                     </button>
@@ -1049,7 +1097,7 @@ export function StrategyRunner() {
                   "flex flex-wrap items-center gap-x-4 border-t border-card-border",
                 )}
               >
-                <Link href="/points" className={TEXT_LINK}>
+                <Link href="/points" className={cn(ROW_ACTION, "text-muted-foreground")}>
                   View points
                 </Link>
                 {connected && selectedSubaccount ? (
@@ -1062,14 +1110,14 @@ export function StrategyRunner() {
                         ? "Stop the runner before revoking its permission."
                         : undefined
                     }
-                    className={TEXT_LINK}
+                    className={cn(ROW_ACTION, "text-muted-foreground")}
                   >
-                    {revoking ? "Revoking…" : "Revoke delegation"}
+                    {revoking ? "Revoking…" : "Revoke trading permission"}
                   </button>
                 ) : null}
               </div>
-            </section>
-          </aside>
+            </aside>
+          </div>
         </div>
       </main>
     </div>

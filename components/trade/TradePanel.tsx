@@ -544,7 +544,7 @@ export function TradePanel({
             isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
           )}
         >
-          {isLong ? "You are long" : "Long"}
+          Long
         </button>
         <span className="text-zinc-600">/</span>
         <button
@@ -560,7 +560,7 @@ export function TradePanel({
             !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
           )}
         >
-          {!isLong ? "You are short" : "Short"}
+          Short
         </button>
       </div>
 

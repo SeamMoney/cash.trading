@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
-import { BUTTON_PRIMARY, SECTION_TITLE } from "@/components/portfolio/portfolio-surface";
+import { SECTION_TITLE } from "@/components/portfolio/portfolio-surface";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
@@ -14,8 +14,6 @@ import { formatAmps } from "./format";
 import { usePointsGlobal, usePointsProfile } from "./use-points-data";
 
 const VISIBILITY_REFRESH_MS = 2 * 60_000;
-
-const GLOSS = "AMPs are activity points that set your tier. Grace is missed days your streak survives.";
 
 export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   const { connected } = useWallet();
@@ -52,18 +50,23 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
     : global.loading
       ? null
       : "global stats unavailable";
-  // AMPs, tiers and grace appear nowhere else on the page, so the one subline
-  // that is already here defines them.
-  const subline = ["Season 1", stats, GLOSS].filter(Boolean).join(" · ");
+  // Season and scale only. AMPs and streak grace are defined inside the profile
+  // card, beside the numbers they explain, instead of in a paragraph read
+  // before either number is on screen.
+  const subline = ["Season 1", stats].filter(Boolean).join(" · ");
 
   const content = (
     <>
       <div className="mb-5 flex items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className={SECTION_TITLE}>Points</h1>
-          <p className="mt-1 max-w-[68ch] text-pretty text-[11px] text-muted-foreground">{subline}</p>
+          {/* No max-w and no truncate: the line is short enough to sit on one
+              row now, and clipping it would hide the trader count. */}
+          <p className="mt-1 text-pretty text-[11px] text-muted-foreground">{subline}</p>
         </div>
-        {owner ? (
+        {/* Connecting is the profile card's job — the page never shows two
+            entry points to the same wallet. */}
+        {owner && (
           <button
             type="button"
             onClick={refresh}
@@ -71,10 +74,6 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
             className={cn("shrink-0 text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-40", PRESSABLE_CONTROL)}
           >
             {you.loading ? "Refreshing..." : "Refresh"}
-          </button>
-        ) : (
-          <button type="button" onClick={() => setConnectOpen(true)} className={cn(BUTTON_PRIMARY, "shrink-0")}>
-            Connect wallet
           </button>
         )}
       </div>
@@ -86,6 +85,7 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
         loading={you.loading}
         error={you.error}
         totalTraders={global.data?.traders ?? null}
+        onConnect={() => setConnectOpen(true)}
       />
 
       {inspectOwner && inspectOwner !== owner && (
@@ -115,7 +115,10 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
-      <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">{content}</main>
+      {/* One readable column, the same measure /launchpad settled on. At 1536px
+          the leaderboard row stretched to 1368px around ~570px of content, so a
+          rank sat 470px from its AMPs and the row stopped reading as a row. */}
+      <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-8">{content}</main>
     </div>
   );
 }

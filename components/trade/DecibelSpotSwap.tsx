@@ -151,7 +151,9 @@ export interface DecibelSpotSwapProps {
 
 const POLL_MS = 5_000;
 const APT_GAS_RESERVE_ATOMIC = 1_000_000n; // 0.01 APT
-const SLIPPAGE_LABEL = `Max ${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`;
+const SLIPPAGE_PERCENT = `${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`;
+// "Max 0.5%" never said what the 0.5% was a maximum of.
+const SLIPPAGE_LABEL = `Slippage ${SLIPPAGE_PERCENT}`;
 
 function iconFor(symbol: AssetSymbol) {
   if (symbol === "BTC") return "/tokens/btc.png";
@@ -1745,7 +1747,7 @@ export function DecibelSpotSwap({
       { label: direction === "buy" ? "Maximum buy price" : "Minimum sell price", value: `${limit} USDC` },
       { label: "Estimated Decibel fee", value: `${fee} ${feeSymbol}` },
       { label: "Unfilled portion", value: "Returns to wallet" },
-      { label: "Max price movement", value: SLIPPAGE_LABEL.replace("Max ", "") },
+      { label: "Max price movement", value: SLIPPAGE_PERCENT },
       { label: "Venue", value: "Decibel spot", tone: "positive" },
     ];
   }, [base, direction, highRisk, priceImpact, quote, quotePrice, spread, toDecimals, toSymbol]);
@@ -1787,7 +1789,7 @@ export function DecibelSpotSwap({
                   "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[11px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                   PRESSABLE_CONTROL,
                 )}
-                aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
+                aria-label={`${SLIPPAGE_LABEL}. Open maximum price movement details.`}
               >
                 {SLIPPAGE_LABEL}
               </button>
@@ -2075,6 +2077,62 @@ export function DecibelSpotSwap({
             </div>
           ) : null}
 
+          {/* Price before the button that acts on it: the summary used to sit
+              under the CTA, where it read as a footnote to a decision already
+              taken. */}
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            className={cn(
+              "mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
+              PRESSABLE_CONTROL,
+            )}
+            aria-expanded={detailsOpen}
+            aria-controls={detailsPanelId}
+          >
+            {/* Price impact rides in the collapsed summary, not only inside the
+                expanded panel: with slippage it is one of the two numbers a
+                trader checks before signing, and a number you have to go
+                looking for is a number most people never see. */}
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono tabular-nums">
+              {quote ? (
+                <>
+                  <span className="truncate">{`1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC`}</span>
+                  {Number.isFinite(priceImpact) ? (
+                    <span className={cn("whitespace-nowrap", highRisk ? "text-warning" : "text-muted-foreground")}>
+                      {`· ${percent(priceImpact)} impact`}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                "Enter an amount to see price details"
+              )}
+            </span>
+            <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />
+          </button>
+
+          <AnimatePresence initial={false}>
+            {detailsOpen ? (
+              <motion.div
+                id={detailsPanelId}
+                initial={reduceMotion ? false : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
+                animate={{ opacity: 1, transform: "translate3d(0, 0, 0)" }}
+                exit={reduceMotion ? undefined : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
+                transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
+                className="mx-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
+              >
+                <DetailRow label="Route" value="Decibel spot" tone="positive" />
+                <DetailRow label="Price impact" value={Number.isFinite(priceImpact) ? percent(priceImpact) : "No midpoint"} tone={highRisk ? "warning" : undefined} />
+                <DetailRow label="Bid / ask spread" value={Number.isFinite(spread) ? percent(spread) : "One-sided book"} tone={highRisk ? "warning" : undefined} />
+                <DetailRow label="Max price movement" value={SLIPPAGE_PERCENT} />
+                <DetailRow label="Order behavior" value="Immediate or cancel" />
+                <div className="border-t border-card-border pt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
+                  Decibel charges its current spot taker fee in the asset you receive. This integration does not add a builder fee. APT is required for network gas.
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
           <button
             type="button"
             onClick={primaryAction}
@@ -2088,44 +2146,6 @@ export function DecibelSpotSwap({
             {submitStage !== "idle" ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
             {cta.label}
           </button>
-
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((open) => !open)}
-            className={cn(
-              "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
-              PRESSABLE_CONTROL,
-            )}
-            aria-expanded={detailsOpen}
-            aria-controls={detailsPanelId}
-          >
-            <span className="min-w-0 font-mono tabular-nums">
-              {quote ? `1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC` : "Enter an amount to see price details"}
-            </span>
-            <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />
-          </button>
-
-          <AnimatePresence initial={false}>
-            {detailsOpen ? (
-              <motion.div
-                id={detailsPanelId}
-                initial={reduceMotion ? false : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
-                animate={{ opacity: 1, transform: "translate3d(0, 0, 0)" }}
-                exit={reduceMotion ? undefined : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
-                transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
-                className="mx-1 mb-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
-              >
-                <DetailRow label="Route" value="Decibel spot" tone="positive" />
-                <DetailRow label="Price impact" value={Number.isFinite(priceImpact) ? percent(priceImpact) : "No midpoint"} tone={highRisk ? "warning" : undefined} />
-                <DetailRow label="Bid / ask spread" value={Number.isFinite(spread) ? percent(spread) : "One-sided book"} tone={highRisk ? "warning" : undefined} />
-                <DetailRow label="Max price movement" value={`${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`} />
-                <DetailRow label="Order behavior" value="Immediate or cancel" />
-                <div className="border-t border-card-border pt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
-                  Decibel charges its current spot taker fee in the asset you receive. This integration does not add a builder fee. APT is required for network gas.
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
         </SwapFlowScreen>
       )}
       </AnimatePresence>

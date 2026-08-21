@@ -207,7 +207,8 @@ const PREVIEW_BALANCES: WalletBalances = {
 
 const QUOTE_STALE_AFTER_MS = 15_000;
 const HIGH_PRICE_IMPACT_PCT = 1;
-const SLIPPAGE_LABEL = `Max ${CASH_SWAP_SLIPPAGE_BPS / 100}%`;
+// "Max 0.5%" never said what the 0.5% was a maximum of.
+const SLIPPAGE_LABEL = `Slippage ${CASH_SWAP_SLIPPAGE_BPS / 100}%`;
 const PENDING_SWAP_STORAGE_PREFIX = "cash:pending-spot-swap:v1";
 const PENDING_MIGRATION_STORAGE_PREFIX = "cash:pending-legacy-migration:v1";
 
@@ -2436,7 +2437,7 @@ export function CashSpotSwap({
                   "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[11px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                   PRESSABLE_CONTROL,
                 )}
-                aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
+                aria-label={`${SLIPPAGE_LABEL}. Open maximum price movement details.`}
               >
                 {SLIPPAGE_LABEL}
               </button>
@@ -2788,30 +2789,14 @@ export function CashSpotSwap({
         )}
       </AnimatePresence>
 
-      <button
-        type="button"
-        onClick={handlePrimaryAction}
-        disabled={cta.disabled || previewState === "disabled"}
-        aria-busy={submitStage !== "idle" || effectiveLoading}
-        className={cn(
-          BUTTON_PRIMARY,
-          "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
-          previewState === "hover" && "brightness-95",
-          previewState === "focus-visible" && "ring-2 ring-ring ring-offset-2 ring-offset-background",
-          previewState === "active" && "scale-[0.98]",
-        )}
-      >
-        {(submitStage !== "idle" || effectiveLoading) && (
-          <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
-        )}
-        {cta.label}
-      </button>
-
+      {/* Price before the button that acts on it: the summary used to sit
+          under the CTA, where it read as a footnote to a decision already
+          taken. */}
       <button
         type="button"
         onClick={() => setDetailsOpen((open) => !open)}
         className={cn(
-          "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
           PRESSABLE_CONTROL,
         )}
         aria-expanded={detailsOpen}
@@ -2840,7 +2825,7 @@ export function CashSpotSwap({
             animate={{ opacity: 1, transform: "translate3d(0, 0, 0)" }}
             exit={reduceMotion ? undefined : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
             transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
-            className="mx-1 mb-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
+            className="mx-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
           >
             <DetailRow label="Route" value="Direct CASH orderbook" valueClassName="text-accent" />
             <DetailRow
@@ -2879,6 +2864,25 @@ export function CashSpotSwap({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <button
+        type="button"
+        onClick={handlePrimaryAction}
+        disabled={cta.disabled || previewState === "disabled"}
+        aria-busy={submitStage !== "idle" || effectiveLoading}
+        className={cn(
+          BUTTON_PRIMARY,
+          "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
+          previewState === "hover" && "brightness-95",
+          previewState === "focus-visible" && "ring-2 ring-ring ring-offset-2 ring-offset-background",
+          previewState === "active" && "scale-[0.98]",
+        )}
+      >
+        {(submitStage !== "idle" || effectiveLoading) && (
+          <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+        )}
+        {cta.label}
+      </button>
 
         </SwapFlowScreen>
       )}

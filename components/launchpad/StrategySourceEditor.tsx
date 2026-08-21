@@ -1,13 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BeforeMount } from "@monaco-editor/react";
 import { Check, Copy, ExternalLink, Pencil, RotateCcw } from "lucide-react";
 
 import { transpileV3 } from "@/lib/launchpad/transpiler-v3";
 import { cn } from "@/lib/utils";
 import { PRODUCT_PRESSABLE_CLASS } from "@/components/ui/product-surface";
+import { useThemeName } from "@/components/layout/theme-toggle";
 
 const MonacoEditor = dynamic(
   () => import("@monaco-editor/react").then((module) => module.default),
@@ -15,12 +16,70 @@ const MonacoEditor = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="h-full min-h-[360px] animate-pulse bg-[#0d0d0d] sm:min-h-[440px] lg:min-h-[520px]"
+        className="h-full min-h-[360px] animate-pulse bg-background-secondary sm:min-h-[440px] lg:min-h-[520px]"
         aria-label="Loading source editor"
       />
     ),
   },
 );
+
+/**
+ * Monaco's theme API only takes literal colours, which is why the editor chrome
+ * used to be fourteen hard-coded hex values — and why it stayed dark on a white
+ * page. Reading the same `.cash-trade-theme` custom properties the rest of the
+ * app renders from keeps one source of truth and follows the light theme.
+ */
+function readThemeColor(host: Element, name: string, alphaOver?: string): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const styles = getComputedStyle(host);
+  const raw = styles.getPropertyValue(name).trim();
+  if (!raw) return undefined;
+  const hex = raw.match(/^#([0-9a-fA-F]{3,8})$/);
+  if (hex) return raw.length === 4 ? `#${[...hex[1]].map((c) => c + c).join("")}` : raw;
+  const rgba = raw.match(/^rgba?\(([^)]+)\)$/);
+  if (!rgba) return undefined;
+  const parts = rgba[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+  const [r, g, b, a = 1] = parts;
+  if (![r, g, b].every(Number.isFinite)) return undefined;
+  const pair = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  // Monaco composites its own alpha unpredictably behind the editor surface, so
+  // translucent tokens (--card-border) are flattened over the surface they sit on.
+  if (alphaOver && Number.isFinite(a) && a < 1) {
+    const base = readThemeColor(host, alphaOver);
+    if (base && /^#[0-9a-fA-F]{6}$/.test(base)) {
+      const mix = (i: number) => parts[i] * a + parseInt(base.slice(1 + i * 2, 3 + i * 2), 16) * (1 - a);
+      return `#${pair(mix(0))}${pair(mix(1))}${pair(mix(2))}`;
+    }
+  }
+  return `#${pair(r)}${pair(g)}${pair(b)}${Number.isFinite(a) && a < 1 ? pair(a * 255) : ""}`;
+}
+
+/** Drops the keys whose token did not resolve, so Monaco falls back to its own
+ *  base theme rather than rendering `undefined`. `host` is the editor's own
+ *  element: `.cash-trade-theme` sits on wrapper divs, never on <html>, so the
+ *  document root would hand back the wrong (or no) value. */
+function themeColors(host: Element): Record<string, string> {
+  const read = (name: string, over?: string) => readThemeColor(host, name, over);
+  const entries: Array<[string, string | undefined]> = [
+    ["editor.background", read("--background-secondary")],
+    ["editor.foreground", read("--foreground")],
+    ["editorLineNumber.foreground", read("--muted")],
+    ["editorLineNumber.activeForeground", read("--foreground-secondary")],
+    ["editorCursor.foreground", read("--accent")],
+    ["editor.selectionBackground", read("--border-accent", "--background-secondary")],
+    ["editor.inactiveSelectionBackground", read("--chart-segment-background", "--background-secondary")],
+    ["editor.lineHighlightBackground", read("--background-tertiary")],
+    ["editorGutter.background", read("--background-secondary")],
+    ["editorIndentGuide.background1", read("--card-border", "--background-secondary")],
+    ["editorIndentGuide.activeBackground1", read("--border-strong", "--background-secondary")],
+    ["editorWidget.background", read("--background-tertiary")],
+    ["editorWidget.border", read("--border-strong", "--background-tertiary")],
+    ["scrollbarSlider.background", read("--card-border", "--background-secondary")],
+    ["scrollbarSlider.hoverBackground", read("--card-hover", "--background-secondary")],
+    ["scrollbarSlider.activeBackground", read("--border-strong", "--background-secondary")],
+  ];
+  return Object.fromEntries(entries.filter((e): e is [string, string] => Boolean(e[1])));
+}
 
 type SourceTab = "pine" | "move";
 
@@ -45,6 +104,30 @@ function safeFileStem(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || "strategy";
+}
+
+type Monaco = Parameters<BeforeMount>[0];
+
+function defineSourceTheme(monaco: Monaco, host: Element | null) {
+  const colors = host ? themeColors(host) : {};
+  monaco.editor.defineTheme("cash-source", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: "64815D" },
+      { token: "keyword", foreground: "79A7FF" },
+      { token: "type", foreground: "70D6C0" },
+      { token: "type.identifier", foreground: "93BE7A" },
+      { token: "function", foreground: "B7A1E8" },
+      { token: "string", foreground: "C89B7C" },
+      { token: "number", foreground: "9EC4FF" },
+      { token: "number.float", foreground: "9EC4FF" },
+      { token: "number.hex", foreground: "9EC4FF" },
+      { token: "annotation", foreground: "D5B45B" },
+      { token: "operator", foreground: "B8BAC2" },
+    ],
+    colors,
+  });
 }
 
 const configureMonaco: BeforeMount = (monaco) => {
@@ -143,41 +226,6 @@ const configureMonaco: BeforeMount = (monaco) => {
     });
   }
 
-  monaco.editor.defineTheme("cash-source", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "64815D" },
-      { token: "keyword", foreground: "79A7FF" },
-      { token: "type", foreground: "70D6C0" },
-      { token: "type.identifier", foreground: "93BE7A" },
-      { token: "function", foreground: "B7A1E8" },
-      { token: "string", foreground: "C89B7C" },
-      { token: "number", foreground: "9EC4FF" },
-      { token: "number.float", foreground: "9EC4FF" },
-      { token: "number.hex", foreground: "9EC4FF" },
-      { token: "annotation", foreground: "D5B45B" },
-      { token: "operator", foreground: "B8BAC2" },
-    ],
-    colors: {
-      "editor.background": "#0d0d0d",
-      "editor.foreground": "#d4d4d8",
-      "editorLineNumber.foreground": "#48484f",
-      "editorLineNumber.activeForeground": "#a1a1aa",
-      "editorCursor.foreground": "#76ff45",
-      "editor.selectionBackground": "#294B2C",
-      "editor.inactiveSelectionBackground": "#1D3220",
-      "editor.lineHighlightBackground": "#141414",
-      "editorGutter.background": "#0d0d0d",
-      "editorIndentGuide.background1": "#202024",
-      "editorIndentGuide.activeBackground1": "#35353a",
-      "editorWidget.background": "#171717",
-      "editorWidget.border": "#2b2b2f",
-      "scrollbarSlider.background": "#3f3f4666",
-      "scrollbarSlider.hoverBackground": "#52525b88",
-      "scrollbarSlider.activeBackground": "#71717aaa",
-    },
-  });
 };
 
 export function StrategySourceEditor({
@@ -197,6 +245,16 @@ export function StrategySourceEditor({
   const [moveSource, setMoveSource] = useState("// Open the Move tab to generate the vault module.");
   const [moveErrors, setMoveErrors] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const hostRef = useRef<HTMLElement>(null);
+  const monacoRef = useRef<Monaco | null>(null);
+  const themeName = useThemeName();
+
+  // Monaco bakes its colours in at defineTheme time, so the editor would keep the
+  // dark chrome after a theme switch until a full reload. Re-defining under the
+  // same name repaints the live instance.
+  useEffect(() => {
+    if (monacoRef.current) defineSourceTheme(monacoRef.current, hostRef.current);
+  }, [themeName]);
 
   const fileStem = useMemo(() => safeFileStem(sourceName), [sourceName]);
   const pineLineCount = useMemo(
@@ -247,7 +305,8 @@ export function StrategySourceEditor({
 
   return (
     <section
-      className="flex min-h-[430px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-sm)] border border-card-border bg-[#0d0d0d] sm:min-h-[510px] lg:min-h-[560px]"
+      ref={hostRef}
+      className="flex min-h-[430px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-sm)] border border-card-border bg-background-secondary sm:min-h-[510px] lg:min-h-[560px]"
       aria-label="Strategy source editor"
     >
       <div className="flex min-h-10 shrink-0 items-stretch justify-between border-b border-card-border bg-background-tertiary">
@@ -264,10 +323,10 @@ export function StrategySourceEditor({
                 aria-label={label}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "relative flex min-w-0 shrink-0 items-center gap-2 border-r border-card-border px-3 font-mono text-[10px] transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                  "relative flex min-w-0 shrink-0 items-center gap-2 border-r border-card-border px-3 font-mono text-[11px] transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                   PRODUCT_PRESSABLE_CLASS,
                   active
-                    ? "bg-[#0d0d0d] text-foreground"
+                    ? "bg-background-secondary text-foreground"
                     : "bg-background-tertiary text-muted-foreground hover:bg-card-hover hover:text-foreground-secondary",
                 )}
               >
@@ -305,7 +364,7 @@ export function StrategySourceEditor({
               onClick={() => onEditingChange(!editing)}
               disabled={disabled}
               className={cn(
-                "flex h-8 items-center gap-1.5 rounded-[var(--radius-xs)] px-2 font-display text-[10px] font-semibold text-muted-foreground hover:bg-card-hover hover:text-foreground disabled:opacity-40",
+                "flex h-8 items-center gap-1.5 rounded-[var(--radius-xs)] px-2 font-display text-[11px] font-semibold text-muted-foreground hover:bg-card-hover hover:text-foreground disabled:opacity-40",
                 PRODUCT_PRESSABLE_CLASS,
               )}
               aria-label={editing ? "Finish editing PineScript" : "Edit PineScript"}
@@ -340,10 +399,10 @@ export function StrategySourceEditor({
 
       {activeTab === "move" && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-card-border bg-sky-400/[0.035] px-3 py-2">
-          <p className="min-w-0 text-[10px] leading-4 text-foreground-secondary">
+          <p className="min-w-0 text-[11px] leading-4 text-foreground-secondary">
             Generated vault module for the approved Decibel market. This is the code bound to the strategy commitment.
           </p>
-          <span className={cn("shrink-0 font-mono text-[9px] uppercase tracking-[0.12em]", moveErrors.length > 0 ? "text-red-400" : "text-sky-400")}>
+          <span className={cn("shrink-0 font-mono text-[11px] uppercase tracking-[0.12em]", moveErrors.length > 0 ? "text-danger" : "text-sky-400")}>
             {moveErrors.length > 0 ? `${moveErrors.length} blocked` : "generated"}
           </span>
         </div>
@@ -357,7 +416,11 @@ export function StrategySourceEditor({
           language={activeTab}
           theme="cash-source"
           value={activeSource}
-          beforeMount={configureMonaco}
+          beforeMount={(monaco) => {
+            monacoRef.current = monaco;
+            configureMonaco(monaco);
+            defineSourceTheme(monaco, hostRef.current);
+          }}
           onChange={(value) => {
             if (activeTab === "pine" && editing && !disabled) onPineChange(value ?? "");
           }}
@@ -400,7 +463,7 @@ export function StrategySourceEditor({
         />
       </div>
 
-      <footer className="flex min-h-7 shrink-0 items-center justify-between gap-3 border-t border-card-border bg-background-tertiary px-3 font-mono text-[9px] text-muted-foreground">
+      <footer className="flex min-h-7 shrink-0 items-center justify-between gap-3 border-t border-card-border bg-background-tertiary px-3 font-mono text-[11px] text-muted-foreground">
         <span>{activeTab === "pine" ? "PineScript" : "Move"}</span>
         <span className="tabular-nums">
           {activeTab === "pine" ? `${pineLineCount.toLocaleString()} lines · ${pineScript.length.toLocaleString()} chars` : `${activeLineCount.toLocaleString()} lines · read only`}

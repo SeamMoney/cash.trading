@@ -125,7 +125,7 @@ function Pane({
           const barHeight = Math.max(1, Math.abs(zeroY - y));
           return (
             <rect
-              fill={point.value >= 0 ? "#22c55e" : "#ef4444"}
+              fill={point.value >= 0 ? "var(--success)" : "var(--danger)"}
               fillOpacity={0.25}
               height={barHeight}
               key={`${point.time}:${point.value}`}
@@ -146,11 +146,11 @@ function Pane({
             y={(point) => yScale(point.value)}
           />
         ))}
-        <text fill="var(--chart-label, #7f7f7f)" fontSize={9} x={4} y={11}>{label}</text>
+        <text fill="var(--chart-label)" fontSize={9} x={4} y={11}>{label}</text>
         {yTicks.map((tick) => (
           <text
             dominantBaseline="middle"
-            fill="var(--chart-label, #7f7f7f)"
+            fill="var(--chart-label)"
             fontFamily="monospace"
             fontSize={9}
             key={tick}
@@ -175,7 +175,7 @@ export const LaunchpadIndicatorPane = memo(function LaunchpadIndicatorPane(
   return (
     <div
       aria-label={`${props.label} indicator chart`}
-      className="h-[120px] w-full border-t border-[#1e1e1e]"
+      className="h-[120px] w-full border-t border-card-border"
       role="img"
     >
       <ParentSize debounceTime={10}>

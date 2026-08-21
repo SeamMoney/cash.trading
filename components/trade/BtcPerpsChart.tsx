@@ -544,6 +544,9 @@ function BtcPerpsChartComponent({
     intent: "pending" | "horizontal";
   } | null>(null);
   const lineInteractionRef = useRef<HTMLDivElement | null>(null);
+  // First-frame seed only: the effect below replaces it with the resolved
+  // --chart-line-primary token, which this literal mirrors in the dark theme.
+  // Liveline paints to a canvas, so this one cannot be a var().
   const [lineColor, setLineColor] = useState("#39ff14");
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
@@ -1707,14 +1710,14 @@ function BtcPerpsChartComponent({
         />
         {/* Overlay crossover signals — most recent first */}
         {overlayCrossings.length > 0 && (
-          <div className="pointer-events-none absolute left-3 top-9 z-10 flex flex-col gap-1">
+          <div className="pointer-events-none absolute left-3 top-[80px] z-10 flex flex-col gap-1">
             {[...overlayCrossings].reverse().map((c) => (
               <span
                 key={`${c.side}-${c.time}`}
-                className={`flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
+                className={`flex items-center gap-1.5 self-start rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase ${
                   c.side === "buy"
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-red-500/15 text-red-400"
+                    ? "bg-success/15 text-success"
+                    : "bg-danger/15 text-danger"
                 }`}
               >
                 {c.side === "buy" ? "▲ Buy" : "▼ Sell"}

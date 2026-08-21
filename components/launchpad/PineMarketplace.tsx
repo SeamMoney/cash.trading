@@ -112,13 +112,13 @@ function SourceStatus({
 }) {
   if (loading) {
     return (
-      <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-500">
+      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Fetching source
       </span>
     );
   }
   if (error) {
-    return <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-amber-400">Source unavailable</span>;
+    return <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber-400">Source unavailable</span>;
   }
   if (!meta) return null;
 
@@ -129,7 +129,7 @@ function SourceStatus({
         ? `Complete public source from TradingView (${meta.publicId ?? "public script"})`
         : `Source extracted from ${meta.provider}; compare it with TradingView before use`}
       className={cn(
-        "inline-flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.1em]",
+        "inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em]",
         full ? "text-accent" : "text-amber-300",
       )}
     >
@@ -161,17 +161,17 @@ function PopularCard({
       >
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">
-            <span className="block font-display text-[14px] font-semibold leading-snug text-white group-hover:text-accent">
+            <span className="block font-display text-sm font-semibold leading-snug text-white group-hover:text-accent">
               {item.title}
             </span>
-            <span className="mt-1 block truncate font-mono text-[10px] text-zinc-600">by {item.author}</span>
+            <span className="mt-1 block truncate font-mono text-[11px] text-zinc-600">by {item.author}</span>
           </span>
           <ProductBadge>{item.scriptType}</ProductBadge>
         </span>
-        <span className={cn("mt-3 block text-[12px] leading-relaxed text-zinc-400", compact ? "line-clamp-2" : "line-clamp-3")}>
+        <span className={cn("mt-3 block text-xs leading-relaxed text-zinc-400", compact ? "line-clamp-2" : "line-clamp-3")}>
           {item.description}
         </span>
-        <span className="mt-3 flex min-w-0 items-center gap-4 border-t border-card-border pt-2.5 font-mono text-[10px] text-muted-foreground">
+        <span className="mt-3 flex min-w-0 items-center gap-4 border-t border-card-border pt-2.5 font-mono text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1"><MessageSquare className="h-3 w-3" aria-hidden />{item.comments}</span>
           <span className="inline-flex items-center gap-1"><Rocket className="h-3 w-3" aria-hidden />{item.boosts.toLocaleString()}</span>
           <span className="ml-auto text-zinc-400 group-hover:text-white">Open →</span>
@@ -342,7 +342,7 @@ export function PineMarketplace({
             aria-busy={loadingFeed}
             className="min-w-0 flex-1 sm:max-w-[520px]"
             icon={(
-              <span className="flex size-7 items-center justify-center rounded-[6px] bg-accent/10 text-accent">
+              <span className="flex size-7 items-center justify-center rounded-[var(--radius-xs)] bg-accent/10 text-accent">
                 <CandlestickChart className="size-3.5" aria-hidden="true" />
               </span>
             )}
@@ -379,12 +379,12 @@ export function PineMarketplace({
       className={cn(
         PRODUCT_CONTROL_CLASS,
         PRODUCT_PRESSABLE_CLASS,
-        "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+        "inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap px-3 font-display text-xs font-semibold text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
       )}
     >
       <CandlestickChart className="size-3.5 text-accent" aria-hidden="true" />
       <span>{activeSelection ? "Change script" : "Browse scripts"}</span>
-      <span className="font-mono text-[9px] text-muted-foreground">
+      <span className="font-mono text-[11px] text-muted-foreground">
         {loadingFeed ? "…" : items.length}
       </span>
     </button>
@@ -418,7 +418,7 @@ export function PineMarketplace({
           {!selected ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-card-border px-4 py-2.5">
-                <span className="font-display text-[12px] font-semibold text-foreground">Popular</span>
+                <span className="font-display text-xs font-semibold text-foreground">Popular</span>
                 <ProductBadge className="text-accent">Public source</ProductBadge>
               </div>
               <div
@@ -442,10 +442,10 @@ export function PineMarketplace({
                       <span className="mx-auto flex size-10 items-center justify-center rounded-[var(--radius-sm)] border border-amber-500/12 bg-amber-500/[0.06] text-amber-300">
                         <RefreshCw className="size-4" aria-hidden="true" />
                       </span>
-                      <p className="mt-3 font-display text-[14px] font-semibold text-foreground">
+                      <p className="mt-3 font-display text-sm font-semibold text-foreground">
                         Indicator library didn&apos;t load
                       </p>
-                      <p className="mt-1 text-pretty text-[12px] leading-5 text-muted-foreground">
+                      <p className="mt-1 text-pretty text-xs leading-5 text-muted-foreground">
                         {feedError}
                       </p>
                       <button
@@ -454,7 +454,7 @@ export function PineMarketplace({
                         className={cn(
                           PRODUCT_CONTROL_CLASS,
                           PRODUCT_PRESSABLE_CLASS,
-                          "mt-4 px-4 py-2 font-display text-[12px] font-semibold text-foreground hover:border-border-strong hover:bg-card-hover",
+                          "mt-4 px-4 py-2 font-display text-xs font-semibold text-foreground hover:border-border-strong hover:bg-card-hover",
                         )}
                       >
                         Try again
@@ -503,7 +503,7 @@ export function PineMarketplace({
                   >
                     <ArrowLeft className="h-4 w-4" aria-hidden />
                   </button>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[9px] uppercase text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase text-muted-foreground">
                     Public script · {relativeDate(selected.publishedAt)} · {sourceMeta ? `${sourceMeta.lineCount.toLocaleString()} lines` : "Loading source"}
                   </span>
                   <a
@@ -511,7 +511,7 @@ export function PineMarketplace({
                     target="_blank"
                     rel="noreferrer"
                     aria-label="Open this script on TradingView"
-                    className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex h-9 shrink-0 items-center gap-2 px-2.5 text-[12px] text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground sm:px-3")}
+                    className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex h-9 shrink-0 items-center gap-2 px-2.5 text-xs text-foreground-secondary hover:border-border-strong hover:bg-card-hover hover:text-foreground sm:px-3")}
                   >
                     <span className="hidden sm:inline">TradingView</span>
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden />
@@ -547,7 +547,7 @@ export function PineMarketplace({
                       type="button"
                       onClick={checkCompatibility}
                       disabled={!source || compatibility.state === "checking"}
-                      className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "h-9 px-3 font-display text-[12px] font-semibold text-foreground-secondary hover:border-border-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40")}
+                      className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "h-9 px-3 font-display text-xs font-semibold text-foreground-secondary hover:border-border-strong hover:text-foreground disabled:pointer-events-none disabled:opacity-40")}
                     >
                       {compatibility.state === "checking" ? "Checking…" : "Check vault compatibility"}
                     </button>
@@ -555,7 +555,7 @@ export function PineMarketplace({
                       type="button"
                       onClick={useSelected}
                       disabled={!source || loadingSource || disabled}
-                      className={cn("h-9 rounded-[var(--radius-sm)] bg-accent px-4 font-display text-[12px] font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
+                      className={cn("h-9 rounded-[var(--radius-sm)] bg-accent px-4 font-display text-xs font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
                     >
                       {loadingSource ? "Loading full source…" : "Use in editor"}
                     </button>
@@ -586,7 +586,7 @@ export function PineMarketplace({
                           type="button"
                           onClick={() => setTab("source")}
                           disabled={!source}
-                          className={cn("font-mono text-[10px] text-zinc-400 hover:text-white disabled:pointer-events-none disabled:opacity-40", PRODUCT_PRESSABLE_CLASS)}
+                          className={cn("font-mono text-[11px] text-zinc-400 hover:text-white disabled:pointer-events-none disabled:opacity-40", PRODUCT_PRESSABLE_CLASS)}
                         >
                           View source →
                         </button>
@@ -596,10 +596,10 @@ export function PineMarketplace({
                     <section className="grid gap-4 border-t border-card-border pb-3 pt-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)]">
                       <div className="min-w-0">
                         <ProductBadge>{selected.scriptType}</ProductBadge>
-                        <p className="mt-3 max-w-4xl text-[13px] leading-relaxed text-zinc-300 sm:text-[14px]">{selected.description}</p>
+                        <p className="mt-3 max-w-4xl text-[13px] leading-relaxed text-zinc-300 sm:text-sm">{selected.description}</p>
                       </div>
                       <aside className="min-w-0 lg:border-l lg:border-card-border lg:pl-5">
-                        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 font-mono text-[10px]">
+                        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 font-mono text-[11px]">
                           <div>
                             <dt className="uppercase tracking-[0.12em] text-zinc-600">Author</dt>
                             <dd className="mt-1 truncate text-zinc-300">{selected.author}</dd>
@@ -611,7 +611,7 @@ export function PineMarketplace({
                         </dl>
                         {features.length > 0 && (
                           <div className="mt-4 border-t border-card-border pt-3">
-                            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">Detected features</p>
+                            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600">Detected features</p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {features.map((feature) => (
                                 <ProductBadge key={feature.label}>{feature.label}</ProductBadge>
@@ -637,7 +637,7 @@ export function PineMarketplace({
                       <div className="flex h-full min-h-0 flex-col gap-2.5">
                         <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                           <SourceStatus meta={sourceMeta} loading={false} error={null} />
-                          <span className="font-mono text-[9px] text-zinc-600">
+                          <span className="font-mono text-[11px] text-zinc-600">
                             {sourceMeta ? `${sourceMeta.characterCount.toLocaleString()} characters` : `${lineCount.toLocaleString()} lines`}
                           </span>
                         </div>
@@ -645,7 +645,7 @@ export function PineMarketplace({
                           code={source}
                           filename={`${selected.id}.pine`}
                           maxHeight="calc(100dvh - 300px)"
-                          actions={<span className="mr-1 font-mono text-[9px] text-zinc-600">{lineCount.toLocaleString()} lines</span>}
+                          actions={<span className="mr-1 font-mono text-[11px] text-zinc-600">{lineCount.toLocaleString()} lines</span>}
                         />
                       </div>
                     )}
@@ -659,7 +659,7 @@ export function PineMarketplace({
                         <Terminal className="h-4 w-4 text-zinc-500" aria-hidden />
                         <span className="font-display text-[13px] font-semibold text-white">Pine logs and compatibility</span>
                       </div>
-                      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-600">{market}</span>
+                      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-600">{market}</span>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 font-mono text-[11px] leading-relaxed">
                       <LogRow level="info" label="marketplace" text={`Loaded ${selected.title} by ${selected.author}.`} />
@@ -710,7 +710,7 @@ export function PineMarketplace({
                   type="button"
                   onClick={() => { setTab("logs"); void checkCompatibility(); }}
                   disabled={!source || compatibility.state === "checking"}
-                  className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex-1 px-3 py-2.5 font-display text-[12px] font-semibold text-foreground-secondary disabled:pointer-events-none disabled:opacity-40")}
+                  className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "flex-1 px-3 py-2.5 font-display text-xs font-semibold text-foreground-secondary disabled:pointer-events-none disabled:opacity-40")}
                 >
                   Check
                 </button>
@@ -718,7 +718,7 @@ export function PineMarketplace({
                   type="button"
                   onClick={useSelected}
                   disabled={!source || loadingSource || disabled}
-                  className={cn("flex-[1.4] rounded-[var(--radius-sm)] bg-accent px-3 py-2.5 font-display text-[12px] font-semibold text-accent-foreground disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
+                  className={cn("flex-[1.4] rounded-[var(--radius-sm)] bg-accent px-3 py-2.5 font-display text-xs font-semibold text-accent-foreground disabled:pointer-events-none disabled:cursor-wait disabled:bg-card disabled:text-muted-foreground", PRODUCT_PRESSABLE_CLASS)}
                 >
                   {loadingSource ? "Loading full source…" : "Use in editor"}
                 </button>

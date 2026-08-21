@@ -57,7 +57,6 @@ import {
   signTone,
 } from "@/components/portfolio/portfolio-surface";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
-import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 
 type Position = {
   market: string;
@@ -186,6 +185,9 @@ const PORTFOLIO_CHART_RANGES: ReadonlyArray<{
   { value: "90d", label: "90d" },
   { value: "all", label: "All" },
 ];
+
+const DEFAULT_CHART_METRIC = "pnl" as const;
+const DEFAULT_CHART_RANGE: PortfolioChartRange = "30d";
 
 function formatUsd(value: number | null | undefined, signed = false) {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -405,8 +407,8 @@ export function PortfolioPageClient() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Positions");
   const tabPanelId = "portfolio-tabpanel";
-  const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">("pnl");
-  const [chartRange, setChartRange] = useState<PortfolioChartRange>("30d");
+  const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">(DEFAULT_CHART_METRIC);
+  const [chartRange, setChartRange] = useState<PortfolioChartRange>(DEFAULT_CHART_RANGE);
   const [historyPoints, setHistoryPoints] = useState<PortfolioHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -417,7 +419,6 @@ export function PortfolioPageClient() {
   // Deposit reuses the full account modal (wallet, account creation, bridge)
   // rather than a second bespoke deposit form.
   const [depositOpen, setDepositOpen] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
@@ -450,6 +451,14 @@ export function PortfolioPageClient() {
     () => historyPoints as unknown as Record<string, unknown>[],
     [historyPoints],
   );
+  // Nine enabled options over an empty frame read as a broken chart. The
+  // controls appear once there is something to switch between: a rendered
+  // series, or a non-default selection the reader has to be able to undo.
+  const chartSeriesRendered = historyPoints.length >= 2;
+  const chartControlsVisible =
+    chartSeriesRendered
+    || chartMetric !== DEFAULT_CHART_METRIC
+    || chartRange !== DEFAULT_CHART_RANGE;
 
   useEffect(() => {
     stateRef.current = state;
@@ -811,14 +820,13 @@ export function PortfolioPageClient() {
     totalPnl != null && overview?.totalMargin && overview.totalMargin > 0
       ? (totalPnl / overview.totalMargin) * 100
       : null;
-  // A disabled control has to say why it is disabled (D4).
-  const withdrawDisabledReason = !connected
-    ? "Connect a wallet first"
-    : withdrawing
-      ? "A withdrawal is already in flight"
-      : !hasDecibelAccount
-        ? "No Decibel trading account on this wallet"
-        : undefined;
+  // A disabled control has to say why it is disabled (D4). Disconnected is not
+  // a case here: the pair is replaced by one "Connect wallet" primary.
+  const withdrawDisabledReason = withdrawing
+    ? "A withdrawal is already in flight"
+    : !hasDecibelAccount
+      ? "No Decibel trading account on this wallet"
+      : undefined;
 
   const handleWithdraw = useCallback(async () => {
     if (withdrawingRef.current || withdrawalTokenRef.current) return;
@@ -1092,29 +1100,47 @@ export function PortfolioPageClient() {
               {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Never disabled: disconnected users get the wallet selector,
-                which beats a dead button. */}
-            <button
-              type="button"
-              onClick={() => (connected ? setDepositOpen(true) : setConnectOpen(true))}
-              className={BUTTON_PRIMARY}
-            >
-              Deposit USDC
-            </button>
-            {/* Neutral, not a second accent fill: one primary per screen. */}
-            <button
-              type="button"
-              onClick={() => setWithdrawOpen(true)}
-              disabled={Boolean(withdrawDisabledReason)}
-              className={BUTTON_NEUTRAL}
-            >
-              {withdrawing ? "Withdrawing…" : "Withdraw USDC"}
-            </button>
-            {/* The reason lived in a title attribute, i.e. nowhere on a phone. */}
-            {withdrawDisabledReason ? (
-              <p className={cn(STAT_NOTE, "w-full")}>{withdrawDisabledReason}</p>
-            ) : null}
+          <div className="flex flex-wrap items-start gap-2">
+            {connected ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDepositOpen(true)}
+                  className={BUTTON_PRIMARY}
+                >
+                  Deposit USDC
+                </button>
+                {/* Neutral, not a second accent fill: one primary per screen.
+                    The reason lived in a title attribute, i.e. nowhere on a
+                    phone; it now sits under the control it explains instead of
+                    wrapping under Deposit. */}
+                <div className="flex flex-col items-start">
+                  <button
+                    type="button"
+                    onClick={() => setWithdrawOpen(true)}
+                    disabled={Boolean(withdrawDisabledReason)}
+                    className={BUTTON_NEUTRAL}
+                  >
+                    {withdrawing ? "Withdrawing…" : "Withdraw USDC"}
+                  </button>
+                  {withdrawDisabledReason ? (
+                    <p className={STAT_NOTE}>{withdrawDisabledReason}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              /* Disconnected, the loudest control was "Deposit USDC" next to a
+                 button explaining you need a wallet first. One primary, the
+                 same one every other page uses, and the reason disappears with
+                 the control it was explaining. */
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event("cash:open-wallet-selector"))}
+                className={BUTTON_PRIMARY}
+              >
+                Connect wallet
+              </button>
+            )}
           </div>
         </div>
 
@@ -1226,6 +1252,7 @@ export function PortfolioPageClient() {
                   className="mt-2 block font-mono text-2xl font-semibold text-foreground"
                 />
               </div>
+              {chartControlsVisible ? (
               <div className="flex flex-wrap items-center gap-2">
                 <div className={SEGMENTED} role="group" aria-label="Chart metric">
                   {[
@@ -1257,9 +1284,10 @@ export function PortfolioPageClient() {
                   ))}
                 </div>
               </div>
+              ) : null}
             </div>
             <div className="mt-6 h-[360px] min-h-[260px]">
-              {historyPoints.length >= 2 ? (
+              {chartSeriesRendered ? (
                 <AreaChart
                   data={chartData}
                   xDataKey="date"
@@ -1664,7 +1692,6 @@ export function PortfolioPageClient() {
       </main>
 
       <WalletAccountModal open={depositOpen} onClose={() => setDepositOpen(false)} />
-      <WalletSelector open={connectOpen} onClose={() => setConnectOpen(false)} />
       <AlertDialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
         <AlertDialogContent className="rounded-[var(--radius)] border-card-border bg-background-secondary text-foreground">
           <AlertDialogHeader>

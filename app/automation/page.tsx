@@ -6,7 +6,7 @@ import { botOwnerAllowlistConfigured } from "@/lib/bot-owner-guard"
 export const metadata: Metadata = {
   title: "cash.trading - Strategy runner",
   description:
-    "Run one Pine strategy on your own Decibel account. No vault, no shares.",
+    "Run one ready-made strategy on your own Decibel account. No vault, no shares.",
 }
 
 export default function AutomationPage() {

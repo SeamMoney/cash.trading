@@ -359,7 +359,9 @@ export function SealedLaunch({
       pair: market.name,
       leverage: 0,
       category: "crypto" as const,
-      color: "#27272a",
+      // Placeholder tint for a market the chart carries no palette for. The
+      // token, not a literal grey, which would stay near-black on a white page.
+      color: "var(--card-border)",
     });
   }, [config?.markets, marketOptions]);
   const toggleMarketAccess = useCallback((id: string) => {

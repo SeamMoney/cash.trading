@@ -91,7 +91,7 @@ function EquityPlot({
           height={innerHeight}
           numTicks={3}
           scale={yScale}
-          stroke="#27272a"
+          stroke="var(--chart-grid)"
           strokeDasharray="4 4"
           width={innerWidth}
         />
@@ -99,12 +99,12 @@ function EquityPlot({
           height={innerHeight}
           numTicks={4}
           scale={xScale}
-          stroke="#27272a"
+          stroke="var(--chart-grid)"
           strokeDasharray="4 4"
           width={innerWidth}
         />
         <line
-          stroke="#3f3f46"
+          stroke="var(--chart-crosshair)"
           strokeDasharray="4 4"
           x1={0}
           x2={innerWidth}
@@ -114,7 +114,7 @@ function EquityPlot({
         <LinePath
           curve={curveMonotoneX}
           data={data}
-          stroke={isProfit ? "#4ade80" : "#f87171"}
+          stroke={isProfit ? "var(--success)" : "var(--danger)"}
           strokeWidth={2}
           x={(point) => xScale(new Date(point.t * 1_000))}
           y={(point) => yScale(point.v)}
@@ -122,7 +122,7 @@ function EquityPlot({
         {hovered && (
           <>
             <line
-              stroke="#71717a"
+              stroke="var(--chart-label)"
               strokeDasharray="3 3"
               x1={xScale(new Date(hovered.t * 1_000))}
               x2={xScale(new Date(hovered.t * 1_000))}
@@ -132,9 +132,9 @@ function EquityPlot({
             <circle
               cx={xScale(new Date(hovered.t * 1_000))}
               cy={yScale(hovered.v)}
-              fill="#111111"
+              fill="var(--chart-marker-background)"
               r={3.5}
-              stroke={hovered.v >= initialCapital ? "#4ade80" : "#f87171"}
+              stroke={hovered.v >= initialCapital ? "var(--success)" : "var(--danger)"}
               strokeWidth={1.5}
             />
           </>
@@ -142,7 +142,7 @@ function EquityPlot({
         {yScale.ticks(3).map((tick) => (
           <text
             dominantBaseline="middle"
-            fill="#71717a"
+            fill="var(--chart-label)"
             fontFamily="monospace"
             fontSize={9}
             key={tick}
@@ -154,7 +154,7 @@ function EquityPlot({
         ))}
         {[data[0], data.at(-1)].filter((point): point is Point => Boolean(point)).map((point) => (
           <text
-            fill="#71717a"
+            fill="var(--chart-label)"
             fontFamily="monospace"
             fontSize={9}
             key={point.t}
@@ -192,7 +192,7 @@ export function EquityCurveChart({ data, initialCapital = 10_000 }: EquityCurveC
       >
         {/* The start was hardcoded to $10k, so a $100 backtest labelled itself
             $10k — a caption that contradicts every number under it. */}
-        <span className="text-[10px] text-zinc-500">
+        <span className="text-[11px] text-zinc-500">
           Equity curve · ${initialCapital.toLocaleString("en-US", { maximumFractionDigits: 0 })} start
         </span>
         <span className={`text-xs font-mono font-semibold ${pct >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -201,7 +201,7 @@ export function EquityCurveChart({ data, initialCapital = 10_000 }: EquityCurveC
       </div>
       <div
         aria-label="Backtest equity curve"
-        className="h-[160px] w-full overflow-hidden rounded-lg"
+        className="h-[160px] w-full overflow-hidden rounded-[var(--radius-sm)]"
         role="img"
         style={{
           clipPath: revealed ? "inset(0 0% 0 0)" : "inset(0 100% 0 0)",

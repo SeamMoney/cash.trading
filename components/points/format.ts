@@ -1,3 +1,4 @@
+import { signTone } from "@/components/portfolio/portfolio-surface";
 import { DECIBEL_TIER_LABELS, type DecibelTierName } from "@/lib/decibel-points";
 
 const amps = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -24,10 +25,20 @@ export const formatAmps = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "—" : amps.format(value);
 export const formatSignedAmps = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "—" : signedAmps.format(value);
-export const formatPnl = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value)
-    ? "—"
-    : (Math.abs(value) < 1000 ? usdCents : usdWhole).format(value);
+/**
+ * An amount that rounds to $0.00 has no direction, so it gets no sign and no
+ * gain/loss colour: "+$0.00" in green claims a profit the number does not
+ * contain, and "-$0.00" in red claims a loss.
+ */
+const roundsToZero = (value: number | null | undefined) =>
+  value != null && Number.isFinite(value) && Math.abs(value) < 0.005;
+
+export const formatPnl = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (roundsToZero(value)) return "$0.00";
+  return (Math.abs(value) < 1000 ? usdCents : usdWhole).format(value);
+};
+export const pnlTone = (value: number | null | undefined) => signTone(roundsToZero(value) ? null : value);
 export const formatRank = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) || value <= 0 ? "—" : `#${amps.format(value)}`;
 export const tierLabel = (tier: DecibelTierName | null | undefined) => (tier ? DECIBEL_TIER_LABELS[tier] : "—");

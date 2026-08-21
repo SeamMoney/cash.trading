@@ -109,7 +109,7 @@ export function SealedBacktest(props: Props) {
     <div className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3">
         <div>
-          <h3 className="font-display text-[14px] font-semibold text-white">Backtest</h3>
+          <h3 className="font-display text-sm font-semibold text-foreground">Backtest</h3>
           <p className="text-[11px] leading-snug text-zinc-500">
             {assets.length > 1
               ? `Your script on all ${assets.length} markets, capital split between them.`
@@ -124,7 +124,7 @@ export function SealedBacktest(props: Props) {
                 type="button"
                 onClick={() => setWindowKey(w.key)}
                 className={cn(
-                  "rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[10px] transition-colors",
+                  "rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] transition-colors",
                   windowKey === w.key ? "bg-card-hover text-foreground" : "text-muted-foreground hover:text-foreground-secondary",
                 )}
               >
@@ -137,7 +137,7 @@ export function SealedBacktest(props: Props) {
             onClick={() => void run()}
             disabled={loading || pineScript.trim().length === 0}
             className={cn(
-              "rounded-[var(--radius-sm)] px-3 py-1.5 text-[12px] font-semibold transition-colors",
+              "rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-semibold transition-colors",
               loading || pineScript.trim().length === 0
                 ? "cursor-not-allowed bg-card text-muted-foreground"
                 : "bg-accent text-accent-foreground hover:brightness-95",
@@ -151,9 +151,9 @@ export function SealedBacktest(props: Props) {
       <div className="flex flex-col gap-3 p-4">
         {result && !result.ok && (
           <div className="rounded-[var(--radius-sm)] border border-red-500/12 bg-red-500/10 px-3 py-2">
-            <p className="text-[12px] text-red-300">{result.error}</p>
+            <p className="text-xs text-red-300">{result.error}</p>
             {result.detail?.slice(0, 4).map((d) => (
-              <p key={d} className="mt-0.5 font-mono text-[10px] text-red-400/80">• {d}</p>
+              <p key={d} className="mt-0.5 font-mono text-[11px] text-red-400/80">• {d}</p>
             ))}
           </div>
         )}
@@ -231,7 +231,7 @@ export function SealedBacktest(props: Props) {
               </p>
             )}
 
-            <div className="grid gap-1 rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2 font-mono text-[10px] text-muted-foreground">
+            <div className="grid gap-1 rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2 font-mono text-[11px] text-muted-foreground">
               <span>
                 {s.barsSimulated.toLocaleString()} bars simulated · {s.warmupBars} bar warmup skipped ·
                 {" "}{s.timeInMarketPct}% of bars in a position
@@ -273,7 +273,7 @@ export function SealedBacktest(props: Props) {
         )}
 
         {!result && !loading && (
-          <p className="py-3 text-center text-[12px] text-zinc-600">
+          <p className="py-3 text-center text-xs text-zinc-600">
             Run a backtest to see how this strategy would have traded, after fees and funding.
           </p>
         )}
@@ -295,16 +295,16 @@ function Stat({
 }) {
   return (
     <div className="rounded-[var(--radius-sm)] border border-card-border bg-card px-2.5 py-2">
-      <p className="text-[10px] text-zinc-500">{label}</p>
+      <p className="text-[11px] text-zinc-500">{label}</p>
       <p
         className={cn(
-          "font-mono text-[15px] font-semibold",
+          "font-mono text-sm font-semibold",
           tone === "up" ? "text-accent" : tone === "down" ? "text-red-400" : "text-zinc-200",
         )}
       >
         {value}
       </p>
-      {note && <p className="text-[9px] text-zinc-600">{note}</p>}
+      {note && <p className="text-[11px] text-zinc-600">{note}</p>}
     </div>
   );
 }

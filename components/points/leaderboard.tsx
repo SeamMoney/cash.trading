@@ -6,11 +6,12 @@ import {
   PANEL,
   SECTION_GAP,
   SECTION_TITLE,
+  TAB,
+  TAB_ACTIVE,
   TABLE,
   TABLE_EMPTY,
   TABLE_HEAD,
   TABLE_ROW,
-  signTone,
 } from "@/components/portfolio/portfolio-surface";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +20,7 @@ import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 import { tierForAmps, type DecibelTierFilter } from "@/lib/decibel-points";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
-import { formatAmps, formatPnl, formatRank, tierLabel } from "./format";
+import { formatAmps, formatPnl, formatRank, pnlTone, tierLabel } from "./format";
 import {
   lookupLeaderboardOwner,
   useLeaderboard,
@@ -102,21 +103,20 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
 
   return (
     <section className={cn(SECTION_GAP, PANEL)}>
-      <div className="flex flex-col gap-4 px-4 pt-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <div className="flex flex-col gap-2 px-4 pt-4 md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4">
           <h2 className={SECTION_TITLE}>Leaderboard</h2>
-          <div className="flex flex-wrap gap-x-4 text-xs">
+          {/* These switch what the table lists, so they are the app's in-panel
+              content tabs — not a fourth underlined-link grammar with an 18px
+              hit area. TAB carries the 44px target and the focus ring. */}
+          <div className="flex flex-wrap items-center">
             {TIER_FILTERS.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 aria-pressed={tier === item.value}
                 onClick={() => setTier(item.value)}
-                className={cn(
-                  "text-muted-foreground hover:text-foreground",
-                  PRESSABLE_CONTROL,
-                  tier === item.value && "text-foreground underline underline-offset-4",
-                )}
+                className={cn(TAB, tier === item.value && TAB_ACTIVE)}
               >
                 {item.label}
               </button>
@@ -130,7 +130,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
           placeholder="Search address"
           spellCheck={false}
           autoComplete="off"
-          className="h-9 w-full rounded-[var(--radius-sm)] border-card-border bg-background font-mono text-base text-foreground md:w-72 md:text-[13px]"
+          className="h-9 w-full rounded-[var(--radius-sm)] border-card-border bg-background font-mono text-base text-foreground md:w-72 md:shrink-0 md:text-[13px]"
         />
       </div>
 
@@ -172,7 +172,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
                     </td>
                     <td className="text-right font-mono tabular-nums">{formatAmps(row.amps)}</td>
                     <td>{tierOf(row.amps)}</td>
-                    <td className={cn("text-right font-mono tabular-nums", signTone(row.realizedPnl))}>
+                    <td className={cn("text-right font-mono tabular-nums", pnlTone(row.realizedPnl))}>
                       {formatPnl(row.realizedPnl)}
                     </td>
                   </tr>
@@ -210,7 +210,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
                     <span>{tierOf(row.amps)}</span>
-                    <span className={cn("font-mono tabular-nums", signTone(row.realizedPnl))}>
+                    <span className={cn("font-mono tabular-nums", pnlTone(row.realizedPnl))}>
                       {formatPnl(row.realizedPnl)}
                     </span>
                   </div>
@@ -237,7 +237,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
             <span className="flex items-center gap-6 font-mono tabular-nums">
               <span>{formatAmps(you.totalAmps)}</span>
               <span className="hidden font-sans text-muted-foreground md:inline">{tierLabel(you.tier?.current ?? null)}</span>
-              <span className={cn("hidden md:inline", signTone(you.realizedPnl))}>{formatPnl(you.realizedPnl)}</span>
+              <span className={cn("hidden md:inline", pnlTone(you.realizedPnl))}>{formatPnl(you.realizedPnl)}</span>
             </span>
           </div>
         )}

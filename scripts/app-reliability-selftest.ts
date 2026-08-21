@@ -467,21 +467,21 @@ assert.match(orderBook, /formatUsdNotional\(trade\.price, trade\.size\)/);
 assert.match(orderBook, /onDecibelTradeConfirmed/);
 assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
 assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
-assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
+assert.match(swapMarketLayout, /2xl:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
 // 17 rows fill the swap card's ~504px without an at-rest scroll; 21 needed ~572px.
 assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
 // On desktop the book is taken out of flow inside a stretched grid item so it
 // matches the swap card's height exactly without ever adding to it; below lg it
 // keeps the Trade page's mobile heights.
-assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:absolute lg:inset-0 lg:h-auto"/);
-assert.match(swapMarketLayout, /lg:items-stretch/);
+assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] 2xl:absolute 2xl:inset-0 2xl:h-auto"/);
+assert.match(swapMarketLayout, /2xl:items-stretch/);
 assert.match(
   swapMarketLayout,
-  /<div className="relative min-w-0 lg:order-1">\s*<OrderBook/,
+  /<div className="relative min-w-0 2xl:order-1">\s*<OrderBook/,
   "the absolutely positioned book needs a relative wrapper or it escapes the grid item",
 );
 assert.ok(
-  !swapMarketLayout.includes("lg:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
+  !swapMarketLayout.includes("2xl:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
   "the swap column must size to its content — no fixed desktop height and no nested scroll",
 );
 assert.equal(
@@ -2395,14 +2395,24 @@ assert.ok(
     && launchpadTheme.includes('from "frosted-ui"')
     && launchpadTheme.includes("<Theme")
     && launchpadTheme.includes('accentColor="lime"')
-    && launchpadTheme.includes('className="cash-trade-theme"'),
+    && /className=\{cn\("cash-trade-theme"/.test(launchpadTheme),
   "the launchpad route must scope Frosted UI to the cash.trading theme",
 );
-// frosted-ui picks its token set from `appearance`, so hardcoding it would
-// leave every frosted surface on this route dark on a light page.
+// frosted-ui resolves its token set from the theme, so a hardcoded "dark"
+// would leave every frosted surface on this route dark on a light page. It
+// must follow the document theme — but via the CLASS, not the `appearance`
+// prop: an explicit appearance makes this a frosted "root" theme, which ships
+// an inline script that rewrites documentElement's light/dark class and
+// color-scheme on every render. On /launchpad that fought the boot script in
+// app/layout.tsx and leaked the class onto <html> after a client-side
+// navigation away.
 assert.ok(
-  launchpadTheme.includes("appearance={theme}") && launchpadTheme.includes("useThemeName"),
-  "the launchpad Frosted UI appearance must follow the active theme, not be hardcoded",
+  launchpadTheme.includes("useThemeName") && /className=\{cn\("cash-trade-theme", theme\)\}/.test(launchpadTheme),
+  "the launchpad Frosted UI theme must follow the active theme via its own class",
+);
+assert.ok(
+  !launchpadTheme.includes("appearance="),
+  "the launchpad Frosted UI theme must not take `appearance`, which hijacks documentElement's theme class",
 );
 assert.ok(
   productSurfaceUi.includes('from "frosted-ui"')

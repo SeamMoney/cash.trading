@@ -228,7 +228,12 @@ function buildLadderRows(book: OrderBookData, centerPrice: number, step: number,
       askSize: askMap.get(price) ?? 0,
       isCenter: offset === 0,
     };
-  });
+  })
+    // A price step the venue does not quote is not a level. Emitting one
+    // printed a price with an empty bid and ask column — six of seventeen rows
+    // on the Trade page — which reads as depth that exists. Only the centre
+    // row survives without size: it carries the mark, not an order.
+    .filter((row) => row.isCenter || row.bidSize > 0 || row.askSize > 0);
 }
 
 function isDepthMessage(value: unknown): value is { bids?: Level[]; asks?: Level[]; depth?: { bids?: Level[]; asks?: Level[] }; unix_ms?: number; timestamp?: number } {
@@ -409,7 +414,7 @@ function LadderRowView({
     <div
       role="row"
       className={cn(
-        "group relative grid h-full min-h-6 w-full grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
+        "group relative grid h-full min-h-6 w-full grid-cols-3 items-center overflow-hidden font-mono text-xs tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
       )}
     >
       <div role="cell" aria-label={bidLabel} className="relative h-full min-w-0">
@@ -548,7 +553,7 @@ function TradesTable({
           </div>
         </div>
       ) : (
-        <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-[12px] text-zinc-400">
+        <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-xs text-zinc-400">
           {status === "loading"
             ? "Loading trades..."
             : status === "unavailable"
@@ -807,7 +812,10 @@ export function OrderBook({
             ? "waiting"
             : "unavailable"
       : renderedStatus === "live"
-        ? `${renderedBook.bids.length + renderedBook.asks.length} levels`
+        // The count names the rows on screen. It used to report every level in
+        // the raw feed (40) above a 17-row ladder, so the header described a
+        // book the user could not see.
+        ? rows.length > 0 ? `${rows.length} levels` : "waiting"
         : renderedStatus === "loading"
         ? "loading"
         : renderedStatus === "waiting"
@@ -902,7 +910,7 @@ export function OrderBook({
             </div>
           </div>
         ) : activeTab === "book" ? (
-          <div className="flex min-h-48 flex-1 items-center justify-center text-center font-mono text-[12px] text-zinc-400">
+          <div className="flex min-h-48 flex-1 items-center justify-center text-center font-mono text-xs text-zinc-400">
             {renderedStatus === "loading"
               ? "Loading orderbook..."
               : renderedStatus === "unavailable"

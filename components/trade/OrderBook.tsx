@@ -76,7 +76,17 @@ interface LadderRow {
 }
 
 const DISPLAY_LEVELS = 20;
-const DEFAULT_LADDER_ROWS = 39;
+/**
+ * Ladder rows are price steps, not orders: buildLadderRows emits one row per
+ * step whether or not the book has size there, so every row above the tallest
+ * ceiling the venue actually quotes is guaranteed blank. 21 rows on the Trade
+ * page rendered nine empty. 17 is the width SwapMarketLayout already settled
+ * on, and it is the ceiling for every caller — the prop stays free to ask for
+ * fewer.
+ */
+const MAX_LADDER_ROWS = 17;
+const MIN_LADDER_ROWS = 11;
+const DEFAULT_LADDER_ROWS = MAX_LADDER_ROWS;
 // Theme tokens rather than literal hex so the light theme's --success /
 // --danger remaps reach the ladder (a literal stays neon-on-white).
 const POSITIVE_ALPHA = "color-mix(in srgb, var(--success) 18%, transparent)";
@@ -771,7 +781,7 @@ export function OrderBook({
     if (displayPrice && displayPrice > 0) previousPriceRef.current = displayPrice;
   }, [displayPrice]);
 
-  const visibleRowCount = Math.max(11, Math.min(45, rowCount));
+  const visibleRowCount = Math.max(MIN_LADDER_ROWS, Math.min(MAX_LADDER_ROWS, rowCount));
   const step = useMemo(() => {
     const minimumStep = controlledData?.priceStep ?? inferStep(renderedBook, displayPrice || 1);
     return fitStepToTopOfBook(renderedBook, displayPrice || 1, minimumStep, visibleRowCount);

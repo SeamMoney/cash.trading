@@ -40,6 +40,8 @@ import {
   ProductSegmented,
   ProductSelectorButton,
 } from "@/components/ui/product-surface";
+import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
+import { FOCUS_RING } from "@/lib/surface";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
 import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
@@ -172,8 +174,6 @@ const STAGES: Array<{ n: Stage; label: string }> = [
   { n: 2, label: "Markets & limits" },
   { n: 3, label: "Name & fund" },
 ];
-
-const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function asTxData(payload: {
   function: string;
@@ -762,23 +762,24 @@ export function SealedLaunch({
             type="button"
             onClick={() => goTo((stage + 1) as Stage)}
             disabled={busy}
-            className={cn(
-              "flex min-h-11 w-full items-center justify-center rounded-[var(--radius-sm)] bg-accent px-5 font-display text-[14px] font-bold text-accent-foreground hover:brightness-95 disabled:opacity-40",
-              PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-            )}
+            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
           >
             Continue
           </button>
         );
       }
+      // One visible label at every width: the long form wrapped to two lines inside the
+      // w-56 desktop box and broke the row's own height. The banner above carries the
+      // reason on screen; the accessible name carries it for a screen reader.
       if (previewMode) {
         return (
           <div
             role="status"
-            className={cn(PRODUCT_CONTROL_CLASS, "flex min-h-11 w-full items-center justify-center gap-2 px-4 font-display text-[14px] font-semibold text-muted-foreground")}
+            aria-label="Launch unavailable in preview mode"
+            className={cn(PRODUCT_CONTROL_CLASS, "flex min-h-11 w-full items-center justify-center gap-2 px-4 font-display text-sm font-semibold text-muted-foreground")}
           >
             <Lock className="h-4 w-4" aria-hidden />
-            {compact ? "Launch unavailable" : "Launch unavailable in preview mode"}
+            Launch unavailable
           </div>
         );
       }
@@ -787,10 +788,7 @@ export function SealedLaunch({
           <button
             type="button"
             onClick={onCancel}
-            className={cn(
-              "flex min-h-11 w-full items-center justify-center rounded-[var(--radius-sm)] bg-accent px-5 font-display text-[14px] font-bold text-accent-foreground hover:brightness-95",
-              PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-            )}
+            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
           >
             Done
           </button>
@@ -801,10 +799,7 @@ export function SealedLaunch({
           <button
             type="button"
             onClick={openWalletSelector}
-            className={cn(
-              "flex min-h-11 w-full items-center justify-center rounded-[var(--radius-sm)] bg-accent px-5 font-display text-[14px] font-bold text-accent-foreground hover:brightness-95",
-              PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-            )}
+            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
           >
             Connect wallet
           </button>
@@ -859,27 +854,29 @@ export function SealedLaunch({
       {/* Preview banner above the flow — the unavailable state must be the first thing read,
           not something discovered after configuring everything. */}
       {previewMode && (
-        <div className="mb-3 rounded-[var(--radius)] border border-amber-500/14 bg-amber-500/[0.06] px-3 py-2.5 sm:p-4">
-          <p className="font-display text-[13px] font-semibold text-amber-300">
+        <div className="mb-3 rounded-[var(--radius)] border border-warning/20 bg-warning/[0.06] px-3 py-2.5 sm:p-4">
+          <p className="font-display text-[13px] font-semibold text-warning">
             Preview mode · launching is unavailable on {config?.network}
           </p>
-          <p className="mt-1 hidden text-[13px] leading-relaxed text-amber-200/70 sm:block">
+          <p className="mt-1 hidden text-[13px] leading-relaxed text-warning/70 sm:block">
             The sealed-vault attestor isn&apos;t configured here. You can pick a strategy, see
             its program hash and read the full cost breakdown — nothing can be funded or
             launched.
           </p>
-          {config?.missing && config.missing.length > 0 && (
+          {/* Env-var names and a pnpm command are for whoever runs the deploy, not for
+              someone reading a vault page in production. */}
+          {process.env.NODE_ENV !== "production" && config?.missing && config.missing.length > 0 && (
             <details className="mt-2.5">
-              <summary className="cursor-pointer list-none text-[12px] text-amber-200/60 underline underline-offset-2 hover:text-amber-200">
+              <summary className="cursor-pointer list-none text-xs text-warning/60 underline underline-offset-2 hover:text-warning">
                 Developer details
               </summary>
               <div className="mt-2 space-y-1">
                 {config.missing.map((m) => (
-                  <p key={m} className="font-mono text-[11px] text-amber-300/80">{m}</p>
+                  <p key={m} className="font-mono text-[11px] text-warning/80">{m}</p>
                 ))}
-                <p className="pt-1 text-[11px] leading-relaxed text-zinc-400">
+                <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">
                   Publish with{" "}
-                  <span className="font-mono text-zinc-300">
+                  <span className="font-mono text-foreground">
                     pnpm sealed:publish --network {config.network}
                   </span>{" "}
                   and set the values it prints. See docs/DEPLOY-SEALED.md.
@@ -919,7 +916,7 @@ export function SealedLaunch({
               <h2 className="font-display text-[13px] font-semibold text-foreground">
                 Launch a vault
               </h2>
-              <ol className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12px]" aria-label="Steps">
+              <ol className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs" aria-label="Steps">
                 {STAGES.map((s, i) => {
                   const reachable = s.n <= maxStage && !busy && !live;
                   const current = s.n === stage;
@@ -981,14 +978,14 @@ export function SealedLaunch({
                           <Tag>{importedScript ? "Imported" : "Edited"}</Tag>
                         </div>
                         {importedScript?.author && (
-                          <p className="mt-0.5 text-[12px] text-muted-foreground">by {importedScript.author}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">by {importedScript.author}</p>
                         )}
                       </div>
                       <button
                         type="button"
                         onClick={resetSource}
                         disabled={busy}
-                        className={cn("shrink-0 rounded-[var(--radius-xs)] px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40", PRODUCT_PRESSABLE_CLASS, FOCUS_RING)}
+                        className={cn("shrink-0 rounded-[var(--radius-xs)] px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40", PRODUCT_PRESSABLE_CLASS, FOCUS_RING)}
                       >
                         Remove
                       </button>
@@ -1031,7 +1028,7 @@ export function SealedLaunch({
                             <Tag>{strategy.category}</Tag>
                             <Tag>{strategy.turnover} turnover</Tag>
                           </span>
-                          <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
+                          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
                             {strategy.blurb}
                           </span>
                         </span>
@@ -1157,7 +1154,7 @@ export function SealedLaunch({
                   <Segmented label="Max leverage" hint="Hard cap the contract enforces." options={LEVERAGE_CHOICES} value={maxLeverageX100} onChange={setMaxLeverageX100} disabled={busy} />
                   <Segmented label="Trade cadence" hint="Minimum time between bars." options={CADENCE_CHOICES} value={minBarIntervalS} onChange={setMinBarIntervalS} disabled={busy} />
                   <Segmented label="Seed capital" hint="Your own USDC, at risk." options={SEED_CHOICES.map((v) => ({ label: `${v}`, value: v }))} value={seedUsdc} onChange={setSeedUsdc} disabled={busy} />
-                  <p className="border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-muted-foreground">
+                  <p className="border-t border-card-border pt-2.5 text-xs leading-relaxed text-muted-foreground">
                     Slippage {(config?.defaults.slippageBps ?? 30) / 100}% and the{" "}
                     {config?.economics.feeIntervalDays ?? 30}-day fee interval are protocol floors, not choices.
                   </p>
@@ -1167,7 +1164,7 @@ export function SealedLaunch({
               <ProductSection title="Source & operation">
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-1.5 font-display text-[12px] font-semibold text-foreground">Source visibility</p>
+                    <p className="mb-1.5 font-display text-xs font-semibold text-foreground">Source visibility</p>
                     <div className="grid grid-cols-2 gap-1.5">
                       <RailChoice
                         active={isPrivate}
@@ -1193,7 +1190,7 @@ export function SealedLaunch({
                     </p>
                   </div>
                   <div>
-                    <p className="mb-1.5 font-display text-[12px] font-semibold text-foreground">Who runs it</p>
+                    <p className="mb-1.5 font-display text-xs font-semibold text-foreground">Who runs it</p>
                     <div className="grid grid-cols-2 gap-1.5">
                       <RailChoice
                         active={managed}
@@ -1301,7 +1298,7 @@ export function SealedLaunch({
                 <ProductSection
                   title="Required to launch"
                   action={(
-                    <span className="font-mono text-[15px] font-semibold tabular-nums text-accent">
+                    <span className="font-mono text-base font-semibold tabular-nums text-accent">
                       {totalUsdc} USDC
                     </span>
                   )}
@@ -1311,7 +1308,7 @@ export function SealedLaunch({
                     <RailRow k="Our launch fee" v={`${config.economics.launchFeeUsdc} USDC`} />
                     <RailRow k="Starting capital" v={`${seedUsdc} USDC`} tone="warn" />
                   </dl>
-                  <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                     Starting capital is not a fee — it is traded by the strategy and exposed to its
                     gains and losses. The launch fee is once per vault; swapping strategies later is free.
                   </p>
@@ -1342,7 +1339,7 @@ export function SealedLaunch({
                     />
                   </dl>
                   {!config.economics.termsOnChain && (
-                    <p className="mt-2 text-[12px] leading-relaxed text-amber-500/90">
+                    <p className="mt-2 text-xs leading-relaxed text-warning/90">
                       Estimated — the contract isn&apos;t deployed here, so these are defaults.
                     </p>
                   )}
@@ -1350,7 +1347,7 @@ export function SealedLaunch({
               ) : (
                 <ProductSection title="Required to launch">
                   {configError ? (
-                    <p className="text-[12px] text-muted-foreground">Costs unavailable — launch settings did not load.</p>
+                    <p className="text-xs text-muted-foreground">Costs unavailable — launch settings did not load.</p>
                   ) : (
                     <div className="space-y-1.5" aria-busy>
                       {[0, 1, 2].map((i) => (
@@ -1384,7 +1381,7 @@ export function SealedLaunch({
                     <Review k="Source" v={isPrivate ? "Private" : "Public"} />
                   </dl>
                   {(scriptPctBps !== null || scriptLeverageX100 !== null) && (
-                    <p className="mt-2.5 border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-foreground-secondary">
+                    <p className="mt-2.5 border-t border-card-border pt-2.5 text-xs leading-relaxed text-foreground-secondary">
                       Your script sets its own{" "}
                       {scriptPctBps !== null && scriptLeverageX100 !== null
                         ? "size and leverage"
@@ -1410,7 +1407,7 @@ export function SealedLaunch({
                       )}
                     </p>
                   )}
-                  <p className="mt-2.5 border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-muted-foreground">
+                  <p className="mt-2.5 border-t border-card-border pt-2.5 text-xs leading-relaxed text-muted-foreground">
                     Leveraged perpetual futures. At {effectiveLeverageX100 / 100}x, a{" "}
                     <span className="font-semibold text-foreground">
                       {(100 / (effectiveLeverageX100 / 100)).toFixed(0)}%
@@ -1420,7 +1417,7 @@ export function SealedLaunch({
                     profitable.
                   </p>
                   {!started && !previewMode && connected && (
-                    <p className="mt-2.5 text-[12px] leading-relaxed text-muted-foreground">
+                    <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
                       Three wallet signatures — Decibel requires each to be its own transaction.
                     </p>
                   )}
@@ -1480,12 +1477,12 @@ export function SealedLaunch({
                         {errorList.length > 0 && (
                           <ul className="mt-1.5 space-y-1">
                             {errorList.map((e) => (
-                              <li key={e} className="text-[12px] leading-relaxed text-red-300/80">• {e}</li>
+                              <li key={e} className="text-xs leading-relaxed text-destructive/80">• {e}</li>
                             ))}
                           </ul>
                         )}
                         {started && !live && (
-                          <span className="mt-2 block text-[12px] leading-relaxed text-red-300/70">
+                          <span className="mt-2 block text-xs leading-relaxed text-destructive/70">
                             {doneThrough >= 2
                               ? "Your Decibel vault exists and its funds are safe — resuming will not create a second one."
                               : "Nothing has been spent yet."}
@@ -1537,7 +1534,7 @@ export function SealedLaunch({
 }
 
 const inputCls =
-  "min-h-11 w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-[16px] text-foreground placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:text-[13px]";
+  "min-h-11 w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:text-[13px]";
 
 /** A collapsed section. The heavy children are the caller's to mount only when `open`. */
 function Disclosure({
@@ -1599,8 +1596,8 @@ function Segmented<T extends string | number>({
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="font-display text-[12px] font-semibold text-foreground">{label}</span>
-        <span className="text-right text-[12px] leading-relaxed text-muted-foreground">{hint}</span>
+        <span className="font-display text-xs font-semibold text-foreground">{label}</span>
+        <span className="text-right text-xs leading-relaxed text-muted-foreground">{hint}</span>
       </div>
       <ProductSegmented
         role="radiogroup"
@@ -1615,7 +1612,7 @@ function Segmented<T extends string | number>({
             disabled={disabled}
             onClick={() => onChange(o.value)}
             className={cn(
-              "min-h-9 flex-1 rounded-[var(--radius-xs)] px-2 py-1.5 font-mono text-[12px] tabular-nums transition-colors disabled:opacity-50",
+              "min-h-9 flex-1 rounded-[var(--radius-xs)] px-2 py-1.5 font-mono text-xs tabular-nums transition-colors disabled:opacity-50",
               PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
               o.value === value
                 ? "bg-accent/15 text-accent"
@@ -1672,11 +1669,11 @@ function RailRow({ k, v, note, tone }: { k: string; v: string; note?: string; to
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <dt className="text-[12px] text-foreground-secondary">{k}</dt>
+        <dt className="text-xs text-foreground-secondary">{k}</dt>
         <dd
           className={cn(
-            "shrink-0 font-mono text-[12px] tabular-nums",
-            tone === "warn" ? "text-amber-400" : "text-foreground",
+            "shrink-0 font-mono text-xs tabular-nums",
+            tone === "warn" ? "text-warning" : "text-foreground",
           )}
         >
           {v}
@@ -1695,7 +1692,7 @@ function ExplorerLink({
       href={`${base}/${addr}${suffix}`}
       target="_blank"
       rel="noreferrer"
-      className={cn("group inline-flex min-w-0 items-center gap-1.5 rounded-[var(--radius-xs)] text-[11px] text-zinc-500 transition-colors hover:text-accent", FOCUS_RING)}
+      className={cn("group inline-flex min-w-0 items-center gap-1.5 rounded-[var(--radius-xs)] text-[11px] text-muted-foreground transition-colors hover:text-accent", FOCUS_RING)}
     >
       <span className="w-14 shrink-0">{label}</span>
       <span className="truncate font-mono">{addr}</span>
@@ -1716,8 +1713,8 @@ function Tag({ children }: { children: React.ReactNode }) {
 function Review({ k, v, tone }: { k: string; v: string; tone?: "warn" }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[12px] text-muted-foreground">{k}</dt>
-      <dd className={cn("mt-0.5 truncate font-display text-[13px] font-semibold", tone === "warn" ? "text-amber-400" : "text-foreground")}>
+      <dt className="text-xs text-muted-foreground">{k}</dt>
+      <dd className={cn("mt-0.5 truncate font-display text-[13px] font-semibold", tone === "warn" ? "text-warning" : "text-foreground")}>
         {v}
       </dd>
     </div>
@@ -1731,15 +1728,15 @@ function PotRow({ label, need, have }: { label: string; need: number; have?: num
   const known = typeof have === "number";
   const ok = known && have >= need;
   return (
-    <div className="flex items-baseline justify-between gap-3 text-[12px]">
+    <div className="flex items-baseline justify-between gap-3 text-xs">
       <span className="text-muted-foreground">{label}</span>
       <span className="shrink-0 font-mono tabular-nums">
-        <span className={ok ? "text-accent" : known ? "text-amber-400" : "text-zinc-500"}>
+        <span className={ok ? "text-accent" : known ? "text-warning" : "text-muted-foreground"}>
           {known ? have.toFixed(2) : "—"}
         </span>
-        <span className="text-zinc-500"> / {need} USDC</span>
+        <span className="text-muted-foreground"> / {need} USDC</span>
         {known && !ok && (
-          <span className="ml-1.5 text-amber-400">add {(need - have).toFixed(2)}</span>
+          <span className="ml-1.5 text-warning">add {(need - have).toFixed(2)}</span>
         )}
       </span>
     </div>

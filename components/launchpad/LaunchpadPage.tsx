@@ -19,9 +19,13 @@ import {
   useSealedVaults,
   vaultIsLive,
 } from "@/components/sealed/SealedVaultFeed";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
-
-const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+import {
+  BUTTON_PRIMARY,
+  PANEL,
+  SECTION_TITLE,
+  SEGMENTED_ITEM,
+  SEGMENTED_ITEM_ACTIVE,
+} from "@/components/portfolio/portfolio-surface";
 
 export function LaunchpadPage() {
   const { connected, account } = useWallet();
@@ -42,19 +46,23 @@ export function LaunchpadPage() {
     : error
       ? `Vault list unavailable · ${network}`
       : vaults.length === 0
-        ? `No vaults yet · ${network}`
+        // The empty panel below already says "No vaults yet"; repeating it 100px
+        // higher reads as two different failures.
+        ? network
         : `${vaults.length} vault${vaults.length === 1 ? "" : "s"} · ${liveCount} running · ${network}`;
 
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
-    <div className="cash-trade-theme min-h-screen bg-black text-zinc-200">
+    <div className="cash-trade-theme min-h-screen bg-background text-foreground">
       <Header />
-      <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
+      {/* One readable column. At 1536px the flow's rows ran 1330px wide with their
+          content in the left 40%, and the empty panel left 460px of dead page. */}
+      <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-8">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-balance text-[18px] font-semibold text-zinc-200">Vaults</h1>
-            <p className="mt-1 truncate text-pretty text-[12px] text-zinc-600" aria-live="polite">
+            <h1 className={SECTION_TITLE}>Vaults</h1>
+            <p className="mt-1 truncate text-pretty text-xs text-muted-foreground" aria-live="polite">
               {subline}
             </p>
           </div>
@@ -64,10 +72,7 @@ export function LaunchpadPage() {
             <button
               type="button"
               onClick={() => setLaunching(true)}
-              className={cn(
-                "min-h-10 shrink-0 rounded-[4px] bg-accent px-4 py-2 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95",
-                PRESSABLE_CONTROL, FOCUS_RING,
-              )}
+              className={cn(BUTTON_PRIMARY, "shrink-0")}
             >
               Launch a vault
             </button>
@@ -80,9 +85,9 @@ export function LaunchpadPage() {
             onLaunched={() => void reload()}
           />
         ) : (
-          <section className="overflow-hidden rounded-[4px] border border-[#242424] bg-[#141414]">
+          <section className={PANEL}>
             {connected && mine.length > 0 && (
-              <div className="flex items-center gap-1 border-b border-[#242424] px-3 py-2">
+              <div className="flex items-center gap-1 border-b border-card-border px-3 py-2">
                 {([
                   ["all", `All (${vaults.length})`],
                   ["mine", `Mine (${mine.length})`],
@@ -94,11 +99,7 @@ export function LaunchpadPage() {
                       type="button"
                       onClick={() => setMineOnly(key === "mine")}
                       aria-pressed={active}
-                      className={cn(
-                        "min-h-9 rounded-[4px] px-2.5 text-[12px] font-medium",
-                        PRESSABLE_CONTROL, FOCUS_RING,
-                        active ? "bg-[#1d1d1d] text-zinc-200" : "text-zinc-500 hover:text-zinc-300",
-                      )}
+                      className={cn(SEGMENTED_ITEM, active && SEGMENTED_ITEM_ACTIVE)}
                     >
                       {label}
                     </button>

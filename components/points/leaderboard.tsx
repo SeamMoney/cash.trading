@@ -1,13 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  CARD_ROW,
+  PANEL,
+  SECTION_GAP,
+  SECTION_TITLE,
+  TABLE,
+  TABLE_EMPTY,
+  TABLE_HEAD,
+  TABLE_ROW,
+  signTone,
+} from "@/components/portfolio/portfolio-surface";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { shortAddress } from "@/hooks/useDecibelSubaccounts";
 import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 import { tierForAmps, type DecibelTierFilter } from "@/lib/decibel-points";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
-import { formatAmps, formatPnl, formatRank, pnlTone, tierLabel } from "./format";
+import { formatAmps, formatPnl, formatRank, tierLabel } from "./format";
 import {
   lookupLeaderboardOwner,
   useLeaderboard,
@@ -23,6 +35,14 @@ const TIER_FILTERS: { label: string; value: DecibelTierFilter | null }[] = [
   { label: "Double Platinum", value: "doublePlatinum" },
   { label: "Gold", value: "gold" },
 ];
+
+/**
+ * Selecting a row is a real <button> on both breakpoints. The desktop table
+ * used to hang the handler off `<tr onClick>`, which no keyboard or screen
+ * reader could reach; the mobile list already had the button, so the table
+ * now wraps the address cell in the same one.
+ */
+const ROW_BUTTON = `text-left underline-offset-4 hover:underline ${PRESSABLE_CONTROL}`;
 
 type Props = {
   owner: string | null;
@@ -81,19 +101,21 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
   const loading = board.loading || (exact?.loading ?? false);
 
   return (
-    <section className="mt-8 rounded-[4px] border border-[#242424] bg-[#141414]">
-      <div className="flex flex-col gap-4 px-4 pt-5 sm:px-6 md:flex-row md:items-center md:justify-between">
+    <section className={cn(SECTION_GAP, PANEL)}>
+      <div className="flex flex-col gap-4 px-4 pt-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="text-[18px] font-semibold text-zinc-200">Leaderboard</h2>
-          <div className="flex flex-wrap gap-x-4 text-[12px]">
+          <h2 className={SECTION_TITLE}>Leaderboard</h2>
+          <div className="flex flex-wrap gap-x-4 text-xs">
             {TIER_FILTERS.map((item) => (
               <button
                 key={item.label}
                 type="button"
+                aria-pressed={tier === item.value}
                 onClick={() => setTier(item.value)}
                 className={cn(
-                  "text-zinc-500 transition-colors hover:text-zinc-300",
-                  tier === item.value && "text-zinc-200 underline decoration-zinc-500 underline-offset-4",
+                  "text-muted-foreground hover:text-foreground",
+                  PRESSABLE_CONTROL,
+                  tier === item.value && "text-foreground underline underline-offset-4",
                 )}
               >
                 {item.label}
@@ -104,18 +126,19 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
+          aria-label="Search leaderboard by address"
           placeholder="Search address"
           spellCheck={false}
           autoComplete="off"
-          className="h-8 w-full rounded-[4px] border-[#242424] bg-[#050505] font-mono text-[12px] text-zinc-200 md:w-72 md:text-[12px]"
+          className="h-9 w-full rounded-[var(--radius-sm)] border-card-border bg-background font-mono text-base text-foreground md:w-72 md:text-[13px]"
         />
       </div>
 
       <div className="relative mt-4 md:max-h-[640px] md:overflow-auto">
         {/* Desktop table */}
-        <table className="hidden w-full text-left text-[13px] md:table">
-          <thead className="text-zinc-500">
-            <tr className="[&>th]:px-6 [&>th]:py-3 [&>th]:font-medium">
+        <table className={cn(TABLE, "hidden md:table")}>
+          <thead>
+            <tr className={TABLE_HEAD}>
               <th className="w-20">#</th>
               <th>Address</th>
               <th className="text-right">AMPs</th>
@@ -126,7 +149,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
           <tbody>
             {loading && rows.length === 0
               ? Array.from({ length: 8 }).map((_, index) => (
-                  <tr key={index} className="border-t border-[#242424] [&>td]:px-6 [&>td]:py-4">
+                  <tr key={index} className={TABLE_ROW}>
                     <td><Skeleton className="h-4 w-8" /></td>
                     <td><Skeleton className="h-4 w-40" /></td>
                     <td><Skeleton className="ml-auto h-4 w-20" /></td>
@@ -135,22 +158,23 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
                   </tr>
                 ))
               : rows.map((row) => (
-                  <tr
-                    key={row.owner}
-                    onClick={() => onSelect(row.owner)}
-                    className={cn(
-                      "cursor-pointer border-t border-[#242424] text-zinc-300 transition-colors hover:bg-white/[0.03] [&>td]:px-6 [&>td]:py-4",
-                      row.owner === owner && "bg-accent/[0.06]",
-                    )}
-                  >
-                    <td className="font-mono tabular-nums text-zinc-500">{row.rank}</td>
-                    <td className="font-mono">
-                      {shortAddress(row.owner)}
-                      {row.owner === owner && <span className="ml-2 font-sans text-[11px] text-accent">You</span>}
+                  <tr key={row.owner} className={cn(TABLE_ROW, row.owner === owner && "bg-accent/[0.06]")}>
+                    <td className="font-mono tabular-nums text-muted-foreground">{row.rank}</td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => onSelect(row.owner)}
+                        className={cn(ROW_BUTTON, "font-mono")}
+                      >
+                        {shortAddress(row.owner)}
+                        {row.owner === owner && <span className="ml-2 font-sans text-[11px] text-accent">You</span>}
+                      </button>
                     </td>
-                    <td className="text-right font-mono tabular-nums text-zinc-200">{formatAmps(row.amps)}</td>
+                    <td className="text-right font-mono tabular-nums">{formatAmps(row.amps)}</td>
                     <td>{tierOf(row.amps)}</td>
-                    <td className={cn("text-right font-mono tabular-nums", pnlTone(row.realizedPnl))}>{formatPnl(row.realizedPnl)}</td>
+                    <td className={cn("text-right font-mono tabular-nums", signTone(row.realizedPnl))}>
+                      {formatPnl(row.realizedPnl)}
+                    </td>
                   </tr>
                 ))}
           </tbody>
@@ -160,7 +184,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
         <div className="md:hidden">
           {loading && rows.length === 0
             ? Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="border-t border-[#242424] px-4 py-4">
+                <div key={index} className={CARD_ROW}>
                   <Skeleton className="h-4 w-44" />
                   <Skeleton className="mt-2 h-3 w-28" />
                 </div>
@@ -171,59 +195,62 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
                   type="button"
                   onClick={() => onSelect(row.owner)}
                   className={cn(
-                    "block w-full border-t border-[#242424] px-4 py-4 text-left text-[13px] text-zinc-300",
+                    CARD_ROW,
+                    "block w-full text-left",
+                    PRESSABLE_CONTROL,
                     row.owner === owner && "bg-accent/[0.06]",
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="flex min-w-0 items-center gap-3 font-mono">
-                      <span className="tabular-nums text-zinc-500">{row.rank}</span>
+                      <span className="tabular-nums text-muted-foreground">{row.rank}</span>
                       <span className="truncate">{shortAddress(row.owner)}</span>
                     </span>
-                    <span className="font-mono tabular-nums text-zinc-200">{formatAmps(row.amps)}</span>
+                    <span className="font-mono tabular-nums">{formatAmps(row.amps)}</span>
                   </div>
-                  <div className="mt-1 flex items-center justify-between gap-3 text-[12px] text-zinc-500">
+                  <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
                     <span>{tierOf(row.amps)}</span>
-                    <span className={cn("font-mono tabular-nums", pnlTone(row.realizedPnl))}>{formatPnl(row.realizedPnl)}</span>
+                    <span className={cn("font-mono tabular-nums", signTone(row.realizedPnl))}>
+                      {formatPnl(row.realizedPnl)}
+                    </span>
                   </div>
                 </button>
               ))}
         </div>
 
         {!loading && rows.length === 0 && (
-          <div className="border-t border-[#242424] px-6 py-12 text-center text-[13px] text-zinc-600">
+          <div className={cn(TABLE_EMPTY, "border-t border-card-border")}>
             {board.error ? "Leaderboard is temporarily unavailable" : exact ? "No AMPs recorded for that address" : "No matching addresses"}
           </div>
         )}
 
         {showYouRow && (
-          <div
-            className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-[#242424] bg-[#141414] px-4 py-3 text-[13px] text-zinc-200 md:px-6"
-          >
+          <div className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-card-border bg-background-secondary px-4 py-3 text-[13px] text-foreground">
             <span className="flex min-w-0 items-center gap-3 font-mono md:gap-0">
-              <span className="tabular-nums text-zinc-500 md:inline-block md:w-[calc(5rem-1.5rem)]">{formatRank(you.rank).slice(1)}</span>
+              {/* 5rem = the table's `w-20` rank column, so the two align. */}
+              <span className="tabular-nums text-muted-foreground md:inline-block md:w-20">
+                {formatRank(you.rank).slice(1)}
+              </span>
               <span className="truncate">{shortAddress(owner)}</span>
               <span className="ml-2 font-sans text-[11px] text-accent">You</span>
             </span>
             <span className="flex items-center gap-6 font-mono tabular-nums">
               <span>{formatAmps(you.totalAmps)}</span>
-              <span className="hidden font-sans text-zinc-500 md:inline">{tierLabel(you.tier?.current ?? null)}</span>
-              <span className={cn("hidden md:inline", pnlTone(you.realizedPnl))}>{formatPnl(you.realizedPnl)}</span>
+              <span className="hidden font-sans text-muted-foreground md:inline">{tierLabel(you.tier?.current ?? null)}</span>
+              <span className={cn("hidden md:inline", signTone(you.realizedPnl))}>{formatPnl(you.realizedPnl)}</span>
             </span>
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-[#242424] px-4 py-3 text-[12px] text-zinc-500 sm:px-6">
-        <span>
-          {board.total > 0 && !exact ? `${formatAmps(rows.length)} of ${formatAmps(board.total)}` : ""}
-        </span>
+      <div className="flex items-center justify-between gap-4 border-t border-card-border px-4 py-3 text-[11px] text-muted-foreground">
+        <span>{board.total > 0 && !exact ? `${formatAmps(rows.length)} of ${formatAmps(board.total)}` : ""}</span>
         {board.hasMore && !exact && !query && (
           <button
             type="button"
             onClick={board.showMore}
             disabled={board.loadingMore}
-            className="text-zinc-400 transition-colors hover:text-zinc-200 disabled:text-zinc-600"
+            className={cn("hover:text-foreground disabled:opacity-40", PRESSABLE_CONTROL)}
           >
             {board.loadingMore ? "Loading..." : "Show more"}
           </button>

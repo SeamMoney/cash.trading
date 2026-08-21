@@ -20,6 +20,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import type {
   ControlledOrderBookData,
   OrderBookTrade,
@@ -2793,8 +2794,8 @@ export function CashSpotSwap({
         disabled={cta.disabled || previewState === "disabled"}
         aria-busy={submitStage !== "idle" || effectiveLoading}
         className={cn(
-          "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-lg font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
-          PRESSABLE_CONTROL,
+          BUTTON_PRIMARY,
+          "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
           previewState === "hover" && "brightness-95",
           previewState === "focus-visible" && "ring-2 ring-ring ring-offset-2 ring-offset-background",
           previewState === "active" && "scale-[0.98]",
@@ -2816,7 +2817,7 @@ export function CashSpotSwap({
         aria-expanded={detailsOpen}
         aria-controls={detailsPanelId}
       >
-        <span className="min-w-0 truncate font-mono tabular-nums">{quoteSummary}</span>
+        <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
         <span className="flex shrink-0 items-center gap-1.5">
           {quoteAgeSeconds !== null && bookReady && quoteStale && (
             <span className="text-[11px] text-warning">Stale</span>

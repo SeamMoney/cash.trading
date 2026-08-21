@@ -2,7 +2,18 @@ import { DECIBEL_TIER_LABELS, type DecibelTierName } from "@/lib/decibel-points"
 
 const amps = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const signedAmps = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0, signDisplay: "always" });
-const usd = new Intl.NumberFormat("en-US", {
+
+// Below $1,000 the cents carry the meaning: at 0 decimals a real −$0.49 loss
+// rounds to "-$0" and then gets painted with the loss colour, which reads as
+// "nothing happened, but red". Above $1,000 the cents are noise in a table.
+const usdCents = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  signDisplay: "always",
+});
+const usdWhole = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0,
@@ -14,13 +25,18 @@ export const formatAmps = (value: number | null | undefined) =>
 export const formatSignedAmps = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "—" : signedAmps.format(value);
 export const formatPnl = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) ? "—" : usd.format(value);
+  value == null || !Number.isFinite(value)
+    ? "—"
+    : (Math.abs(value) < 1000 ? usdCents : usdWhole).format(value);
 export const formatRank = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) || value <= 0 ? "—" : `#${amps.format(value)}`;
 export const tierLabel = (tier: DecibelTierName | null | undefined) => (tier ? DECIBEL_TIER_LABELS[tier] : "—");
-export const pnlTone = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) || value === 0
-    ? "text-zinc-300"
-    : value > 0
-      ? "text-green-400"
-      : "text-[#e8774f]";
+
+/**
+ * How old the profile on screen is. `/api/points/profile` sits behind a 120s
+ * CDN cache, so a number here can legitimately be two minutes stale.
+ */
+export const formatAge = (fetchedAt: number, now: number) => {
+  const seconds = Math.max(0, Math.round((now - fetchedAt) / 1000));
+  return seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`;
+};

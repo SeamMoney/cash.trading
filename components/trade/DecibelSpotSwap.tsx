@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import {
   CashSwapTransactionState,
   type SwapTransactionReceipt,
@@ -1865,7 +1866,6 @@ export function DecibelSpotSwap({
               fromDecimals,
               fromSymbol,
             )}
-            payLabel="You pay up to"
             receiveAmount={outputDisplay}
             receiveLabel="Estimated receive"
             safetyCopy="The 0.5% limit price is enforced on-chain. Decibel deducts its current spot fee from the asset you receive, and any unfilled amount returns to your wallet."
@@ -1874,9 +1874,12 @@ export function DecibelSpotSwap({
         </SwapFlowScreen>
       ) : (
         <SwapFlowScreen key="form" reducedMotion={Boolean(reduceMotion)}>
-          <div className="flex min-h-[152px] flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4 transition-colors duration-150 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring motion-reduce:transition-none">
+          <div className={cn(
+            "flex flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4 transition-colors duration-150 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring motion-reduce:transition-none",
+            connected && "min-h-[152px]",
+          )}>
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
-              <label htmlFor={inputId}>You pay up to</label>
+              <label htmlFor={inputId}>You pay</label>
               {connected ? (
                 <span className="min-w-0 truncate text-[11px]">
                   {balanceStatus === "loading"
@@ -1932,7 +1935,10 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "pay"}
               />
             </div>
-            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] leading-4 sm:min-h-8">
+            <div className={cn(
+              "flex flex-wrap items-center justify-between gap-2 text-[11px] leading-4",
+              connected ? "min-h-11 sm:min-h-8" : "min-h-0",
+            )}>
               <span className="min-w-0 truncate text-muted-foreground">
                 {direction === "sell" && base === "APT" && fromBalance ? "Max reserves 0.01 APT for gas" : ""}
               </span>
@@ -1991,7 +1997,10 @@ export function DecibelSpotSwap({
             </button>
           </div>
 
-          <div className="flex min-h-[152px] flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4">
+          <div className={cn(
+            "flex flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4",
+            connected && "min-h-[152px]",
+          )}>
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
               <span>Estimated receive</span>
               {connected ? (
@@ -2022,7 +2031,10 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "receive"}
               />
             </div>
-            <div className="flex min-h-11 items-center text-[11px] leading-4 text-muted-foreground sm:min-h-8">
+            <div className={cn(
+              "flex items-center text-[11px] leading-4 text-muted-foreground",
+              connected ? "min-h-11 sm:min-h-8" : "min-h-0",
+            )}>
               <span className="truncate">
                 {quote ? `Est. fee ${(Number(quote.maxSpotTakerFeeRateRaw) / 10_000).toFixed(3)}% · Unfilled amount returns` : ""}
               </span>
@@ -2067,13 +2079,13 @@ export function DecibelSpotSwap({
             type="button"
             onClick={primaryAction}
             disabled={cta.disabled || interactionLocked}
-            aria-busy={snapshotStatus === "loading" || submitStage !== "idle"}
+            aria-busy={submitStage !== "idle"}
             className={cn(
-              "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-lg font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
-              PRESSABLE_CONTROL,
+              BUTTON_PRIMARY,
+              "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
             )}
           >
-            {(snapshotStatus === "loading" || submitStage !== "idle") ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+            {submitStage !== "idle" ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
             {cta.label}
           </button>
 
@@ -2087,7 +2099,7 @@ export function DecibelSpotSwap({
             aria-expanded={detailsOpen}
             aria-controls={detailsPanelId}
           >
-            <span className="min-w-0 truncate font-mono tabular-nums">
+            <span className="min-w-0 font-mono tabular-nums">
               {quote ? `1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC` : "Enter an amount to see price details"}
             </span>
             <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />

@@ -527,49 +527,47 @@ export function TradePanel({
         : `Short ${market}`;
   return (
     <div className={cn("flex flex-col", className)}>
-      {/* Header row */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            aria-pressed={isLong}
-            onClick={() => {
-              setSide("long");
-              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
-            }}
-            className={cn(
-              SIDE_BUTTON,
-              FOCUS_RING,
-              isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
-            )}
-          >
-            {isLong ? "You are long" : "Long"}
-          </button>
-          <span className="text-zinc-600">/</span>
-          <button
-            type="button"
-            aria-pressed={!isLong}
-            onClick={() => {
-              setSide("short");
-              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
-            }}
-            className={cn(
-              SIDE_BUTTON,
-              FOCUS_RING,
-              !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
-            )}
-          >
-            {!isLong ? "You are short" : "Short"}
-          </button>
-        </div>
-        <span className="rounded-[var(--radius-xs)] bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
-          0.034% Fee
-        </span>
+      {/* Side switch. The fee chip that used to sit opposite printed a fixed
+          "0.034%" that no route ever computed, so it is gone rather than
+          restated: the panel shows only numbers it can derive. */}
+      <div className="mb-3 flex items-center gap-3">
+        <button
+          type="button"
+          aria-pressed={isLong}
+          onClick={() => {
+            setSide("long");
+            if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+          }}
+          className={cn(
+            SIDE_BUTTON,
+            FOCUS_RING,
+            isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
+          )}
+        >
+          {isLong ? "You are long" : "Long"}
+        </button>
+        <span className="text-zinc-600">/</span>
+        <button
+          type="button"
+          aria-pressed={!isLong}
+          onClick={() => {
+            setSide("short");
+            if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+          }}
+          className={cn(
+            SIDE_BUTTON,
+            FOCUS_RING,
+            !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
+          )}
+        >
+          {!isLong ? "You are short" : "Short"}
+        </button>
       </div>
 
-      {/* Amount input card */}
+      {/* Amount input card. Padding is tight on phones so the primary CTA
+          below stays within thumb reach; sm+ keeps the roomier rhythm. */}
       <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary">
-        <div className="flex items-center justify-between px-4 pt-3 font-mono text-[11px] tabular-nums text-zinc-500 sm:px-5">
+        <div className="flex items-center justify-between px-4 pt-2 font-mono text-[11px] tabular-nums text-zinc-500 sm:px-5 sm:pt-3">
           <span>
             Available {availableUsdc == null
               ? "—"
@@ -596,7 +594,7 @@ export function TradePanel({
           </button>
         </div>
         {/* Input row */}
-        <div className="relative z-[1] flex items-center justify-between rounded-[var(--radius)] bg-background-tertiary px-4 py-3 sm:px-5 sm:py-4">
+        <div className="relative z-[1] flex items-center justify-between rounded-[var(--radius)] bg-background-tertiary px-4 py-2.5 sm:px-5 sm:py-4">
           <input
             ref={inputRef}
             type="text"
@@ -778,9 +776,16 @@ export function TradePanel({
 
       {/* Order details — present at rest, not only after an amount is typed.
           Est. liquidation depends on price, side and leverage alone, so a
-          leveraged-perp UI can and must show it before the user commits;
-          amount-dependent rows read "—" until there is an amount. Leverage
-          (already in the drawer above) and margin fold away on phones. */}
+          leveraged-perp UI can and must show it before the user commits; its
+          label carries the leverage it assumes so it is never mistaken for a
+          price attached to an order that does not exist yet. Amount-dependent
+          rows read "—" until there is an amount. Leverage (already in the
+          drawer above) and margin fold away on phones.
+
+          There is no slippage or fee row: the perp order route returns neither
+          a quoted impact nor a fee rate, and the two literals that used to sit
+          here ("Est: 0.00% / Max: 8%", "0.0340% / 0.0110%") never moved for any
+          input. A row the page cannot compute is removed, not faked. */}
       {(() => {
         const amt = parseFloat(amount);
         const hasAmount = Number.isFinite(amt) && amt > 0;
@@ -794,7 +799,7 @@ export function TradePanel({
         const usd = (value: number) =>
           `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         return (
-          <dl className="mt-3 space-y-2.5 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-4 font-mono text-[11px] tabular-nums">
+          <dl className="mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-3 font-mono text-[11px] tabular-nums sm:mt-3 sm:p-4">
             <div className="hidden justify-between sm:flex">
               <dt className="text-zinc-500">Leverage</dt>
               <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
@@ -808,7 +813,7 @@ export function TradePanel({
               </dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Est. liquidation</dt>
+              <dt className="text-zinc-500">Est. liquidation at {leverage.toFixed(1)}x</dt>
               <dd className="text-foreground">
                 {estLiqPrice == null ? "—" : usd(estLiqPrice)}
               </dd>
@@ -818,14 +823,6 @@ export function TradePanel({
               <dd className="text-foreground">
                 {marginRequired == null ? "—" : usd(marginRequired)}
               </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Slippage</dt>
-              <dd className="text-zinc-400">Est: 0.00% / Max: 8%</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Fees</dt>
-              <dd className="text-zinc-400">0.0340% / 0.0110%</dd>
             </div>
           </dl>
         );
@@ -843,23 +840,27 @@ export function TradePanel({
         }
         disabled={connected && !canSubmitDecibel}
         className={cn(
-          "mt-3 min-h-11 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-semibold disabled:cursor-not-allowed sm:mt-4",
+          // text-accent-foreground, not text-white: --success is neon green, so
+          // white on the filled button measured 1.36:1. The near-black
+          // foreground reads 15:1 on green and 4.8:1 on --danger, in both
+          // themes (light flips --color-white but not this token).
+          "mt-2 min-h-11 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-semibold disabled:cursor-not-allowed sm:mt-4",
           PRESSABLE_CONTROL,
           FOCUS_RING,
           isOrderSuccess
-            ? "bg-success text-white"
+            ? "bg-success text-accent-foreground"
             : !connected
               ? "bg-accent text-black hover:brightness-110"
               : canSubmitDecibel
                 ? isLong
-                  ? "bg-success text-white hover:brightness-110"
-                  : "bg-danger text-white hover:brightness-110"
+                  ? "bg-success text-accent-foreground hover:brightness-110"
+                  : "bg-danger text-accent-foreground hover:brightness-110"
                 : "border border-card-border bg-white/[0.04] text-zinc-500"
         )}
       >
         {isOrderSubmitting ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin motion-reduce:animate-none" />
             Signing...
           </span>
         ) : isOrderSuccess ? (

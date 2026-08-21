@@ -74,9 +74,11 @@ const DEFAULT_VISIBLE_BARS: Record<ProChartInterval, number> = {
   "1d": 80,
 };
 
+// The candle size each button selects. They read LIVE / HISTORY before, which
+// named a connection state rather than the interval — both stream the same way.
 const INTERVAL_LABELS: Record<ProChartInterval, string> = {
-  "1m": "LIVE",
-  "1d": "HISTORY",
+  "1m": "1m",
+  "1d": "1d",
 };
 
 const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m";
@@ -298,11 +300,12 @@ function ProCandleChartComponent({
 
   const intervalButtons = useMemo(() => CHART_INTERVALS.map((option) => (
     <button
-      aria-label={option === "1m" ? "Live one-minute candles" : "Long daily candle history"}
+      aria-label={option === "1m" ? "One-minute candles" : "Daily candles"}
+      aria-pressed={option === interval}
       key={option}
       type="button"
       onClick={() => handleIntervalChange(option)}
-      className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold uppercase transition-colors ${
+      className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold transition-colors ${
         option === interval
           ? "bg-white/[0.12] text-white"
           : "text-zinc-500 hover:text-zinc-300"

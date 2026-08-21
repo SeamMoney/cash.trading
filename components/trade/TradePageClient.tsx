@@ -287,9 +287,20 @@ function VaultsPanel({
 
         <div>
           {pending ? (
-            <div className={cn(PANEL_EMPTY, "animate-pulse motion-reduce:animate-none")}>
-              Verifying vault performance from Decibel...
-            </div>
+            /* Loading is shaped like the rows it becomes, not a pulsing
+               sentence: the sentence collapsed the panel to a fraction of its
+               settled height, so every vault arriving pushed the page down.
+               Same skeleton grammar as the sealed vault feed, drawn with
+               surface tokens instead of that file's literal grey and corner. */
+            <ul aria-busy aria-label="Loading vaults" className="divide-y divide-card-border">
+              {[0, 1, 2].map((row) => (
+                <li key={row} className="flex items-center gap-4 px-4 py-4">
+                  <div className="h-3.5 w-40 animate-pulse rounded-[var(--radius-xs)] bg-background-tertiary motion-reduce:animate-none" />
+                  <div className="ml-auto h-3.5 w-16 animate-pulse rounded-[var(--radius-xs)] bg-background-tertiary motion-reduce:animate-none" />
+                  <div className="hidden h-3.5 w-12 animate-pulse rounded-[var(--radius-xs)] bg-background-tertiary motion-reduce:animate-none sm:block" />
+                </li>
+              ))}
+            </ul>
           ) : displayVaults.length === 0 ? (
             <div className={cn(PANEL_EMPTY, "flex flex-col items-center gap-3")}>
               <span>No vault meets the verified performance criteria yet.</span>

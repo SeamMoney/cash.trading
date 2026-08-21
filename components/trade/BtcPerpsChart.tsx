@@ -87,10 +87,12 @@ const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "1m": 60,
 };
 
-// Two intent-based views: every observed live move, or the full loaded history.
+// Two window presets, labelled with the span they actually show. They used to
+// read LIVE / HISTORY, which claimed a connection state the buttons do not
+// carry — both windows stream identically; only the visible span differs.
 const LINE_WINDOW_OPTIONS: WindowOption[] = [
-  { label: "LIVE", secs: 60 },
-  { label: "HISTORY", secs: 12 * 60 * 60 },
+  { label: "1m", secs: 60 },
+  { label: "12h", secs: 12 * 60 * 60 },
 ];
 
 function ChartDotBackground({
@@ -110,7 +112,7 @@ function ChartDotBackground({
         opacity: 0.85,
         right: padding.right,
         // The data path keeps its vertical padding, but the visual field
-        // continues behind the LIVE / HISTORY controls instead of leaving a
+        // continues behind the window controls instead of leaving a
         // blank strip above the plot.
         top: 0,
       }}
@@ -1687,7 +1689,7 @@ function BtcPerpsChartComponent({
                   clamp(option.secs, MIN_LINE_WINDOW_SECS, MAX_LINE_WINDOW_SECS)
                 )
               }
-              className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold uppercase transition-colors ${
+              className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold transition-colors ${
                 Math.abs(lineWindowSecs - option.secs) < option.secs * 0.25
                   ? "bg-white/[0.12] text-white"
                   : "text-zinc-500 hover:text-zinc-300"

@@ -45,6 +45,7 @@ import {
   SEGMENTED_ITEM_ACTIVE,
   STAT_GRID_PANEL,
   STAT_LABEL,
+  STAT_NOTE,
   STAT_TILE,
   STAT_VALUE,
   TAB,
@@ -1091,7 +1092,7 @@ export function PortfolioPageClient() {
               {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Never disabled: disconnected users get the wallet selector,
                 which beats a dead button. */}
             <button
@@ -1106,15 +1107,20 @@ export function PortfolioPageClient() {
               type="button"
               onClick={() => setWithdrawOpen(true)}
               disabled={Boolean(withdrawDisabledReason)}
-              title={withdrawDisabledReason}
               className={BUTTON_NEUTRAL}
             >
               {withdrawing ? "Withdrawing…" : "Withdraw USDC"}
             </button>
+            {/* The reason lived in a title attribute, i.e. nowhere on a phone. */}
+            {withdrawDisabledReason ? (
+              <p className={cn(STAT_NOTE, "w-full")}>{withdrawDisabledReason}</p>
+            ) : null}
           </div>
         </div>
 
-        <section className={cn(STAT_GRID_PANEL, "md:grid-cols-4")}>
+        {/* Two columns on a phone: four stacked tiles were 390px of scrolling
+            before the page's first real content. */}
+        <section className={cn(STAT_GRID_PANEL, "grid-cols-2 md:grid-cols-4")}>
           {[
             {
               label: "Portfolio value",
@@ -1170,32 +1176,36 @@ export function PortfolioPageClient() {
           subaccount={selectedSubaccount}
         />
 
-        <section className={cn(SECTION_GAP, "grid gap-8 lg:grid-cols-[310px_minmax(0,1fr)]")}>
-          <aside>
-            <h2 className={SECTION_TITLE}>Overview</h2>
-            {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
-                and a "Trading portfolio" row that restated Portfolio value all
-                lived here as permanent em dashes with no reader behind them. */}
-            <div className="mt-4">
-              <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} />
-              <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} />
-              <OverviewRow
-                label="Total fees paid"
-                value={
-                  feeSummaryLoading
-                    ? "…"
-                    : feeSummaryError || !feeSummary
-                      ? "—"
-                      : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
-                }
-              />
-              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} />
-              <OverviewRow label="Withdrawable share" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} />
-              <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
-              <OverviewRow label="Cross-margin ratio" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} />
-              <OverviewRow label="Cross-account position" value={formatUsd(overview?.totalNotional)} />
-            </div>
-          </aside>
+        <section className={cn(SECTION_GAP, "grid gap-8", connected && "lg:grid-cols-[310px_minmax(0,1fr)]")}>
+          {/* Disconnected, every row below is an em dash. The chart's empty
+              state already says what to do, so the column is not rendered. */}
+          {connected ? (
+            <aside>
+              <h2 className={SECTION_TITLE}>Overview</h2>
+              {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
+                  and a "Trading portfolio" row that restated Portfolio value all
+                  lived here as permanent em dashes with no reader behind them. */}
+              <div className="mt-4">
+                <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} />
+                <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} />
+                <OverviewRow
+                  label="Total fees paid"
+                  value={
+                    feeSummaryLoading
+                      ? "…"
+                      : feeSummaryError || !feeSummary
+                        ? "—"
+                        : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
+                  }
+                />
+                <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} />
+                <OverviewRow label="Available to withdraw" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} />
+                <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
+                <OverviewRow label="Margin used" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} />
+                <OverviewRow label="Total position" value={formatUsd(overview?.totalNotional)} />
+              </div>
+            </aside>
+          ) : null}
 
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1216,7 +1226,7 @@ export function PortfolioPageClient() {
                   className="mt-2 block font-mono text-2xl font-semibold text-foreground"
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className={SEGMENTED} role="group" aria-label="Chart metric">
                   {[
                     ["pnl", "PnL"],
@@ -1256,7 +1266,7 @@ export function PortfolioPageClient() {
                   aspectRatio="auto"
                   className="!h-full"
                   margin={{ top: 12, right: 8, bottom: 30, left: 8 }}
-                  animationDuration={350}
+                  animationDuration={200}
                   touchAction="pan-y"
                 >
                   <Grid

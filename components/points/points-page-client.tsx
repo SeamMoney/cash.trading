@@ -3,14 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header } from "@/components/layout/Header";
+import { BUTTON_PRIMARY, SECTION_TITLE } from "@/components/portfolio/portfolio-surface";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { cn } from "@/lib/utils";
 import { Leaderboard } from "./leaderboard";
 import { PointsProfileCard } from "./points-profile-card";
 import { formatAmps } from "./format";
 import { usePointsGlobal, usePointsProfile } from "./use-points-data";
 
 const VISIBILITY_REFRESH_MS = 2 * 60_000;
+
+const GLOSS = "AMPs are activity points that set your tier. Grace is missed days your streak survives.";
 
 export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   const { connected } = useWallet();
@@ -42,34 +47,33 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   const you = usePointsProfile(owner, nonce);
   const inspected = usePointsProfile(inspectOwner && inspectOwner !== owner ? inspectOwner : null, nonce);
 
-  const subline = global.data
-    ? `Season 1 · ${formatAmps(global.data.traders)} traders · ${formatAmps(global.data.totalAmps)} AMPs distributed`
+  const stats = global.data
+    ? `${formatAmps(global.data.traders)} traders · ${formatAmps(global.data.totalAmps)} AMPs`
     : global.loading
-      ? "Season 1"
-      : "Season 1 · global stats unavailable";
+      ? null
+      : "global stats unavailable";
+  // AMPs, tiers and grace appear nowhere else on the page, so the one subline
+  // that is already here defines them.
+  const subline = ["Season 1", stats, GLOSS].filter(Boolean).join(" · ");
 
   const content = (
     <>
       <div className="mb-5 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-balance text-[18px] font-semibold text-zinc-200">Points</h1>
-          <p className="mt-1 text-pretty text-[12px] text-zinc-600">{subline}</p>
+        <div className="min-w-0">
+          <h1 className={SECTION_TITLE}>Points</h1>
+          <p className="mt-1 max-w-[68ch] text-pretty text-[11px] text-muted-foreground">{subline}</p>
         </div>
         {owner ? (
           <button
             type="button"
             onClick={refresh}
             disabled={you.loading}
-            className="text-[12px] text-zinc-500 transition-colors hover:text-zinc-300 disabled:text-zinc-700"
+            className={cn("shrink-0 text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-40", PRESSABLE_CONTROL)}
           >
             {you.loading ? "Refreshing..." : "Refresh"}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => setConnectOpen(true)}
-            className="rounded-[4px] bg-accent px-4 py-2 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95"
-          >
+          <button type="button" onClick={() => setConnectOpen(true)} className={cn(BUTTON_PRIMARY, "shrink-0")}>
             Connect wallet
           </button>
         )}
@@ -109,7 +113,7 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
-    <div className="cash-trade-theme min-h-screen bg-black text-zinc-200">
+    <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
       <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">{content}</main>
     </div>

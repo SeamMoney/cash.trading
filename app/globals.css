@@ -11,13 +11,35 @@
 
    colour   gain / long / up / success     text-success   bg-success   (#39ff14)
             loss / short / down / error    text-danger    bg-danger    (#f21a1a)
-            `destructive` is an alias of `danger`; red-300/400/500 and
-            green/emerald-300..600 resolve to the same two tokens inside
-            .cash-trade-theme, so there is exactly ONE red and ONE green.
-            Always pair colour with a sign or arrow.
             brand / primary action         bg-accent  (= --primary, #39ff14)
             warning                        text-warning
             borders                        border-card-border, hover border-border-strong
+
+            ONE RED AND ONE GREEN — the full mapping. Everything in the left
+            column resolves to the token in the right column, in BOTH themes,
+            inside .cash-trade-theme and out (portalled dialogs and toasts
+            live outside it, which is why :root carries the same map):
+
+              --success  #39ff14   ← text-/bg-/border-/ring-success
+                                   ← green-300/400/500/600
+                                   ← emerald-300/400/500
+                                   ← signTone(v) for v >= 0
+              --danger   #f21a1a   ← text-/bg-/border-/ring-danger
+                                   ← --destructive (shadcn alias) and every
+                                     text-/bg-/border-destructive
+                                   ← red-300/400/500/600
+                                   ← signTone(v) for v < 0
+
+            Light theme: --danger darkens to --lt-danger #d01414 (5.4:1);
+            green splits by role — green as TEXT (text-success, text-green-*)
+            goes to --lt-green-ink #176f08 (5.47:1), green as a FILL
+            (bg-success, bg-accent) stays neon under near-black text.
+
+            So a private hex for a sign — the #e8774f salmon Points used, or a
+            bare bg-green-500 — is never needed and never correct: import
+            signTone from components/portfolio/portfolio-surface.ts.
+            Colour is never the only carrier of direction: pair with a sign
+            or an arrow.
 
    type     Inter for words (body default), JetBrains Mono opt-in for numbers,
             addresses, hashes, code. Floor 11px. Uppercase labels are 11px.
@@ -89,9 +111,13 @@
   --accent: oklch(0.18 0.01 285);
   --accent-foreground: oklch(0.95 0 0);
 
-  /* Loss / error — the one red. `destructive` is the shadcn alias. */
-  --danger: oklch(0.6 0.25 25);
-  --danger-foreground: oklch(1 0 0);
+  /* Loss / error — the one red. `destructive` is the shadcn alias.
+     Literal #f21a1a, the same value .cash-trade-theme uses: dialogs, sheets
+     and toasts render in a portal on <body>, OUTSIDE the wrapper, so an
+     oklch approximation here meant `text-danger` in a modal was a different
+     red from `text-danger` on the page behind it. */
+  --danger: #f21a1a;
+  --danger-foreground: #ffffff;
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-foreground);
 
@@ -103,12 +129,35 @@
   /* ---------------------------------------------------------------------------
      SEMANTIC COLORS
      --------------------------------------------------------------------------- */
-  --success: oklch(0.7 0.2 145);                 /* Gain — the one green */
+  /* Gain — the one green, same literal as .cash-trade-theme for the same
+     portal reason as --danger above (was oklch(0.7 0.2 145), a duller green
+     than the brand #39ff14). */
+  --success: #39ff14;
   --success-foreground: oklch(0 0 0);
   --warning: oklch(0.8 0.15 85);                 /* Orange */
   --warning-foreground: oklch(0 0 0);
   --info: oklch(0.7 0.15 250);                   /* Blue */
   --info-foreground: oklch(1 0 0);
+
+  /* ---------------------------------------------------------------------------
+     TAILWIND HUE SCALES → THE TWO SEMANTIC TOKENS
+     .cash-trade-theme redeclares these against its own --success/--danger; the
+     copy here is what covers everything the wrapper cannot reach — portalled
+     dialogs/sheets/toasts and any route that skips the wrapper. Without it the
+     same `text-red-400` renders Tailwind's red in a modal and --danger on the
+     page behind it. Steps not listed are unused (verified by grep).
+     --------------------------------------------------------------------------- */
+  --color-green-300: var(--success);
+  --color-green-400: var(--success);
+  --color-green-500: var(--success);
+  --color-green-600: var(--success);
+  --color-emerald-300: var(--success);
+  --color-emerald-400: var(--success);
+  --color-emerald-500: var(--success);
+  --color-red-300: var(--danger);
+  --color-red-400: var(--danger);
+  --color-red-500: var(--danger);
+  --color-red-600: var(--danger);
 
   /* ---------------------------------------------------------------------------
      CHART COLORS (bklit-ui compatible)
@@ -366,9 +415,19 @@
     height: 0;
   }
 
-  /* Typography defaults */
+  /* Typography defaults.
+
+     Headings deliberately declare NO font-family. The face is chosen by ROLE,
+     not by tag (§ 4.10): mono is for numbers, addresses, hashes and code,
+     never for words. Setting it here put "Points", "Portfolio", "Vaults" and
+     "Leaderboard" in JetBrains Mono while the identically-sized <p> beside
+     them ("No vaults yet", "Connect a wallet…") stayed Inter — two fonts for
+     one role in one viewport. Headings now inherit the body sans face.
+
+     A heading that really is a number opts in per element with `font-mono`
+     (glass-wallet-card.tsx:92 already does). Size/weight belong to the shell:
+     SECTION_TITLE for a page heading, PANEL_TITLE for a panel strip. */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-mono);
     font-weight: 700;
     letter-spacing: -0.02em;
   }
@@ -602,11 +661,13 @@ body.font-mono {
   --color-emerald-300: #39ff14;
   --color-emerald-400: #39ff14;
   --color-emerald-500: #39ff14;
-  /* Same for loss: text-red-400 (93), red-500 (15), red-300 (16) all become
-     the one --danger red instead of three Tailwind reds next to #f21a1a. */
+  /* Same for loss: text-red-400 (93), red-500 (15), red-300 (16) and
+     hover:bg-red-600 all become the one --danger red instead of four Tailwind
+     reds next to #f21a1a. Mirrors the :root block — keep the two in step. */
   --color-red-300: var(--danger);
   --color-red-400: var(--danger);
   --color-red-500: var(--danger);
+  --color-red-600: var(--danger);
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
@@ -1288,7 +1349,11 @@ body.font-mono {
 
 /* Non-grayscale text: hue preserved, darkened only where the original fails on
    a light background (measured ratio vs #fafafa in the comment). */
-:root[data-theme="light"] .text-\[\#e8774f\] { color: #b15b3c; } /* was 2.80 -> 4.54 */
+/* The #e8774f salmon this list used to rescue is gone: /points renders
+   signTone() now, so the loss colour is --danger and needs no allow-list
+   entry. That is the point of the list — every hex on it is a colour the
+   light theme can only save by name, and the fix is always to delete the hex,
+   not to add a line here. */
 :root[data-theme="light"] .text-\[\#ff744d\] { color: #ba5538; } /* was 2.56 -> 4.53 */
 :root[data-theme="light"] .text-\[\#c49ae8\] { color: #84689d; } /* was 2.20 -> 4.52 */
 :root[data-theme="light"] .text-\[\#a5cf7c\] { color: #627b4a; } /* was 1.70 -> 4.52 */

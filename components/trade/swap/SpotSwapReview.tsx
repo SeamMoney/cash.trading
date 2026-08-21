@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { ArrowLeft, Check, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
 
+import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
+import { SwapAssetButton } from "@/components/trade/swap/SwapAssetButton";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
@@ -67,16 +68,9 @@ function AssetAmount({
         >
           {amount}
         </p>
-        <span className="flex h-11 shrink-0 items-center gap-2 rounded-full border border-card-border bg-background-secondary px-3 font-display text-base font-semibold text-foreground">
-          <Image
-            src={asset.iconSrc}
-            alt=""
-            width={28}
-            height={28}
-            className="size-7 rounded-full object-cover"
-          />
-          {asset.symbol}
-        </span>
+        {/* The same badge the form renders, so the APT mark keeps its plate
+            and stays visible in the light theme. */}
+        <SwapAssetButton symbol={asset.symbol} iconSrc={asset.iconSrc} />
       </div>
     </div>
   );
@@ -195,8 +189,8 @@ export function SpotSwapReview({
         disabled={confirmDisabled || busy}
         aria-busy={busy}
         className={cn(
-          "mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 font-display text-lg font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground",
-          PRESSABLE_CONTROL,
+          BUTTON_PRIMARY,
+          "mt-4 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
         )}
       >
         {busy ? (

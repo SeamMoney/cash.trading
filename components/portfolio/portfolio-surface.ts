@@ -21,7 +21,14 @@ import { FOCUS_RING, PRESSABLE_CONTROL } from "@/lib/surface";
 /** Gap between top-level sections on the page. One value, not mt-4/8/10. */
 export const SECTION_GAP = "mt-6";
 
-/** Page-level section heading. Matches /points and /launchpad. */
+/**
+ * Page-level section heading — the sans face, sized by role rather than by
+ * tag. (globals.css no longer sets a font-family on h1-h6: it was rendering
+ * every page title in JetBrains Mono next to identically-sized <p> text in
+ * Inter.) Now the single source for all four page titles: Portfolio, Points,
+ * Vaults and Leaderboard all render this string, so one change moves them
+ * together — do not re-inline `text-[18px] font-semibold text-zinc-200`.
+ */
 export const SECTION_TITLE = "text-balance text-lg font-semibold text-zinc-200";
 
 /** Outer panel: the biggest containers on the page. */
@@ -48,8 +55,24 @@ export const STAT_NOTE = "mt-2 text-[11px] text-muted-foreground";
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
-/** One per screen. The accent fill is what makes it the primary action. */
-export const BUTTON_PRIMARY = `inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
+/**
+ * One per screen. The accent fill is what makes it the primary action.
+ *
+ * This is the single answer for the role, and it is sized so that no page has
+ * to shrink to adopt it: 44px on a phone (D5 wants a 44px hit area) and the
+ * canonical 40px control height from `sm` up (§ 4.5), the same
+ * `min-h-11 … sm:` idiom ROW_ACTION and the OrderBook rows already use. That
+ * covers both live shapes — the 40px call sites keep their desktop height and
+ * gain a legal touch target, the 44px ones (TradePanel.tsx:846,
+ * StrategyRunner.tsx:57, which hand-rolls this exact recipe) keep 44 where it
+ * matters. No size variant is needed: the 56px/18px swap CTA the audit cited
+ * is gone — DecibelSpotSwap.tsx now imports this and only adds layout.
+ *
+ * Still to adopt it: StrategyRunner.tsx:57 (delete the private copy and
+ * import this), TradePanel.tsx:846, and any 4px-radius primary left on
+ * /points or /launchpad — the radius is the control token, never `rounded`.
+ */
+export const BUTTON_PRIMARY = `inline-flex min-h-11 items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:opacity-40 sm:h-10 sm:min-h-0 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
 
 /** Everything that sits next to the primary action. */
 export const BUTTON_NEUTRAL = `inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary px-4 text-sm font-medium text-foreground hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;

@@ -16,7 +16,7 @@ This document assumes you do and only covers getting it live.
 |---|---|
 | Contract on **testnet** | **PROVEN both directions on the live engine, 2026-08-19.** The current zero-builder-fee checkout at [`0x45df…cabc`](https://explorer.aptoslabs.com/account/0x45df0217333103c86f4be0e707071c2293adcd2ceb84dacae59d92301675cabc/modules?network=testnet) filled a forced buy AND the flip to a short, each verified end to end by `verify-execution`. See §0.3. This was the release gate left open by §0.2. |
 | Contract on **mainnet** | **Published and initialized.** Package [`0x3590…5105`](https://explorer.aptoslabs.com/account/0x3590fbae95f65fd00d01be6bf2d5e0049b5b447e749ed269d8cca744d71b5105/modules?network=mainnet); publish [`0x19ee…c6b`](https://explorer.aptoslabs.com/txn/0x19ee80346da94d44a13434808656b2047802ab1737577ad0a69dc62d18da5c6b?network=mainnet); platform init [`0x1e50…611`](https://explorer.aptoslabs.com/txn/0x1e50ab268a3d3732e5a772897d59d713c111818130616306ab3e6b6ac19e4611?network=mainnet). No vault was created and no USDC was spent during publication. |
-| Automated-vault builder fee | **Locked to 0 bp.** Decibel validates approval against the vault's actual trading subaccount, which a delegated strategy cannot approve through the current public API. Direct user orders still use the separately configured 1 bp builder fee. See §8.5b. |
+| Automated-vault builder fee | **Locked to 0 bp.** Decibel validates approval against the vault's actual trading subaccount, which a delegated strategy cannot approve through the current public API. Direct user orders still use the separately configured 10 bp builder fee. See §8.5b. |
 | Prod database | **Current.** All 18 repository migrations were applied and verified on 2026-08-11 (§3). |
 | Prod env vars | The package, public attestor, managed attestor, cranker, source-encryption key and cron secret are configured for the next production build (§3). `/api/sealed/config` is the live readiness probe. |
 | Tick cron | Scheduled in `vercel.json`; intentionally inert until the sealed package, keys and registry are ready |
@@ -703,7 +703,7 @@ strategy cannot use it to approve a subaccount owned by the vault.
 The current automated-vault package therefore enforces `builder_fee_bps == 0` and omits the
 Builder Code from every order. The deployment tool rejects a nonzero
 `SEALED_VAULT_BUILDER_FEE_BPS`. Direct cash.trading orders are separate: the connected user can
-approve the app's 1 bp fee for their own subaccount, so those orders keep builder revenue.
+approve the app's 10 bp fee for their own subaccount, so those orders keep builder revenue.
 
 The cranker also protects legacy positive-fee vaults. Before signing any directional tick, it
 reads the frozen builder terms, resolves the Decibel vault's actual primary subaccount, and calls

@@ -255,7 +255,7 @@ Automated vault orders currently carry no builder fee. Decibel checks builder ap
 the vault's primary trading subaccount; the strategy object's signer cannot approve that separate
 identity through the current public API. The contract locks its automated builder fee to zero and
 the cranker preflights older positive-fee vaults before signing. Direct user orders keep their
-separate 1 bp builder fee because users can approve their own subaccounts.
+separate 10 bp builder fee because users can approve their own subaccounts.
 
 **Why three signatures and not one.** Decibel declares both `create_and_fund_vault` and
 `delegate_dex_actions_to` as `private entry` (verified against the live mainnet ABI). A

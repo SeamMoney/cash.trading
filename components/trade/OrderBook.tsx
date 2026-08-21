@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   getDecibelPublicNetwork,
   onDecibelPublicNetworkChange,
@@ -13,27 +13,14 @@ import {
 } from "@/lib/decibel-trade-events";
 import { cn } from "@/lib/utils";
 
-interface OrderBookProps {
-  marketName: string;
-  marketAddress?: string;
-  onPriceClick?: (price: number) => void;
-  currentPrice?: number;
-  className?: string;
-  rowCount?: number;
-}
+type OrderBookStatus = "loading" | "live" | "waiting" | "unavailable";
 
-interface Level {
+export interface OrderBookLevel {
   price: number;
   size: number;
 }
 
-interface OrderBookData {
-  bids: Level[];
-  asks: Level[];
-  timestamp: number | null;
-}
-
-interface TradePrint {
+export interface OrderBookTrade {
   id: string;
   price: number;
   size: number;
@@ -42,10 +29,50 @@ interface TradePrint {
   txRef?: string;
 }
 
+export interface ControlledOrderBookData {
+  book: {
+    bids: OrderBookLevel[];
+    asks: OrderBookLevel[];
+    timestamp: number | null;
+  };
+  status: OrderBookStatus;
+  trades: OrderBookTrade[];
+  tradesStatus: OrderBookStatus;
+  network?: DecibelPublicNetwork;
+  priceStep?: number;
+}
+
+interface OrderBookProps {
+  marketName: string;
+  marketAddress?: string;
+  /** Pins this feed to a venue network instead of following Trade's selector. */
+  networkOverride?: DecibelPublicNetwork;
+  onPriceClick?: (price: number) => void;
+  currentPrice?: number;
+  className?: string;
+  rowCount?: number;
+  /**
+   * Supplies a non-Decibel market to the same orderbook/trades renderer used on
+   * the Trade page. When present, the component never opens Decibel feeds.
+   */
+  controlledData?: ControlledOrderBookData;
+}
+
+type Level = OrderBookLevel;
+
+interface OrderBookData {
+  bids: Level[];
+  asks: Level[];
+  timestamp: number | null;
+}
+
+type TradePrint = OrderBookTrade;
+
 interface LadderRow {
   price: number;
   bidSize: number;
   askSize: number;
+  isCenter: boolean;
 }
 
 const DISPLAY_LEVELS = 20;
@@ -67,10 +94,13 @@ function priceDecimals(price: number) {
   if (price >= 10) return 3;
   if (price >= 1) return 4;
   if (price >= 0.1) return 5;
-  return 6;
+  if (price >= 0.001) return 6;
+  if (price >= 0.00000001) return 8;
+  return 12;
 }
 
 function formatPrice(price: number) {
+  if (!Number.isFinite(price) || price <= 0) return "—";
   const decimals = priceDecimals(price);
   return `$${price.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
@@ -127,6 +157,39 @@ function inferStep(book: OrderBookData, center: number) {
   return Math.max(Math.min(median, fallback * 12), fallback);
 }
 
+function fitStepToTopOfBook(
+  book: OrderBookData,
+  center: number,
+  minimumStep: number,
+  rowCount: number,
+) {
+  if (!Number.isFinite(minimumStep) || minimumStep <= 0) return minimumStep;
+  const half = Math.max(1, Math.floor(rowCount / 2));
+  const topPrices = [book.bids[0]?.price, book.asks[0]?.price]
+    .filter((price): price is number => Number.isFinite(price) && Number(price) > 0);
+  const furthest = Math.max(0, ...topPrices.map((price) => Math.abs(price - center)));
+  const requiredStep = furthest / half;
+  if (requiredStep <= minimumStep * (1 + Number.EPSILON * 8)) return minimumStep;
+
+  // When a market has an unusually wide spread, fit both sides using a clean
+  // decimal display interval. Multiplying the tiny inferred tick by an
+  // arbitrary integer produced misleading labels such as $1.008 for an
+  // actual $1.00 ask. The familiar 1/2/2.5/5 sequence keeps real-world prices
+  // on honest, readable buckets while preserving the exact shared renderer.
+  const magnitude = 10 ** Math.floor(Math.log10(requiredStep));
+  const normalized = requiredStep / magnitude;
+  const niceNormalized = normalized <= 1
+    ? 1
+    : normalized <= 2
+      ? 2
+      : normalized <= 2.5
+        ? 2.5
+        : normalized <= 5
+          ? 5
+          : 10;
+  return Math.max(minimumStep, niceNormalized * magnitude);
+}
+
 function addToBucket(map: Map<number, number>, price: number, size: number, step: number) {
   if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) return;
   const snapped = Number(snapStep(price, step).toFixed(8));
@@ -153,6 +216,7 @@ function buildLadderRows(book: OrderBookData, centerPrice: number, step: number,
       price,
       bidSize: bidMap.get(price) ?? 0,
       askSize: askMap.get(price) ?? 0,
+      isCenter: offset === 0,
     };
   });
 }
@@ -318,31 +382,31 @@ function formatTime(timestamp: number | null) {
 
 function LadderRowView({
   row,
-  center,
   maxSize,
   onPriceClick,
 }: {
   row: LadderRow;
-  center: number;
   maxSize: number;
   onPriceClick?: (price: number) => void;
 }) {
-  const isCenter = Math.abs(row.price - center) < 1e-8;
+  const isCenter = row.isCenter;
   const bidPct = maxSize > 0 ? Math.min(100, (row.bidSize / maxSize) * 100) : 0;
   const askPct = maxSize > 0 ? Math.min(100, (row.askSize / maxSize) * 100) : 0;
+  const bidLabel = row.bidSize > 0 ? formatSize(row.bidSize) : "No bid";
+  const askLabel = row.askSize > 0 ? formatSize(row.askSize) : "No ask";
 
   return (
-    <button
-      type="button"
-      onClick={() => onPriceClick?.(row.price)}
+    <div
+      role="row"
       className={cn(
         "group relative grid h-full min-h-6 w-full grid-cols-3 items-center overflow-hidden font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
       )}
     >
-      <div className="relative h-full min-w-0">
+      <div role="cell" aria-label={bidLabel} className="relative h-full min-w-0">
         {row.bidSize > 0 && (
           <>
             <div
+              aria-hidden="true"
               className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
               style={{
                 width: `max(1px, calc(${bidPct}% - 4px))`,
@@ -350,6 +414,7 @@ function LadderRowView({
               }}
             />
             <span
+              aria-hidden="true"
               className="absolute top-1/2 w-16 -translate-y-1/2 text-right font-bold leading-none sm:w-20"
               style={{
                 right: `min(calc(${bidPct}% + 4px), calc(100% - 4rem))`,
@@ -363,12 +428,22 @@ function LadderRowView({
       </div>
 
       <span
+        role="cell"
+        aria-label={formatPrice(row.price)}
         className="relative z-[1] flex h-full min-w-0 items-center justify-center px-1"
         style={{
           color: isCenter ? "#ffffff" : "#85858b",
           fontWeight: isCenter ? 700 : 400,
         }}
       >
+        {onPriceClick && (
+          <button
+            type="button"
+            onClick={() => onPriceClick(row.price)}
+            aria-label={`Set price to ${formatPrice(row.price)}. Bid size ${bidLabel}. Ask size ${askLabel}.`}
+            className="absolute inset-y-0 -left-full -right-full z-10 rounded-[4px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/50"
+          />
+        )}
         {isCenter ? (
           <span
             className="rounded-[4px] px-[10px] py-[2px] leading-none"
@@ -381,10 +456,11 @@ function LadderRowView({
         )}
       </span>
 
-      <div className="relative h-full min-w-0">
+      <div role="cell" aria-label={askLabel} className="relative h-full min-w-0">
         {row.askSize > 0 && (
           <>
             <div
+              aria-hidden="true"
               className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
               style={{
                 width: `max(1px, calc(${askPct}% - 4px))`,
@@ -392,6 +468,7 @@ function LadderRowView({
               }}
             />
             <span
+              aria-hidden="true"
               className="absolute top-1/2 w-16 -translate-y-1/2 text-left font-bold leading-none sm:w-20"
               style={{
                 left: `min(calc(${askPct}% + 4px), calc(100% - 4rem))`,
@@ -403,7 +480,7 @@ function LadderRowView({
           </>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -417,53 +494,64 @@ function TradesTable({
   status: "loading" | "live" | "waiting" | "unavailable";
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
-      <div className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-600">
-        <span>Time</span>
-        <span className="text-right">Price</span>
-        <span className="text-right">USD</span>
-        <span className="text-right">Tx</span>
+    <div role="table" aria-label="Recent trades" className="flex min-h-0 flex-1 flex-col px-3 py-2">
+      <div role="rowgroup">
+        <div role="row" className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-400">
+          <span role="columnheader">Time</span>
+          <span role="columnheader" aria-label="Price and side" className="text-right">Price</span>
+          <span role="columnheader" className="text-right">USD</span>
+          <span role="columnheader" className="text-right">Tx</span>
+        </div>
       </div>
       {trades.length > 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1 scrollbar-thin">
+        <div role="rowgroup" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1 scrollbar-thin">
           <div
-            className="grid min-h-full"
-            style={{ gridTemplateRows: `repeat(${trades.length}, minmax(28px, 1fr))` }}
+            className="grid min-h-full [--trade-row-min:44px] sm:[--trade-row-min:28px]"
+            style={{ gridTemplateRows: `repeat(${trades.length}, minmax(var(--trade-row-min), 1fr))` }}
           >
             {trades.map((trade) => (
               <div
                 key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
-                className="grid h-full min-h-7 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03]"
+                role="row"
+                className="grid h-full min-h-11 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03] sm:min-h-7"
               >
-                <span className="truncate text-zinc-600">{formatTime(trade.timestamp)}</span>
+                <span role="cell" className="truncate text-zinc-400">{formatTime(trade.timestamp)}</span>
                 <span
+                  role="cell"
+                  aria-label={`${trade.side === "unknown" ? "Unknown side" : trade.side} ${formatPrice(trade.price)}`}
                   className="text-right font-semibold"
                   style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
                 >
                   {formatPrice(trade.price)}
                 </span>
-                <span className="truncate text-right text-zinc-400">
+                <span role="cell" className="truncate text-right text-zinc-400">
                   {formatUsdNotional(trade.price, trade.size)}
                 </span>
-                {trade.txRef ? (
-                  <a
-                    href={explorerTxnUrl(trade.txRef, network)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-right text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
-                  >
-                    View
-                  </a>
-                ) : (
-                  <span className="text-right text-zinc-700">—</span>
-                )}
+                <span role="cell" className="text-right">
+                  {trade.txRef ? (
+                    <a
+                      href={explorerTxnUrl(trade.txRef, network)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-end text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6 sm:min-w-0"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-[12px] text-zinc-600">
-          {status === "loading" ? "Loading trades..." : "Waiting for live trades"}
+        <div className="flex h-full min-h-48 items-center justify-center text-center font-mono text-[12px] text-zinc-400">
+          {status === "loading"
+            ? "Loading trades..."
+            : status === "unavailable"
+              ? "Trades unavailable"
+              : "Waiting for live trades"}
         </div>
       )}
     </div>
@@ -473,10 +561,12 @@ function TradesTable({
 export function OrderBook({
   marketName,
   marketAddress,
+  networkOverride,
   onPriceClick,
   currentPrice,
   className,
   rowCount = DEFAULT_LADDER_ROWS,
+  controlledData,
 }: OrderBookProps) {
   const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
   const [book, setBook] = useState<OrderBookData>({
@@ -484,21 +574,47 @@ export function OrderBook({
     asks: [],
     timestamp: null,
   });
-  const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
+  const [status, setStatus] = useState<OrderBookStatus>("loading");
   const [trades, setTrades] = useState<TradePrint[]>([]);
-  const [tradesStatus, setTradesStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
+  const [tradesStatus, setTradesStatus] = useState<OrderBookStatus>("loading");
   const [activeTab, setActiveTab] = useState<"book" | "trades">("book");
+  const [feedActive, setFeedActive] = useState(false);
+  const tabsId = useId();
+  const surfaceRef = useRef<HTMLElement>(null);
+  const tabRefs = useRef<Record<"book" | "trades", HTMLButtonElement | null>>({
+    book: null,
+    trades: null,
+  });
   const previousPriceRef = useRef(currentPrice ?? 0);
+  const isControlled = Boolean(controlledData);
+  const effectiveNetwork = networkOverride ?? network;
 
   const resolvedMarketAddress =
     marketAddress ??
     Object.values(PERP_MARKET_DATA).find((market) => market.marketName === marketName)
       ?.marketAddr;
-  const cacheKey = resolvedMarketAddress
-    ? tradesCacheKey(network, resolvedMarketAddress)
+  const cacheKey = !isControlled && resolvedMarketAddress
+    ? tradesCacheKey(effectiveNetwork, resolvedMarketAddress)
     : "";
 
-  useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
+  useEffect(() => {
+    if (networkOverride) return;
+    return onDecibelPublicNetworkChange(setNetwork);
+  }, [networkOverride]);
+
+  useEffect(() => {
+    if (isControlled) return;
+    const surface = surfaceRef.current;
+    if (!surface || typeof IntersectionObserver === "undefined") {
+      setFeedActive(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      setFeedActive(Boolean(entry?.isIntersecting));
+    }, { threshold: 0.01 });
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [isControlled]);
 
   const ingestDepth = useCallback((message: unknown) => {
     if (!isDepthMessage(message)) return false;
@@ -528,6 +644,7 @@ export function OrderBook({
   }, [cacheKey]);
 
   useEffect(() => onDecibelTradeConfirmed((detail: DecibelTradeConfirmedDetail) => {
+    if (isControlled || !feedActive) return;
     const addressMatches = Boolean(
       detail.marketAddress
       && resolvedMarketAddress
@@ -542,9 +659,10 @@ export function OrderBook({
       timestamp: detail.timestamp,
       tx_hash: detail.txRef,
     });
-  }), [ingestTrades, marketName, resolvedMarketAddress]);
+  }), [feedActive, ingestTrades, isControlled, marketName, resolvedMarketAddress]);
 
   useEffect(() => {
+    if (isControlled || !feedActive) return;
     if (!resolvedMarketAddress) {
       setTrades([]);
       setTradesStatus("unavailable");
@@ -557,7 +675,7 @@ export function OrderBook({
 
     const loadTrades = async () => {
       try {
-        const nextTrades = await loadRecentTrades(network, resolvedMarketAddress);
+        const nextTrades = await loadRecentTrades(effectiveNetwork, resolvedMarketAddress);
         if (cancelled) return;
         setTrades((current) => {
           const merged = mergeTrades(current, nextTrades);
@@ -574,9 +692,10 @@ export function OrderBook({
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, network, resolvedMarketAddress]);
+  }, [cacheKey, effectiveNetwork, feedActive, isControlled, resolvedMarketAddress]);
 
   useEffect(() => {
+    if (isControlled || !feedActive) return;
     if (!resolvedMarketAddress) {
       setStatus("unavailable");
       setBook({ bids: [], asks: [], timestamp: null });
@@ -596,7 +715,7 @@ export function OrderBook({
     const connect = () => {
       if (cancelled) return;
       const params = new URLSearchParams({
-        network,
+        network: effectiveNetwork,
         topics: `depth:${resolvedMarketAddress}:1,trades:${resolvedMarketAddress}`,
       });
       stream = new EventSource(`/api/decibel/stream?${params.toString()}`);
@@ -644,10 +763,15 @@ export function OrderBook({
       if (noDepthTimer) clearTimeout(noDepthTimer);
       stream?.close();
     };
-  }, [ingestDepth, ingestTrades, network, resolvedMarketAddress]);
+  }, [effectiveNetwork, feedActive, ingestDepth, ingestTrades, isControlled, resolvedMarketAddress]);
 
-  const bestBid = book.bids[0]?.price;
-  const bestAsk = book.asks[0]?.price;
+  const renderedBook = controlledData?.book ?? book;
+  const renderedStatus = controlledData?.status ?? status;
+  const renderedTrades = controlledData?.trades ?? trades;
+  const renderedTradesStatus = controlledData?.tradesStatus ?? tradesStatus;
+  const renderedNetwork = controlledData?.network ?? effectiveNetwork;
+  const bestBid = renderedBook.bids[0]?.price;
+  const bestAsk = renderedBook.asks[0]?.price;
   const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : bestBid || bestAsk;
   const displayPrice = currentPrice && currentPrice > 0 ? currentPrice : midPrice ?? previousPriceRef.current;
 
@@ -655,12 +779,16 @@ export function OrderBook({
     if (displayPrice && displayPrice > 0) previousPriceRef.current = displayPrice;
   }, [displayPrice]);
 
-  const step = useMemo(() => inferStep(book, displayPrice || 1), [book, displayPrice]);
-  const center = Number(snapStep(displayPrice || 1, step).toFixed(8));
-  const visibleRowCount = Math.max(13, Math.min(45, rowCount));
+  const visibleRowCount = Math.max(11, Math.min(45, rowCount));
+  const step = useMemo(() => {
+    const minimumStep = controlledData?.priceStep ?? inferStep(renderedBook, displayPrice || 1);
+    return fitStepToTopOfBook(renderedBook, displayPrice || 1, minimumStep, visibleRowCount);
+  }, [controlledData?.priceStep, displayPrice, renderedBook, visibleRowCount]);
   const rows = useMemo(
-    () => buildLadderRows(book, displayPrice || 1, step, visibleRowCount),
-    [book, displayPrice, step, visibleRowCount],
+    () => displayPrice && displayPrice > 0
+      ? buildLadderRows(renderedBook, displayPrice, step, visibleRowCount)
+      : [],
+    [renderedBook, displayPrice, step, visibleRowCount],
   );
   const maxSize = useMemo(
     () => Math.max(1, ...rows.flatMap((row) => [row.bidSize, row.askSize])),
@@ -669,38 +797,65 @@ export function OrderBook({
 
   const statusText =
     activeTab === "trades"
-      ? tradesStatus === "live"
-        ? `${trades.length} trades`
-        : tradesStatus === "loading"
+      ? renderedTradesStatus === "live"
+        ? `${renderedTrades.length} trades`
+        : renderedTradesStatus === "loading"
           ? "loading"
-          : tradesStatus === "waiting"
+          : renderedTradesStatus === "waiting"
             ? "waiting"
             : "unavailable"
-      : status === "live"
-        ? `${book.bids.length + book.asks.length} levels`
-        : status === "loading"
+      : renderedStatus === "live"
+        ? `${renderedBook.bids.length + renderedBook.asks.length} levels`
+        : renderedStatus === "loading"
         ? "loading"
-        : status === "waiting"
+        : renderedStatus === "waiting"
           ? "waiting"
           : "unavailable";
-  const symbol = marketName.replace("/USD", "").replace("-PERP", "");
+  const symbol = marketName.replace(/\/(?:USD|USDC|USDT)$/, "").replace("-PERP", "");
+  const selectTab = (tab: "book" | "trades") => {
+    setActiveTab(tab);
+    tabRefs.current[tab]?.focus();
+  };
 
   return (
-    <section className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-600">
+    <section ref={surfaceRef} className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>
+      <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
         <div className="flex items-center gap-3">
           <span>{symbol}</span>
-          <div className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5">
+          <div
+            role="tablist"
+            aria-label={`${symbol} market data`}
+            aria-orientation="horizontal"
+            className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5"
+          >
             {(["book", "trades"] as const).map((tab) => (
               <button
                 key={tab}
+                ref={(node) => { tabRefs.current[tab] = node; }}
                 type="button"
+                role="tab"
+                id={`${tabsId}-${tab}-tab`}
+                aria-controls={`${tabsId}-panel`}
+                aria-selected={activeTab === tab}
+                tabIndex={activeTab === tab ? 0 : -1}
                 onClick={() => setActiveTab(tab)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    selectTab(tab === "book" ? "trades" : "book");
+                  } else if (event.key === "Home") {
+                    event.preventDefault();
+                    selectTab("book");
+                  } else if (event.key === "End") {
+                    event.preventDefault();
+                    selectTab("trades");
+                  }
+                }}
                 className={cn(
-                  "rounded-[5px] px-2 py-0.5 text-[9px] transition-colors",
+                  "min-h-11 min-w-11 rounded-[5px] px-2 py-0.5 text-[9px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50 sm:min-h-0 sm:min-w-0",
                   activeTab === tab
                     ? "bg-white/[0.08] text-zinc-200"
-                    : "text-zinc-600 hover:text-zinc-400",
+                    : "text-zinc-400 hover:text-zinc-200",
                 )}
               >
                 {tab === "book" ? "Book" : "Trades"}
@@ -711,29 +866,53 @@ export function OrderBook({
         <span>{statusText}</span>
       </div>
 
-      {activeTab === "book" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
-          <div
-            className="grid min-h-full py-1"
-            style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
-          >
-            {rows.map((row) => (
-              <LadderRowView
-                key={row.price}
-                row={row}
-                center={center}
-                maxSize={maxSize}
-                onPriceClick={onPriceClick}
-              />
-            ))}
+      <div
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${activeTab}-tab`}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {activeTab === "book"
+        && renderedStatus === "live"
+        && renderedBook.bids.length + renderedBook.asks.length > 0
+        && rows.length > 0 ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+            <div
+              role="table"
+              aria-label={`${symbol} order book`}
+              className="grid min-h-full py-1"
+              style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
+            >
+              <div role="row" className="sr-only">
+                <span role="columnheader">Bid size</span>
+                <span role="columnheader">Price</span>
+                <span role="columnheader">Ask size</span>
+              </div>
+              {rows.map((row) => (
+                <LadderRowView
+                  key={row.price}
+                  row={row}
+                  maxSize={maxSize}
+                  onPriceClick={onPriceClick}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <TradesTable trades={trades} network={network} status={tradesStatus} />
-      )}
+        ) : activeTab === "book" ? (
+          <div className="flex min-h-48 flex-1 items-center justify-center text-center font-mono text-[12px] text-zinc-400">
+            {renderedStatus === "loading"
+              ? "Loading orderbook..."
+              : renderedStatus === "unavailable"
+                ? "Orderbook unavailable"
+                : "Waiting for live orders"}
+          </div>
+        ) : (
+          <TradesTable trades={renderedTrades} network={renderedNetwork} status={renderedTradesStatus} />
+        )}
+      </div>
 
-      <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-700">
-        <span>{formatTime(activeTab === "book" ? book.timestamp : trades[0]?.timestamp ?? null)}</span>
+      <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-400">
+        <span>{formatTime(activeTab === "book" ? renderedBook.timestamp : renderedTrades[0]?.timestamp ?? null)}</span>
         <span>{formatPrice(displayPrice || 0)}</span>
       </div>
     </section>

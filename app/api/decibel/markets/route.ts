@@ -84,13 +84,22 @@ async function fetchAssetContexts(network: DecibelNetwork): Promise<Map<string, 
   }
 }
 
-/** market_addr → category from the raw REST /markets payload; the SDK's
- * markets.getAll() strips fields it doesn't type (category included). */
-async function fetchMarketCategories(
+interface RawMarketMetadata {
+  assetType: string;
+  category: string;
+}
+
+/**
+ * market_addr → fields from the authoritative REST registry that the
+ * installed SDK does not currently type. Keeping `asset_type` here is a
+ * safety boundary: the Trade page must never send a spot market to its
+ * perp-only order entry flow.
+ */
+async function fetchRawMarketMetadata(
   network: DecibelNetwork,
   signal: AbortSignal
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<Map<string, RawMarketMetadata>> {
+  const map = new Map<string, RawMarketMetadata>();
   const apiKey = getAptosFullnodeApiKey(network);
   if (!apiKey) return map;
   try {
@@ -105,8 +114,11 @@ async function fetchMarketCategories(
     for (const raw of data) {
       const row = raw as Record<string, unknown>;
       const addr = asString(row.market_addr);
-      const category = asString(row.category);
-      if (addr && category) map.set(addr.toLowerCase(), category);
+      if (!addr) continue;
+      map.set(addr.toLowerCase(), {
+        assetType: asString(row.asset_type).toLowerCase(),
+        category: asString(row.category),
+      });
     }
     return map;
   } catch {
@@ -119,10 +131,10 @@ async function fetchSdkMarkets(network: DecibelNetwork) {
   const timer = setTimeout(() => controller.abort(), REST_MARKETS_TIMEOUT_MS);
   try {
     const dex = getReadDex(network);
-    const [markets, prices, categories] = await Promise.all([
+    const [markets, prices, registryMetadata] = await Promise.all([
       dex.markets.getAll({ fetchOptions: { signal: controller.signal } }),
       dex.marketPrices.getAll({ fetchOptions: { signal: controller.signal } }),
-      fetchMarketCategories(network, controller.signal),
+      fetchRawMarketMetadata(network, controller.signal),
     ]);
 
     const priceMap = new Map<string, Record<string, unknown>>();
@@ -136,6 +148,7 @@ async function fetchSdkMarkets(network: DecibelNetwork) {
     return markets.map((rawMarket) => {
       const market = rawMarket as Record<string, unknown>;
       const address = asString(market.market_addr);
+      const metadata = registryMetadata.get(address.toLowerCase());
       const rest = priceMap.get(address.toLowerCase());
       const markPrice =
         asNumber(rest?.mark_px) ?? asNumber(rest?.mid_px) ?? asNumber(rest?.oracle_px);
@@ -160,8 +173,10 @@ async function fetchSdkMarkets(network: DecibelNetwork) {
         mode: asString(market.mode) || "Unknown",
         szDecimals: asNumber(market.sz_decimals),
         pxDecimals: asNumber(market.px_decimals),
+        assetType:
+          metadata?.assetType || asString(market.asset_type).toLowerCase() || "unknown",
         category:
-          categories.get(address.toLowerCase()) ??
+          metadata?.category ||
           (asString(market.category) || null),
         source: rest ? "sdk+rest" : "sdk",
       };
@@ -210,7 +225,13 @@ export async function GET(req: NextRequest) {
 
     if (markets.length === 0) {
       const chainMarkets = await getFastMarkets(network);
-      markets = chainMarkets.map((market) => ({ ...market, category: null, source: market.source }));
+      // getFastMarkets enumerates perp_engine markets only.
+      markets = chainMarkets.map((market) => ({
+        ...market,
+        assetType: "perp",
+        category: null,
+        source: market.source,
+      }));
       sources = {
         config: "chain",
         markOracle: "chain",

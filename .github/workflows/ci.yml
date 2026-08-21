@@ -32,10 +32,26 @@ jobs:
         run: pnpm test:sealed
       - name: CASH rewards selftest
         run: pnpm test:cash-rewards
+      - name: CASH orderbook safety selftests
+        run: |
+          pnpm test:cash-orderbook
+          pnpm test:cash-orderbook-ambiguity
+          pnpm test:cash-orderbook-launch
+          pnpm test:aptos-mainnet-runtime
+      - name: Decibel spot safety selftests
+        run: |
+          pnpm test:decibel-spot
+          pnpm test:decibel-spot-confirmation
+          pnpm test:decibel-spot-ambiguity
+          pnpm test:decibel-spot-deployment
+      - name: Builder fee selftest
+        run: pnpm test:builder-revenue
       - name: Strategy artifacts selftest
         run: pnpm exec tsx scripts/strategy-artifacts-selftest.ts
       - name: App reliability selftest
         run: pnpm test:reliability
+      - name: Production build
+        run: pnpm build
 
   move:
     name: Move compile + tests

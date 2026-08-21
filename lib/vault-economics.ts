@@ -77,7 +77,7 @@ export const DECIBEL_VAULT_LIMITS = {
  *  - `builderFeeBps` — currently zero for automated vault fills. Decibel validates a builder
  *    approval against the vault's trading subaccount, but its public API only lets the owner of
  *    a user trading account grant that approval. The delegated strategy object cannot grant it
- *    for a Decibel vault. Direct cash.trading orders still use the separate 1 bp builder route.
+ *    for a Decibel vault. Direct cash.trading orders still use the separate 10 bp builder route.
  *
  * Both are read from the CHAIN at runtime (`sealed_vault::platform_terms`) — these constants
  * are the deployment default and the UI's fallback, not the source of truth.

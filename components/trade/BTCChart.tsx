@@ -18,6 +18,7 @@ import {
 } from "@/lib/decibel-public";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import type { Candle } from "@/hooks/useBtcCandles";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 function fmtPrice(v: number): string {
@@ -160,6 +161,10 @@ export interface Market {
   marketName?: string;
   mode?: string;
   fundingRateBps?: number | null;
+  /** Optional quote used by shared selectors that are not backed by perpData. */
+  displayPrice?: number | null;
+  /** Short venue label for the shared spot-market selector. */
+  venueLabel?: string;
 }
 
 const CATEGORIES = [
@@ -184,6 +189,7 @@ const TOKEN_LOGOS: Record<string, string> = {
   AVAX: "/tokens/avax.svg",
   BNB: "/tokens/bnb.png",
   BTC: "/tokens/btc.png",
+  CASH: "/tokens/cash.png",
   CBRS: "/tokens/cbrs.svg",
   CHIP: "/tokens/chip.svg",
   DOGE: "/tokens/doge.png",
@@ -215,6 +221,7 @@ const TOKEN_LOGOS: Record<string, string> = {
   XRP: "/tokens/xrp.png",
   ZEC: "/tokens/zec.png",
   ZRO: "/tokens/zro.svg",
+  USDC: "/tokens/usdc.png",
   "BTC/USD": "/tokens/btc.png",
   "BTC-PERP/USD": "/tokens/btc.png",
   "ETH/USD": "/tokens/eth.png",
@@ -238,6 +245,7 @@ const MARKET_LABELS: Record<string, string> = {
   AAVE: "Aave",
   APT: "Aptos",
   BTC: "Bitcoin",
+  CASH: "CASH",
   BNB: "BNB",
   CBRS: "Chainbase",
   CHIP: "Chip",
@@ -384,11 +392,18 @@ export interface DecibelApiMarket {
   mode: string;
   szDecimals: number | null;
   pxDecimals: number | null;
+  /** Execution product from Decibel's authoritative registry. */
+  assetType?: string | null;
   /** Decibel's own listing category: "crypto" | "equity" | "commodity" | "". */
   category?: string | null;
   /** Already a percentage (e.g. 1.42 = +1.42%). */
   change24hPct?: number | null;
   volume24hUsd?: number | null;
+}
+
+/** Perp-only consumers must cross this product boundary before adapting rows. */
+export function isPerpApiMarket(market: DecibelApiMarket) {
+  return market.assetType === "perp";
 }
 
 type MarketChangePayload = {
@@ -534,10 +549,29 @@ function mergeMarketsWithFallback(apiMarkets: Market[], network: DecibelPublicNe
 
 export function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
   const logo = TOKEN_LOGOS[market] ?? TOKEN_LOGOS[getBaseSymbol(market)];
+  const needsDarkBacking = getBaseSymbol(market) === "APT";
   if (logo) {
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
-      <img src={logo} alt="" width={size} height={size} loading="eager" decoding="async" className="shrink-0 rounded-full object-contain" style={{ width: size, height: size, minWidth: size, minHeight: size }} />
+      <img
+        src={logo}
+        alt=""
+        width={size}
+        height={size}
+        loading="eager"
+        decoding="async"
+        className={cn(
+          "shrink-0 rounded-full object-contain",
+          needsDarkBacking && "p-0.5",
+        )}
+        style={{
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          backgroundColor: needsDarkBacking ? "#101010" : undefined,
+        }}
+      />
     );
   }
   const initials = getBaseSymbol(market).slice(0, 3) || "?";
@@ -571,6 +605,8 @@ export function MarketModal({
   allDescription = "Crypto, stocks, and commodities",
   loading = false,
   network,
+  selectorVariant = "default",
+  disabledLabel = "Preview only",
 }: {
   open: boolean;
   selected: string;
@@ -589,6 +625,8 @@ export function MarketModal({
   allDescription?: string;
   loading?: boolean;
   network: DecibelPublicNetwork;
+  selectorVariant?: "default" | "spot";
+  disabledLabel?: string;
 }) {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
 
@@ -615,7 +653,7 @@ export function MarketModal({
 
   if (!open) return null;
 
-  const marketContent = (
+  const renderMarketContent = (requestClose: () => void) => (
     <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
       {multiple && (
         <button
@@ -623,11 +661,14 @@ export function MarketModal({
           role="checkbox"
           aria-checked={allSelected}
           onClick={onSelectAll}
-          className="mb-3 flex w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left transition-colors hover:border-white/[0.16] hover:bg-white/[0.045]"
+          className={cn(
+            PRESSABLE_CONTROL,
+            "mb-3 flex w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left outline-none transition-[transform,opacity] hover:border-white/[0.16] hover:bg-white/[0.045] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+          )}
         >
           <span>
             <span className="block font-display text-[13px] font-semibold text-zinc-100">{allLabel}</span>
-            <span className="mt-0.5 block text-[10px] text-zinc-500">{allDescription}</span>
+            <span className="mt-0.5 block text-[10px] text-zinc-400">{allDescription}</span>
           </span>
           <span className={`flex h-5 w-5 items-center justify-center rounded-[5px] border ${
             allSelected ? "border-accent bg-accent text-black" : "border-white/[0.18] bg-black text-transparent"
@@ -643,33 +684,46 @@ export function MarketModal({
             type="button"
             aria-pressed={activeCategory === tab.key}
             onClick={() => setActiveCategory(tab.key)}
-            className={`shrink-0 pb-2 text-[13px] transition-colors ${
+            className={cn(
+              PRESSABLE_CONTROL,
+              "flex min-h-11 shrink-0 items-center border-b-2 pt-0.5 text-[13px] outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               activeCategory === tab.key
-                ? "border-b-2 border-zinc-200 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
+                ? "border-zinc-200 text-zinc-100"
+                : "border-transparent text-zinc-400 hover:text-zinc-300",
+            )}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
+      <div className={cn(
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:gap-x-4 sm:px-3",
+        selectorVariant === "spot"
+          ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
+          : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
+      )}>
         <span className="text-xs font-bold">Symbol</span>
         <span className="hidden text-right text-xs font-bold sm:block">Price</span>
-        <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
-        <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
-        <span className="text-right text-xs font-bold">Lev.</span>
+        {selectorVariant === "default" && (
+          <>
+            <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
+            <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
+          </>
+        )}
+        <span className="text-right text-xs font-bold">
+          {selectorVariant === "spot" ? "Venue" : "Lev."}
+        </span>
       </div>
 
-      <div className="pr-1 sm:max-h-[min(62dvh,600px)] sm:overflow-y-auto sm:overscroll-contain sm:scrollbar-thin">
+      <div className="pr-1 md:max-h-[min(62dvh,600px)] md:overflow-y-auto md:overscroll-contain md:scrollbar-thin">
         <div>
           <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
-            <span className="text-[10px] font-bold uppercase text-[#555]">
+            <span className="text-[10px] font-bold uppercase text-zinc-400">
               {activeCategoryLabel}
             </span>
             {loading && (
-              <span className="text-[10px] font-bold uppercase text-green-500/60">
+              <span className="text-[10px] font-bold uppercase text-green-400">
                 Syncing
               </span>
             )}
@@ -678,7 +732,7 @@ export function MarketModal({
             {filteredMarkets.map((market) => {
               const isActive = activeIds.includes(market.id);
               const isDisabled = disabledIds.includes(market.id);
-              const mark = market.perpData?.seedPrice ?? 0;
+              const mark = market.displayPrice ?? market.perpData?.seedPrice ?? 0;
               const fundingText =
                 market.fundingRateBps == null
                   ? "—"
@@ -694,16 +748,21 @@ export function MarketModal({
                       onToggle?.(market.id);
                     } else {
                       onSelect(market.id);
-                      onClose();
+                      requestClose();
                     }
                   }}
-                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
+                  className={cn(
+                    PRESSABLE_CONTROL,
+                    "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:transform-none sm:gap-x-4 sm:px-3",
+                    selectorVariant === "spot"
+                      ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
+                      : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
                     isDisabled
-                      ? "cursor-not-allowed text-[#444] opacity-55"
+                      ? "cursor-not-allowed bg-white/[0.015] text-zinc-400"
                       : isActive
                       ? "bg-white/[0.05] text-white"
-                      : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
-                  }`}
+                      : "text-[#888] hover:bg-white/[0.03] hover:text-white/80",
+                  )}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="flex size-5 shrink-0 items-center justify-center">
@@ -712,17 +771,17 @@ export function MarketModal({
                     <span className="truncate text-[13px] font-semibold">
                       {market.label}
                     </span>
-                    <span className="truncate text-[11px] text-[#555] sm:shrink-0">
+                    <span className="truncate text-[11px] text-zinc-400 sm:shrink-0">
                       {market.pair.replace(/ PERPS$/, "")}
                     </span>
                     {isActive && (
                       <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
                     )}
                     {isDisabled && (
-                      <span className="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-600">Preview only</span>
+                      <span className="shrink-0 rounded border border-white/[0.08] bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-400">{disabledLabel}</span>
                     )}
                   </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
+                  <span className="hidden text-right text-[12px] tabular-nums text-zinc-400 sm:block">
                     {mark > 0
                       ? mark.toLocaleString("en-US", {
                           minimumFractionDigits: getDisplayDecimals(mark),
@@ -730,18 +789,24 @@ export function MarketModal({
                         })
                       : "—"}
                   </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
-                    {fundingText}
-                  </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
-                    {market.perpData?.openInterestLabel ?? "—"}
-                  </span>
+                  {selectorVariant === "default" && (
+                    <>
+                      <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
+                        {fundingText}
+                      </span>
+                      <span className="hidden text-right text-[12px] tabular-nums text-zinc-400 sm:block">
+                        {market.perpData?.openInterestLabel ?? "—"}
+                      </span>
+                    </>
+                  )}
                   <span
                     className={`text-right text-xs font-bold tabular-nums ${
-                      isActive ? "text-green-400" : "text-[#666]"
+                      isActive ? "text-green-400" : "text-zinc-400"
                     }`}
                   >
-                    {market.leverage > 0 ? `${market.leverage}x` : "Spot"}
+                    {selectorVariant === "spot"
+                      ? market.venueLabel ?? "Spot"
+                      : market.leverage > 0 ? `${market.leverage}x` : "Spot"}
                   </span>
                 </button>
               );
@@ -749,7 +814,7 @@ export function MarketModal({
           </div>
         </div>
         {filteredMarkets.length === 0 && (
-          <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
+          <div className="flex h-36 items-center justify-center text-[12px] text-zinc-400">
             No {activeCategoryLabel.toLowerCase()} markets are available.
           </div>
         )}
@@ -759,8 +824,11 @@ export function MarketModal({
         <div className="sticky bottom-0 border-t border-white/[0.07] bg-[#101010] pt-3">
           <button
             type="button"
-            onClick={onClose}
-            className="w-full rounded-[10px] bg-accent px-4 py-2.5 font-display text-[13px] font-semibold text-black"
+            onClick={requestClose}
+            className={cn(
+              PRESSABLE_CONTROL,
+              "w-full rounded-[10px] bg-accent px-4 py-2.5 font-display text-[13px] font-semibold text-black outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#101010]",
+            )}
           >
             Done · {activeIds.length} selected
           </button>
@@ -779,7 +847,7 @@ export function MarketModal({
       description={description ?? `${network} markets`}
       titleId="market-selector-title"
     >
-      {marketContent}
+      {renderMarketContent}
     </ResponsiveModalSheet>
   );
 }
@@ -882,6 +950,9 @@ export function BTCChart({
           throw new Error(json.error || "Could not load Decibel markets");
         }
         const apiMarkets = (Array.isArray(json.markets) ? json.markets : [])
+          // TradePanel and /api/decibel/order are perp-only. Spot markets have
+          // a different contract ABI and belong exclusively on /swap.
+          .filter(isPerpApiMarket)
           .map(apiMarketToMarket);
         const next = mergeMarketsWithFallback(apiMarkets, network);
         if (!cancelled && next.length > 0 && !modalOpenRef.current) {
@@ -1060,15 +1131,21 @@ export function BTCChart({
           {/* Market selector trigger */}
           <button
             ref={marketTriggerRef}
+            type="button"
             onClick={() => setModalOpen(true)}
             aria-label="Open market selector"
-            className="flex items-center gap-2 hover:bg-white/5 rounded-lg px-2 py-1.5 -mx-2 -my-1.5 transition-colors"
+            aria-haspopup="dialog"
+            aria-expanded={modalOpen}
+            className={cn(
+              PRESSABLE_CONTROL,
+              "-mx-2 -my-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5 outline-none transition-[transform,opacity] hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring",
+            )}
           >
             <MarketLogo market={market} />
             <span className="text-[13px] font-display font-semibold whitespace-nowrap">
               {marketConfig.pair.replace(" PERPS", "")}
             </span>
-            <span className="text-[10px] font-mono font-bold text-zinc-500 bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[10px] font-mono font-bold text-zinc-400 bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               {marketConfig.leverage > 0 ? `${marketConfig.leverage}x` : "Spot"}
             </span>
             <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
@@ -1095,7 +1172,7 @@ export function BTCChart({
       <div className="border-b border-white/5">
         <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[10px] tabular-nums sm:gap-x-5 sm:text-[11px]">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Oracle</span>
+            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Oracle</span>
             <NumberTicker
               value={displayOracle > 0 ? displayOracle : null}
               fallback="—"
@@ -1107,22 +1184,22 @@ export function BTCChart({
             />
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">24h</span>
-            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">24h</span>
+            <span className={`${displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayChange}
             </span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Volume</span>
+            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Volume</span>
             <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayVolume}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">OI</span>
+            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">OI</span>
             <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayOpenInterest}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Funding</span>
-            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Funding</span>
+            <span className={`${displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayFunding}
             </span>
           </div>
@@ -1145,7 +1222,7 @@ export function BTCChart({
             className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "line"
                 ? "bg-white/[0.1] text-white"
-                : "text-zinc-500"
+                : "text-zinc-400"
             }`}
           >
             Line
@@ -1157,7 +1234,7 @@ export function BTCChart({
             className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "candle"
                 ? "bg-white/[0.1] text-white"
-                : "text-zinc-500"
+                : "text-zinc-400"
             }`}
           >
             Candles
@@ -1180,7 +1257,7 @@ export function BTCChart({
                 className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
                   overlayMode === "strategy" ? "bg-emerald-500/20 text-emerald-300"
                   : overlayMode !== "off" ? "bg-purple-500/20 text-purple-300"
-                  : "text-zinc-500"
+                  : "text-zinc-400"
                 }`}
                 title={hasStrategy ? "Overlay moving averages (off → SMA → EMA → Vault 3/5)" : "Overlay moving averages (off → SMA → EMA)"}
               >
@@ -1288,7 +1365,7 @@ export function BTCChart({
                 className={`pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md transition-colors ${
                   windowSecs === w.secs
                     ? "text-white/70 bg-white/10"
-                    : "text-zinc-600 hover:text-zinc-400"
+                    : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
                 {w.label}
@@ -1297,7 +1374,7 @@ export function BTCChart({
             <span className="w-px h-3 bg-white/10 mx-1" />
             <button
               onClick={() => setMode((m) => (m === "candle" ? "line" : "candle"))}
-              className="pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md text-zinc-600 hover:text-zinc-400 transition-colors"
+              className="pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
             >
               {mode === "candle" ? "Line" : "OHLC"}
             </button>

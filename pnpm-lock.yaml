@@ -10,6 +10,7 @@ overrides:
   follow-redirects@>=1.0.0 <1.16.0: 1.16.0
   form-data@>=4.0.0 <4.0.6: 4.0.6
   lodash@>=4.0.0 <4.18.1: 4.18.1
+  nanoid@<3.3.18: 3.3.18
   postcss@>=8.0.0 <8.5.18: 8.5.26
   sharp@<0.35.0: 0.35.3
   uuid@<11.1.1: 11.1.1
@@ -4524,8 +4525,8 @@ packages:
   multipasta@0.2.7:
     resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
 
-  nanoid@3.3.17:
-    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -9688,7 +9689,7 @@ snapshots:
 
   multipasta@0.2.7: {}
 
-  nanoid@3.3.17: {}
+  nanoid@3.3.18: {}
 
   natural-compare@1.4.0: {}
 
@@ -9920,7 +9921,7 @@ snapshots:
 
   postcss@8.5.26:
     dependencies:
-      nanoid: 3.3.17
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 

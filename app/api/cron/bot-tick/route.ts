@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk'
 import { getAllMarketAddresses, getActiveNetwork } from '@/lib/decibel-sdk'
+import { secretMatches } from '@/lib/sealed-source-vault'
+import { runPersonalStrategyTick } from '@/lib/personal-runner'
 import type { BotConfig } from '@/lib/bot-engine'
 
 export const runtime = 'nodejs'
@@ -15,6 +17,7 @@ const TRADES_PER_CRON: Record<string, number> = {
   market_maker: 2,   // Moderate frequency
   delta_neutral: 1,  // Complex strategy, once per minute
   dlp_grid: 1,       // Quote refresh (can be heavy), keep to 1 per minute
+  pine: 1,           // Personal Strategy Runner: at most one closed bar per tick
 }
 
 // Delay between trades (ms) to avoid rate limits
@@ -25,6 +28,7 @@ const TRADE_DELAY_MS: Record<string, number> = {
   market_maker: 20000,
   delta_neutral: 0,
   dlp_grid: 0,
+  pine: 0,
 }
 
 /**
@@ -38,13 +42,17 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify this is a cron job request
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
+    // Verify this is a cron job request. Vercel Cron sends
+    // `Authorization: Bearer $CRON_SECRET`; compare in constant time (same
+    // helper as the sealed-tick cron) rather than with `!==`.
+    const cronSecret = process.env.CRON_SECRET?.trim()
     if (!cronSecret) {
       return NextResponse.json({ error: 'Cron is not configured' }, { status: 503 })
     }
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    const provided = (
+      request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
+    ).trim()
+    if (!secretMatches(provided, cronSecret)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -92,6 +100,11 @@ export async function GET(request: NextRequest) {
       tradesExecuted?: number
       volumeGenerated?: number
       error?: string
+      // Personal Strategy Runner ('pine') only
+      signal?: 'buy' | 'sell' | 'neutral' | null
+      barTs?: number | null
+      stage?: string
+      txHash?: string
     }> = []
 
     // Process each bot
@@ -136,6 +149,47 @@ export async function GET(request: NextRequest) {
           }
         } catch (error) {
           console.warn('⚠️  [SDK] Address resolution failed, using stored address')
+        }
+
+        // Personal Strategy Runner: one catalog Pine strategy evaluated on the
+        // latest closed candle, traded on the user's own subaccount through
+        // the operator. The runner owns bar cadence (lastBarTs compare-and-set),
+        // so it runs exactly once per invocation (TRADES_PER_CRON.pine = 1)
+        // and never enters the multi-trade loop below.
+        if (bot.strategy === 'pine') {
+          const tick = await runPersonalStrategyTick(
+            { ...bot, market: resolvedMarket },
+            cleanKey,
+          )
+          const traded = tick.ok && Boolean(tick.txHash)
+          console.log(
+            `🧠 pine ${bot.userWalletAddress.slice(0, 10)}... ${bot.strategyId ?? '?'}` +
+              ` signal=${tick.signal ?? 'none'} bar=${tick.barTs ?? '-'}` +
+              ` stage=${tick.stage ?? '-'} ok=${tick.ok}${tick.txHash ? ` tx=${tick.txHash}` : ''}` +
+              (tick.error ? ` error=${tick.error}` : ''),
+          )
+          await prisma.botInstance.update({
+            where: { id: bot.id },
+            data: {
+              lastTickAt: new Date(),
+              // A quiet tick (no new bar, neutral, same side, bar taken by a
+              // concurrent ticker) is not a failure; only a real error backs off.
+              ...(tick.ok
+                ? { tickFailures: 0, error: null }
+                : { tickFailures: { increment: 1 }, error: tick.error ?? tick.stage ?? 'tick failed' }),
+            },
+          })
+          results.push({
+            wallet: bot.userWalletAddress,
+            status: traded ? 'executed' : tick.ok ? 'no_trades' : 'error',
+            tradesExecuted: traded ? 1 : 0,
+            signal: tick.signal,
+            barTs: tick.barTs,
+            stage: tick.stage,
+            txHash: tick.txHash,
+            error: tick.ok ? undefined : tick.error ?? tick.stage ?? 'tick failed',
+          })
+          continue
         }
 
         // Import the bot engine

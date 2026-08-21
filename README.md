@@ -33,6 +33,7 @@ A Decibel trading frontend for Aptos with live market data, wallet-signed execut
 - **Multi-Wallet Support** - Petra, Martian, Pontem, and 15+ Aptos wallets
 - **Mobile-Optimized UI** - Clean, responsive interface with bottom navigation
 - **Capped CASH Rewards** - Owner-verified Decibel activity earns cumulative `$CASH` vouchers enforced by an isolated on-chain distributor
+- **CASH/USDC Spot** - Wallet-signed buys quoted directly from the dedicated on-chain orderbook, with an explicit pre-launch state until the audited contract is configured
 
 ---
 
@@ -69,7 +70,7 @@ Contract controls, launch sequence, and funding safeguards are documented in
 
 ### Prerequisites
 
-- Node.js 18+ and pnpm
+- Node.js 22 and pnpm 10.19.0
 - Aptos wallet (Petra, Martian, etc.)
 - Testnet APT for gas fees
 - Testnet USDC from [Decibel Faucet](https://app.decibel.trade)
@@ -505,6 +506,8 @@ All documentation is in the `/docs` folder:
 - **[DEVELOPMENT_NOTES.md](./docs/DEVELOPMENT_NOTES.md)** - Technical deep dive & decisions
 - **[DATABASE_SETUP.md](./docs/DATABASE_SETUP.md)** - PostgreSQL/Neon setup guide
 - **[SECURITY.md](./docs/SECURITY.md)** - Security best practices
+- **[SPOT-SWAP-LAUNCH-RUNBOOK.md](./docs/SPOT-SWAP-LAUNCH-RUNBOOK.md)** - Decibel spot attestation, pre-sign, settlement, recovery, and Arc launch gates
+- **[CASH-ORDERBOOK-LAUNCH-RUNBOOK.md](./docs/CASH-ORDERBOOK-LAUNCH-RUNBOOK.md)** - Audited CASH/USDC orderbook deployment and liquidity launch gates
 
 ---
 

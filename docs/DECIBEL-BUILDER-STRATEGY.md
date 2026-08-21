@@ -1,6 +1,20 @@
 # cash.trading Builder and CASH incentive strategy
 
-Status: Builder routing ready for mainnet; CASH claims remain launch-gated. Last reviewed August 6, 2026.
+Status: Builder routing ready for mainnet; CASH claims remain launch-gated. Last verified August 18, 2026.
+
+## Current on-chain status
+
+Run `pnpm builder:stats` for the full public table, or
+`pnpm builder:stats -- --json` for machine-readable output. On August 18, 2026, Decibel's
+registry contained 17,917 active approvals across 29 builder addresses and enforced
+a 10 bp protocol maximum. The configured cash.trading builder subaccount
+`0xc755…ca39` had no active approvals, so it had no adoption rank yet.
+
+There is no separate Calvin or Decibel-team fee registration to verify. Creating a
+builder subaccount is permissionless; each trading subaccount approves its own
+maximum. cash.trading's approval payload is pinned to 10 bp (`1000` Decibel chain
+units). Until a user signs that approval, orders omit the builder fields and charge
+no cash.trading Builder fee.
 
 ## The product advantage
 
@@ -10,8 +24,8 @@ retention layer for those useful workflows; they are not a substitute for them.
 
 The production integration uses Decibel Builder Codes. A user may opt in by
 approving a maximum fee for the isolated cash.trading Builder address on a specific
-Decibel subaccount. Approved orders placed through cash.trading include a 1 bp
-(0.01%) Builder fee. The approval is shown clearly and can be revoked at any time.
+Decibel subaccount. Approved orders placed through cash.trading include a 10 bp
+(0.10%) Builder fee. The approval is shown clearly and can be revoked at any time.
 Accounts that do not opt in pay no cash.trading Builder fee.
 
 Builder Code enrollment is permissionless and independent of the CASH claim contract.
@@ -27,14 +41,14 @@ Official mechanics:
 
 ## Revenue math
 
-At 1 bp, gross Builder revenue is simple:
+At 10 bp, gross Builder revenue is simple:
 
 | Filled notional routed through cash.trading | Gross Builder revenue |
 | ---: | ---: |
-| $10,000 | $1 |
-| $100,000 | $10 |
-| $1,000,000 | $100 |
-| $10,000,000 | $1,000 |
+| $10,000 | $10 |
+| $100,000 | $100 |
+| $1,000,000 | $1,000 |
+| $10,000,000 | $10,000 |
 
 Decibel protocol maker/taker fees still apply independently. Product reporting must
 show protocol fees and Builder fees separately.
@@ -74,7 +88,7 @@ Enrollment remains disabled until every gate is green:
 2. Publish the exact reviewed Move package and verify its module hash/address.
 3. Fund only the canary CASH amount, issue one voucher, claim it from a non-admin
    wallet, and verify epoch and wallet caps on-chain.
-4. Approve the 1 bp Builder maximum from a test subaccount, place a small production
+4. Approve the 10 bp Builder maximum from a test subaccount, place a small production
    order, and verify the fee receipt at the isolated Builder address.
 5. Revoke approval, place another order, and verify that both Builder arguments are
    absent and no Builder fee is collected.
@@ -115,7 +129,7 @@ notional cycling through wash trades.
 
 ## Monetization roadmap
 
-1. Launch the voluntary 1 bp Builder-linked rewards pilot.
+1. Launch the voluntary 10 bp Builder-linked rewards pilot.
 2. Earn retention with the points intelligence and vault-management experience.
 3. Offer advanced automation with explicit strategy risk controls. Do not promise
    returns or automate activity merely to farm Decibel AMPs.

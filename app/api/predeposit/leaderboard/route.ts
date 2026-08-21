@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDecibelPointsLeaderboard } from '@/lib/decibel-points'
+import { getDecibelPointsLeaderboard, isDecibelTierFilter } from '@/lib/decibel-points'
+import { isValidAptosAddress, normalizeAptosAddress } from '@/lib/decibel'
 import { checkApiRateLimit } from '@/lib/api-rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -35,8 +36,27 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // Passthroughs honoured upstream: search_term returns one exact-owner row
+  // with its true rank; tier narrows to top20 / diamond / doublePlatinum / gold.
+  const rawSearch = searchParams.get('search_term')
+  if (rawSearch !== null && !isValidAptosAddress(rawSearch)) {
+    return NextResponse.json(
+      { error: 'search_term must be an Aptos address' },
+      { status: 400, headers: NO_STORE_HEADERS },
+    )
+  }
+  const searchTerm = rawSearch === null ? undefined : normalizeAptosAddress(rawSearch, 'search_term')
+  const rawTier = searchParams.get('tier')
+  if (rawTier !== null && !isDecibelTierFilter(rawTier)) {
+    return NextResponse.json(
+      { error: 'tier must be one of top20, diamond, doublePlatinum, gold' },
+      { status: 400, headers: NO_STORE_HEADERS },
+    )
+  }
+  const tier = rawTier === null ? undefined : rawTier
+
   try {
-    const leaderboard = await getDecibelPointsLeaderboard({ limit, offset })
+    const leaderboard = await getDecibelPointsLeaderboard({ limit, offset, searchTerm, tier })
     return NextResponse.json(
       {
         entries: leaderboard.entries.map((entry) => ({
@@ -56,6 +76,8 @@ export async function GET(request: NextRequest) {
         total: leaderboard.total,
         offset,
         limit,
+        search_term: searchTerm ?? null,
+        tier: tier ?? null,
         season: 1,
       },
       { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } },

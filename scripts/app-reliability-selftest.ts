@@ -69,8 +69,9 @@ const predepositTotalRoute = readFileSync("app/api/predeposit/total/route.ts", "
 const predepositUserRoute = readFileSync("app/api/predeposit/user/route.ts", "utf8");
 const vaultTotalRoute = readFileSync("app/api/vault/total/route.ts", "utf8");
 const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
-const pointsDataContext = readFileSync("contexts/points-data-context.tsx", "utf8");
-const walletWatcher = readFileSync("components/points/wallet-watcher.tsx", "utf8");
+const pointsData = readFileSync("components/points/use-points-data.ts", "utf8");
+const pointsPageClient = readFileSync("components/points/points-page-client.tsx", "utf8");
+const pointsProfileRoute = readFileSync("app/api/points/profile/route.ts", "utf8");
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
 const decibelTransactionSubmitter = readFileSync("hooks/useDecibelTransactionSubmitter.ts", "utf8");
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
@@ -78,22 +79,19 @@ const decibelFeesRoute = readFileSync("app/api/decibel/fees/route.ts", "utf8");
 const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
+const swapAssetButton = readFileSync("components/trade/swap/SwapAssetButton.tsx", "utf8");
 const accountManager = readFileSync("components/trade/DecibelAccountManager.tsx", "utf8");
 const mobileModalSheet = readFileSync("components/ui/mobile-modal-sheet.tsx", "utf8");
 const responsiveModalSheet = readFileSync("components/ui/responsive-modal-sheet.tsx", "utf8");
 const mobilePortfolioSheet = readFileSync("components/trade/MobilePortfolioSheet.tsx", "utf8");
 const walletAccountModal = readFileSync("components/wallet/wallet-account-modal.tsx", "utf8");
-const depositHistory = readFileSync("components/points/deposit-history.tsx", "utf8");
 const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
 const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
 const botOrderHistory = readFileSync("components/bot/order-history-table.tsx", "utf8");
 const decibelPoints = readFileSync("lib/decibel-points.ts", "utf8");
-const pointsStats = readFileSync("components/points/points-stats.tsx", "utf8");
-const userAnalytics = readFileSync("components/points/user-analytics.tsx", "utf8");
+const pointsProfileCard = readFileSync("components/points/points-profile-card.tsx", "utf8");
 const userStatsRoute = readFileSync("app/api/decibel/user-stats/route.ts", "utf8");
-const pointsCalculator = readFileSync("components/points/points-calculator.tsx", "utf8");
 const pointsLeaderboard = readFileSync("components/points/leaderboard.tsx", "utf8");
-const farmingTips = readFileSync("components/points/farming-tips.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
 const cashRewardsPanel = readFileSync("components/portfolio/CashRewardsPanel.tsx", "utf8");
 const cashRewardsLib = readFileSync("lib/cash-rewards.ts", "utf8");
@@ -215,6 +213,8 @@ const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/rou
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
 const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const orderBook = readFileSync("components/trade/OrderBook.tsx", "utf8");
+const tradePageClient = readFileSync("components/trade/TradePageClient.tsx", "utf8");
+const swapMarketLayout = readFileSync("components/trade/swap/SwapMarketLayout.tsx", "utf8");
 const decibelTradeEvents = readFileSync("lib/decibel-trade-events.ts", "utf8");
 const decibelTradeFill = readFileSync("lib/decibel-trade-fill.ts", "utf8");
 const explainerPage = readFileSync("app/explainer/page.tsx", "utf8");
@@ -353,9 +353,8 @@ assert.ok(
   !decibelSubaccountHook.includes('name: "Primary"'),
   "an unverified stored address must not be presented as an active Primary account",
 );
-assert.match(pointsDataContext, /requestIdRef\.current === requestId/);
-assert.match(pointsDataContext, /activeAddrRef\.current === addr/);
-assert.match(pointsDataContext, /requestIdRef\.current \+= 1/);
+assert.match(pointsData, /requestIdRef\.current !== requestId/);
+assert.match(pointsData, /requestIdRef\.current \+= 1/);
 assert.ok(!portfolioPage.includes("buildPortfolioSeries"), "portfolio history must not be synthesized from one snapshot");
 for (const fabricatedMetric of ["2.0139", "67.28%", "41.67%"] as const) {
   assert.ok(!portfolioPage.includes(fabricatedMetric), "portfolio risk metrics must not be hard-coded");
@@ -433,6 +432,12 @@ assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the head
 assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
 assert.ok(!btcChart.includes('type="search"'), "the asset selector must not render a search control");
 assert.match(btcChart, /ResponsiveModalSheet/);
+assert.match(btcChart, /onSelect\(market\.id\);\s+requestClose\(\);/);
+assert.match(btcChart, /focus-visible:ring-2 focus-visible:ring-ring/);
+assert.match(swapAssetButton, /PRESSABLE_CONTROL/);
+assert.match(swapAssetButton, /transition-\[transform,opacity\]/);
+assert.match(swapAssetButton, /focus-visible:ring-2 focus-visible:ring-ring/);
+assert.ok(!swapAssetButton.includes("transition-all"));
 assert.ok(
   !btcChart.includes('{displayConnected ? "Live" : "..."}')
     && !btcChart.includes('displayConnected ? "bg-success" : "bg-muted"'),
@@ -443,16 +448,30 @@ assert.match(btcChart, /persistedMarketRef/);
 assert.match(btcChart, /window\.localStorage\.setItem\(selectedMarketStorageKey\(network\), id\)/);
 assert.match(walletAccountModal, /ResponsiveModalSheet/);
 assert.match(responsiveModalSheet, /<MobileModalSheet/);
+assert.match(responsiveModalSheet, /mobileSheetRef\.current/);
+assert.match(responsiveModalSheet, /sheet\.close\(\)/);
 assert.match(responsiveModalSheet, /<DialogContent/);
 assert.match(responsiveModalSheet, /sm:!max-w-\[900px\]/);
 assert.match(responsiveModalSheet, /bg-\[#171717\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
-assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(28px, 1fr\)\)`/);
+assert.match(orderBook, /\[--trade-row-min:44px\] sm:\[--trade-row-min:28px\]/);
+assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(var\(--trade-row-min\), 1fr\)\)`/);
 assert.match(orderBook, /RECENT_TRADES_TIMEOUT_MS = 8_000/);
 assert.match(orderBook, /recentTradesCache/);
 assert.match(orderBook, /recentTradesRequests/);
 assert.match(orderBook, /formatUsdNotional\(trade\.price, trade\.size\)/);
 assert.match(orderBook, /onDecibelTradeConfirmed/);
+assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
+assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
+assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
+assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 21 : 11\}/);
+assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:h-\[672px\]"/);
+assert.equal(
+  (swapMarketLayout.match(/<OrderBook/g) ?? []).length,
+  1,
+  "the responsive swap layout must mount one shared orderbook instance",
+);
+assert.match(swapMarketLayout, /import \{ OrderBook \} from "@\/components\/trade\/OrderBook"/);
 assert.match(tradePanel, /emitDecibelTradeConfirmed/);
 assert.match(tradePanel, /extractConfirmedDecibelFill/);
 assert.match(decibelTradeEvents, /cash:decibel-trade-confirmed/);
@@ -532,6 +551,9 @@ assert.equal(multiFill.size, 0.04);
 assert.ok(Math.abs(multiFill.price - 85.2625) < 1e-9);
 assert.ok(!orderBook.includes("flex-col justify-center"), "book rows must fill the pane instead of floating in the middle");
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
+assert.match(mobileModalSheet, /useImperativeHandle\(ref, \(\) => \(\{ close: closeSheet \}\)/);
+assert.ok(!mobileModalSheet.includes("backdropFilter"));
+assert.ok(!mobileModalSheet.includes("WebkitBackdropFilter"));
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);
 assert.match(mobileModalSheet, /overflow-y-auto overscroll-contain/);
 assert.match(mobileModalSheet, /WebkitOverflowScrolling: "touch"/);
@@ -679,11 +701,7 @@ for (const [path, source] of [
   assert.match(source, /unavailable: true/, `${path} must identify unavailable upstream data`);
   assert.match(source, /status: 502/, `${path} must not return a successful zero on upstream failure`);
 }
-assert.match(pointsDataContext, /!response\.ok \|\| !json \|\| json\.unavailable/);
-assert.match(walletWatcher, /if \(!pointsRes\.ok \|\| !balancesRes\.ok\)/);
-assert.match(walletWatcher, /network=mainnet/);
-assert.match(depositHistory, /timestamp < 1_000_000_000_000/);
-assert.match(depositHistory, /network=mainnet/);
+assert.match(pointsData, /!response\.ok \|\| !json \|\| json\.unavailable/);
 assert.match(predepositData, /user_transactions/);
 assert.match(predepositData, /transactions\/by_version/);
 assert.match(predepositData, /::predeposit::WithdrawEvent/);
@@ -699,34 +717,38 @@ assert.match(predepositLeaderboardRoute, /getDecibelPointsLeaderboard/);
 assert.match(predepositPointsRoute, /getDecibelOwnerPoints/);
 assert.match(predepositPointsRoute, /realized_pnl: points\.realizedPnl/);
 assert.match(predepositUserRoute, /getDecibelOwnerPoints/);
-assert.match(pointsDataContext, /cash_trading_points_cache_v3/);
-assert.match(pointsDataContext, /useDecibelWalletIdentity/);
-assert.match(pointsDataContext, /predeposit\/points\?account=/);
+// Points page: one server-side profile route (s-maxage) replaces client polling,
+// localStorage caching and mock data; the owner comes from the verified wallet
+// identity, never the raw adapter address.
+assert.ok(!pointsData.includes("localStorage"), "points data must not cache in localStorage; route-level s-maxage replaces it");
+assert.ok(!pointsData.includes("setInterval"), "points data must not poll on a timer");
+assert.ok(!pointsData.includes("MOCK"), "points data must not ship a mock branch");
+assert.match(pointsData, /api\/points\/profile\?owner=/);
+assert.match(pointsData, /search_term/);
+assert.match(pointsPageClient, /useDecibelWalletIdentity/);
+assert.match(pointsPageClient, /Season 1/);
+assert.ok(!pointsProfileCard.includes("|| 0"), "unavailable profile pieces must render as unavailable, not as a real zero");
+assert.match(pointsProfileCard, /Connect to see/);
+assert.match(pointsProfileCard, /Trading/);
+assert.match(pointsProfileCard, /Referral/);
+assert.match(pointsProfileCard, /Realized PnL/);
+assert.match(pointsLeaderboard, /Realized PnL/);
+assert.match(pointsLeaderboard, /Show more/);
+assert.match(pointsProfileRoute, /Promise\.allSettled/);
+assert.match(pointsProfileRoute, /s-maxage=120/);
+assert.match(pointsProfileRoute, /checkApiRateLimit/);
+assert.match(pointsProfileRoute, /isValidAptosAddress/);
+assert.match(pointsProfileRoute, /unavailable: true/);
 assert.doesNotMatch(
-  pointsDataContext,
+  pointsData,
   /predeposit\/user\?account=/,
   "the Points dashboard must not couple valid AMPs to the retired predeposit balance lookup",
 );
-assert.match(pointsLeaderboard, /useDecibelWalletIdentity/);
-assert.match(pointsDataContext, /vaultTotal\.protocolTvl/);
-assert.match(pointsStats, /Season 1/);
-assert.ok(!pointsStats.includes("userData?.points || 0"), "unavailable wallet AMPs must not render as a real zero");
-assert.ok(!pointsStats.includes("vaultUserData?.currentValue ||"), "a real zero vault value must not fall through to stale alternate data");
-assert.match(pointsLeaderboard, /Vault AMPs/);
 assert.match(userStatsRoute, /checkApiRateLimit\(request, "decibel-user-stats"/);
 assert.match(userStatsRoute, /getDecibelOwnerPoints/);
 assert.match(userStatsRoute, /getFastSubaccounts/);
 assert.match(userStatsRoute, /getFastOverview/);
 assert.match(userStatsRoute, /getAccountVaultPerformance/);
-assert.match(userAnalytics, /Decibel account intelligence/);
-assert.match(userAnalytics, /Open positions/);
-assert.match(userAnalytics, /Vault positions/);
-assert.match(pointsStats, /Trading/);
-assert.match(pointsStats, /Referral/);
-assert.match(pointsStats, /Realized P&amp;L/);
-assert.ok(!pointsCalculator.includes("POINTS_RATE"), "the AMPs scenario must not use the obsolete S0 formula");
-assert.ok(!pointsCalculator.includes("HYPE was"), "the AMPs scenario must not imply an unrelated token valuation");
-assert.ok(!farmingTips.includes("Automated volume generation"), "points tips must not encourage artificial volume");
 assert.match(vaultTotalRoute, /getActiveDecibelVaults/);
 assert.match(vaultTotalRoute, /vault\.status === 'active'/);
 assert.match(vaultTotalRoute, /protocolTvl/);
@@ -758,7 +780,7 @@ assert.match(cashRewardsPanel, /Server-verified · resets in/);
 assert.match(cashRewardsPanel, /Preview only — no CASH has been issued/);
 assert.match(cashRewardsPanel, /do not carry into a new reward week/);
 assert.match(cashRewardsPanel, /Optional \$\{builderStatus\.feeBps\} bp/);
-assert.match(cashRewardsPanel, /Approve \$\{builderStatus\?\.feeBps \?\? 1\} bp Builder fee/);
+assert.match(cashRewardsPanel, /Approve \$\{builderStatus\?\.feeBps \?\? 10\} bp Builder fee/);
 assert.doesNotMatch(cashRewardsPanel, /snapshot\?\.contract\.status !== "live"/);
 assert.match(decibelBuilderLib, /enrollmentOpen: enabled/);
 assert.match(cashRewardsPanel, /Revoke Builder fee/);
@@ -1110,7 +1132,7 @@ for (const [path, source] of legacyBotRoutes) {
   // invoked by Vercel, not a wallet. It must keep its shared-secret check and
   // must refuse to run when that secret is unset.
   if (path === "app/api/cron/bot-tick/route.ts") {
-    assert.match(source, /Bearer \$\{cronSecret\}/, "the bot cron must require CRON_SECRET");
+    assert.match(source, /secretMatches\(provided, cronSecret\)/, "the bot cron must require CRON_SECRET (constant-time compare)");
     assert.match(source, /if \(!cronSecret\)/, "the bot cron must refuse to run when CRON_SECRET is unset");
     assert.match(
       source,
@@ -1381,8 +1403,8 @@ assert.equal(
 assert.equal(builderFeeBpsToChainUnits(1), "100");
 assert.equal(builderFeeBpsToChainUnits(10), "1000");
 assert.throws(() => builderFeeBpsToChainUnits(0), /positive whole basis-point/);
-assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_BPS, 1);
-assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_RATE, 0.0001);
+assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_BPS, 10);
+assert.equal(DEFAULT_DECIBEL_BUILDER_FEE_RATE, 0.001);
 assert.equal(DEFAULT_AUTOMATED_VAULT_BUILDER_FEE_BPS, 0);
 assert.equal(MAX_AUTOMATED_VAULT_BUILDER_FEE_BPS, 0);
 assert.match(

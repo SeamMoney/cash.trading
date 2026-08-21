@@ -44,6 +44,20 @@ model BotInstance {
   // otherwise be retried forever at 6-12 trades per invocation.
   lastTickAt           DateTime?
   tickFailures         Int            @default(0)
+  // Personal Strategy Runner (strategy = "pine"): one catalog Pine strategy
+  // evaluated on closed candles and traded on the user's own subaccount.
+  strategyId           String? // lib/sealed-catalog.ts id (e.g. "ema-cross")
+  scriptHash           String? // sha256 of the canonical Pine text pinned at start
+  barInterval          String? // "1m" | "5m" | "15m"
+  // Last closed bar this bot acted on. Advanced with a compare-and-set
+  // (updateMany where lastBarTs < newBarTs) so concurrent tickers never
+  // evaluate the same bar twice.
+  lastBarTs            BigInt?
+  lastSignal           String? // "buy" | "sell" | "neutral"
+  lastSignalAt         DateTime?
+  // Per-bot TP/SL overrides; null means the engine default for the strategy.
+  stopLossPct          Float?
+  takeProfitPct        Float?
   orders               OrderHistory[]
 
   @@unique([userWalletAddress, userSubaccount])

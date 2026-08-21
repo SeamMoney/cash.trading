@@ -1,12 +1,11 @@
-"use client"
+import type { Metadata } from "next"
+import { PointsPageClient } from "@/components/points/points-page-client"
 
-import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { PointsView } from "@/components/points/points-view"
+export const metadata: Metadata = {
+  title: "Points · cash.trading",
+  description: "Your Decibel AMPs, tier and streak, and the Season 1 leaderboard.",
+}
 
 export default function PointsPage() {
-  return (
-    <DashboardLayout>
-      <PointsView />
-    </DashboardLayout>
-  )
+  return <PointsPageClient />
 }

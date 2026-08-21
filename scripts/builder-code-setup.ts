@@ -35,6 +35,8 @@ import {
   Ed25519PrivateKey,
   Network,
 } from "@aptos-labs/ts-sdk";
+import { DEFAULT_DECIBEL_BUILDER_FEE_BPS } from "../lib/decibel-builder-config";
+import { builderFeeBpsToChainUnits } from "../lib/decibel";
 
 const PKG =
   "0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06";
@@ -189,12 +191,16 @@ async function main() {
     data: {
       function: `${PKG}::dex_accounts_entry::approve_max_builder_fee_for_subaccount`,
       typeArguments: [],
-      functionArguments: [traderSub, builderSubaccount, "100"],
+      functionArguments: [
+        traderSub,
+        builderSubaccount,
+        builderFeeBpsToChainUnits(DEFAULT_DECIBEL_BUILDER_FEE_BPS),
+      ],
     },
   });
   const [verify] = await aptos.transaction.simulate.simple({ transaction: verifyTx });
   console.log(
-    "\nverification — live trader approving our builder:",
+    `\nverification — live trader approving our builder at ${DEFAULT_DECIBEL_BUILDER_FEE_BPS} bp:`,
     verify.success ? "VM-ACCEPTED ✅" : `ABORTED (${verify.vm_status})`,
   );
 }

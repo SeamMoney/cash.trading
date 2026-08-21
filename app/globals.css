@@ -315,6 +315,7 @@
 
   /* Hide scrollbars on all browsers */
   html, body {
+    overflow-x: clip;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */
   }
@@ -860,10 +861,10 @@
   --lt-hairline:        rgba(9, 9, 11, 0.11);
   --lt-hairline-strong: rgba(9, 9, 11, 0.22);
   --lt-neon:       #39ff14;  /* brand green — kept for BACKGROUNDS only */
-  --lt-green-ink:  #1e860a;  /* brand green as TEXT: 4.50:1 on #fafafa */
+  --lt-green-ink:  #176f08;  /* brand green as TEXT: 5.47:1 on #eeeef0 */
   --lt-green-line: #22a30c;  /* brand green as BORDER/RING: 2.6:1, still neon */
   --lt-danger:     #d01414;  /* #f21a1a is 4.07:1 on white — darkened to 5.4:1 */
-  --lt-warning:    #9c6916;  /* #f5a623 is 1.94:1 on white — darkened to 4.5:1 */
+  --lt-warning:    #7a500d;  /* warning text: 6.08:1 on the darkest light surface */
 
   /* --- :root token set (pages that do NOT use the .cash-trade-theme wrapper
          and all shadcn primitives) --------------------------------------- */
@@ -885,7 +886,7 @@
   --destructive-foreground: #ffffff;
   --border: #e4e4e7;
   --input: var(--lt-surface-2);
-  --ring: var(--lt-green-line);
+  --ring: var(--lt-green-ink);
   --success: #148f2e;
   --success-foreground: #ffffff;
   --warning: var(--lt-warning);
@@ -1020,7 +1021,7 @@
   --danger: var(--lt-danger);
   --warning: var(--lt-warning);
   --border: var(--lt-hairline);
-  --ring: var(--lt-green-line);
+  --ring: var(--lt-green-ink);
   --border-accent: rgba(30, 134, 10, 0.35);
   --border-strong: var(--lt-hairline-strong);
 

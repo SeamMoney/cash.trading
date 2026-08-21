@@ -56,6 +56,7 @@ import { SealedBacktest } from "@/components/sealed/SealedBacktest";
 import {
   MarketLogo,
   apiMarketToMarket,
+  isPerpApiMarket,
   type DecibelApiMarket,
   type Market,
 } from "@/components/trade/BTCChart";
@@ -247,7 +248,11 @@ export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
       .then((response) => response.json())
       .then((payload: { markets?: DecibelApiMarket[] }) => {
         if (controller.signal.aborted || !Array.isArray(payload.markets)) return;
-        setMarketOptions(payload.markets.map(apiMarketToMarket));
+        setMarketOptions(
+          payload.markets
+            .filter(isPerpApiMarket)
+            .map(apiMarketToMarket),
+        );
       })
       .catch(() => undefined)
       .finally(() => {

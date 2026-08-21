@@ -37,7 +37,7 @@ export const BOT_OPERATOR = '0x501f5aab249607751b53dcb84ed68c95ede4990208bd861c3
 export const MAKER_FEE = 0.00011;
 export const MAKER_REBATE = -MAKER_FEE; // legacy automation compatibility
 export const TAKER_FEE = 0.00034; // tier-0 taker fee: 0.0340%
-export const BUILDER_FEE = DEFAULT_DECIBEL_BUILDER_FEE_RATE; // 1 bp = 0.01%
+export const BUILDER_FEE = DEFAULT_DECIBEL_BUILDER_FEE_RATE; // 10 bp = 0.10%
 
 // ============================================================
 // TESTNET Market addresses (from perp_engine::Global on-chain)

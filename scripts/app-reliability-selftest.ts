@@ -217,7 +217,6 @@ const tradePageClient = readFileSync("components/trade/TradePageClient.tsx", "ut
 const swapMarketLayout = readFileSync("components/trade/swap/SwapMarketLayout.tsx", "utf8");
 const decibelTradeEvents = readFileSync("lib/decibel-trade-events.ts", "utf8");
 const decibelTradeFill = readFileSync("lib/decibel-trade-fill.ts", "utf8");
-const explainerPage = readFileSync("app/explainer/page.tsx", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
   build?: { env?: Record<string, string> };
 };
@@ -452,7 +451,12 @@ assert.match(responsiveModalSheet, /mobileSheetRef\.current/);
 assert.match(responsiveModalSheet, /sheet\.close\(\)/);
 assert.match(responsiveModalSheet, /<DialogContent/);
 assert.match(responsiveModalSheet, /sm:!max-w-\[900px\]/);
-assert.match(responsiveModalSheet, /bg-\[#171717\]/);
+assert.match(
+  responsiveModalSheet,
+  /border-b border-card-border bg-card/,
+  "the desktop sheet header must paint with the shared surface tokens so the light theme reaches it",
+);
+assert.doesNotMatch(responsiveModalSheet, /#171717|#101010/, "the shared modal shell must not hard-code its own blacks");
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
 assert.match(orderBook, /\[--trade-row-min:44px\] sm:\[--trade-row-min:28px\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(var\(--trade-row-min\), 1fr\)\)`/);
@@ -464,8 +468,22 @@ assert.match(orderBook, /onDecibelTradeConfirmed/);
 assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
 assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
 assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
-assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 21 : 11\}/);
-assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:h-\[672px\]"/);
+// 17 rows fill the swap card's ~504px without an at-rest scroll; 21 needed ~572px.
+assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
+// On desktop the book is taken out of flow inside a stretched grid item so it
+// matches the swap card's height exactly without ever adding to it; below lg it
+// keeps the Trade page's mobile heights.
+assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:absolute lg:inset-0 lg:h-auto"/);
+assert.match(swapMarketLayout, /lg:items-stretch/);
+assert.match(
+  swapMarketLayout,
+  /<div className="relative min-w-0 lg:order-1">\s*<OrderBook/,
+  "the absolutely positioned book needs a relative wrapper or it escapes the grid item",
+);
+assert.ok(
+  !swapMarketLayout.includes("lg:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
+  "the swap column must size to its content — no fixed desktop height and no nested scroll",
+);
 assert.equal(
   (swapMarketLayout.match(/<OrderBook/g) ?? []).length,
   1,
@@ -834,7 +852,17 @@ assert.match(launchpadBacktestRoute, /indicatorType is required and must be an i
 assert.match(launchpadBacktestRoute, /pine_backtester_required/);
 assert.ok(!launchpadBacktestRoute.includes("body.indicatorType ?? 0"));
 assert.match(launchpadBacktestViewer, /JSON\.stringify\(\{ indicatorAddr, indicatorType, numSims, asset, params \}\)/);
-assert.match(launchpadPage, /indicatorType=\{ind\.indicatorType\}/);
+// /launchpad is now the Vaults page: it renders the sealed-vault feed and the
+// launch flow only. The indicatorType contract is guarded on BacktestViewer
+// above; the page itself must not resurrect the mock-scored indicator list.
+assert.ok(
+  launchpadPage.includes("<SealedVaultFeed") && launchpadPage.includes("<SealedLaunch"),
+  "the Vaults page must render the sealed-vault feed and the launch flow",
+);
+assert.ok(
+  !launchpadPage.includes("BacktestViewer") && !launchpadPage.includes("indicatorType"),
+  "the Vaults page must not render the legacy indicator marketplace",
+);
 assert.match(launchpadKeeper, /throw new RangeError\("Unsupported legacy backtest indicator type"\)/);
 assert.ok(!launchpadKeeper.includes("indicatorType = 0"));
 assert.throws(
@@ -883,7 +911,10 @@ assert.match(launchpadOnChainChart, /packageAddress\?: string/);
 assert.match(launchpadOnChainChart, /pkg=\$\{encodeURIComponent\(packageAddress\)\}/);
 assert.match(launchpadOnChainChart, /high < Math\.max\(open, close\)/);
 assert.match(launchpadOnChainChart, /manualKeeperEnabled = process\.env\.NODE_ENV !== "production"/);
-assert.match(launchpadPage, /packageAddress=\{ind\.pkg\}/);
+assert.ok(
+  !launchpadPage.includes("OnChainChart") && !launchpadPage.includes("ind.pkg"),
+  "the Vaults page must not render the legacy indicator detail pane",
+);
 assert.ok(!launchpadPage.includes("d.lastPrice > 1000"), "launchpad prices are already normalized by the API");
 assert.ok(!botDashboard.includes("d.lastPrice > 1000"), "bot prices are already normalized by the API");
 assert.ok(!botDashboard.includes("d.entryPrice > 1000"), "bot entry prices are already normalized by the API");
@@ -908,8 +939,14 @@ const sanitizedTradeHistory = sanitizeOnChainTrades([
   { tradeId: 3, signal: 2, price: 70_083.5, gainBps: 0, lossBps: 0, timestamp: 4, type: "SELL", pnlBps: 0 },
 ]);
 assert.deepEqual(sanitizedTradeHistory.map((trade) => trade.tradeId), [2, 3]);
-assert.ok(!explainerPage.includes('href="#"'), "explainer calls to action must navigate somewhere real");
-assert.match(explainerPage, /60 live markets/);
+// The explainer page was retired (off-brand shell, stale claims). It must not
+// come back, and the old URL must keep resolving somewhere real.
+assert.ok(!existsSync("app/explainer"), "the explainer page was retired and must not return as an off-brand route");
+assert.match(
+  nextConfig,
+  /source: '\/explainer',[\s\S]*?destination: '\/',[\s\S]*?permanent: true/,
+  "old /explainer links must 308 to / rather than 404",
+);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 assert.match(vercelIgnore, /^\.data$/m);
@@ -2071,29 +2108,49 @@ assert.ok(
 );
 
 // ── Launch layout ──────────────────────────────────────────────────────────
-// The launchpad has always been a two-column transpiler UI: editor left, decisions right.
-// It was briefly replaced with a single narrow centred column, which wasted the desktop
-// viewport and pushed the launch action ~2000px down the page. Restored, and asserted so it
-// does not drift back.
+// The launch flow is a single-column 3-step panel (Strategy → Markets & limits → Name & fund).
+// The property that matters is the one the old two-column grid used to guard: the primary
+// action is never below the fold. It now holds because ONE footer() is rendered twice — in the
+// desktop panel footer and in the fixed mobile bar — and renders exactly one primary per step.
 assert.ok(
-  sealedLaunchUi.includes("lg:grid-cols-[minmax(0,1fr)_360px]")
-    && sealedLaunchUi.includes("xl:grid-cols-[minmax(0,1fr)_400px]"),
-  "the launch page must stay a two-column grid — editor left, decision rail right",
+  /const footer = \(compact: boolean\) =>/.test(sealedLaunchUi)
+    && sealedLaunchUi.includes("{footer(false)}")
+    && sealedLaunchUi.includes("{footer(true)}"),
+  "the desktop action row and the fixed mobile bar must share ONE footer — two implementations " +
+    "is how the primary action drifts out of sync between widths",
+);
+assert.ok(
+  /className="hidden border-t [^"]*lg:block">\s*\{footer\(false\)\}/.test(sealedLaunchUi),
+  "on desktop the action row must sit in the panel footer, not ~2000px down a centred column",
+);
+assert.equal(
+  (sealedLaunchUi.match(/\{primary\}/g) ?? []).length,
+  1,
+  "the footer must render exactly one primary action per step",
 );
 assert.ok(
   !sealedLaunchUi.includes("lg:overflow-y-auto"),
-  "the decision rail must use the page scroll instead of creating a nested desktop scroll trap",
+  "the launch panel must use the page scroll instead of creating a nested desktop scroll trap",
 );
 assert.ok(
   sealedLaunchUi.includes("PineVisualPreview"),
   "the behaviour preview belongs on the launch page — a strategy is not judgeable from source " +
     "alone",
 );
+// Strategies are a vertical radio list in a deliberate order: the three with the most
+// defensible default behaviour lead and Swing Consensus (eight votes, weakest backtest) goes
+// last instead of being preselected for every new creator.
 assert.ok(
-  sealedLaunchUi.includes("SEALED_CATALOG.map") && sealedLaunchUi.includes("sm:flex-wrap"),
-  "templates must be a horizontal strip that WRAPS where there is room (sm+). The original " +
-    "complaint was the visible scrollbar, not the strip — so it wraps on desktop and scrolls " +
-    "without a bar on a phone, where wrapping cost three lines",
+  sealedLaunchUi.includes("ORDERED_CATALOG.map")
+    && sealedLaunchUi.indexOf('role="radiogroup" aria-label="Strategy"') > 0
+    && sealedLaunchUi.indexOf('role="radiogroup" aria-label="Strategy"')
+      < sealedLaunchUi.indexOf("ORDERED_CATALOG.map"),
+  "strategies must render as an ordered radio list, not an unordered template pill strip",
+);
+assert.ok(
+  /const CATALOG_ORDER = \[\s*"breakout-channel",[\s\S]*?"swing-consensus",\s*\]/.test(sealedLaunchUi)
+    && sealedLaunchUi.includes("const DEFAULT_STRATEGY = ORDERED_CATALOG[0]"),
+  "breakout-channel must lead and be the default; swing-consensus must be last",
 );
 
 // ── Mobile ─────────────────────────────────────────────────────────────────
@@ -2112,28 +2169,39 @@ assert.ok(
   sealedLaunchUi.includes('className="h-24 lg:hidden"'),
   "a spacer must reserve room for the fixed bar, or it covers the last card",
 );
+// The template pill strip is gone. What replaced it must not re-create the phone problem it
+// caused: each strategy option is a full-width ≥44px row and nothing in the list scrolls
+// sideways.
 assert.ok(
-  sealedLaunchUi.includes("overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap"),
-  "template pills must scroll in one row on a phone — wrapping put six pills on three lines " +
-    "and ate a third of the first screen",
+  /role="radio"\s+aria-checked=\{active\}[\s\S]*?"flex min-h-11 w-full items-start/.test(sealedLaunchUi)
+    && !sealedLaunchUi.includes("overflow-x-auto px-4 no-scrollbar"),
+  "strategy options must be full-width 44px rows — no horizontal pill strip on a phone",
 );
 
 // ── Truthful UI state ──────────────────────────────────────────────────────
 // The worst defect a UX review found: the Launch button rendered as a live green primary
 // action while the page said launching was impossible. A financial action must never look
 // available when it isn't.
-assert.ok(
-  sealedLaunchCopy.includes("Launch unavailable in preview mode") &&
-    sealedLaunchUi.includes("previewMode ? ("),
-  "when the contract is unpublished the primary action must RENDER as unavailable, not just " +
-    "carry a disabled prop on a button that still looks launchable",
-);
-assert.ok(
-  sealedLaunchUi.indexOf("Preview mode · launching is unavailable") <
-    sealedLaunchUi.indexOf("lg:grid-cols-[minmax(0,1fr)_360px]"),
-  "the unavailable state must render ABOVE the two-column grid — users should not configure " +
-    "the whole page before learning they cannot launch",
-);
+{
+  const previewGate = sealedLaunchUi.indexOf("if (previewMode) {");
+  assert.ok(
+    sealedLaunchCopy.includes("Launch unavailable in preview mode")
+      && /if \(previewMode\) \{\s*return \(\s*<div\s+role="status"/.test(sealedLaunchUi)
+      && previewGate > sealedLaunchUi.indexOf("const footer = (compact: boolean) =>")
+      && previewGate < sealedLaunchUi.indexOf("<ActionButton"),
+    "when the contract is unpublished the shared footer must RENDER the primary as an " +
+      "unavailable status, not reach the launch button with a disabled prop that still looks " +
+      "launchable",
+  );
+}
+{
+  const banner = sealedLaunchUi.indexOf("Preview mode · launching is unavailable");
+  assert.ok(
+    banner > 0 && banner < sealedLaunchUi.indexOf("<ProductPanel"),
+    "the unavailable state must render ABOVE the step panel — users should not configure " +
+      "the whole flow before learning they cannot launch",
+  );
+}
 assert.ok(
   sealedLaunchUi.includes("Developer details"),
   "raw env-var names belong behind a disclosure, not in the default customer experience",
@@ -2406,21 +2474,32 @@ assert.ok(
 );
 
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
-// Deploy was merged into the browse-first flow: the visible tab bar is
-// Explore / My Bots / Creator, and the deploy workbench opens from a
-// "+ Deploy Strategy" CTA (Explore stays lit while deploying). The `deploy`
-// tab state still exists — it's just reached by button, not a nav tab.
+// The marketplace tab strip is gone: /launchpad is the Vaults page. One
+// `launching` boolean swaps the vault list for the launch flow in place, so
+// there is exactly one primary action on screen at any time; All / Mine is a
+// pressed-state filter, not a tab bar.
 assert.ok(
-  /type Tab\s*=\s*"explore" \| "deploy" \| "bots" \| "creator";/.test(launchPage),
-  "the launchpad Tab union must still model explore/deploy/bots/creator states",
+  /const \[launching, setLaunching\] = useState\(false\)/.test(launchPage),
+  "the launch flow must be toggled by one boolean, not a Tab union",
 );
 assert.ok(
-  /\(\["explore", "bots", "creator"\] as Tab\[\]\)\.map/.test(launchPage),
-  "the visible launchpad tab bar must be Explore / My Bots / Creator (Deploy merged into Explore)",
+  !/type Tab\s*=/.test(launchPage) && !launchPage.includes("setTab("),
+  "the Explore / My Bots / Creator tab strip must not return",
 );
 assert.ok(
-  launchPage.includes('Deploy Strategy') && launchPage.includes('setTab("deploy")'),
-  "the deploy workbench must be reachable via the Deploy Strategy CTA",
+  launchPage.includes("Launch a vault") && launchPage.includes("setLaunching(true)"),
+  "the launch flow must be reachable via the Launch a vault CTA",
+);
+assert.ok(
+  launchPage.includes("{!launching && !isEmpty && (")
+    && /\{launching \? \(\s*<SealedLaunch/.test(launchPage)
+    && launchPage.includes("onCancel={() => setLaunching(false)}"),
+  "the header CTA must hide while the launch flow (which carries its own primary) or the " +
+    "empty state (which carries its own) is showing — never two primaries at once",
+);
+assert.ok(
+  launchPage.includes("aria-pressed={active}") && launchPage.includes('setMineOnly(key === "mine")'),
+  "All / Mine must be an aria-pressed filter, not a tab strip",
 );
 assert.ok(
   !launchPage.includes("<Tabs.Trigger") && !launchPage.includes('from "frosted-ui"'),

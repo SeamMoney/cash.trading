@@ -10,9 +10,12 @@ import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet, getPreferredWalletIcon } from "@/lib/wallet-utils";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
 
-const NAV_ITEMS = [
+/** Top-level navigation, in display order. Shared with the mobile portfolio sheet. */
+export const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/", label: "Trade" },
   { href: "/swap", label: "Swap" },
   { href: "/portfolio", label: "Portfolio" },
@@ -27,6 +30,9 @@ const NAV_ITEMS = [
     : []),
   { href: "/points", label: "Points" },
 ];
+
+const FOCUS_RING =
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function CashWordmark() {
   return (
@@ -180,9 +186,7 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
 
   const balanceLabel =
     balance === null
-      ? balanceLoading
-        ? "..."
-        : "—"
+      ? null
       : `$${balance.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
@@ -209,7 +213,7 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
 
   return (
     <>
-      <header className="relative z-50 isolate border-b border-white/[0.06] bg-[var(--background)]">
+      <header className="relative z-50 isolate border-b border-card-border bg-background">
         <div
           className={
             constrained
@@ -222,29 +226,38 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="md:hidden -ml-1.5 rounded-lg p-2 text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+              className={cn(
+                PRESSABLE_CONTROL,
+                FOCUS_RING,
+                "-ml-2.5 flex size-11 items-center justify-center rounded-[var(--radius-sm)] text-zinc-300 hover:bg-white/[0.06] hover:text-white md:hidden",
+              )}
               aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <Link href="/" className="text-white shrink-0" aria-label="cash.trading home">
+            <Link
+              href="/"
+              className={cn(FOCUS_RING, "shrink-0 rounded-[var(--radius-xs)] text-white")}
+              aria-label="cash.trading home"
+            >
               <CashWordmark />
             </Link>
 
             {/* Desktop nav links */}
-            <nav className="hidden md:flex items-center gap-1 ml-4">
+            <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Primary">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`px-3.5 py-1.5 rounded-lg text-[14px] font-medium transition-colors ${
-                      isActive
-                        ? "text-white"
-                        : "text-zinc-500 hover:text-zinc-300"
-                    }`}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      FOCUS_RING,
+                      "rounded-[var(--radius-sm)] px-3.5 py-1.5 text-sm font-medium transition-colors",
+                      isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300",
+                    )}
                   >
                     {item.label}
                   </Link>
@@ -262,24 +275,42 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
               <button
                 type="button"
                 onClick={handleWalletClick}
-                className="hidden items-center gap-1.5 rounded-[10px] px-2 py-1 text-[13px] font-mono tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-200 lg:flex"
+                className={cn(
+                  PRESSABLE_CONTROL,
+                  FOCUS_RING,
+                  "hidden h-10 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 font-mono text-[13px] tabular-nums text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200 lg:flex",
+                )}
                 aria-label="Open account balance and Decibel settings"
               >
-                <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-zinc-600">Bal</span>
-                <span className="font-semibold text-white">{balanceLabel}</span>
+                <span className="font-display text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Bal</span>
+                {balanceLabel ? (
+                  <span className="font-semibold text-white">{balanceLabel}</span>
+                ) : balanceLoading ? (
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-3 w-14 animate-pulse rounded-full bg-white/[0.08] motion-reduce:animate-none"
+                  />
+                ) : (
+                  <span className="font-semibold text-zinc-500">—</span>
+                )}
               </button>
             )}
             {connected ? (
               <button
+                type="button"
                 onClick={handleWalletClick}
-                className="flex items-center gap-2 px-4 py-2 rounded-[10px] text-[14px] font-medium bg-white/[0.06] text-white border border-white/[0.08] hover:bg-white/[0.1] transition-colors"
+                className={cn(
+                  PRESSABLE_CONTROL,
+                  FOCUS_RING,
+                  "flex h-10 items-center gap-2 rounded-[var(--radius-sm)] border border-white/[0.08] bg-white/[0.06] px-4 text-sm font-medium text-white hover:bg-white/[0.1]",
+                )}
               >
                 {walletIcon && (
-                  <img src={walletIcon} alt="" className="w-4 h-4 rounded-[4px]" />
+                  <img src={walletIcon} alt="" className="h-4 w-4 rounded-[var(--radius-xs)]" />
                 )}
                 {shortAddress}
                 {isXChain && (
-                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">
+                  <span className="rounded-[var(--radius-xs)] bg-accent/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold leading-none text-accent">
                     X-CHAIN
                   </span>
                 )}
@@ -289,8 +320,13 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
               // the page's own primary action (e.g. "+ Deploy Strategy" sits
               // ~74px below it in the same corner) — two primaries means none.
               <button
+                type="button"
                 onClick={handleWalletClick}
-                className="rounded-[10px] border border-accent/30 px-5 py-2 text-[14px] font-semibold text-accent transition-colors hover:bg-accent/10"
+                className={cn(
+                  PRESSABLE_CONTROL,
+                  FOCUS_RING,
+                  "h-10 rounded-[var(--radius-sm)] border border-accent/30 px-5 text-sm font-semibold text-accent hover:bg-accent/10",
+                )}
               >
                 Sign In
               </button>
@@ -304,10 +340,13 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
             <button
               type="button"
               aria-label="Close menu"
-              className="fixed inset-0 top-[72px] z-40 bg-black/50 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 top-[72px] z-40 bg-black/50 md:hidden"
               onClick={() => setMobileMenuOpen(false)}
             />
-            <nav className="absolute inset-x-0 top-[72px] z-50 flex flex-col border-b border-white/[0.06] bg-[var(--background)] px-3 py-2 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)] md:hidden">
+            <nav
+              aria-label="Primary"
+              className="absolute inset-x-0 top-[72px] z-50 flex flex-col border-b border-card-border bg-background px-3 py-2 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)] md:hidden"
+            >
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -315,18 +354,21 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`rounded-[10px] px-3 py-3 text-[15px] font-medium transition-colors ${
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      FOCUS_RING,
+                      "flex min-h-11 items-center rounded-[var(--radius-sm)] px-3 text-sm font-medium transition-colors",
                       isActive
                         ? "bg-accent/15 text-accent"
-                        : "text-zinc-300 hover:bg-white/[0.05] hover:text-white"
-                    }`}
+                        : "text-zinc-300 hover:bg-white/[0.05] hover:text-white",
+                    )}
                   >
                     {item.label}
                   </Link>
                 );
               })}
-              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] px-3 pt-3">
-                <span className="text-[15px] font-medium text-zinc-300">Theme</span>
+              <div className="mt-1 flex items-center justify-between border-t border-card-border px-3 pt-2">
+                <span className="text-sm font-medium text-zinc-300">Theme</span>
                 <ThemeToggle />
               </div>
             </nav>

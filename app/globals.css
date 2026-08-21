@@ -1,3 +1,36 @@
+/* =============================================================================
+   TOKEN MAP — what to reach for (docs/UX-GRADING.md § 4)
+
+   radius   panel / card / modal / sheet   rounded-[var(--radius)]      16px
+            control / button / input       rounded-[var(--radius-sm)]   10px
+            chip / badge / row highlight   rounded-[var(--radius-xs)]    6px
+            pill / dot / avatar            rounded-full
+            The named Tailwind scale snaps to the same three values (see
+            @theme inline below): rounded / -xs → 6, -sm/-md/-lg → 10,
+            -xl/-2xl/-3xl → 16. Prefer the var() form in new code.
+
+   colour   gain / long / up / success     text-success   bg-success   (#39ff14)
+            loss / short / down / error    text-danger    bg-danger    (#f21a1a)
+            `destructive` is an alias of `danger`; red-300/400/500 and
+            green/emerald-300..600 resolve to the same two tokens inside
+            .cash-trade-theme, so there is exactly ONE red and ONE green.
+            Always pair colour with a sign or arrow.
+            brand / primary action         bg-accent  (= --primary, #39ff14)
+            warning                        text-warning
+            borders                        border-card-border, hover border-border-strong
+
+   type     Inter for words (body default), JetBrains Mono opt-in for numbers,
+            addresses, hashes, code. Floor 11px. Uppercase labels are 11px.
+
+   focus    every button / a / [role=button] / input gets a 2px --ring outline
+            on :focus-visible by default; components that draw their own
+            `focus-visible:ring-*` are excluded automatically.
+
+   motion   prefers-reduced-motion collapses every CSS animation/transition
+            to ~0ms globally (spinners excepted). Use PRESSABLE_CONTROL from
+            lib/surface.ts for press feedback.
+   ============================================================================= */
+
 /* frosted-ui ships unlayered CSS that would otherwise beat every Tailwind
    utility (utilities live in @layer utilities). Declaring the layer order up
    front and importing frosted into its own layer keeps frosted components
@@ -56,9 +89,11 @@
   --accent: oklch(0.18 0.01 285);
   --accent-foreground: oklch(0.95 0 0);
 
-  /* Destructive */
-  --destructive: oklch(0.6 0.25 25);             /* Red */
-  --destructive-foreground: oklch(1 0 0);
+  /* Loss / error — the one red. `destructive` is the shadcn alias. */
+  --danger: oklch(0.6 0.25 25);
+  --danger-foreground: oklch(1 0 0);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
 
   /* Utility */
   --border: oklch(0.25 0.005 285);
@@ -68,7 +103,7 @@
   /* ---------------------------------------------------------------------------
      SEMANTIC COLORS
      --------------------------------------------------------------------------- */
-  --success: oklch(0.7 0.2 145);                 /* Green */
+  --success: oklch(0.7 0.2 145);                 /* Gain — the one green */
   --success-foreground: oklch(0 0 0);
   --warning: oklch(0.8 0.15 85);                 /* Orange */
   --warning-foreground: oklch(0 0 0);
@@ -98,13 +133,11 @@
   /* ---------------------------------------------------------------------------
      RADIUS TOKENS
      --------------------------------------------------------------------------- */
-  --radius: 0.75rem;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
+  /* Canonical set, identical inside and outside .cash-trade-theme so pages
+     that skip the wrapper (/explainer, wallet dialog) share one dialect. */
+  --radius: 16px;       /* panel / card / modal / sheet */
+  --radius-sm: 10px;    /* control / button / input */
+  --radius-xs: 6px;     /* chip / badge */
   --radius-full: 9999px;
 
   /* ---------------------------------------------------------------------------
@@ -146,8 +179,8 @@
   --shadow-md: 0 4px 6px oklch(0 0 0 / 0.3);
   --shadow-lg: 0 10px 15px oklch(0 0 0 / 0.4);
   --shadow-xl: 0 20px 25px oklch(0 0 0 / 0.5);
-  --shadow-glow: 0 0 20px oklch(0.95 0.2 102 / 0.3);
-  --shadow-glow-strong: 0 0 40px oklch(0.95 0.2 102 / 0.5);
+  --shadow-glow: 0 0 20px oklch(0.9 0.29 142 / 0.3);
+  --shadow-glow-strong: 0 0 40px oklch(0.9 0.29 142 / 0.5);
 
   /* ---------------------------------------------------------------------------
      ANIMATION
@@ -165,12 +198,12 @@
      --------------------------------------------------------------------------- */
   --sidebar: oklch(0.05 0.005 285);
   --sidebar-foreground: oklch(1 0 0);
-  --sidebar-primary: oklch(0.95 0.2 102);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: oklch(0 0 0);
   --sidebar-accent: oklch(0.15 0.01 285);
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.2 0.005 285);
-  --sidebar-ring: oklch(0.95 0.2 102);
+  --sidebar-ring: var(--ring);
 }
 
 /* Dark mode - same as root for Decibel's dark-first design */
@@ -181,7 +214,7 @@
   --card-foreground: oklch(1 0 0);
   --popover: oklch(0.1 0.005 285);
   --popover-foreground: oklch(1 0 0);
-  --primary: oklch(0.95 0.2 102);
+  --primary: oklch(0.9 0.29 142);                /* brand green, never yellow */
   --primary-foreground: oklch(0 0 0);
   --secondary: oklch(0.15 0.005 285);
   --secondary-foreground: oklch(0.9 0 0);
@@ -189,11 +222,11 @@
   --muted-foreground: oklch(0.6 0 0);
   --accent: oklch(0.18 0.01 285);
   --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.6 0.25 25);
-  --destructive-foreground: oklch(1 0 0);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
   --border: oklch(0.25 0.005 285);
   --input: oklch(0.12 0.005 285);
-  --ring: oklch(0.95 0.2 102);
+  --ring: oklch(0.9 0.29 142);
 }
 
 /* =============================================================================
@@ -233,6 +266,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
   --color-border: var(--border);
   --color-border-accent: var(--border-accent);
   --color-border-strong: var(--border-strong);
@@ -269,13 +303,18 @@
   --color-chart-ring-background: var(--chart-ring-background);
   --color-chart-label: var(--chart-label);
 
-  /* Radius */
+  /* Radius — the named scale snaps to the three canonical tokens so
+     `rounded-lg` can no longer land 2px off a control and `rounded-2xl` 4px
+     off a panel. Bare `rounded` (Tailwind's 4px) becomes the chip radius. */
+  --radius: var(--radius-xs);
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
-  --radius-3xl: var(--radius-3xl);
+  --radius-md: var(--radius-sm);
+  --radius-lg: var(--radius-sm);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
   --radius-full: var(--radius-full);
 
   /* Sidebar */
@@ -338,6 +377,14 @@
     font-family: var(--font-mono);
   }
 
+  /* Default keyboard focus ring (D6). `:where()` keeps specificity at zero so
+     any utility (`outline-none`, `outline-hidden`) still wins, and elements
+     that draw their own Tailwind ring are excluded so the ring never doubles. */
+  :where(a, button, [role="button"], input, select, textarea, summary):where(:not([class*="focus-visible:ring"])):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
   /* Tabular numbers for data */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
@@ -390,6 +437,31 @@
     will-change: transform;
     transform: translateZ(0);
     backface-visibility: hidden;
+  }
+}
+
+/* Words are Inter; mono is opt-in per element. <body> in app/layout.tsx still
+   carries a legacy `font-mono` utility, which would otherwise set every page
+   outside .cash-trade-theme (/explainer, the dashboard header row) in
+   JetBrains Mono. Unlayered so it outranks the utility. Delete this rule when
+   that class is removed from the body. */
+body.font-mono {
+  font-family: var(--font-sans);
+}
+
+/* Reduced motion is global, not opt-in (D8). Every CSS animation and
+   transition collapses to ~0ms; in-flight spinners are the one essential
+   loop and keep turning. Unlayered + !important so it beats utilities and
+   inline `animation:` declarations alike. */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin),
+  *:not(.animate-spin)::before,
+  *:not(.animate-spin)::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -483,6 +555,9 @@
   --muted-foreground: #999999;
   --success: #39ff14;
   --danger: #f21a1a;
+  --danger-foreground: #ffffff;
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
   --warning: #f5a623;
   --border: rgba(255, 255, 255, 0.08);
   --ring: #39ff14;
@@ -527,6 +602,11 @@
   --color-emerald-300: #39ff14;
   --color-emerald-400: #39ff14;
   --color-emerald-500: #39ff14;
+  /* Same for loss: text-red-400 (93), red-500 (15), red-300 (16) all become
+     the one --danger red instead of three Tailwind reds next to #f21a1a. */
+  --color-red-300: var(--danger);
+  --color-red-400: var(--danger);
+  --color-red-500: var(--danger);
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
@@ -882,8 +962,10 @@
   --muted-foreground: var(--lt-ink-3);
   --accent: var(--lt-surface-3);  /* at :root --accent is a surface, not brand */
   --accent-foreground: var(--lt-ink);
-  --destructive: var(--lt-danger);
-  --destructive-foreground: #ffffff;
+  --danger: var(--lt-danger);
+  --danger-foreground: #ffffff;
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
   --border: #e4e4e7;
   --input: var(--lt-surface-2);
   --ring: var(--lt-green-ink);

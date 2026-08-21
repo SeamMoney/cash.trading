@@ -119,19 +119,19 @@ export function ResponsiveModalSheet({
         showCloseButton={false}
         overlayClassName="bg-black/85"
         className={cn(
-          "cash-trade-theme !flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] !flex-col !gap-0 overflow-hidden rounded-[12px] border-white/[0.08] bg-[#101010] !p-0 shadow-2xl shadow-black/70 outline-none",
+          "cash-trade-theme !flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] !flex-col !gap-0 overflow-hidden rounded-[var(--radius)] border-card-border bg-background-secondary !p-0 shadow-2xl shadow-black/70 outline-none",
           desktopMaxWidthClassName,
           desktopClassName,
         )}
       >
-        <header className="flex shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
+        <header className="flex shrink-0 items-center justify-between border-b border-card-border bg-card px-5 py-3 font-mono text-[13px] font-semibold text-muted-foreground">
           <div className="flex min-w-0 items-center gap-2">
             <span className="size-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-            <DialogTitle className="truncate font-mono text-[13px] font-semibold uppercase leading-none text-[#888]">
+            <DialogTitle className="truncate font-mono text-[13px] font-semibold uppercase leading-none text-muted-foreground">
               {title}
             </DialogTitle>
             {badge ? (
-              <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-accent">
+              <span className="shrink-0 rounded-[var(--radius-xs)] bg-accent/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase leading-4 text-accent">
                 {badge}
               </span>
             ) : null}
@@ -147,7 +147,7 @@ export function ResponsiveModalSheet({
               aria-label={`Close ${title}`}
               className={cn(
                 PRESSABLE_CONTROL,
-                "rounded-[var(--radius-sm)] p-2 text-[#666] outline-none transition-[transform,opacity] hover:bg-white/[0.05] hover:text-white focus-visible:ring-2 focus-visible:ring-ring",
+                "rounded-[var(--radius-sm)] p-2 text-muted-foreground outline-none transition-[transform,opacity] hover:bg-white/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
               )}
             >
               <X className="size-3.5" aria-hidden="true" />

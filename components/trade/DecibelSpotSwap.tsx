@@ -552,7 +552,7 @@ function DetailRow({ label, value, tone }: {
   tone?: "warning" | "positive";
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-[12px] leading-5">
+    <div className="flex items-start justify-between gap-4 text-[13px] leading-5">
       <span className="text-muted-foreground">{label}</span>
       <span className={cn(
         "text-right font-mono tabular-nums text-foreground-secondary",
@@ -571,17 +571,17 @@ function EmptyFillState({ onNewSwap }: { onNewSwap: () => void }) {
       <span className="grid size-16 place-items-center rounded-full border border-card-border bg-background-elevated text-foreground-secondary">
         <Info aria-hidden="true" className="size-7" strokeWidth={2.5} />
       </span>
-      <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none">
+      <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-2xl font-semibold text-foreground outline-none">
         No fill this time
       </h3>
-      <p className="mt-2 max-w-[330px] text-pretty text-[12px] leading-5 text-foreground-secondary">
+      <p className="mt-2 max-w-[330px] text-pretty text-[13px] leading-5 text-foreground-secondary">
         No liquidity was available inside your protected price. The unfilled amount stayed in your wallet.
       </p>
       <button
         type="button"
         onClick={onNewSwap}
         className={cn(
-          "mt-6 min-h-12 w-full rounded-[var(--radius-sm)] bg-accent px-4 text-[14px] font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-6 min-h-12 w-full rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
           PRESSABLE_CONTROL,
         )}
       >
@@ -1777,13 +1777,13 @@ export function DecibelSpotSwap({
     <section aria-label={`${market.marketName} spot swap`} className="w-full rounded-[var(--radius)] bg-background-secondary p-2">
       <div className="flex h-14 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <h2 className="font-display text-[17px] font-semibold text-foreground">Swap</h2>
+          <h2 className="font-display text-base font-semibold text-foreground">Swap</h2>
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className={cn(
-                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[10px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
+                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[11px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
@@ -1792,7 +1792,7 @@ export function DecibelSpotSwap({
               </button>
             </PopoverTrigger>
             <PopoverContent aria-label="Maximum price movement" align="start" className="w-[260px] p-3">
-              <p className="text-[12px] font-semibold text-foreground">Maximum price movement</p>
+              <p className="text-[13px] font-semibold text-foreground">Maximum price movement</p>
               <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">
                 The on-chain limit price stays within 0.5% of the reviewed live depth. Any unfilled amount returns to your wallet.
               </p>
@@ -1919,7 +1919,7 @@ export function DecibelSpotSwap({
                 aria-invalid={Boolean(inputIssue) || undefined}
                 aria-describedby={inputIssue ? inputIssueId : undefined}
                 aria-errormessage={inputIssue ? inputIssueId : undefined}
-                className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-[36px]"
+                className="min-w-0 flex-1 bg-transparent font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-3xl"
               />
               {inputIssue ? <span id={inputIssueId} className="sr-only">{inputIssue}</span> : null}
               <SwapAssetButton
@@ -1932,7 +1932,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "pay"}
               />
             </div>
-            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] leading-4">
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] leading-4 sm:min-h-8">
               <span className="min-w-0 truncate text-muted-foreground">
                 {direction === "sell" && base === "APT" && fromBalance ? "Max reserves 0.01 APT for gas" : ""}
               </span>
@@ -1946,7 +1946,7 @@ export function DecibelSpotSwap({
                       aria-label={`Use ${value.toString()}% of ${fromSymbol} balance`}
                       disabled={interactionLocked || balanceStatus !== "ready"}
                       className={cn(
-                        "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                        "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
                         PRESSABLE_CONTROL,
                       )}
                     >
@@ -1959,7 +1959,7 @@ export function DecibelSpotSwap({
                     aria-label={`Use maximum ${fromSymbol} balance`}
                     disabled={interactionLocked || balanceStatus !== "ready"}
                     className={cn(
-                      "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                      "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
                       PRESSABLE_CONTROL,
                     )}
                   >
@@ -1976,7 +1976,7 @@ export function DecibelSpotSwap({
               onClick={reverse}
               disabled={interactionLocked}
               className={cn(
-                "grid size-11 place-items-center rounded-[12px] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                "grid size-11 place-items-center rounded-[var(--radius-sm)] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
                 PRESSABLE_CONTROL,
               )}
               aria-label={`Switch to ${direction === "buy" ? `selling ${base}` : `buying ${base}`}`}
@@ -2004,12 +2004,12 @@ export function DecibelSpotSwap({
                 </span>
               ) : null}
             </div>
-            <div className="flex min-h-[76px] flex-1 items-center gap-3">
-              <div className="min-w-0 flex-1 [container-type:inline-size]">
+            <div className="flex min-h-[68px] flex-1 items-center gap-3">
+              <div className="min-w-0 flex-1">
                 <SwapQuoteAmount
                   announcement={quote ? `Estimated receive ${outputDisplay} ${toSymbol}` : ""}
                   display={outputDisplay}
-                  className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(22px,15cqw,36px)] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground"
+                  className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground min-[380px]:text-3xl"
                 />
               </div>
               <SwapAssetButton
@@ -2022,7 +2022,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "receive"}
               />
             </div>
-            <div className="flex min-h-11 items-center text-[11px] leading-4 text-muted-foreground">
+            <div className="flex min-h-11 items-center text-[11px] leading-4 text-muted-foreground sm:min-h-8">
               <span className="truncate">
                 {quote ? `Est. fee ${(Number(quote.maxSpotTakerFeeRateRaw) / 10_000).toFixed(3)}% · Unfilled amount returns` : ""}
               </span>
@@ -2043,7 +2043,7 @@ export function DecibelSpotSwap({
                 ? <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
                 : <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />}
               <div className="min-w-0">
-                <p className="text-pretty text-[12px] font-semibold leading-4">{notice.title}</p>
+                <p className="text-pretty text-[13px] font-semibold leading-4">{notice.title}</p>
                 {notice.body ? <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">{notice.body}</p> : null}
                 {notice.action === "acknowledge" ? (
                   <button
@@ -2052,7 +2052,7 @@ export function DecibelSpotSwap({
                     disabled={ambiguityChecking}
                     aria-busy={ambiguityChecking}
                     className={cn(
-                      "mt-2 min-h-11 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[12px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
+                      "mt-2 min-h-11 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[13px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
                       PRESSABLE_CONTROL,
                     )}
                   >
@@ -2069,7 +2069,7 @@ export function DecibelSpotSwap({
             disabled={cta.disabled || interactionLocked}
             aria-busy={snapshotStatus === "loading" || submitStage !== "idle"}
             className={cn(
-              "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-[17px] font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
+              "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-lg font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
               PRESSABLE_CONTROL,
             )}
           >
@@ -2081,7 +2081,7 @@ export function DecibelSpotSwap({
             type="button"
             onClick={() => setDetailsOpen((open) => !open)}
             className={cn(
-              "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[12px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
+              "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
               PRESSABLE_CONTROL,
             )}
             aria-expanded={detailsOpen}
@@ -2108,7 +2108,7 @@ export function DecibelSpotSwap({
                 <DetailRow label="Bid / ask spread" value={Number.isFinite(spread) ? percent(spread) : "One-sided book"} tone={highRisk ? "warning" : undefined} />
                 <DetailRow label="Max price movement" value={`${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`} />
                 <DetailRow label="Order behavior" value="Immediate or cancel" />
-                <div className="border-t border-card-border pt-2 text-pretty text-[10px] leading-4 text-muted-foreground">
+                <div className="border-t border-card-border pt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
                   Decibel charges its current spot taker fee in the asset you receive. This integration does not add a builder fee. APT is required for network gas.
                 </div>
               </motion.div>

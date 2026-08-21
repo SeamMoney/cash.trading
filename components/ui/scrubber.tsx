@@ -240,7 +240,7 @@ const Scrubber = ({
         >
           {value.toFixed(decimals)}
           {unit && (
-            <span className="text-zinc-600 font-normal ml-0.5 text-[10px]">
+            <span className="text-zinc-600 font-normal ml-0.5 text-[11px]">
               {unit}
             </span>
           )}

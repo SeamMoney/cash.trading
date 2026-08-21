@@ -13,6 +13,8 @@ import type {
 import { ChevronDown } from "lucide-react";
 
 import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
+import { ProductSegmented } from "@/components/ui/product-surface";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 import {
   EVM_SOURCE_CHAIN_STORAGE_KEY,
   storeEvmSourceChain,
@@ -32,6 +34,13 @@ interface WalletSelectorProps {
 
 const CHAIN_TABS: WalletChain[] = ["Aptos", "Solana", "EVM"];
 const EVM_SOURCE_CHAINS: EvmCctpSourceChain[] = ["Arbitrum", "Base", "Ethereum"];
+const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const SEGMENT = cn(
+  PRESSABLE_CONTROL,
+  FOCUS_RING,
+  "min-h-9 rounded-[var(--radius-xs)] px-2 text-xs font-semibold sm:min-h-8",
+);
+
 const POPULAR_WALLETS: Record<WalletChain, string[]> = {
   Aptos: ["Petra", "OKX Wallet", "Backpack", "Phantom"],
   Solana: ["Phantom", "Backpack", "OKX Wallet"],
@@ -154,14 +163,18 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
     const needsInstall = isInstallRequired(wallet);
     const displayName = baseWalletName(wallet.name);
     const walletIcon = getPreferredWalletIcon(wallet.name, wallet.icon);
-    const rowClass = "flex min-h-12 w-full items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.035] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.07]";
+    const rowClass = cn(
+      PRESSABLE_CONTROL,
+      FOCUS_RING,
+      "flex min-h-12 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2.5 text-left hover:border-border-strong hover:bg-white/[0.07]",
+    );
     const identity = (
       <span className="flex min-w-0 items-center gap-3">
         {walletIcon ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={walletIcon} alt="" className="size-7 shrink-0 rounded-md object-contain" />
+          <img src={walletIcon} alt="" className="size-7 shrink-0 rounded-[var(--radius-xs)] object-contain" />
         ) : (
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-xs font-bold text-zinc-400">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-white/[0.06] text-xs font-bold text-zinc-400">
             {displayName.charAt(0)}
           </span>
         )}
@@ -201,20 +214,24 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
   };
 
   const selectorContent = (
-    <div className="space-y-4 bg-[#101010] py-3 font-mono sm:py-0">
+    <div className="space-y-4 py-3 sm:py-0">
       {googleWallet ? (
         <button
           type="button"
           onClick={() => void handleConnect(googleWallet.name)}
           disabled={connecting !== null}
-          className="flex min-h-12 w-full items-center justify-between rounded-lg bg-accent px-4 py-3 text-left text-[13px] font-bold text-black transition-[filter] hover:brightness-95 disabled:cursor-wait disabled:opacity-50"
+          className={cn(
+            PRESSABLE_CONTROL,
+            FOCUS_RING,
+            "flex min-h-12 w-full items-center justify-between rounded-[var(--radius-sm)] bg-accent px-4 py-3 text-left text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:cursor-wait disabled:opacity-50",
+          )}
         >
           <span>Continue with Google</span>
           <span>{connecting === googleWallet.name ? "Connecting…" : "Continue"}</span>
         </button>
       ) : null}
 
-      <div className="grid grid-cols-3 gap-1 rounded-lg bg-white/[0.035] p-1" role="tablist" aria-label="Wallet network">
+      <ProductSegmented className="grid grid-cols-3" role="tablist" aria-label="Wallet network">
         {CHAIN_TABS.map((chain) => (
           <button
             key={chain}
@@ -226,21 +243,21 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
               setShowMore(false);
             }}
             className={cn(
-              "rounded-md px-3 py-2 text-[12px] font-semibold transition-colors",
+              SEGMENT,
               activeChain === chain
-                ? "bg-white/[0.1] text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300",
+                ? "bg-card text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {chain}
           </button>
         ))}
-      </div>
+      </ProductSegmented>
 
       {activeChain === "EVM" ? (
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">USDC source</p>
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/[0.05] p-1">
+          <p id="wallet-selector-usdc-source" className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">USDC source</p>
+          <ProductSegmented className="grid grid-cols-3" role="group" aria-labelledby="wallet-selector-usdc-source">
             {EVM_SOURCE_CHAINS.map((chain) => (
               <button
                 key={chain}
@@ -248,16 +265,17 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
                 aria-pressed={evmSourceChain === chain}
                 onClick={() => selectEvmSourceChain(chain)}
                 className={cn(
-                  "rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors",
+                  SEGMENT,
+                  "text-[11px]",
                   evmSourceChain === chain
-                    ? "bg-white/[0.1] text-zinc-100"
-                    : "text-zinc-600 hover:text-zinc-300",
+                    ? "bg-card text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {chain}
               </button>
             ))}
-          </div>
+          </ProductSegmented>
         </div>
       ) : null}
 
@@ -265,7 +283,7 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
         {rows.map(walletRow)}
         {showMore && appleWallet ? walletRow(appleWallet) : null}
         {rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center text-[12px] text-zinc-600">
+          <div className="rounded-[var(--radius-sm)] border border-dashed border-card-border px-4 py-8 text-center text-xs text-muted-foreground">
             No {activeChain} wallets detected.
           </div>
         ) : null}
@@ -276,14 +294,14 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
           type="button"
           onClick={() => setShowMore((value) => !value)}
           aria-expanded={showMore}
-          className="flex w-full items-center justify-center gap-2 py-2 text-[11px] font-semibold text-zinc-500 transition-colors hover:text-zinc-300"
+          className={cn(FOCUS_RING, "flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] text-[11px] font-semibold text-zinc-500 transition-colors hover:text-zinc-300")}
         >
           {showMore ? "Show fewer wallets" : `Show more wallets${hiddenWallets.length ? ` (${hiddenWallets.length + (appleWallet ? 1 : 0)})` : ""}`}
           <ChevronDown className={cn("size-3 transition-transform", showMore && "rotate-180")} aria-hidden="true" />
         </button>
       ) : null}
 
-      <p className="px-2 text-center text-[11px] leading-relaxed text-zinc-600">
+      <p className="px-2 text-center text-[11px] leading-4 text-muted-foreground">
         By connecting, you agree to cash.trading&apos;s Terms of Service and Privacy Policy.
       </p>
     </div>

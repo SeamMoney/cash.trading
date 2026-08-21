@@ -10,6 +10,8 @@ import {
   waitForTransactionConfirmation,
 } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { PRODUCT_CONTROL_CLASS, ProductSegmented } from "@/components/ui/product-surface";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { getChainFromWallet } from "@/lib/wallet-utils";
 import { walletNetworkMismatchMessage } from "@/lib/wallet-network";
@@ -43,7 +45,6 @@ import {
   getInjectedSolanaProvider,
   signAndSendWithProvider,
 } from "@/lib/solana-cctp";
-import { formatWalletConnectionName } from "@/lib/wallet-utils";
 
 interface AccountOverview {
   equity: number;
@@ -140,6 +141,28 @@ function safeDeriveEvmAptosAddress(evmAddress: string, domain: string) {
 
 const BRIDGE_STEPS = ["Burn", "Attest", "Claim", "Deposit"] as const;
 
+// House recipes (docs/UX-GRADING.md § 4.6): one shape for every control in the
+// sheet, three fills — primary accent, outline accent, neutral.
+const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const LABEL = "text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
+const META_ROW = "flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[11px] tabular-nums text-muted-foreground";
+const BTN = cn(
+  PRESSABLE_CONTROL,
+  FOCUS_RING,
+  "inline-flex min-h-10 items-center justify-center rounded-[var(--radius-sm)] px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50",
+);
+const BTN_NEUTRAL = cn(BTN, "border border-white/[0.08] bg-white/[0.06] text-foreground hover:bg-white/[0.1]");
+const BTN_SECONDARY = cn(BTN, "border border-accent/30 text-accent hover:bg-accent/10");
+const BTN_MUTED = "bg-white/[0.06] text-muted-foreground disabled:opacity-100";
+const INPUT_SHELL = cn(PRODUCT_CONTROL_CLASS, "flex min-h-10 min-w-0 items-center gap-2 px-3 focus-within:border-border-strong");
+const INPUT = "min-w-0 flex-1 bg-transparent font-mono font-semibold text-foreground outline-none placeholder:text-zinc-600";
+const SEGMENT = cn(
+  PRESSABLE_CONTROL,
+  FOCUS_RING,
+  "min-h-9 rounded-[var(--radius-xs)] px-2 text-[11px] font-semibold sm:min-h-7",
+);
+const SKELETON = "inline-block h-4 w-16 animate-pulse rounded-full bg-white/[0.08] align-middle motion-reduce:animate-none";
+
 /**
  * Presentational 4-step CCTP progress rail (burn → attestation → claim → deposit),
  * derived entirely from existing bridge state — no flow logic here.
@@ -168,30 +191,35 @@ function BridgeStepsRail({
     : 2;
 
   return (
-    <div className="flex items-center gap-1.5 pb-1">
+    <ol className="flex items-center gap-1.5 pb-1" aria-label="Bridge progress">
       {BRIDGE_STEPS.map((label, i) => {
         const done = i < activeIndex;
         const active = i === activeIndex;
         return (
-          <div key={label} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <li
+            key={label}
+            className="flex min-w-0 flex-1 items-center gap-1.5"
+            aria-current={active ? "step" : undefined}
+          >
             <span
+              aria-hidden="true"
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold",
+                "flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold",
                 done && "bg-accent/20 text-accent",
-                active && !errored && "bg-accent text-black",
-                active && errored && "bg-red-500/80 text-black",
-                !done && !active && "bg-white/[0.06] text-zinc-600",
+                active && !errored && "bg-accent text-accent-foreground",
+                active && errored && "bg-danger text-white",
+                !done && !active && "bg-white/[0.06] text-zinc-500",
               )}
             >
               {done ? "✓" : i + 1}
             </span>
             <span
               className={cn(
-                "truncate font-mono text-[9px] uppercase tracking-wide",
+                "truncate font-mono text-[11px] uppercase tracking-wide",
                 done && "text-accent/80",
-                active && !errored && "text-zinc-100",
-                active && errored && "text-red-300",
-                !done && !active && "text-zinc-600",
+                active && !errored && "text-foreground",
+                active && errored && "text-danger",
+                !done && !active && "text-zinc-500",
               )}
             >
               {label}
@@ -199,10 +227,10 @@ function BridgeStepsRail({
             {i < BRIDGE_STEPS.length - 1 && (
               <span className={cn("h-px flex-1", i < activeIndex ? "bg-accent/30" : "bg-white/[0.07]")} />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -366,26 +394,25 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       : "Setup required";
 
   const accountStateTone = hasDecibelAccount
-    ? "bg-emerald-500/10 text-emerald-300"
+    ? "bg-success/10 text-success"
     : isLoadingSubaccounts
-      ? "bg-sky-500/10 text-sky-300"
+      ? "bg-white/[0.04] text-zinc-400"
       : lookupIncomplete
-        ? "bg-yellow-500/10 text-yellow-300"
+        ? "bg-warning/10 text-warning"
     : connected
       ? "bg-accent/10 text-accent"
       : "bg-white/[0.04] text-zinc-500";
 
+  // Only when there is something to do: "Ready" and "Checking" are already
+  // said by the badge, so a sentence under them was noise.
   const accountHelpText = !connected
     ? "Connect a wallet to create a Decibel trading account."
-    : isLoadingSubaccounts
-      ? "Checking Decibel account state on-chain and through the Decibel API."
-    : hasDecibelAccount
-      ? "USDC collateral, orders, and positions route through this account."
     : lookupIncomplete
       ? "Could not verify this wallet's Decibel trading accounts. Refresh or reconnect the wallet."
       : isMainnet
         ? "Mainnet account creation requires a Decibel referrer or allowlist entry. Refresh if this wallet already has an account."
       : "Create one Decibel trading account before depositing collateral or placing orders.";
+  const showAccountHelp = !hasDecibelAccount && !isLoadingSubaccounts;
 
   const canCreateAccount =
     connected &&
@@ -1350,25 +1377,23 @@ export function DecibelAccountManager({ className }: { className?: string }) {
     walletNetwork?.name,
   ]);
 
+  const statsLoading = overviewLoading && !overview;
+  const depositCtaLabel = hasDepositAmount
+    ? `Deposit ${depositValue.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC`
+    : "Deposit USDC";
+
   return (
-    <section
-      className={cn(
-        "space-y-4",
-        className
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
+    <section className={cn("space-y-4", className)}>
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-display font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Decibel Trading Account
-          </p>
-          <p className="mt-1 truncate text-[14px] font-medium text-white">
+          <p className={LABEL}>Trading account</p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
             {selectedSubaccountLabel}
           </p>
         </div>
         <span
           className={cn(
-            "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
+            "shrink-0 rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px]",
             accountStateTone
           )}
         >
@@ -1376,12 +1401,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         </span>
       </div>
 
-      <p className="text-[12px] leading-relaxed text-zinc-500 text-pretty">
-        {accountHelpText}
-      </p>
+      {showAccountHelp && (
+        <p className="text-xs leading-4 text-muted-foreground text-pretty">
+          {accountHelpText}
+        </p>
+      )}
 
       {connected && hasDecibelAccount && (
-        <div className="grid grid-cols-2 gap-x-5 gap-y-3 tabular-nums">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           {[
             { label: "Equity", value: overview?.equity, signed: false },
             { label: "Available USDC", value: overview?.crossWithdrawable, signed: false },
@@ -1392,19 +1419,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               signed: true,
               tone:
                 overview?.unrealizedPnl == null
-                  ? "text-white"
+                  ? "text-foreground"
                   : overview.unrealizedPnl >= 0
-                    ? "text-accent"
+                    ? "text-success"
                     : "text-danger",
             },
           ].map((item) => (
             <div key={item.label} className="min-w-0">
-              <p className="text-[10px] font-display font-semibold uppercase text-zinc-600">
-                {item.label}
-              </p>
-              <p className={cn("mt-1 truncate text-[14px] font-semibold text-white", item.tone)}>
-                {overviewLoading ? (
-                  "..."
+              <p className={LABEL}>{item.label}</p>
+              <p className={cn("mt-0.5 truncate font-mono text-sm font-semibold tabular-nums text-foreground", item.tone)}>
+                {statsLoading ? (
+                  <span aria-hidden="true" className={SKELETON} />
                 ) : (
                   <NumberTicker
                     value={item.value}
@@ -1422,7 +1447,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             </div>
           ))}
           {overviewError && (
-            <p className="col-span-2 text-[11px] text-yellow-300">
+            <p role="status" className="col-span-2 text-[11px] text-warning">
               Balance unavailable. Refresh account.
             </p>
           )}
@@ -1431,14 +1456,19 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
       {connected && hasDecibelAccount ? (
         <div className="space-y-1.5">
-          <label className="text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-zinc-600">
+          <label htmlFor="decibel-active-account" className={LABEL}>
             Active account
           </label>
           <select
+            id="decibel-active-account"
             value={selectedSubaccount}
             onChange={(e) => selectSubaccount(e.target.value)}
             disabled={status === "submitting"}
-            className="w-full rounded-[10px] bg-white/[0.04] px-3 py-2 text-[12px] font-mono text-zinc-300 outline-none focus:bg-white/[0.07]"
+            className={cn(
+              PRODUCT_CONTROL_CLASS,
+              FOCUS_RING,
+              "h-10 w-full px-3 font-mono text-xs text-foreground disabled:opacity-50",
+            )}
           >
             {subaccounts.map((s) => (
               <option key={s.address} value={s.address}>
@@ -1449,12 +1479,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           </select>
         </div>
       ) : canCreateAccount ? (
+        // Without an account nothing else here is actionable, so this is the
+        // one filled button on screen.
         <button
           type="button"
           onClick={handleCreateSubaccount}
-          className="w-full rounded-[10px] bg-accent/15 px-3 py-2.5 text-[12px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className={cn(BTN, "h-11 w-full bg-accent text-sm text-accent-foreground hover:brightness-95")}
         >
-          Create Trading Account
+          Create trading account
         </button>
       ) : null}
 
@@ -1463,7 +1495,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           type="button"
           onClick={handleRefreshAccount}
           disabled={!connected || status === "submitting" || isLoadingSubaccounts}
-          className="rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+          className={BTN_NEUTRAL}
         >
           {isLoadingSubaccounts ? "Checking..." : "Refresh account"}
         </button>
@@ -1472,16 +1504,16 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             type="button"
             onClick={handleMintTestnetUsdc}
             disabled={!connected || status === "submitting"}
-            className="rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-display font-semibold text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className={BTN_NEUTRAL}
           >
             Mint testnet USDC
           </button>
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <div className="flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
-          <span className={walletUsdcError ? "text-yellow-300/80" : ""}>
+      <div className="space-y-2">
+        <div className={META_ROW}>
+          <span className={walletUsdcError ? "text-warning" : ""}>
             Wallet{" "}
             {walletUsdcLoading
               ? "..."
@@ -1499,7 +1531,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               }
             }}
             disabled={walletUsdcBalance === null || walletUsdcBalance <= 0 || status === "submitting"}
-            className="text-accent/80 transition-colors hover:text-accent disabled:cursor-not-allowed disabled:text-zinc-700"
+            className={cn(
+              PRESSABLE_CONTROL,
+              FOCUS_RING,
+              "-my-2 -mr-2 min-h-8 rounded-[var(--radius-xs)] px-2 font-semibold text-accent/80 hover:text-accent disabled:cursor-not-allowed disabled:text-zinc-600",
+            )}
           >
             Max
           </button>
@@ -1507,39 +1543,41 @@ export function DecibelAccountManager({ className }: { className?: string }) {
         {/* Funding is the whole job of this sheet, so the deposit CTA is a
             full-width accent button under the amount rather than a small grey
             chip beside it. */}
-        <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-3">
+        <label className={cn(INPUT_SHELL, "min-h-12")}>
           <TokenLogo token="USDC" size={20} />
           <input
             type="text"
             inputMode="decimal"
+            aria-label="Deposit amount in USDC"
             value={depositAmount}
             onChange={(e) => {
               const next = e.target.value.replace(/[^0-9.]/g, "");
               if (next.split(".").length <= 2) setDepositAmount(next);
             }}
-            className="min-w-0 flex-1 bg-transparent text-[16px] font-mono font-semibold text-white outline-none placeholder:text-zinc-700"
+            className={cn(INPUT, "text-base")}
             placeholder="0.00"
           />
-          <span className="text-[12px] font-mono text-zinc-500">USDC</span>
+          <span className="font-mono text-xs text-muted-foreground">USDC</span>
         </label>
         <button
           type="button"
           onClick={handleDeposit}
           disabled={!canDeposit}
           className={cn(
-            "mt-2 w-full rounded-md px-3 py-3 text-[14px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+            BTN,
+            "h-11 w-full text-sm",
             canDeposit
-              ? "bg-accent text-black hover:brightness-95"
-              : "bg-white/[0.03] text-zinc-600"
+              ? "bg-accent text-accent-foreground hover:brightness-95"
+              : BTN_MUTED
           )}
         >
-          Deposit to Decibel
+          {depositCtaLabel}
         </button>
         {/* A silently disabled button reads as broken. Say why: the usual case
             is a wallet whose funds live on another chain (Solana/EVM) while
             deposits move USDC that already sits on Aptos at this address. */}
         {hasDepositAmount && depositExceedsWallet && (
-          <p className="px-1 text-[10px] leading-relaxed text-yellow-300/70">
+          <p className="px-1 text-[11px] leading-4 text-warning">
             {walletUsdcBalance === 0
               ? isSolanaWallet && solanaSourceBalance
                 ? "Your USDC is on Solana — bridge it below first."
@@ -1550,61 +1588,40 @@ export function DecibelAccountManager({ className }: { className?: string }) {
       </div>
 
       {connected && hasDecibelAccount && (
-        <div className="border-t border-white/[0.06] pt-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] font-display font-semibold uppercase tracking-[0.16em] text-zinc-600">
-                Cross-chain USDC
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500 text-pretty">
-                {isSolanaWallet
-                  ? "One signature. Claim and deposit run automatically, gas covered."
-                  : "Bridge native USDC from EVM with Circle CCTP, or paste an existing transfer hash to claim and deposit."}
-              </p>
-            </div>
-            {/* For a Solana wallet with no Aptos USDC this section is the only
-                way in — calling it "Optional" was a lie. */}
-            {!(isSolanaWallet && !walletUsdcBalance) && (
-              <span
-                className={cn(
-                  "shrink-0 rounded-md px-2 py-1 text-[10px] font-mono",
-                  isEvmWallet
-                    ? "bg-accent/10 text-accent"
-                    : "bg-white/[0.04] text-zinc-500"
-                )}
-              >
-                {isEvmWallet
-                  ? `${formatWalletConnectionName(wallet?.name ?? "EVM", activeEvmSourceChain)} detected`
-                  : "Optional"}
-              </span>
-            )}
-          </div>
+        <div className="space-y-2 border-t border-card-border pt-4">
+          <p className={LABEL}>Bridge USDC</p>
+          {isSolanaWallet && (
+            <p className="text-[11px] leading-4 text-muted-foreground">
+              One signature. Claim and deposit run automatically, gas covered.
+            </p>
+          )}
 
           {!isSolanaWallet && (
-          <div className="mt-2 grid grid-cols-4 gap-1 rounded-md bg-white/[0.03] p-1">
-            {BRIDGE_SOURCE_CHAINS.map((chain) => (
-              <button
-                key={chain}
-                type="button"
-                onClick={() => selectBridgeSourceChain(chain)}
-                className={cn(
-                  "rounded px-2 py-1.5 text-[10px] font-display font-semibold transition-colors",
-                  bridgeSourceChain === chain
-                    ? "bg-white/[0.08] text-zinc-100"
-                    : "text-zinc-500 hover:text-zinc-300"
-                )}
-              >
-                {chain}
-              </button>
-            ))}
-          </div>
+            <ProductSegmented role="group" aria-label="Bridge source chain" className="grid grid-cols-4">
+              {BRIDGE_SOURCE_CHAINS.map((chain) => (
+                <button
+                  key={chain}
+                  type="button"
+                  aria-pressed={bridgeSourceChain === chain}
+                  onClick={() => selectBridgeSourceChain(chain)}
+                  className={cn(
+                    SEGMENT,
+                    bridgeSourceChain === chain
+                      ? "bg-card text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {chain}
+                </button>
+              ))}
+            </ProductSegmented>
           )}
 
           {bridgeSourceChain === "Solana" ? (
             /* No in-app Solana burn yet — the wallet signs it in an external
                CCTP bridge. The claim half below is chain-agnostic. */
             <>
-              <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
+              <div className={META_ROW}>
                 <span>
                   Solana{" "}
                   {solanaSourceLoading
@@ -1616,16 +1633,17 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                       : "-- USDC"}
                 </span>
                 {solanaOriginAddress && (
-                  <span className="truncate text-zinc-700">
+                  <span className="truncate text-zinc-500">
                     {solanaOriginAddress.slice(0, 4)}...{solanaOriginAddress.slice(-4)}
                   </span>
                 )}
               </div>
-              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                <label className="flex min-w-0 items-center gap-2 rounded-md bg-white/[0.03] px-3 py-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <label className={INPUT_SHELL}>
                   <input
                     type="text"
                     inputMode="decimal"
+                    aria-label="Amount of USDC to bridge from Solana"
                     value={solanaBridgeAmount}
                     onChange={(e) => {
                       const next = e.target.value.replace(/[^0-9.]/g, "");
@@ -1636,9 +1654,9 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                         ? solanaSourceBalance.toLocaleString("en-US", { maximumFractionDigits: 6 })
                         : "0.00"
                     }
-                    className="min-w-0 flex-1 bg-transparent text-[13px] font-mono font-semibold text-white outline-none placeholder:text-zinc-600"
+                    className={cn(INPUT, "text-base md:text-sm")}
                   />
-                  <span className="text-[11px] font-mono text-zinc-500">USDC</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">USDC</span>
                 </label>
                 <button
                   type="button"
@@ -1648,7 +1666,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                     }
                   }}
                   disabled={!solanaSourceBalance}
-                  className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                  className={BTN_NEUTRAL}
                 >
                   Max
                 </button>
@@ -1670,10 +1688,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                       && Number(solanaBridgeAmount) <= (solanaSourceBalance ?? 0) + 0.000001))
                 }
                 className={cn(
-                  "mt-2 w-full rounded-md px-3 py-2.5 text-[12px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  BTN,
+                  "w-full",
                   !solanaBridging && solanaSourceBalance
-                    ? "bg-accent text-black hover:brightness-95"
-                    : "bg-white/[0.03] text-zinc-400",
+                    ? "border border-accent/30 text-accent hover:bg-accent/10"
+                    : BTN_MUTED,
                 )}
               >
                 {solanaBridging
@@ -1689,8 +1708,8 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             </>
           ) : (
             <>
-              <div className="mt-2 flex min-h-4 items-center justify-between gap-3 px-1 font-mono text-[10px] tabular-nums text-zinc-600">
-                <span className={evmSourceError ? "text-yellow-300/80" : ""}>
+              <div className={META_ROW}>
+                <span className={evmSourceError ? "text-warning" : ""}>
                   {bridgeSourceChain}{" "}
                   {evmSourceLoading
                     ? "..."
@@ -1701,7 +1720,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                       : "-- USDC"}
                 </span>
                 {evmSourceAddress && (
-                  <span className="truncate text-zinc-700">
+                  <span className="truncate text-zinc-500">
                     {evmSourceAddress.slice(0, 6)}...{evmSourceAddress.slice(-4)}
                   </span>
                 )}
@@ -1712,10 +1731,11 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 onClick={() => void handleStartEvmBridge()}
                 disabled={!canStartEvmBridge}
                 className={cn(
-                  "mt-2 w-full rounded-md px-3 py-2 text-[11px] font-display font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  BTN,
+                  "w-full",
                   canStartEvmBridge
-                    ? "bg-accent/15 text-accent hover:bg-accent/20"
-                    : "bg-white/[0.03] text-zinc-600"
+                    ? "border border-accent/30 text-accent hover:bg-accent/10"
+                    : BTN_MUTED
                 )}
               >
                 {status === "submitting"
@@ -1732,24 +1752,27 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               localStorage, so a paste box is pure noise there. EVM keeps it
               for transfers started in external apps. */}
           {!isSolanaWallet && (
-            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-              <input
-                type="text"
-                value={bridgeTxHash}
-                onChange={(e) => {
-                  setBridgeTxHash(e.target.value.trim());
-                  setBridgeTransfer(null);
-                  setBridgeLookupStatus("idle");
-                  setBridgeMessage("");
-                }}
-                className="min-w-0 rounded-md bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-200 outline-none placeholder:text-zinc-700 focus:bg-white/[0.06]"
-                placeholder="transfer hash or signature"
-              />
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <label className={INPUT_SHELL}>
+                <input
+                  type="text"
+                  aria-label="Bridge transfer hash"
+                  value={bridgeTxHash}
+                  onChange={(e) => {
+                    setBridgeTxHash(e.target.value.trim());
+                    setBridgeTransfer(null);
+                    setBridgeLookupStatus("idle");
+                    setBridgeMessage("");
+                  }}
+                  className={cn(INPUT, "font-normal text-base md:text-xs")}
+                  placeholder="Transfer hash or signature"
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => void lookupBridgeTransfer()}
                 disabled={bridgeLookupStatus === "loading"}
-                className="rounded-md bg-white/[0.06] px-3 py-2 text-[11px] font-display font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                className={BTN_NEUTRAL}
               >
                 {bridgeLookupStatus === "loading" ? "Checking" : "Resume"}
               </button>
@@ -1757,7 +1780,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
           )}
 
           {bridgeTransfer && (
-            <div className="mt-2 space-y-2 rounded-[10px] bg-white/[0.03] px-3 py-2 text-[11px] text-zinc-400">
+            <div className="space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card px-3 py-2 text-[11px] text-zinc-400">
               <BridgeStepsRail
                 transferStatus={bridgeTransfer.status ?? "pending"}
                 submitting={status === "submitting"}
@@ -1765,14 +1788,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                 errored={bridgeLookupStatus === "error"}
               />
               <div className="flex items-center justify-between gap-3">
-                <span className="font-mono text-zinc-500">
+                <span className="font-mono text-muted-foreground">
                   {bridgeTransfer.status === "claimable"
                     ? "Ready to claim"
                     : bridgeTransfer.status === "completed"
                       ? "Completed"
                     : "Bridging funds"}
                 </span>
-                <span className="font-mono tabular-nums text-zinc-100">
+                <span className="font-mono tabular-nums text-foreground">
                   {typeof bridgeTransfer.amount === "number"
                     ? `${bridgeTransfer.amount.toLocaleString("en-US", {
                         maximumFractionDigits: 6,
@@ -1787,24 +1810,24 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                     href={bridgeTransfer.explorerUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-accent underline"
+                    className={cn(FOCUS_RING, "rounded-[var(--radius-xs)] text-accent underline")}
                   >
                     Source tx
                   </a>
                 )}
               </div>
               {!bridgeTransfer.destinationIsAptos && (
-                <p className="text-yellow-300">
+                <p className="text-warning">
                   This CCTP transfer does not appear to target Aptos.
                 </p>
               )}
               {bridgeMintRecipientMismatch && (
-                <div className="space-y-1 text-yellow-300">
+                <div className="space-y-1 text-warning">
                   <p>
                     Mint recipient is {shortAddress(bridgeTransfer.mintRecipient ?? "")};
                     this wallet is {shortAddress(account?.address.toString() ?? "")}.
                   </p>
-                  <p className="text-yellow-300/80">
+                  <p className="text-warning/80">
                     {bridgeMatchesDecibelAppDerivedAccount
                       ? "This looks like a transfer started on app.decibel.trade. Claim it with the same EVM wallet, then deposit it into the selected cash.trading account."
                       : "Connect the wallet/domain-derived Aptos account that started this bridge before claiming."}
@@ -1816,7 +1839,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                   type="button"
                   onClick={() => void handleClaimBridgeTransfer()}
                   disabled={status === "submitting"}
-                  className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className={cn(BTN_SECONDARY, "w-full")}
                 >
                   {status === "submitting" ? "Working..." : "Claim & Deposit"}
                 </button>
@@ -1827,7 +1850,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
                     type="button"
                     onClick={() => void handleClaimDecibelAppBridgeTransfer()}
                     disabled={status === "submitting"}
-                    className="w-full rounded-md bg-accent/15 px-3 py-2 text-[11px] font-display font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={cn(BTN_SECONDARY, "w-full")}
                   >
                     {status === "submitting"
                       ? "Working..."
@@ -1839,9 +1862,10 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
           {bridgeMessage && (
             <p
+              role={bridgeLookupStatus === "error" ? "alert" : "status"}
               className={cn(
-                "mt-2 text-[11px] leading-relaxed text-pretty",
-                bridgeLookupStatus === "error" ? "text-red-300" : "text-zinc-500"
+                "text-[11px] leading-4 text-pretty",
+                bridgeLookupStatus === "error" ? "text-danger" : "text-muted-foreground"
               )}
             >
               {bridgeMessage}
@@ -1852,11 +1876,14 @@ export function DecibelAccountManager({ className }: { className?: string }) {
 
       {statusMessage && (
         <div
+          role={status === "error" ? "alert" : "status"}
           className={cn(
-            "rounded-[10px] px-3 py-2 text-[11px]",
+            "rounded-[var(--radius-sm)] px-3 py-2 text-[11px] leading-4",
             status === "error"
-              ? "bg-red-500/10 text-red-300"
-              : "bg-white/[0.04] text-zinc-400"
+              ? "bg-danger/10 text-danger"
+              : status === "success"
+                ? "bg-success/10 text-success"
+                : "bg-card text-zinc-400"
           )}
         >
           <p>{statusMessage}</p>
@@ -1865,7 +1892,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
               href={explorerTxUrl(statusHash)}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 inline-block text-accent underline"
+              className={cn(FOCUS_RING, "mt-1 inline-block rounded-[var(--radius-xs)] text-accent underline")}
             >
               View transaction
             </a>

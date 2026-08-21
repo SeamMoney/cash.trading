@@ -16,7 +16,7 @@ export interface SwapAssetButtonProps {
 }
 
 const BADGE_STYLES =
-  "group flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-card-border bg-background-secondary px-2 font-display text-[15px] font-semibold text-foreground min-[360px]:gap-2 min-[360px]:px-3 min-[360px]:text-[16px]";
+  "group flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-card-border bg-background-secondary px-2 font-display text-base font-semibold text-foreground min-[360px]:gap-2 min-[360px]:px-3";
 
 export const SwapAssetButton = forwardRef<HTMLButtonElement, SwapAssetButtonProps>(function SwapAssetButton({
   symbol,
@@ -36,9 +36,10 @@ export const SwapAssetButton = forwardRef<HTMLButtonElement, SwapAssetButtonProp
         height={28}
         className={cn(
           "size-6 shrink-0 rounded-full object-cover transition-[transform,opacity] duration-150 ease-out motion-reduce:!scale-100 motion-reduce:transition-none min-[360px]:size-7 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.04] group-active:scale-[0.96]",
-          symbol === "APT" && "p-[3px] object-contain",
+          // The APT mark is white-on-transparent, so it keeps a black plate in
+          // both themes (--color-black is deliberately not remapped in light).
+          symbol === "APT" && "bg-black p-[3px] object-contain",
         )}
-        style={symbol === "APT" ? { backgroundColor: "#101010" } : undefined}
       />
       <span>{symbol}</span>
       {onSelect && (

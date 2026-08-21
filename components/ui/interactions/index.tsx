@@ -131,7 +131,7 @@ export function ValidatedField({
         <label htmlFor={fieldId} className="font-display text-[13px] font-semibold text-white">
           {label}
         </label>
-        {hint && <span className="text-[10px] text-zinc-600">{hint}</span>}
+        {hint && <span className="text-[11px] text-zinc-600">{hint}</span>}
       </div>
       <motion.input
         id={fieldId}

@@ -16,6 +16,7 @@ import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { cn } from "@/lib/utils";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import { AreaChart, Area } from "@/components/charts/area-chart";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
@@ -52,6 +53,31 @@ interface DecibelVault {
 }
 
 const PRICE_UI_COMMIT_MS = 250;
+
+/* Below-fold panels share the Open Positions panel grammar: one bordered
+   panel, a px-4 py-3 header strip with a 13px display title, rows separated
+   by hairlines — never a second design system. */
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const PANEL = "w-full overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary";
+const PANEL_HEADER = "flex items-center justify-between gap-3 border-b border-card-border px-4 py-3";
+const PANEL_TITLE = "font-display text-[13px] font-semibold text-foreground";
+const PANEL_META = "text-[11px] text-zinc-500";
+const PANEL_EMPTY = "p-6 text-center text-[13px] text-zinc-500";
+const CARD = "w-full shrink-0 snap-start border-r border-card-border p-4 last:border-r-0 xl:w-[calc(100%/3)] xl:min-w-[calc(100%/3)]";
+const CARD_TITLE = "truncate font-display text-sm font-semibold text-foreground";
+const CARD_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-zinc-500";
+const CARD_CHIP = "shrink-0 rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-semibold uppercase";
+const DETAIL_ROW = "flex items-center justify-between gap-3 font-mono text-[11px] tabular-nums text-zinc-500";
+const DETAIL_VALUE = "text-zinc-300";
+const CARD_BTN = "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold";
+const CARD_BTN_PRIMARY = cn(CARD_BTN, "bg-accent text-black hover:brightness-95", PRESSABLE_CONTROL, FOCUS_RING);
+const CARD_BTN_NEUTRAL = cn(
+  CARD_BTN,
+  "border border-card-border bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-foreground",
+  PRESSABLE_CONTROL,
+  FOCUS_RING,
+);
+const PAGER_ZONE = cn("absolute inset-y-0 w-1/2 rounded-none", FOCUS_RING, "focus-visible:ring-inset");
 
 function shortenAddr(addr: string): string {
   if (addr.length <= 12) return addr;
@@ -244,29 +270,31 @@ function VaultsPanel({
     return () => el.removeEventListener("scroll", onScroll);
   }, [displayVaults.length]);
 
-  return (
-    <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-        <header className="border-b border-[#2a2a2a] text-[#888] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums">
-          <span className="flex items-center gap-2">
-            <span className="relative h-2 w-2 shrink-0 rounded-full bg-accent">
-              <span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-75" />
-            </span>
-            <span>DECIBEL VAULTS [{loading || historyPending ? "..." : displayVaults.length}]</span>
-          </span>
-        </header>
+  const pending = (loading || historyPending) && displayVaults.length === 0;
 
-        <div className="text-[#888] bg-[#111] font-mono text-sm font-medium">
-          {(loading || historyPending) && displayVaults.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-[#555]">
-              <span className="animate-pulse">Verifying vault performance from Decibel...</span>
+  return (
+    <section aria-labelledby="vaults-heading" className={PANEL}>
+        <div className={PANEL_HEADER}>
+          <h3 id="vaults-heading" className={PANEL_TITLE}>
+            Decibel Vaults{loading || historyPending ? "" : ` (${displayVaults.length})`}
+          </h3>
+          {(loading || historyPending) && !pending ? (
+            <span className={PANEL_META}>updating...</span>
+          ) : null}
+        </div>
+
+        <div>
+          {pending ? (
+            <div className={cn(PANEL_EMPTY, "animate-pulse motion-reduce:animate-none")}>
+              Verifying vault performance from Decibel...
             </div>
           ) : displayVaults.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-12 text-[#555]">
-              <span>No vault currently meets the verified performance criteria.</span>
+            <div className={cn(PANEL_EMPTY, "flex flex-col items-center gap-3")}>
+              <span>No vault meets the verified performance criteria yet.</span>
               <button
                 type="button"
                 onClick={() => void refreshVaults()}
-                className="rounded-[8px] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-zinc-300 transition-[transform,background-color] duration-150 hover:bg-white/[0.08] active:scale-[0.97]"
+                className={cn(CARD_BTN_NEUTRAL, "flex-none")}
               >
                 Retry
               </button>
@@ -288,7 +316,7 @@ function VaultsPanel({
                 const pnlUsdStr = vault.all_time_pnl == null
                   ? null
                   : `${vault.all_time_pnl > 0 ? "+" : ""}${formatVaultUsd(vault.all_time_pnl)}`;
-                const chartColor = pnlNeg ? "#ef4444" : "var(--accent)";
+                const chartColor = pnlNeg ? "var(--danger)" : "var(--accent)";
                 const chartPoints = chartData[vault.address] ?? [];
                 const chartIsReal = chartKind[vault.address] === "real";
                 const chartUnavailable = chartKind[vault.address] === "unavailable";
@@ -298,14 +326,14 @@ function VaultsPanel({
                 return (
                 <div
                   key={vault.address}
-                  className="w-full shrink-0 snap-start border-r border-[#2a2a2a] bg-[#111] p-[18px] last:border-r-0 xl:w-[calc(100%/3)] xl:min-w-[calc(100%/3)]"
+                  className={CARD}
                   style={{ scrollSnapStop: "always" }}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="truncate font-sans text-[15px] font-bold text-white">{vault.name}</span>
+                    <span className={CARD_TITLE}>{vault.name}</span>
                     <span className={cn(
-                      "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                      vault.vault_type === "protocol" ? "bg-accent/15 text-accent" : "bg-zinc-700/50 text-zinc-400"
+                      CARD_CHIP,
+                      vault.vault_type === "protocol" ? "bg-accent/15 text-accent" : "bg-white/[0.06] text-zinc-400"
                     )}>
                       {vault.vault_type === "protocol" ? "Protocol" : "User"}
                     </span>
@@ -346,47 +374,44 @@ function VaultsPanel({
                         }}
                         transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: "easeOut" }}
                       >
-                  <div className="mt-3 py-1.5">
-                    <span className="flex min-w-0 flex-col">
-                      <span className="text-[9px] font-bold uppercase text-[#4a4a4a]">Vault Manager</span>
-                      <span className="truncate font-sans text-[13px] font-semibold text-[#ccc]">
-                        {shortenAddr(vault.manager)}
-                      </span>
+                  <div className="mt-3 flex min-w-0 flex-col">
+                    <span className={CARD_LABEL}>Vault Manager</span>
+                    <span className="truncate font-mono text-[13px] font-semibold tabular-nums text-zinc-300">
+                      {shortenAddr(vault.manager)}
                     </span>
                   </div>
 
-                  {/* Hallmark · pre-emit critique: P5 H5 E5 S4 R5 V4 */}
-                  <dl className="mt-3 grid grid-cols-2 border-y border-white/[0.07] py-3">
+                  <dl className="mt-3 grid grid-cols-2 border-y border-card-border py-3">
                     <div className="flex min-w-0 flex-col pr-4">
-                      <dt className="order-2 mt-1 text-[10px] font-medium text-zinc-400">All-time volume</dt>
-                      <dd className="order-1 truncate font-sans text-[18px] font-semibold tabular-nums text-zinc-100">
+                      <dt className="order-2 mt-1 text-[11px] font-medium text-zinc-400">All-time volume</dt>
+                      <dd className="order-1 truncate font-mono text-lg font-semibold tabular-nums text-foreground">
                         {formatVaultUsd(displayVolume)}
                       </dd>
                     </div>
-                    <div className="flex min-w-0 flex-col border-l border-white/[0.07] pl-4">
-                      <dt className="order-2 mt-1 text-[10px] font-medium text-zinc-400">Depositors</dt>
-                      <dd className="order-1 truncate font-sans text-[18px] font-semibold tabular-nums text-zinc-100">
+                    <div className="flex min-w-0 flex-col border-l border-card-border pl-4">
+                      <dt className="order-2 mt-1 text-[11px] font-medium text-zinc-400">Depositors</dt>
+                      <dd className="order-1 truncate font-mono text-lg font-semibold tabular-nums text-foreground">
                         {vault.depositors == null ? "—" : vault.depositors.toLocaleString()}
                       </dd>
                     </div>
                   </dl>
 
                   <div className="mt-3">
-                    <div className="flex items-baseline justify-between">
-                      <div className="text-[9px] font-bold uppercase text-[#4a4a4a]">PnL</div>
-                      <div className="text-[8px] font-bold uppercase tracking-wide text-[#333]">
-                        {chartIsReal ? "All-time on-chain history" : chartUnavailable ? "" : "Loading all-time history"}
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div className={CARD_LABEL}>PnL</div>
+                      <div className="truncate text-[11px] text-zinc-500">
+                        {chartIsReal ? "All-time, on-chain" : chartUnavailable ? "" : "Loading history"}
                       </div>
                     </div>
                     <div
                       className={cn(
-                        "mt-0.5 flex items-baseline gap-2 tabular-nums",
-                        pnlReturn == null ? "text-[#777]" : pnlNeg ? "text-red-400" : "text-accent",
+                        "mt-0.5 flex items-baseline gap-2 font-mono tabular-nums",
+                        pnlReturn == null ? "text-zinc-400" : pnlNeg ? "text-danger" : "text-accent",
                       )}
                     >
-                      <span className="text-[22px] font-bold">{pnlStr}</span>
+                      <span className="text-2xl font-bold">{pnlStr}</span>
                       {pnlUsdStr ? (
-                        <span className="font-sans text-[12px] font-semibold opacity-75">
+                        <span className="text-xs font-semibold opacity-75">
                           {pnlUsdStr}
                         </span>
                       ) : null}
@@ -428,42 +453,42 @@ function VaultsPanel({
                         />
                       </AreaChart>
                     ) : (
-                      <div className="flex h-full items-center justify-center text-[10px] text-[#333]">
+                      <div className="flex h-full items-center justify-center text-[11px] text-zinc-500">
                         {chartUnavailable ? "PnL history not available for this vault yet" : "Loading chart..."}
                       </div>
                     )}
                   </div>
 
-                  <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                  <div className="mt-2 space-y-1 border-t border-card-border pt-2">
+                    <div className={DETAIL_ROW}>
                       <span>TVL</span>
-                      <span className="text-[#777]">{formatVaultUsd(vault.tvl)}</span>
+                      <span className={DETAIL_VALUE}>{formatVaultUsd(vault.tvl)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>All-time PnL</span>
-                      <span className={cn(vault.all_time_pnl == null ? "text-[#777]" : vault.all_time_pnl < 0 ? "text-red-400" : "text-accent")}>
+                      <span className={cn(vault.all_time_pnl == null ? DETAIL_VALUE : vault.all_time_pnl < 0 ? "text-danger" : "text-accent")}>
                         {formatVaultUsd(vault.all_time_pnl)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>APR</span>
-                      <span className="text-[#777]">{vault.apr == null ? "—" : `${vault.apr.toFixed(2)}%`}</span>
+                      <span className={DETAIL_VALUE}>{vault.apr == null ? "—" : `${vault.apr.toFixed(2)}%`}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>Win Rate (12w)</span>
-                      <span className="text-[#777]">{vault.weekly_win_rate_12w == null ? "—" : `${(vault.weekly_win_rate_12w * 100).toFixed(0)}%`}</span>
+                      <span className={DETAIL_VALUE}>{vault.weekly_win_rate_12w == null ? "—" : `${(vault.weekly_win_rate_12w * 100).toFixed(0)}%`}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>Profit Share</span>
-                      <span className="text-[#777]">{vault.profit_share == null ? "—" : `${vault.profit_share}%`}</span>
+                      <span className={DETAIL_VALUE}>{vault.profit_share == null ? "—" : `${vault.profit_share}%`}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>Sharpe Ratio</span>
-                      <span className="text-[#777]">{vault.sharpe_ratio == null ? "—" : vault.sharpe_ratio.toFixed(2)}</span>
+                      <span className={DETAIL_VALUE}>{vault.sharpe_ratio == null ? "—" : vault.sharpe_ratio.toFixed(2)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>Max Drawdown</span>
-                      <span className={vault.max_drawdown == null ? "text-[#777]" : "text-red-400"}>{vault.max_drawdown == null ? "—" : `${vault.max_drawdown.toFixed(1)}%`}</span>
+                      <span className={vault.max_drawdown == null ? DETAIL_VALUE : "text-danger"}>{vault.max_drawdown == null ? "—" : `${vault.max_drawdown.toFixed(1)}%`}</span>
                     </div>
                   </div>
                       </motion.div>
@@ -474,7 +499,7 @@ function VaultsPanel({
                     <button
                       type="button"
                       onClick={() => onAction(hasHolding ? "withdraw" : "deposit", vault, holding?.shares)}
-                      className="flex-1 rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.97]"
+                      className={CARD_BTN_PRIMARY}
                     >
                       {hasHolding ? "Manage" : "Deposit"}
                     </button>
@@ -487,10 +512,8 @@ function VaultsPanel({
                         )
                       }
                       className={cn(
-                        "flex-1 rounded-[8px] border px-3 py-2 text-[12px] font-bold transition-[transform,background-color,color,border-color] duration-150 active:scale-[0.97]",
-                        tradesVaultAddress === vault.address
-                          ? "border-accent/14 bg-accent/10 text-accent"
-                          : "border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
+                        CARD_BTN_NEUTRAL,
+                        tradesVaultAddress === vault.address && "border-accent/30 bg-accent/10 text-accent hover:bg-accent/10",
                       )}
                     >
                       {tradesVaultAddress === vault.address ? "Overview" : "Trades"}
@@ -503,18 +526,18 @@ function VaultsPanel({
 
           {/* Scroll indicator — tap left half to go back, right half to go forward */}
           {displayVaults.length > 1 && (
-          <div className="relative flex items-center justify-center border-t border-[#2a2a2a] bg-[#181818] px-5 py-3">
+          <div className="relative flex items-center justify-center border-t border-card-border bg-card px-4 py-3">
             {/* Invisible tap zones */}
             <button
               aria-label="Previous vault"
               type="button"
-              className="absolute inset-y-0 left-0 w-1/2"
+              className={cn(PAGER_ZONE, "left-0")}
               onClick={() => scrollTo(activeIndex - 1)}
             />
             <button
               aria-label="Next vault"
               type="button"
-              className="absolute inset-y-0 right-0 w-1/2"
+              className={cn(PAGER_ZONE, "right-0")}
               onClick={() => scrollTo(activeIndex + 1)}
             />
             {/* Indicator lines */}
@@ -523,8 +546,8 @@ function VaultsPanel({
                 <div
                   key={vault.address}
                   className={cn(
-                    "h-[2px] rounded-full transition-all duration-200",
-                    i === activeIndex ? "w-6 bg-[#888]" : "w-3 bg-[#333]",
+                    "h-0.5 rounded-full transition-[width,background-color] duration-200 motion-reduce:transition-none",
+                    i === activeIndex ? "w-6 bg-zinc-400" : "w-3 bg-zinc-700",
                   )}
                 />
               ))}
@@ -534,7 +557,7 @@ function VaultsPanel({
           </>
           )}
         </div>
-    </div>
+    </section>
   );
 }
 
@@ -625,9 +648,9 @@ interface StrategyVaultSummary {
 
 const SIG_LABEL_TRADE = ["HOLD", "BUY", "SELL"];
 const SIG_COLOR = [
-  { text: "text-zinc-500", bg: "bg-zinc-800 border-zinc-700" },
-  { text: "text-emerald-400", bg: "bg-emerald-500/15 border-emerald-500/14" },
-  { text: "text-red-400",    bg: "bg-red-500/15 border-red-500/14" },
+  { text: "text-zinc-400", bg: "bg-white/[0.06] border-card-border" },
+  { text: "text-success", bg: "bg-success/10 border-success/20" },
+  { text: "text-danger", bg: "bg-danger/10 border-danger/20" },
 ];
 
 function isRealAptosAddress(value?: string | null) {
@@ -702,18 +725,15 @@ function SignalProductsPanel({
   if (indicators.length === 0) return null;
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0px_0px_1px_rgba(0,0,0,0.50)]">
-      <header className="border-b border-[#2a2a2a] bg-[#202020] flex items-center px-5 py-4 sm:px-8 sm:py-5 font-mono text-sm font-semibold tabular-nums text-[#888]">
-        <span className="flex items-center gap-2">
-          <span className="relative h-2 w-2 shrink-0 rounded-full bg-purple-400">
-            <span className="absolute inset-0 animate-ping rounded-full bg-purple-400 opacity-75" />
-          </span>
-          <span>STRATEGY VAULTS [{sorted.length}]</span>
-        </span>
-        <span className="ml-3 hidden text-[10px] font-normal text-[#555] sm:inline">· Indicators that trade Decibel vaults — on-chain enforced</span>
-      </header>
+    <section aria-labelledby="signals-heading" className={PANEL}>
+      <div className={PANEL_HEADER}>
+        <h3 id="signals-heading" className={PANEL_TITLE}>
+          Strategy Vaults ({sorted.length})
+        </h3>
+        <span className={cn(PANEL_META, "hidden truncate sm:inline")}>Indicators that trade Decibel vaults on-chain</span>
+      </div>
 
-      <div className="bg-[#111] font-mono text-sm font-medium text-[#888]">
+      <div>
         <div
           ref={scrollRef}
           className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
@@ -737,7 +757,7 @@ function SignalProductsPanel({
               ? `LAST ${SIG_LABEL_TRADE[sig] ?? "HOLD"}`
               : SIG_LABEL_TRADE[sig] ?? "HOLD";
             const sigColor = engineStale
-              ? { bg: "border-zinc-700/40 bg-zinc-800/40", text: "text-zinc-500" }
+              ? { bg: "border-card-border bg-white/[0.03]", text: "text-zinc-500" }
               : SIG_COLOR[sig] ?? SIG_COLOR[0];
             const sharpe = (ind.meanSharpe / 1000).toFixed(2);
             const strategyVault = strategyVaultsByIndicator[ind.address.toLowerCase()];
@@ -754,7 +774,7 @@ function SignalProductsPanel({
                 }))
               : null;
             const chartPoints = liveChart ?? [];
-            const chartColor = sig === 2 ? "#ef4444" : "#a855f7";
+            const chartColor = sig === 2 ? "var(--danger)" : "var(--accent)";
             // A frozen buffer of near-identical prices plots as a featureless
             // block; flag it so the card shows a designed frozen state instead.
             const chartValues = chartPoints.map((p) => p.pnl);
@@ -770,79 +790,74 @@ function SignalProductsPanel({
             return (
               <div
                 key={ind.address}
-                className="w-full shrink-0 snap-start border-r border-[#2a2a2a] bg-[#111] p-[18px] last:border-r-0 xl:w-[calc(100%/3)] xl:min-w-[calc(100%/3)]"
+                className={CARD}
                 style={{ scrollSnapStop: "always" }}
               >
                 {/* Title row */}
                 <div className="flex items-center justify-between gap-3">
-                  <span className="truncate font-sans text-[15px] font-bold text-white">{ind.name}</span>
-                  <span className={cn(
-                    "flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                    "bg-emerald-500/15 text-emerald-400",
-                  )}>
-                    <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span className={CARD_TITLE}>{ind.name}</span>
+                  <span className={cn(CARD_CHIP, "bg-success/10 text-success")}>
                     On-chain
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-[#555]">
+                <p className="mt-1 text-[11px] text-zinc-500">
                   {ind.assets[0]}
                   {typeLabel ? ` · ${typeLabel} ${paramsLabel}` : ""}
                 </p>
 
-                <div className="mt-3 flex items-center justify-between border-y border-[#1a1a1a] py-2 text-[11px]">
-                  <span className="text-[#444]">Vault Manager</span>
-                  <span className="truncate pl-3 text-right text-[#888]">{ind.name} indicator</span>
+                <div className={cn(DETAIL_ROW, "mt-3 border-y border-card-border py-2")}>
+                  <span>Vault Manager</span>
+                  <span className={cn(DETAIL_VALUE, "truncate text-right")}>{ind.name} indicator</span>
                 </div>
 
                 {/* Signal + position */}
                 <div className="mt-3 flex items-center gap-2">
                   <span className={cn(
-                    "rounded border px-2 py-1 font-mono text-[10px] font-bold",
+                    "rounded-[var(--radius-xs)] border px-2 py-1 font-mono text-[11px] font-bold",
                     sigColor.bg, sigColor.text,
                   )}>
                     {sigLabel}
                   </span>
                   {live?.inPosition && (
-                    <span className="rounded border border-emerald-500/12 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] font-bold text-emerald-400">
+                    <span className="rounded-[var(--radius-xs)] border border-success/20 bg-success/10 px-2 py-1 font-mono text-[11px] font-bold text-success">
                       IN POSITION
                     </span>
                   )}
                   {live && (
-                    <span className="ml-auto text-[10px] text-[#555]">
+                    <span className="ml-auto truncate font-mono text-[11px] tabular-nums text-zinc-500">
                       {live.totalPushed} ticks · {live.totalSignals} signals
                     </span>
                   )}
                 </div>
 
-                {/* Stat grid */}
-                <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-[#241a2e]">
-                  <div className="bg-[#160e1a] px-3 py-2.5">
-                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Sharpe</div>
-                    <div className="mt-0.5 text-[14px] font-bold text-purple-300">{sharpe}</div>
+                {/* Stat grid — same dl grammar as the vault cards */}
+                <dl className="mt-3 grid grid-cols-2 border-y border-card-border py-3">
+                  <div className="flex min-w-0 flex-col pr-4">
+                    <dt className="order-2 mt-1 text-[11px] font-medium text-zinc-400">Sharpe</dt>
+                    <dd className="order-1 truncate font-mono text-lg font-semibold tabular-nums text-foreground">{sharpe}</dd>
                   </div>
-                  <div className="border-l border-[#241a2e] bg-[#160e1a] px-3 py-2.5">
-                    <div className="text-[9px] font-bold uppercase text-[#6b2d8a]">Backtest Win</div>
-                    <div className="mt-0.5 text-[14px] font-bold text-white">
+                  <div className="flex min-w-0 flex-col border-l border-card-border pl-4">
+                    <dt className="order-2 mt-1 text-[11px] font-medium text-zinc-400">Backtest win, of sims</dt>
+                    <dd className="order-1 truncate font-mono text-lg font-semibold tabular-nums text-foreground">
                       {ind.profitablePct}%
-                      <span className="ml-1 text-[9px] font-medium normal-case text-[#555]">of sims</span>
-                    </div>
+                    </dd>
                   </div>
-                </div>
+                </dl>
 
                 {/* Chart */}
                 {frozenFlatChart ? (
-                  <div className="mt-3 flex h-[180px] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#4a3d5c] bg-[#160e1a]/40">
-                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
+                  <div className="mt-3 flex h-[180px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-dashed border-card-border">
+                    <span className="rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-warning">
                       frozen {engineAgeLabel}
                     </span>
-                    <span className="text-[10px] text-[#555]">
-                      No price movement recorded since the last crank
+                    <span className="text-[11px] text-zinc-500">
+                      No price movement since the last crank
                     </span>
                   </div>
                 ) : (
                 <div className="relative mt-3 h-[180px] touch-pan-x">
                   {engineStale && liveChart && (
-                    <span className="absolute right-1 top-0 z-10 rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-amber-400">
+                    <span className="absolute right-1 top-0 z-10 rounded-[var(--radius-xs)] bg-warning/10 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase text-warning">
                       frozen {engineAgeLabel}
                     </span>
                   )}
@@ -878,57 +893,45 @@ function SignalProductsPanel({
                       />
                     </AreaChart>
                   ) : (
-                    <div className="flex h-full items-center justify-center text-[10px] text-[#555]">No on-chain price history</div>
+                    <div className="flex h-full items-center justify-center text-[11px] text-zinc-500">No on-chain price history</div>
                   )}
                 </div>
                 )}
 
                 {/* Details */}
-                <div className="mt-2 space-y-1 border-t border-[#1a1a1a] pt-2">
-                  <div className="flex items-center justify-between text-[11px] text-[#444]">
+                <div className="mt-2 space-y-1 border-t border-card-border pt-2">
+                  <div className={DETAIL_ROW}>
                     <span>Strategy</span>
-                    <span className="text-[#777]">On-chain verified</span>
+                    <span className={DETAIL_VALUE}>On-chain verified</span>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-[#444]">
+                  <div className={DETAIL_ROW}>
                     <span>Vault</span>
-                    <span className="text-[#777]">{vaultAddress ? shortenAddr(vaultAddress) : "Not created"}</span>
+                    <span className={DETAIL_VALUE}>{vaultAddress ? shortenAddr(vaultAddress) : "Not created"}</span>
                   </div>
                   {live && (
-                    <div className="flex items-center justify-between text-[11px] text-[#444]">
+                    <div className={DETAIL_ROW}>
                       <span>{engineStale ? "Price at freeze" : "Last price"}</span>
-                      <span className="text-[#777]">
-                        <span className={engineStale ? "text-zinc-600" : undefined}>
+                      <span className={DETAIL_VALUE}>
+                        <span className={engineStale ? "text-zinc-500" : undefined}>
                           ${live.lastPrice.toLocaleString()}
                         </span>
                         {engineStale && (
-                          <span className="text-amber-500/80">{` · ${engineAgeLabel}`}</span>
+                          <span className="text-warning">{` · ${engineAgeLabel}`}</span>
                         )}
                       </span>
                     </div>
                   )}
                 </div>
 
-                {/* CTAs */}
+                {/* CTA — one per card. Automation is not deployed, so there is
+                    no second button to advertise it. */}
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onVaultAction(vaultAddress ? "deposit" : "create", ind, strategyVault, vaultAddress)}
-                    className={cn(
-                      "flex-1 rounded-[8px] px-3 py-2 text-[12px] font-bold transition-[filter,background-color,color]",
-                      vaultAddress
-                        ? "bg-accent text-black hover:brightness-95"
-                        : "border border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
-                    )}
+                    className={vaultAddress ? CARD_BTN_PRIMARY : CARD_BTN_NEUTRAL}
                   >
                     {vaultAddress ? "Invest" : "Create Vault"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    title="Persistent, wallet-authorized automation is not deployed"
-                    className="flex-1 cursor-not-allowed rounded-[8px] border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12px] font-bold text-zinc-600"
-                  >
-                    Automation unavailable
                   </button>
                 </div>
               </div>
@@ -938,17 +941,17 @@ function SignalProductsPanel({
 
         {/* Scroll indicator — tap left half to go back, right half to go forward */}
         {sorted.length > 1 && (
-          <div className="relative flex items-center justify-center border-t border-[#2a2a2a] bg-[#181818] px-5 py-3">
+          <div className="relative flex items-center justify-center border-t border-card-border bg-card px-4 py-3">
             <button
               aria-label="Previous strategy"
               type="button"
-              className="absolute inset-y-0 left-0 w-1/2"
+              className={cn(PAGER_ZONE, "left-0")}
               onClick={() => scrollTo(activeIndex - 1)}
             />
             <button
               aria-label="Next strategy"
               type="button"
-              className="absolute inset-y-0 right-0 w-1/2"
+              className={cn(PAGER_ZONE, "right-0")}
               onClick={() => scrollTo(activeIndex + 1)}
             />
             <div className="flex items-center gap-1.5">
@@ -956,8 +959,8 @@ function SignalProductsPanel({
                 <div
                   key={indicator.address}
                   className={cn(
-                    "h-[2px] rounded-full transition-all duration-200",
-                    i === activeIndex ? "w-6 bg-[#888]" : "w-3 bg-[#333]",
+                    "h-0.5 rounded-full transition-[width,background-color] duration-200 motion-reduce:transition-none",
+                    i === activeIndex ? "w-6 bg-zinc-400" : "w-3 bg-zinc-700",
                   )}
                 />
               ))}
@@ -965,7 +968,7 @@ function SignalProductsPanel({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1099,7 +1102,7 @@ export function TradePageClient({
   );
 
   return (
-    <div className="min-h-screen pb-24 lg:pb-0">
+    <div className="min-h-screen pb-24 md:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
@@ -1157,9 +1160,11 @@ export function TradePageClient({
           </div>
         </div>
 
-        {/* ── Open Positions ─────────────────────────── */}
+        {/* ── Open Positions ─────────────────────────────
+            The mobile sheet only mounts below md (useIsMobile = 767px), so
+            this wrapper must appear from md up or 768–1023px has no positions. */}
         <div id="positions" className="scroll-mt-20">
-          <div className="mt-6 hidden animate-enter lg:block">
+          <div className="mt-6 hidden animate-enter md:block">
             <DecibelPositions showOverview={false} />
           </div>
         </div>
@@ -1191,7 +1196,11 @@ export function TradePageClient({
           <button
             type="button"
             onClick={() => (owner ? setMobileDepositOpen(true) : setMobileConnectOpen(true))}
-            className="mb-3 w-full rounded-[10px] bg-accent px-4 py-2.5 text-[13px] font-display font-semibold text-black transition-[filter] hover:brightness-95"
+            className={cn(
+              "mb-3 h-10 w-full rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-display font-semibold text-black hover:brightness-95",
+              PRESSABLE_CONTROL,
+              FOCUS_RING,
+            )}
           >
             Deposit USDC
           </button>

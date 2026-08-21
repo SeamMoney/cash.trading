@@ -21,9 +21,16 @@ import { NumberTicker } from "@/components/ui/number-ticker";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { VaultActionModal } from "@/components/trade/VaultActionModal";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 
 const POSITION_POLL_MS = 1000;
 const INDEXED_REFRESH_MS = 6000;
+
+// House surfaces (lib/surface.ts) instead of the legacy glass `.surface-1`.
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const PANEL = "rounded-[var(--radius)] border border-card-border bg-background-secondary";
+const CARD = "rounded-[var(--radius-sm)] border border-card-border bg-card";
+const ROW_BUTTON = `rounded-[var(--radius-sm)] border border-card-border px-3 py-1.5 text-[11px] font-medium text-zinc-200 hover:border-border-strong hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
 
 type DecibelWsPosition = {
   market: string;
@@ -1094,7 +1101,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
   if (!connected) {
     return (
-      <div className="surface-1 rounded-[16px] p-6 text-center text-[13px] text-zinc-500">
+      <div className={`${PANEL} p-6 text-center text-[13px] text-zinc-500`}>
         Connect your wallet to view positions and orders
       </div>
     );
@@ -1178,7 +1185,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="surface-1 rounded-[12px] p-3"
+              className={`${CARD} p-3`}
             >
               <div className="text-[11px] text-zinc-500 mb-1">{item.label}</div>
               <div
@@ -1204,7 +1211,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
         <div
           aria-live={actionStatus.tone === "error" ? "assertive" : "polite"}
           role={actionStatus.tone === "error" ? "alert" : "status"}
-          className={`surface-1 rounded-[12px] p-3 text-[12px] ${
+          className={`${CARD} p-3 text-xs ${
             actionStatus.tone === "success"
               ? "text-success"
               : actionStatus.tone === "pending"
@@ -1218,7 +1225,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
               href={explorerTxUrl(actionStatus.hash)}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-2 underline"
+              className={`ml-2 rounded-[var(--radius-xs)] underline ${FOCUS_RING}`}
             >
               View on Explorer
             </a>
@@ -1227,7 +1234,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
       )}
 
       {/* Open Positions */}
-      <div className="surface-1 rounded-[16px] overflow-hidden">
+      <div className={`${PANEL} overflow-hidden`}>
         <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
           <h3 className="text-[13px] font-display font-semibold">
             Open Positions ({positions.length})
@@ -1304,7 +1311,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         aria-label={`Close ${p.market} ${p.isLong ? "long" : "short"} position`}
                         onClick={() => void handleClosePosition(p)}
                         disabled={!canClose}
-                        className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={`shrink-0 ${ROW_BUTTON}`}
                       >
                         {isClosing ? "Closing" : "Close"}
                       </button>
@@ -1312,7 +1319,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                       <div>
-                        <div className="text-zinc-600">Size</div>
+                        <div className="text-zinc-500">Size</div>
                         <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                           {Math.abs(p.size).toLocaleString(undefined, {
                             maximumFractionDigits: 6,
@@ -1320,19 +1327,19 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Value</div>
+                        <div className="text-zinc-500">Value</div>
                         <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                           {p.value !== null ? formatUsd(p.value) : "—"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-zinc-600">Entry / Mark</div>
+                        <div className="text-zinc-500">Entry / Mark</div>
                         <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                           {formatPrice(p.entryPrice)} / {p.markPrice !== null ? formatPrice(p.markPrice) : "—"}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Est. PnL</div>
+                        <div className="text-zinc-500">Est. PnL</div>
                         <div className={`mt-0.5 font-mono tabular-nums ${pnlColor}`}>
                           {pnl !== null ? formatUsd(pnl, { signed: true }) : "—"}
                           {pnlPct !== null && (
@@ -1344,7 +1351,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         </div>
                       </div>
                       <div>
-                        <div className="text-zinc-600">Liq.</div>
+                        <div className="text-zinc-500">Liq.</div>
                         <div className="mt-0.5 font-mono tabular-nums text-zinc-400">
                           {p.estimatedLiquidationPrice !== null
                             ? formatPrice(p.estimatedLiquidationPrice)
@@ -1352,7 +1359,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-zinc-600">Margin / Funding</div>
+                        <div className="text-zinc-500">Margin / Funding</div>
                         <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                           {p.marginUsed > 0 ? formatUsd(p.marginUsed) : "—"}
                           <span className={`ml-2 ${fundingColor}`}>
@@ -1489,7 +1496,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                           aria-label={`Close ${p.market} ${p.isLong ? "long" : "short"} position`}
                           onClick={() => void handleClosePosition(p)}
                           disabled={!canClose}
-                          className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                          className={ROW_BUTTON}
                         >
                           {isClosing ? "Closing" : "Close"}
                         </button>
@@ -1506,7 +1513,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
       {/* Omit this surface entirely when the account has no vault holdings. */}
       {vaultHoldings.length > 0 ? (
-      <div id="vault-positions" className="surface-1 rounded-[16px] overflow-hidden">
+      <div id="vault-positions" className={`${PANEL} overflow-hidden`}>
         <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
           <h3 className="text-[13px] font-display font-semibold">
             Vault Positions ({vaultHoldings.length})
@@ -1524,42 +1531,42 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                   ? "text-danger"
                   : "text-zinc-400";
               return (
-                <div key={holding.address} className="bg-[#111] p-4">
+                <div key={holding.address} className="bg-background-secondary p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold text-zinc-100">
                         {holding.name}
                       </div>
-                      <div className="mt-1 font-mono text-[10px] tabular-nums text-zinc-600">
+                      <div className="mt-1 font-mono text-[11px] tabular-nums text-zinc-500">
                         {holding.address.slice(0, 8)}...{holding.address.slice(-6)}
                       </div>
                     </div>
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-zinc-500">
+                    <span className="rounded-[var(--radius-xs)] bg-white/5 px-2 py-0.5 text-[11px] font-semibold uppercase text-zinc-500">
                       {holding.vaultType === "protocol" ? "Protocol" : "Vault"}
                     </span>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[11px]">
                     <div>
-                      <div className="text-zinc-600">Current value</div>
+                      <div className="text-zinc-500">Current value</div>
                       <div className="mt-0.5 font-mono tabular-nums text-zinc-100">
                         {formatUsd(holding.currentValue)}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-zinc-600">All-time P&amp;L</div>
+                      <div className="text-zinc-500">All-time P&amp;L</div>
                       <div className={`mt-0.5 font-mono tabular-nums ${pnlColor}`}>
                         {formatUsd(holding.pnl, { signed: true })}
                       </div>
                     </div>
                     <div>
-                      <div className="text-zinc-600">Deposited</div>
+                      <div className="text-zinc-500">Deposited</div>
                       <div className="mt-0.5 font-mono tabular-nums text-zinc-300">
                         {formatUsd(holding.deposited)}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-zinc-600">Shares</div>
+                      <div className="text-zinc-500">Shares</div>
                       <div className="mt-0.5 font-mono tabular-nums text-zinc-300">
                         {holding.shares.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                       </div>
@@ -1570,14 +1577,14 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                     <button
                       type="button"
                       onClick={() => setVaultAction({ mode: "deposit", holding })}
-                      className="rounded-[8px] bg-accent px-3 py-2 text-[11px] font-semibold text-black transition-[filter] hover:brightness-95"
+                      className={`rounded-[var(--radius-sm)] bg-accent px-3 py-2 text-[11px] font-semibold text-black hover:brightness-95 ${PRESSABLE_CONTROL} ${FOCUS_RING}`}
                     >
                       Deposit
                     </button>
                     <button
                       type="button"
                       onClick={() => setVaultAction({ mode: "withdraw", holding })}
-                      className="rounded-[8px] border border-white/10 px-3 py-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5"
+                      className={`rounded-[var(--radius-sm)] border border-card-border px-3 py-2 text-[11px] font-semibold text-zinc-200 hover:border-border-strong hover:bg-white/5 ${PRESSABLE_CONTROL} ${FOCUS_RING}`}
                     >
                       Manage
                     </button>
@@ -1591,7 +1598,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
 
       {/* Open Orders */}
       {openOrders.length > 0 && (
-        <div className="surface-1 rounded-[16px] overflow-hidden">
+        <div className={`${PANEL} overflow-hidden`}>
           <div className="px-4 py-3 border-b border-white/5">
             <h3 className="text-[13px] font-display font-semibold">
               Open Orders ({openOrders.length})
@@ -1636,20 +1643,20 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                       aria-label={`Cancel ${o.market} ${o.isBuy ? "buy" : "sell"} order`}
                       onClick={() => void handleCancelOrder(o)}
                       disabled={!canCancel}
-                      className="shrink-0 rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`shrink-0 ${ROW_BUTTON}`}
                     >
                       {isCanceling ? "Canceling" : "Cancel"}
                     </button>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div>
-                      <div className="text-zinc-600">Price</div>
+                      <div className="text-zinc-500">Price</div>
                       <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                         ${Number(o.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-zinc-600">Remaining / Original</div>
+                      <div className="text-zinc-500">Remaining / Original</div>
                       <div className="mt-0.5 font-mono tabular-nums text-zinc-200">
                         {Number(o.remainingSize).toFixed(4)} / {Number(o.origSize).toFixed(4)}
                       </div>
@@ -1709,7 +1716,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                         {o.details}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center rounded-full border border-accent/12 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">
+                        <span className="inline-flex items-center rounded-full border border-accent/12 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold uppercase text-accent">
                           {o.status ?? "Open"}
                         </span>
                       </td>
@@ -1719,7 +1726,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                           aria-label={`Cancel ${o.market} ${o.isBuy ? "buy" : "sell"} order`}
                           onClick={() => void handleCancelOrder(o)}
                           disabled={!canCancel}
-                          className="rounded-[8px] border border-white/10 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                          className={ROW_BUTTON}
                         >
                           {isCanceling ? "Canceling" : "Cancel"}
                         </button>

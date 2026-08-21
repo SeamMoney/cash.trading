@@ -8,6 +8,7 @@ import { explorerTxUrl } from "@/lib/constants";
 import { getEstimatedLiquidationPrice } from "@/lib/trade-utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
+import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { emitDecibelTradeConfirmed } from "@/lib/decibel-trade-events";
 import { extractConfirmedDecibelFill } from "@/lib/decibel-trade-fill";
@@ -29,12 +30,8 @@ import {
 
 const LEVERAGE_MIN = 1.1;
 const SLIDER_CONTENT_HEIGHT = 72;
-
-function shortAddress(value?: string | null) {
-  if (!value) return "—";
-  if (value.length <= 13) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 type OrderLifecycle =
   | "idle"
@@ -122,20 +119,6 @@ export function TradePanel({
   const canSubmitDecibel = Boolean(canUseDecibel && marketAllowsOrders && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
-  const accountState = !connected
-    ? "Wallet disconnected"
-    : isLoadingSubaccounts
-      ? "Checking account"
-      : lookupIncomplete
-        ? "Needs refresh"
-        : hasDecibelAccount
-          ? "Ready"
-          : "No Decibel account";
-  const marketState = !supportedDecibelMarket
-    ? "Unavailable"
-    : marketStatus?.isOpen === false
-      ? marketStatus.mode || "Closed"
-      : "Open";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -549,13 +532,15 @@ export function TradePanel({
               setSide("long");
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
             }}
-            className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
-              isLong ? "text-success" : "text-zinc-600 hover:text-zinc-400"
-            }`}
+            className={cn(
+              "rounded-[var(--radius-xs)] text-sm font-display font-black uppercase tracking-wider transition-colors",
+              FOCUS_RING,
+              isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
+            )}
           >
             {isLong ? "You are LONG" : "Long"}
           </button>
-          <span className="text-zinc-700">/</span>
+          <span className="text-zinc-600">/</span>
           <button
             type="button"
             aria-pressed={!isLong}
@@ -563,21 +548,23 @@ export function TradePanel({
               setSide("short");
               if (tradeStatus !== "submitting") setOrderLifecycle("idle");
             }}
-            className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
-              !isLong ? "text-danger" : "text-zinc-600 hover:text-zinc-400"
-            }`}
+            className={cn(
+              "rounded-[var(--radius-xs)] text-sm font-display font-black uppercase tracking-wider transition-colors",
+              FOCUS_RING,
+              !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
+            )}
           >
             {!isLong ? "You are SHORT" : "Short"}
           </button>
         </div>
-        <span className="rounded-md bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
+        <span className="rounded-[var(--radius-xs)] bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
           0.034% Fee
         </span>
       </div>
 
       {/* Amount input card */}
-      <div className="overflow-hidden rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
-        <div className="flex items-center justify-between px-4 pt-3 font-mono text-[10px] tabular-nums text-zinc-500 sm:px-5">
+      <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary">
+        <div className="flex items-center justify-between px-4 pt-3 font-mono text-[11px] tabular-nums text-zinc-500 sm:px-5">
           <span>
             Available {availableUsdc == null
               ? "—"
@@ -592,13 +579,16 @@ export function TradePanel({
               setOrderLifecycle("idle");
             }}
             disabled={availableUsdc == null || availableUsdc <= 0}
-            className="rounded px-2 py-1 text-[10px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
+            className={cn(
+              "rounded-[var(--radius-xs)] px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-600",
+              FOCUS_RING,
+            )}
           >
             MAX
           </button>
         </div>
         {/* Input row */}
-        <div className="relative z-[1] flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3 sm:px-5 sm:py-4">
+        <div className="relative z-[1] flex items-center justify-between rounded-[var(--radius)] bg-background-tertiary px-4 py-3 sm:px-5 sm:py-4">
           <input
             ref={inputRef}
             type="text"
@@ -622,7 +612,7 @@ export function TradePanel({
               }
             }}
             style={{ fontSize: "28px" }}
-            className="bg-transparent font-mono font-bold text-white placeholder-zinc-600 outline-none w-full min-w-0 tracking-tight"
+            className="w-full min-w-0 rounded-[var(--radius-xs)] bg-transparent font-mono font-bold tracking-tight text-foreground placeholder-zinc-600 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <div ref={collateralDropdownRef} className="relative shrink-0 ml-4">
             <button
@@ -632,17 +622,20 @@ export function TradePanel({
               aria-expanded={collateralOpen}
               aria-haspopup="menu"
               onClick={() => setCollateralOpen((open) => !open)}
-              className="flex items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]"
+              className={cn(
+                "flex items-center gap-2 rounded-[var(--radius-sm)] bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]",
+                FOCUS_RING,
+              )}
             >
               <TokenLogo token={collateralToken} size={22} />
-              <span className="text-[14px] font-display font-semibold text-white">
+              <span className="text-sm font-display font-semibold text-foreground">
                 {collateralToken}
               </span>
               <ChevronDown className={`h-3 w-3 text-zinc-500 transition-transform ${collateralOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {collateralOpen && (
-              <div id="trade-collateral-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[10px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
+              <div id="trade-collateral-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[var(--radius-sm)] border border-card-border bg-background-elevated p-1 shadow-2xl shadow-black/40">
                 {COLLATERAL_TOKENS.map((token) => {
                   const active = token.symbol === collateralToken;
                   return (
@@ -660,11 +653,13 @@ export function TradePanel({
                           setOrderLifecycle("idle");
                         }
                       }}
-                      className={`w-full flex items-center justify-between gap-3 rounded-[9px] px-2.5 py-2 text-left transition-colors ${
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2.5 py-2 text-left transition-colors",
+                        FOCUS_RING,
                         active
-                          ? "bg-white/[0.05] text-white"
-                          : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
-                      }`}
+                          ? "bg-white/[0.05] text-foreground"
+                          : "text-zinc-400 hover:bg-white/[0.03] hover:text-foreground",
+                      )}
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <TokenLogo token={token.symbol} size={20} />
@@ -672,13 +667,13 @@ export function TradePanel({
                           <span className="block text-[13px] font-display font-semibold leading-tight">
                             {token.symbol}
                           </span>
-                          <span className="block text-[10px] text-[#555] leading-tight">
+                          <span className="block text-[11px] leading-tight text-zinc-500">
                             {token.name}
                           </span>
                         </span>
                       </span>
                       {active && (
-                        <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
+                        <Check className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
                       )}
                     </button>
                   );
@@ -689,13 +684,13 @@ export function TradePanel({
         </div>
 
         {/* Leverage mini drawer */}
-        <div className="bg-[#0e0e0e]">
+        <div>
           <div
-            className="overflow-hidden transition-[height] duration-150 ease-out"
+            className="overflow-hidden transition-[height] duration-150 ease-out motion-reduce:transition-none"
             style={{ height: leverageOpen ? SLIDER_CONTENT_HEIGHT : 0 }}
           >
             <div
-              className="px-5 pt-4 transition-transform duration-150 ease-out"
+              className="px-5 pt-4 transition-transform duration-150 ease-out motion-reduce:transition-none"
               style={{ transform: leverageOpen ? "translateY(0)" : "translateY(-12px)" }}
             >
               <div
@@ -706,7 +701,10 @@ export function TradePanel({
                 aria-valuemin={LEVERAGE_MIN}
                 aria-valuenow={leverage}
                 aria-valuetext={`${leverage.toFixed(1)} times`}
-                className="relative h-[24px] rounded-full bg-zinc-800 cursor-pointer touch-none overflow-hidden"
+                className={cn(
+                  "relative h-6 cursor-pointer touch-none overflow-hidden rounded-full bg-zinc-800",
+                  FOCUS_RING,
+                )}
                 onKeyDown={handleLeverageKeyDown}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
@@ -719,31 +717,25 @@ export function TradePanel({
                     className="absolute inset-y-0 left-0 rounded-full"
                     style={{
                       width: `calc(${leveragePct}% + 12px)`,
-                      background: isLong
-                        ? "var(--accent)"
-                        : "linear-gradient(90deg, #b91c1c 0%, #F21A1A 100%)",
+                      background: isLong ? "var(--accent)" : "var(--danger)",
                     }}
                   />
                 )}
                 <div
-                  className="absolute top-[2px] w-[20px] h-[20px] rounded-full z-[2]"
+                  className="absolute top-0.5 z-[2] h-5 w-5 rounded-full"
                   style={{
                     left: `clamp(2px, calc(${leveragePct}% - 10px), calc(100% - 22px))`,
-                    background: isLong ? "var(--accent)" : "#F21A1A",
+                    background: isLong ? "var(--accent)" : "var(--danger)",
                     filter: `brightness(${dragging ? 1.3 : 1.1})`,
                     boxShadow: dragging
-                      ? `0 0 12px ${isLong ? "rgba(57,255,20,0.55)" : "rgba(242,26,26,0.6)"}`
+                      ? `0 0 12px color-mix(in srgb, ${isLong ? "var(--accent)" : "var(--danger)"} 60%, transparent)`
                       : "none",
                   }}
                 />
               </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-[12px] font-mono font-bold text-zinc-500">
-                  {LEVERAGE_MIN}x
-                </span>
-                <span className="text-[12px] font-mono font-bold text-zinc-500">
-                  {maxLeverage}x
-                </span>
+              <div className="mt-2 flex items-center justify-between font-mono text-xs font-bold text-zinc-500">
+                <span>{LEVERAGE_MIN}x</span>
+                <span>{maxLeverage}x</span>
               </div>
             </div>
           </div>
@@ -753,10 +745,13 @@ export function TradePanel({
             aria-controls="trade-leverage-slider"
             aria-expanded={leverageOpen}
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
-            className="flex w-full flex-col items-center gap-1 px-5 pb-3 pt-2"
+            className={cn(
+              "flex w-full flex-col items-center gap-1 rounded-[var(--radius-xs)] px-5 pb-3 pt-2",
+              FOCUS_RING,
+            )}
           >
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-display font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              <span className="text-[11px] font-display font-semibold uppercase tracking-wide text-zinc-500">
                 Leverage
               </span>
               <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
@@ -768,7 +763,9 @@ export function TradePanel({
         </div>
       </div>
 
-      {/* Order details — auto-shows when amount is entered */}
+      {/* Order details — auto-shows when amount is entered. Liquidation,
+          order value, slippage and fees are shown at every width; leverage
+          (already in the drawer above) and margin fold away on phones. */}
       {amount && parseFloat(amount) > 0 && currentPrice > 0 && (() => {
         const amt = parseFloat(amount);
         const orderValue = amt * leverage;
@@ -776,34 +773,32 @@ export function TradePanel({
         const marginRequired = orderValue;
         const estLiqPrice = getEstimatedLiquidationPrice(currentPrice, side, leverage);
         return (
-          <div className="mt-3 hidden rounded-[10px] bg-[#0e0e0e] p-4 text-[11px] font-mono tabular-nums animate-enter sm:block sm:border sm:border-white/[0.06]">
-            <div className="space-y-2.5">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Leverage</span>
-              <span className="text-white font-semibold">{leverage.toFixed(1)}x</span>
+          <dl className="mt-3 space-y-2.5 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-4 font-mono text-[11px] tabular-nums animate-enter">
+            <div className="hidden justify-between sm:flex">
+              <dt className="text-zinc-500">Leverage</dt>
+              <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Order Value</span>
-              <span className="text-white">{orderBtc.toFixed(4)} {market.split("/")[0]} / {orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-zinc-500">Order Value</dt>
+              <dd className="text-right text-foreground">{orderBtc.toFixed(4)} {market.split("/")[0]} / {orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Est. Liquidation</span>
-              <span className="text-white">${estLiqPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-zinc-500">Est. Liquidation</dt>
+              <dd className="text-foreground">${estLiqPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Margin Required</span>
-              <span className="text-white">${marginRequired.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div className="hidden justify-between sm:flex">
+              <dt className="text-zinc-500">Margin Required</dt>
+              <dd className="text-foreground">${marginRequired.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Slippage</span>
-              <span className="text-zinc-400">Est: 0.00% / Max: 8%</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-zinc-500">Slippage</dt>
+              <dd className="text-zinc-400">Est: 0.00% / Max: 8%</dd>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Fees</span>
-              <span className="text-zinc-400">0.0340% / 0.0110%</span>
+            <div className="flex justify-between gap-3">
+              <dt className="text-zinc-500">Fees</dt>
+              <dd className="text-zinc-400">0.0340% / 0.0110%</dd>
             </div>
-            </div>
-          </div>
+          </dl>
         );
       })()}
 
@@ -811,6 +806,7 @@ export function TradePanel({
           primary CTA, so it must be clickable and open the selector rather
           than sit disabled. */}
       <button
+        type="button"
         onClick={
           !connected
             ? () => window.dispatchEvent(new CustomEvent("cash:open-wallet-selector"))
@@ -818,8 +814,9 @@ export function TradePanel({
         }
         disabled={connected && !canSubmitDecibel}
         className={cn(
-          "mt-3 w-full rounded-[10px] py-3.5 text-[14px] font-display font-bold uppercase tracking-wider transition-all disabled:cursor-not-allowed sm:mt-4",
-          (canSubmitDecibel || !connected) && "active:scale-[0.98]",
+          "mt-3 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-bold uppercase tracking-wider disabled:cursor-not-allowed sm:mt-4",
+          PRESSABLE_CONTROL,
+          FOCUS_RING,
           isOrderSuccess
             ? "bg-success text-white"
             : !connected
@@ -828,7 +825,7 @@ export function TradePanel({
                 ? isLong
                   ? "bg-success text-white hover:brightness-110"
                   : "bg-danger text-white hover:brightness-110"
-                : "border border-white/[0.06] bg-white/[0.04] text-zinc-500"
+                : "border border-card-border bg-white/[0.04] text-zinc-500"
         )}
       >
         {isOrderSubmitting ? (
@@ -851,9 +848,9 @@ export function TradePanel({
           id="trade-status-message"
           aria-live={tradeStatus === "error" ? "assertive" : "polite"}
           role={tradeStatus === "error" ? "alert" : "status"}
-          className={`mt-3 rounded-md px-3 py-2 text-[11px] ${
+          className={`mt-3 rounded-[var(--radius-xs)] px-3 py-2 text-[11px] ${
             tradeStatus === "error"
-              ? "bg-red-500/10 text-red-300"
+              ? "bg-danger/10 text-danger"
               : "bg-white/[0.03] text-zinc-400"
           }`}
         >
@@ -863,53 +860,13 @@ export function TradePanel({
               href={explorerTxUrl(statusHash)}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 inline-block text-accent underline"
+              className={cn("mt-1 inline-block rounded-[var(--radius-xs)] text-accent underline", FOCUS_RING)}
             >
               View transaction
             </a>
           )}
         </div>
       )}
-
-      <div className="mt-auto hidden pt-4 xl:block">
-        <div className="border-t border-white/[0.06] pt-4 font-mono text-[11px] tabular-nums">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-zinc-500">Execution</span>
-            <span
-              className={cn(
-                "rounded-[6px] px-2 py-1 text-[10px]",
-                canUseDecibel && marketAllowsOrders ? "bg-green-500/10 text-green-400" : "bg-white/[0.04] text-zinc-500",
-              )}
-            >
-              {canUseDecibel && marketAllowsOrders ? "READY" : "WAITING"}
-            </span>
-          </div>
-          <div className="space-y-2.5 text-zinc-500">
-            <div className="flex justify-between gap-4">
-              <span>Account</span>
-              <span className="text-right text-zinc-300">{accountState}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Subaccount</span>
-              <span className="text-right text-zinc-300">{shortAddress(selectedSubaccount)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Market</span>
-              <span className="text-right text-zinc-300">{marketState}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Network</span>
-              <span className="text-right text-zinc-300">{decibelNetwork}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Max lev.</span>
-              <span className="text-right text-zinc-300">{maxLeverage}x</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* OrderBook — hidden for now (Decibel depth API unavailable on mainnet) */}
     </div>
   );
 }

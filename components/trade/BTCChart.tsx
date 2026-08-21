@@ -569,7 +569,7 @@ export function MarketLogo({ market, size = 20 }: { market: string; size?: numbe
           height: size,
           minWidth: size,
           minHeight: size,
-          backgroundColor: needsDarkBacking ? "#101010" : undefined,
+          backgroundColor: needsDarkBacking ? "var(--background-secondary)" : undefined,
         }}
       />
     );
@@ -577,7 +577,7 @@ export function MarketLogo({ market, size = 20 }: { market: string; size?: numbe
   const initials = getBaseSymbol(market).slice(0, 3) || "?";
   return (
     <span
-      className="shrink-0 inline-flex items-center justify-center rounded-full bg-[#242424] text-[9px] font-black text-zinc-200"
+      className="shrink-0 inline-flex items-center justify-center rounded-full bg-background-elevated text-[11px] font-black text-zinc-200"
       style={{ width: size, height: size, minWidth: size, minHeight: size }}
     >
       {initials}
@@ -654,7 +654,7 @@ export function MarketModal({
   if (!open) return null;
 
   const renderMarketContent = (requestClose: () => void) => (
-    <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
+    <div className="bg-background-secondary py-3 font-mono text-sm font-medium sm:py-0">
       {multiple && (
         <button
           type="button"
@@ -663,21 +663,21 @@ export function MarketModal({
           onClick={onSelectAll}
           className={cn(
             PRESSABLE_CONTROL,
-            "mb-3 flex w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left outline-none transition-[transform,opacity] hover:border-white/[0.16] hover:bg-white/[0.045] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            "mb-3 flex w-full items-center justify-between rounded-[var(--radius-sm)] border border-card-border bg-white/[0.025] px-3 py-3 text-left outline-none transition-[transform,opacity] hover:border-border-strong hover:bg-white/[0.045] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           )}
         >
           <span>
             <span className="block font-display text-[13px] font-semibold text-zinc-100">{allLabel}</span>
-            <span className="mt-0.5 block text-[10px] text-zinc-400">{allDescription}</span>
+            <span className="mt-0.5 block text-[11px] text-zinc-400">{allDescription}</span>
           </span>
-          <span className={`flex h-5 w-5 items-center justify-center rounded-[5px] border ${
+          <span className={`flex h-5 w-5 items-center justify-center rounded-[var(--radius-xs)] border ${
             allSelected ? "border-accent bg-accent text-black" : "border-white/[0.18] bg-black text-transparent"
           }`}>
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         </button>
       )}
-      <div className="flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
+      <div className="flex items-center gap-5 overflow-x-auto border-b border-card-border">
         {categoriesList.map((tab) => (
           <button
             key={tab.key}
@@ -698,7 +698,7 @@ export function MarketModal({
       </div>
 
       <div className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:gap-x-4 sm:px-3",
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-zinc-400 sm:gap-x-4 sm:px-3",
         selectorVariant === "spot"
           ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
           : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
@@ -718,12 +718,12 @@ export function MarketModal({
 
       <div className="pr-1 md:max-h-[min(62dvh,600px)] md:overflow-y-auto md:overscroll-contain md:scrollbar-thin">
         <div>
-          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
-            <span className="text-[10px] font-bold uppercase text-zinc-400">
+          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-background-secondary/95 px-2 pb-1 pt-3 sm:px-3">
+            <span className="text-[11px] font-bold uppercase text-zinc-400">
               {activeCategoryLabel}
             </span>
             {loading && (
-              <span className="text-[10px] font-bold uppercase text-green-400">
+              <span className="text-[11px] font-bold uppercase text-accent">
                 Syncing
               </span>
             )}
@@ -753,15 +753,15 @@ export function MarketModal({
                   }}
                   className={cn(
                     PRESSABLE_CONTROL,
-                    "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:transform-none sm:gap-x-4 sm:px-3",
+                    "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-[var(--radius-sm)] px-2 py-2.5 outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:transform-none sm:gap-x-4 sm:px-3",
                     selectorVariant === "spot"
                       ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
                       : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
                     isDisabled
                       ? "cursor-not-allowed bg-white/[0.015] text-zinc-400"
                       : isActive
-                      ? "bg-white/[0.05] text-white"
-                      : "text-[#888] hover:bg-white/[0.03] hover:text-white/80",
+                      ? "bg-white/[0.05] text-foreground"
+                      : "text-zinc-400 hover:bg-white/[0.03] hover:text-foreground",
                   )}
                 >
                   <span className="flex min-w-0 items-center gap-2">
@@ -775,13 +775,13 @@ export function MarketModal({
                       {market.pair.replace(/ PERPS$/, "")}
                     </span>
                     {isActive && (
-                      <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
+                      <Check className="size-3 shrink-0 text-accent" aria-hidden="true" />
                     )}
                     {isDisabled && (
-                      <span className="shrink-0 rounded border border-white/[0.08] bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-400">{disabledLabel}</span>
+                      <span className="shrink-0 rounded-[var(--radius-xs)] border border-card-border bg-white/[0.05] px-1.5 py-0.5 text-[11px] uppercase tracking-wider text-zinc-400">{disabledLabel}</span>
                     )}
                   </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-zinc-400 sm:block">
+                  <span className="hidden text-right text-xs tabular-nums text-zinc-400 sm:block">
                     {mark > 0
                       ? mark.toLocaleString("en-US", {
                           minimumFractionDigits: getDisplayDecimals(mark),
@@ -791,17 +791,17 @@ export function MarketModal({
                   </span>
                   {selectorVariant === "default" && (
                     <>
-                      <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
+                      <span className="hidden text-right text-xs tabular-nums text-accent/80 sm:block">
                         {fundingText}
                       </span>
-                      <span className="hidden text-right text-[12px] tabular-nums text-zinc-400 sm:block">
+                      <span className="hidden text-right text-xs tabular-nums text-zinc-400 sm:block">
                         {market.perpData?.openInterestLabel ?? "—"}
                       </span>
                     </>
                   )}
                   <span
                     className={`text-right text-xs font-bold tabular-nums ${
-                      isActive ? "text-green-400" : "text-zinc-400"
+                      isActive ? "text-accent" : "text-zinc-400"
                     }`}
                   >
                     {selectorVariant === "spot"
@@ -814,20 +814,20 @@ export function MarketModal({
           </div>
         </div>
         {filteredMarkets.length === 0 && (
-          <div className="flex h-36 items-center justify-center text-[12px] text-zinc-400">
+          <div className="flex h-36 items-center justify-center text-xs text-zinc-400">
             No {activeCategoryLabel.toLowerCase()} markets are available.
           </div>
         )}
         <div className="h-3" />
       </div>
       {multiple && (
-        <div className="sticky bottom-0 border-t border-white/[0.07] bg-[#101010] pt-3">
+        <div className="sticky bottom-0 border-t border-card-border bg-background-secondary pt-3">
           <button
             type="button"
             onClick={requestClose}
             className={cn(
               PRESSABLE_CONTROL,
-              "w-full rounded-[10px] bg-accent px-4 py-2.5 font-display text-[13px] font-semibold text-black outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#101010]",
+              "h-10 w-full rounded-[var(--radius-sm)] bg-accent px-4 font-display text-sm font-semibold text-black outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
             )}
           >
             Done · {activeIds.length} selected
@@ -1124,7 +1124,7 @@ export function BTCChart({
   }, []);
 
   return (
-    <div ref={chartRef} className={cn("surface-1 overflow-hidden rounded-[16px] lg:flex lg:flex-col", className)}>
+    <div ref={chartRef} className={cn("overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary lg:flex lg:flex-col", className)}>
       {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
@@ -1138,14 +1138,14 @@ export function BTCChart({
             aria-expanded={modalOpen}
             className={cn(
               PRESSABLE_CONTROL,
-              "-mx-2 -my-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5 outline-none transition-[transform,opacity] hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring",
+              "-mx-2 -my-1.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 outline-none transition-[transform,opacity] hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >
             <MarketLogo market={market} />
             <span className="text-[13px] font-display font-semibold whitespace-nowrap">
               {marketConfig.pair.replace(" PERPS", "")}
             </span>
-            <span className="text-[10px] font-mono font-bold text-zinc-400 bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="rounded-[var(--radius-xs)] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
               {marketConfig.leverage > 0 ? `${marketConfig.leverage}x` : "Spot"}
             </span>
             <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
@@ -1163,16 +1163,16 @@ export function BTCChart({
               minimumFractionDigits: displayPriceDecimals,
               maximumFractionDigits: displayPriceDecimals,
             }}
-            className="font-mono text-[15px] font-bold text-zinc-100"
+            className="font-mono text-base font-bold text-foreground"
           />
         </div>
       </div>
 
       {/* Market stats bar */}
       <div className="border-b border-white/5">
-        <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[10px] tabular-nums sm:gap-x-5 sm:text-[11px]">
+        <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[11px] tabular-nums sm:gap-x-5">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Oracle</span>
+            <span className="text-[11px] leading-3 text-zinc-400">Oracle</span>
             <NumberTicker
               value={displayOracle > 0 ? displayOracle : null}
               fallback="—"
@@ -1180,26 +1180,26 @@ export function BTCChart({
                 minimumFractionDigits: displayStatDecimals,
                 maximumFractionDigits: displayStatDecimals,
               }}
-              className="mt-0.5 truncate font-semibold leading-4 text-white"
+              className="mt-0.5 truncate font-semibold leading-4 text-foreground"
             />
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">24h</span>
-            <span className={`${displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <span className="text-[11px] leading-3 text-zinc-400">24h</span>
+            <span className={`${displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-danger" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayChange}
             </span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Volume</span>
-            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayVolume}</span>
+            <span className="text-[11px] leading-3 text-zinc-400">Volume</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-foreground">{displayVolume}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">OI</span>
-            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayOpenInterest}</span>
+            <span className="text-[11px] leading-3 text-zinc-400">OI</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-foreground">{displayOpenInterest}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <span className="text-[9px] leading-3 text-zinc-400 sm:text-[10px]">Funding</span>
-            <span className={`${displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
+            <span className="text-[11px] leading-3 text-zinc-400">Funding</span>
+            <span className={`${displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-danger" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayFunding}
             </span>
           </div>
@@ -1210,18 +1210,18 @@ export function BTCChart({
       <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1">
         {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
-          <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-[#141414]" />
+          <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-background-secondary" />
         )}
         {/* Right-side fade to prevent x-axis labels from touching the button */}
-        <div className="absolute bottom-0 right-0 z-[15] w-[120px] h-[32px] pointer-events-none bg-gradient-to-l from-[#141414] via-[#141414]/80 to-transparent" />
-        <div className="absolute bottom-2 right-2 z-20 flex items-center rounded-[8px] border border-white/[0.08] bg-[#141414]/90 backdrop-blur-sm p-0.5">
+        <div className="absolute bottom-0 right-0 z-[15] w-[120px] h-[32px] pointer-events-none bg-gradient-to-l from-background-secondary via-background-secondary/80 to-transparent" />
+        <div className="absolute bottom-2 right-2 z-20 flex items-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary/90 p-0.5">
           <button
             type="button"
             aria-pressed={(isPerpsMarket ? perpsMode : mode) === "line"}
             onClick={() => isPerpsMarket ? setPerpsMode("line") : setMode("line")}
-            className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
+            className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               (isPerpsMarket ? perpsMode : mode) === "line"
-                ? "bg-white/[0.1] text-white"
+                ? "bg-white/[0.1] text-foreground"
                 : "text-zinc-400"
             }`}
           >
@@ -1231,9 +1231,9 @@ export function BTCChart({
             type="button"
             aria-pressed={(isPerpsMarket ? perpsMode : mode) === "candle"}
             onClick={() => isPerpsMarket ? setPerpsMode("candle") : setMode("candle")}
-            className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
+            className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               (isPerpsMarket ? perpsMode : mode) === "candle"
-                ? "bg-white/[0.1] text-white"
+                ? "bg-white/[0.1] text-foreground"
                 : "text-zinc-400"
             }`}
           >
@@ -1254,9 +1254,9 @@ export function BTCChart({
                 type="button"
                 aria-label={`Moving-average overlay: ${overlayMode}`}
                 onClick={() => setOverlayMode(next)}
-                className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
-                  overlayMode === "strategy" ? "bg-emerald-500/20 text-emerald-300"
-                  : overlayMode !== "off" ? "bg-purple-500/20 text-purple-300"
+                className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  overlayMode === "strategy" ? "bg-success/15 text-success"
+                  : overlayMode !== "off" ? "bg-purple-500/15 text-purple-500"
                   : "text-zinc-400"
                 }`}
                 title={hasStrategy ? "Overlay moving averages (off → SMA → EMA → Vault 3/5)" : "Overlay moving averages (off → SMA → EMA)"}
@@ -1331,7 +1331,7 @@ export function BTCChart({
                       }}
                     />
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 rounded-md border px-2 py-1 text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-white"
+                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border px-2 py-1 text-[11px] font-mono font-semibold uppercase tracking-wide text-white"
                       style={{
                         right: 12,
                         background: "rgba(9, 9, 11, 0.86)",
@@ -1357,14 +1357,16 @@ export function BTCChart({
 
         {/* Minimal overlay controls — fade in on hover */}
         {!isPerpsMarket && (
-          <div className="absolute top-2 left-3 flex items-center gap-0.5 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
+          <div className="absolute top-2 left-3 flex items-center gap-0.5 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
             {WINDOWS.map((w) => (
               <button
                 key={w.secs}
+                type="button"
+                aria-pressed={windowSecs === w.secs}
                 onClick={() => setWindowSecs(w.secs)}
-                className={`pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md transition-colors ${
+                className={`pointer-events-auto rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   windowSecs === w.secs
-                    ? "text-white/70 bg-white/10"
+                    ? "bg-white/10 text-foreground"
                     : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
@@ -1373,8 +1375,9 @@ export function BTCChart({
             ))}
             <span className="w-px h-3 bg-white/10 mx-1" />
             <button
+              type="button"
               onClick={() => setMode((m) => (m === "candle" ? "line" : "candle"))}
-              className="pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="pointer-events-auto rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] text-zinc-400 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {mode === "candle" ? "Line" : "OHLC"}
             </button>

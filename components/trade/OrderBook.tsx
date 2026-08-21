@@ -77,11 +77,11 @@ interface LadderRow {
 
 const DISPLAY_LEVELS = 20;
 const DEFAULT_LADDER_ROWS = 39;
-const POSITIVE = "#00d20c";
-const NEGATIVE = "#ff5000";
-const POSITIVE_ALPHA = "rgba(0, 210, 12, 0.18)";
-const NEGATIVE_ALPHA = "rgba(255, 80, 0, 0.20)";
-const CENTER_BG = "#1f1f22";
+// Theme tokens rather than literal hex so the light theme's --success /
+// --danger remaps reach the ladder (a literal stays neon-on-white).
+const POSITIVE_ALPHA = "color-mix(in srgb, var(--success) 18%, transparent)";
+const NEGATIVE_ALPHA = "color-mix(in srgb, var(--danger) 20%, transparent)";
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const MAX_TRADES = 80;
 const RECENT_TRADES_TIMEOUT_MS = 8_000;
 const recentTradesCache = new Map<string, TradePrint[]>();
@@ -407,7 +407,7 @@ function LadderRowView({
           <>
             <div
               aria-hidden="true"
-              className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
+              className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2 rounded-none"
               style={{
                 width: `max(1px, calc(${bidPct}% - 4px))`,
                 backgroundColor: POSITIVE_ALPHA,
@@ -415,11 +415,8 @@ function LadderRowView({
             />
             <span
               aria-hidden="true"
-              className="absolute top-1/2 w-16 -translate-y-1/2 text-right font-bold leading-none sm:w-20"
-              style={{
-                right: `min(calc(${bidPct}% + 4px), calc(100% - 4rem))`,
-                color: POSITIVE,
-              }}
+              className="absolute top-1/2 w-16 -translate-y-1/2 text-right font-bold leading-none text-success sm:w-20"
+              style={{ right: `min(calc(${bidPct}% + 4px), calc(100% - 4rem))` }}
             >
               {formatSize(row.bidSize)}
             </span>
@@ -430,25 +427,21 @@ function LadderRowView({
       <span
         role="cell"
         aria-label={formatPrice(row.price)}
-        className="relative z-[1] flex h-full min-w-0 items-center justify-center px-1"
-        style={{
-          color: isCenter ? "#ffffff" : "#85858b",
-          fontWeight: isCenter ? 700 : 400,
-        }}
+        className={cn(
+          "relative z-[1] flex h-full min-w-0 items-center justify-center px-1",
+          isCenter ? "font-bold text-foreground" : "font-normal text-zinc-400",
+        )}
       >
         {onPriceClick && (
           <button
             type="button"
             onClick={() => onPriceClick(row.price)}
             aria-label={`Set price to ${formatPrice(row.price)}. Bid size ${bidLabel}. Ask size ${askLabel}.`}
-            className="absolute inset-y-0 -left-full -right-full z-10 rounded-[4px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/50"
+            className={cn("absolute inset-y-0 -left-full -right-full z-10 rounded-[var(--radius-xs)]", FOCUS_RING, "focus-visible:ring-inset")}
           />
         )}
         {isCenter ? (
-          <span
-            className="rounded-[4px] px-[10px] py-[2px] leading-none"
-            style={{ backgroundColor: CENTER_BG, boxShadow: `0 0 0 1px ${POSITIVE}` }}
-          >
+          <span className="rounded-[var(--radius-xs)] bg-background-tertiary px-2 py-0.5 leading-none ring-1 ring-accent">
             {formatPrice(row.price)}
           </span>
         ) : (
@@ -461,7 +454,7 @@ function LadderRowView({
           <>
             <div
               aria-hidden="true"
-              className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2 rounded-[2px]"
+              className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2 rounded-none"
               style={{
                 width: `max(1px, calc(${askPct}% - 4px))`,
                 backgroundColor: NEGATIVE_ALPHA,
@@ -469,11 +462,8 @@ function LadderRowView({
             />
             <span
               aria-hidden="true"
-              className="absolute top-1/2 w-16 -translate-y-1/2 text-left font-bold leading-none sm:w-20"
-              style={{
-                left: `min(calc(${askPct}% + 4px), calc(100% - 4rem))`,
-                color: NEGATIVE,
-              }}
+              className="absolute top-1/2 w-16 -translate-y-1/2 text-left font-bold leading-none text-danger sm:w-20"
+              style={{ left: `min(calc(${askPct}% + 4px), calc(100% - 4rem))` }}
             >
               {formatSize(row.askSize)}
             </span>
@@ -496,7 +486,7 @@ function TradesTable({
   return (
     <div role="table" aria-label="Recent trades" className="flex min-h-0 flex-1 flex-col px-3 py-2">
       <div role="rowgroup">
-        <div role="row" className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-white/[0.06] pb-1 font-mono text-[9px] uppercase text-zinc-400">
+        <div role="row" className="grid shrink-0 grid-cols-[72px_1fr_1fr_52px] gap-x-2 border-b border-card-border pb-1 font-mono text-[11px] uppercase text-zinc-400">
           <span role="columnheader">Time</span>
           <span role="columnheader" aria-label="Price and side" className="text-right">Price</span>
           <span role="columnheader" className="text-right">USD</span>
@@ -513,14 +503,16 @@ function TradesTable({
               <div
                 key={`${trade.id}:${trade.txRef ?? ""}:${trade.timestamp}`}
                 role="row"
-                className="grid h-full min-h-11 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[4px] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03] sm:min-h-7"
+                className="grid h-full min-h-11 grid-cols-[72px_1fr_1fr_52px] items-center gap-x-2 rounded-[var(--radius-xs)] font-mono text-[11px] tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.03] sm:min-h-7"
               >
                 <span role="cell" className="truncate text-zinc-400">{formatTime(trade.timestamp)}</span>
                 <span
                   role="cell"
                   aria-label={`${trade.side === "unknown" ? "Unknown side" : trade.side} ${formatPrice(trade.price)}`}
-                  className="text-right font-semibold"
-                  style={{ color: trade.side === "sell" ? NEGATIVE : trade.side === "buy" ? POSITIVE : "#d4d4d8" }}
+                  className={cn(
+                    "text-right font-semibold",
+                    trade.side === "sell" ? "text-danger" : trade.side === "buy" ? "text-success" : "text-zinc-300",
+                  )}
                 >
                   {formatPrice(trade.price)}
                 </span>
@@ -533,7 +525,7 @@ function TradesTable({
                       href={explorerTxnUrl(trade.txRef, network)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex min-h-11 min-w-11 items-center justify-end text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6 sm:min-w-0"
+                      className={cn("inline-flex min-h-11 min-w-11 items-center justify-end rounded-[var(--radius-xs)] text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline sm:min-h-6 sm:min-w-0", FOCUS_RING)}
                     >
                       View
                     </a>
@@ -818,15 +810,15 @@ export function OrderBook({
   };
 
   return (
-    <section ref={surfaceRef} className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>
-      <div className="flex items-center justify-between border-b border-white/[0.08] px-3 py-2 font-mono text-[10px] uppercase text-zinc-400">
+    <section ref={surfaceRef} className={cn("flex min-h-[320px] flex-col overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary text-foreground", className)}>
+      <div className="flex items-center justify-between border-b border-card-border px-3 py-2 font-mono text-[11px] uppercase text-zinc-400">
         <div className="flex items-center gap-3">
           <span>{symbol}</span>
           <div
             role="tablist"
             aria-label={`${symbol} market data`}
             aria-orientation="horizontal"
-            className="flex items-center rounded-[6px] bg-white/[0.03] p-0.5"
+            className="flex items-center rounded-[var(--radius-xs)] bg-white/[0.03] p-0.5"
           >
             {(["book", "trades"] as const).map((tab) => (
               <button
@@ -852,9 +844,10 @@ export function OrderBook({
                   }
                 }}
                 className={cn(
-                  "min-h-11 min-w-11 rounded-[5px] px-2 py-0.5 text-[9px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50 sm:min-h-0 sm:min-w-0",
+                  "min-h-11 min-w-11 rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] transition-colors sm:min-h-0 sm:min-w-0",
+                  FOCUS_RING,
                   activeTab === tab
-                    ? "bg-white/[0.08] text-zinc-200"
+                    ? "bg-white/[0.08] text-foreground"
                     : "text-zinc-400 hover:text-zinc-200",
                 )}
               >
@@ -911,7 +904,7 @@ export function OrderBook({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/[0.08] px-3 py-2 font-mono text-[10px] text-zinc-400">
+      <div className="flex items-center justify-between border-t border-card-border px-3 py-2 font-mono text-[11px] tabular-nums text-zinc-400">
         <span>{formatTime(activeTab === "book" ? renderedBook.timestamp : renderedTrades[0]?.timestamp ?? null)}</span>
         <span>{formatPrice(displayPrice || 0)}</span>
       </div>

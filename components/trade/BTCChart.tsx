@@ -1219,10 +1219,10 @@ export function BTCChart({
           the shared chart components. The card keeps its border-token frame,
           so no extra rules are drawn behind the price. */}
       <div
-        // 300px below sm: at 390×844 the 340px plot pushed the order form's
+        // 248px below sm: at 390x844 a taller plot pushed the order form's
         // primary CTA past the fold on its own. Only the phone height moves —
         // the chart still owns more of the viewport than anything else.
-        className="relative h-[300px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
+        className="relative h-[248px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
         style={{ "--chart-grid": "transparent" } as React.CSSProperties}
       >
         {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}

@@ -80,28 +80,78 @@ variable.
 ### 3. Decibel deployment attestation
 
 The public quote routes fail closed unless Aptos mainnet still reports the
-reviewed packages below at the pinned Decibel account
+reviewed execution surface at the pinned Decibel account
 `0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06`.
-The attestation compares each package's upgrade number, upgrade policy `1`,
-source digest, and exact module inventory. A matching market registry alone is
-not sufficient.
+A matching market registry alone is not sufficient.
 
-| Package | Upgrade | Source digest |
-|---|---:|---|
-| `aptos_market` | 30 | `9CAAAC918B853E8FC47E7D9BC22A2C8902D27ADBF813BB623DCCC3E6A11EE648` |
-| `decibel_accounts` | 27 | `14F71F1F5AAB878412EF7610964F75939AB5AE44004A7BA4FE4487BFB2B8151E` |
-| `decibel_spot_dex` | 1 | `4F384AA816A091CAD2496B30309B8D0863DCA691176CF5E146647F6E9E1BC7C3` |
-| `decibel_trade_tracking` | 3 | `826045EFC1580F84A1A30EE9B3B03160341F1F21346E0290B89F3E3D04C7A999` |
+**We pin the ABI, not the version.** Decibel moved all four packages inside 48
+hours on 2026-08-19/20 (`aptos_market` 30→32, `decibel_accounts` 27→29,
+`decibel_spot_dex` 1→3, `decibel_trade_tracking` 3→5) and the exact
+upgrade-number and source-digest pins took the venue offline for a routine
+upstream upgrade that never touched anything we call. Version numbers are now
+recorded, reported, and reviewed — never gated.
 
-These packages are upgradeable. Any change must pause new quotes until the new
-bytecode and behavior are reviewed and the pins are intentionally updated.
+#### Hard gates (fail closed, no quotes)
+
+1. Chain id `1` and a fresh ledger proof on every read.
+2. All four packages present exactly once at the pinned account, each still on
+   upgrade policy `1` (`compatible`).
+3. Every bound module present: `decibel_accounts::dex_accounts_spot_entry`,
+   `decibel_spot_dex::spot_market` and `::spot_market_config`,
+   `decibel_trade_tracking::unified_fees_config`.
+4. The **ABI fingerprint** matches
+   `4ee5d55a9b483ccbb023c63985ad73cb4644c8484665759f16a75508754d9393`.
+
+The fingerprint is a SHA-256 over exactly the on-chain facts a user's order
+depends on, read live from the module ABIs:
+
+| Function | Why it is pinned |
+|---|---|
+| `dex_accounts_spot_entry::place_spot_order` | the entry the wallet signs — argument order, argument types, generic arity, `is_entry` |
+| `spot_market_config::get_lot_size` / `get_tick_size` / `get_min_size` | the source of the reviewed market params in `lib/decibel-spot.ts` |
+| `unified_fees_config::view_spot_tier_taker_fees` | read live into every quote |
+
+plus the bound module name lists and chain id `1`. Upgrade numbers and source
+digests are deliberately **not** inputs.
+
+#### Warn (venue stays ready)
+
+An upgrade number, source digest, or non-bound module change with an unchanged
+ABI fingerprint is drift, not an outage. The server logs
+`[decibel-spot] upgrade drift …` once per distinct package signature, and the
+attestation carries `upgradeDrift: true` with the reviewed and observed numbers
+for every changed package.
+
+Drift is a review ticket, not an incident: re-read the new bytecode, then update
+`lastReviewed` in `lib/decibel-spot-deployment.ts` and the table below. Nothing
+in the drift path can widen what we submit — an ABI change is still a hard stop.
+
+| Package | Last reviewed | Upgrade | Source digest |
+|---|---|---:|---|
+| `aptos_market` | 2026-08-21 | 32 | `9CAAAC918B853E8FC47E7D9BC22A2C8902D27ADBF813BB623DCCC3E6A11EE648` |
+| `decibel_accounts` | 2026-08-21 | 29 | `14F71F1F5AAB878412EF7610964F75939AB5AE44004A7BA4FE4487BFB2B8151E` |
+| `decibel_spot_dex` | 2026-08-21 | 3 | `402795D2525B502A27491FBC276C8B6C95BA96FF654A1561DC8108C165476FF2` |
+| `decibel_trade_tracking` | 2026-08-21 | 5 | `826045EFC1580F84A1A30EE9B3B03160341F1F21346E0290B89F3E3D04C7A999` |
+
 Settlement recovery for an already-submitted order must remain available while
 new quotes are paused.
 
-Every market, orderbook, and balance request runs this four-package check. The
-server may reuse a successful package attestation for at most three seconds.
-The signing preflight's `fresh=1` flag does not skip or weaken that check; it
-additionally forces an uncached Decibel market-registry read.
+Every market, orderbook, and balance request runs this check. The server may
+reuse a successful attestation for at most three seconds. The package registry
+is re-read every window; the module ABIs are re-read whenever the observed
+package signature moves (module bytecode cannot change without a publish, and a
+publish always moves the upgrade number and digest) and at least every ten
+minutes. The signing preflight's `fresh=1` flag does not skip or weaken that
+check; it additionally forces an uncached Decibel market-registry read.
+
+To re-derive the fingerprint after a review, read the live ABI and re-run the
+self-test, which anchors the literal value independently of the module:
+
+```bash
+curl -s -H "Authorization: Bearer $GEOMI_API_KEY" \
+  "https://api.mainnet.aptoslabs.com/v1/accounts/0x50ead22afd6ffd9769e3b3d6e0e64a2a350d68e8b102c4e72e33d0b8cfdfdb06/modules?limit=200"
+pnpm test:decibel-spot-deployment
+```
 
 ### 4. Public endpoint checks
 

@@ -47,6 +47,7 @@
     "test:backtest": "tsx scripts/sealed-backtest-selftest.ts",
     "test:portfolio": "tsx scripts/portfolio-attestor-selftest.ts",
     "test:liveness": "tsx scripts/strategy-liveness-selftest.ts",
+    "test:personal-runner": "tsx scripts/personal-runner-selftest.ts",
     "test:portfolio-e2e": "tsx scripts/portfolio-e2e-testnet.ts",
     "test:portfolio-cleanroom": "tsx scripts/portfolio-cleanroom-testnet.ts",
     "test:portfolio-maxhold": "tsx scripts/portfolio-maxhold-testnet.ts",

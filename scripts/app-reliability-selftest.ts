@@ -451,7 +451,16 @@ assert.match(
   "the desktop sheet header must paint with the shared surface tokens so the light theme reaches it",
 );
 assert.doesNotMatch(responsiveModalSheet, /#171717|#101010/, "the shared modal shell must not hard-code its own blacks");
-assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, minmax\(24px, 1fr\)\)`/);
+// Ladder rows are a fixed 24px in BOTH the live and skeleton states. `1fr`
+// made row height (panel height / surviving levels), so once unquoted levels
+// were filtered out the ladder rendered at 2.2x scale and re-laid itself out on
+// every book update — continuous layout motion on a trading surface.
+assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, 24px\)`/);
+assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{visibleRowCount\}, 24px\)`/);
+assert.ok(
+  !orderBook.includes("minmax(24px, 1fr)"),
+  "ladder row height must not track the number of live levels",
+);
 assert.match(orderBook, /\[--trade-row-min:44px\] sm:\[--trade-row-min:28px\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(var\(--trade-row-min\), 1fr\)\)`/);
 assert.match(orderBook, /RECENT_TRADES_TIMEOUT_MS = 8_000/);
@@ -469,7 +478,11 @@ assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
 // ladder box shorter than a whole number of 24px rows and sliced the last row
 // through the middle of its glyphs. 672px is the Trade page's column height,
 // reused verbatim so the same component clips on neither page.
-assert.match(swapMarketLayout, /className="min-w-0 h-\[452px\] sm:h-\[572px\] lg:order-1 xl:h-\[672px\]"/);
+assert.match(swapMarketLayout, /className="min-w-0 h-\[452px\] sm:h-\[572px\] xl:h-\[672px\]"/);
+assert.ok(
+  !swapMarketLayout.includes("lg:order-"),
+  "paint order must match DOM order — the card is first in the DOM and must be first on screen",
+);
 assert.match(swapMarketLayout, /lg:items-stretch/);
 assert.ok(
   !swapMarketLayout.includes("lg:absolute") && !swapMarketLayout.includes("lg:inset-0"),

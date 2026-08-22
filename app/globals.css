@@ -405,9 +405,11 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Hide scrollbars on all browsers */
+  /* No `overflow-x: clip` here. It makes scrollWidth === clientWidth by
+     construction, so it does not prevent overflow — it only hides it, and it
+     makes "no horizontal scroll" impossible to measure. If something overflows,
+     fix the element that overflows. */
   html, body {
-    overflow-x: clip;
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */
   }

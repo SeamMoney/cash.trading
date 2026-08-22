@@ -1134,7 +1134,7 @@ export function PortfolioPageClient() {
             <p className="mt-1 max-w-md text-pretty text-xs leading-relaxed text-muted-foreground">
               {connected
                 ? `${selectedLabel} · ${decibelNetwork}`
-                : "Live equity, PnL, positions and orders load here once you connect."}
+                : "Equity, PnL, positions and orders load here once you connect."}
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-2">

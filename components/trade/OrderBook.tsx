@@ -897,8 +897,12 @@ export function OrderBook({
             <div
               role="table"
               aria-label={`${symbol} order book`}
-              className="grid min-h-full py-1"
-              style={{ gridTemplateRows: `repeat(${rows.length}, minmax(24px, 1fr))` }}
+              // Fixed 24px rows, never `1fr`: dividing the panel by the number
+              // of surviving levels made row height track live liquidity, so the
+              // ladder resized itself on every book update and rendered at 2.2x
+              // scale whenever depth was thin.
+              className="grid content-start py-1"
+              style={{ gridTemplateRows: `repeat(${rows.length}, 24px)` }}
             >
               <div role="row" className="sr-only">
                 <span role="columnheader">Bid size</span>
@@ -925,8 +929,10 @@ export function OrderBook({
           <div
             aria-busy="true"
             aria-label={`${symbol} order book loading`}
-            className="grid min-h-0 flex-1 py-1"
-            style={{ gridTemplateRows: `repeat(${visibleRowCount}, minmax(24px, 1fr))` }}
+            // Same row height and the same 24px track as the live ladder, so
+            // rows do not jump when real depth replaces the placeholder.
+            className="grid content-start min-h-0 flex-1 py-1"
+            style={{ gridTemplateRows: `repeat(${visibleRowCount}, 24px)` }}
           >
             {Array.from({ length: visibleRowCount }).map((_, index) => (
               <div

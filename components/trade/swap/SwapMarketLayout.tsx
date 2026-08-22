@@ -61,14 +61,14 @@ export function SwapMarketLayout({
 
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-none lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch lg:gap-4">
-      <div className="min-w-0 lg:order-2">
+      <div className="min-w-0">
         {children}
       </div>
 
       <OrderBook
         {...orderBookProps}
         rowCount={desktopMarketLayout ? 17 : 11}
-        className="min-w-0 h-[452px] sm:h-[572px] lg:order-1 xl:h-[672px]"
+        className="min-w-0 h-[452px] sm:h-[572px] xl:h-[672px]"
       />
     </div>
   );

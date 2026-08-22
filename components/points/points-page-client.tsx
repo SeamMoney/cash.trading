@@ -46,7 +46,7 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   const inspected = usePointsProfile(inspectOwner && inspectOwner !== owner ? inspectOwner : null, nonce);
 
   const stats = global.data
-    ? `${formatAmps(global.data.traders)} traders`
+    ? `${formatAmps(global.data.traders)} depositors`
     : global.loading
       ? null
       : "global stats unavailable";

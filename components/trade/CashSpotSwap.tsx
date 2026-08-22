@@ -2432,9 +2432,11 @@ export function CashSpotSwap({
               <button
                 type="button"
                 className={cn(
-                  // Sized to match the app's other pills (the trade page's leverage badge):
-                  // 10px text, px-1.5 py-0.5, ~19px tall. Not a 44px tap target.
-                  "shrink-0 rounded-full border border-card-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-[13px] text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                  // Between the app's two control sizes: its micro-pills (the leverage
+                  // badge, LIVE/Candles) are 19px at 10px text, and the next size up
+                  // is the 39px Sign In button. This sits beside a 17px heading, so
+                  // 19px read as tiny; ~26px at 11px text is the middle.
+                  "shrink-0 rounded-full border border-card-border bg-card px-2 py-1 text-[11px] font-medium leading-4 text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}

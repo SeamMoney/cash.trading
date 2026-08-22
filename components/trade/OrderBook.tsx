@@ -13,27 +13,14 @@ import {
 } from "@/lib/decibel-trade-events";
 import { cn } from "@/lib/utils";
 
-interface OrderBookProps {
-  marketName: string;
-  marketAddress?: string;
-  onPriceClick?: (price: number) => void;
-  currentPrice?: number;
-  className?: string;
-  rowCount?: number;
-}
+export type OrderBookStatus = "loading" | "live" | "waiting" | "unavailable";
 
-interface Level {
+export interface OrderBookLevel {
   price: number;
   size: number;
 }
 
-interface OrderBookData {
-  bids: Level[];
-  asks: Level[];
-  timestamp: number | null;
-}
-
-interface TradePrint {
+export interface OrderBookTrade {
   id: string;
   price: number;
   size: number;
@@ -41,6 +28,46 @@ interface TradePrint {
   timestamp: number;
   txRef?: string;
 }
+
+/**
+ * A book supplied by the caller instead of read from Decibel's perp stream.
+ * Spot venues are not perp markets, so they cannot be addressed by
+ * `marketAddress`; they render the same ladder by passing their own snapshot.
+ * When this is present every internal fetch and subscription stays off.
+ */
+export interface ControlledOrderBookData {
+  book: {
+    bids: OrderBookLevel[];
+    asks: OrderBookLevel[];
+    timestamp: number | null;
+  };
+  status: OrderBookStatus;
+  trades: OrderBookTrade[];
+  tradesStatus: OrderBookStatus;
+  network?: DecibelPublicNetwork;
+  priceStep?: number;
+}
+
+interface OrderBookProps {
+  marketName: string;
+  marketAddress?: string;
+  onPriceClick?: (price: number) => void;
+  currentPrice?: number;
+  className?: string;
+  rowCount?: number;
+  controlledData?: ControlledOrderBookData;
+  networkOverride?: DecibelPublicNetwork;
+}
+
+type Level = OrderBookLevel;
+
+interface OrderBookData {
+  bids: Level[];
+  asks: Level[];
+  timestamp: number | null;
+}
+
+type TradePrint = OrderBookTrade;
 
 interface LadderRow {
   price: number;
@@ -477,17 +504,28 @@ export function OrderBook({
   currentPrice,
   className,
   rowCount = DEFAULT_LADDER_ROWS,
+  controlledData,
+  networkOverride,
 }: OrderBookProps) {
-  const [network, setNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
-  const [book, setBook] = useState<OrderBookData>({
+  const controlled = controlledData != null;
+  const [sessionNetwork, setSessionNetwork] = useState<DecibelPublicNetwork>(() => getDecibelPublicNetwork());
+  const [internalBook, setBook] = useState<OrderBookData>({
     bids: [],
     asks: [],
     timestamp: null,
   });
-  const [status, setStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
-  const [trades, setTrades] = useState<TradePrint[]>([]);
-  const [tradesStatus, setTradesStatus] = useState<"loading" | "live" | "waiting" | "unavailable">("loading");
+  const [internalStatus, setStatus] = useState<OrderBookStatus>("loading");
+  const [internalTrades, setTrades] = useState<TradePrint[]>([]);
+  const [internalTradesStatus, setTradesStatus] = useState<OrderBookStatus>("loading");
   const [activeTab, setActiveTab] = useState<"book" | "trades">("book");
+
+  // Everything below this line reads the same four names whether the data
+  // arrived from the caller or from this component's own stream.
+  const network = networkOverride ?? controlledData?.network ?? sessionNetwork;
+  const book = controlledData?.book ?? internalBook;
+  const status = controlledData?.status ?? internalStatus;
+  const trades = controlledData?.trades ?? internalTrades;
+  const tradesStatus = controlledData?.tradesStatus ?? internalTradesStatus;
   const previousPriceRef = useRef(currentPrice ?? 0);
 
   const resolvedMarketAddress =
@@ -498,7 +536,7 @@ export function OrderBook({
     ? tradesCacheKey(network, resolvedMarketAddress)
     : "";
 
-  useEffect(() => onDecibelPublicNetworkChange(setNetwork), []);
+  useEffect(() => onDecibelPublicNetworkChange(setSessionNetwork), []);
 
   const ingestDepth = useCallback((message: unknown) => {
     if (!isDepthMessage(message)) return false;
@@ -527,7 +565,9 @@ export function OrderBook({
     return true;
   }, [cacheKey]);
 
-  useEffect(() => onDecibelTradeConfirmed((detail: DecibelTradeConfirmedDetail) => {
+  useEffect(() => {
+    if (controlled) return;
+    return onDecibelTradeConfirmed((detail: DecibelTradeConfirmedDetail) => {
     const addressMatches = Boolean(
       detail.marketAddress
       && resolvedMarketAddress
@@ -542,9 +582,11 @@ export function OrderBook({
       timestamp: detail.timestamp,
       tx_hash: detail.txRef,
     });
-  }), [ingestTrades, marketName, resolvedMarketAddress]);
+    });
+  }, [controlled, ingestTrades, marketName, resolvedMarketAddress]);
 
   useEffect(() => {
+    if (controlled) return;
     if (!resolvedMarketAddress) {
       setTrades([]);
       setTradesStatus("unavailable");
@@ -574,9 +616,10 @@ export function OrderBook({
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, network, resolvedMarketAddress]);
+  }, [cacheKey, controlled, network, resolvedMarketAddress]);
 
   useEffect(() => {
+    if (controlled) return;
     if (!resolvedMarketAddress) {
       setStatus("unavailable");
       setBook({ bids: [], asks: [], timestamp: null });
@@ -644,7 +687,7 @@ export function OrderBook({
       if (noDepthTimer) clearTimeout(noDepthTimer);
       stream?.close();
     };
-  }, [ingestDepth, ingestTrades, network, resolvedMarketAddress]);
+  }, [controlled, ingestDepth, ingestTrades, network, resolvedMarketAddress]);
 
   const bestBid = book.bids[0]?.price;
   const bestAsk = book.asks[0]?.price;
@@ -655,7 +698,13 @@ export function OrderBook({
     if (displayPrice && displayPrice > 0) previousPriceRef.current = displayPrice;
   }, [displayPrice]);
 
-  const step = useMemo(() => inferStep(book, displayPrice || 1), [book, displayPrice]);
+  const controlledStep = controlledData?.priceStep;
+  const step = useMemo(
+    () => controlledStep && controlledStep > 0
+      ? controlledStep
+      : inferStep(book, displayPrice || 1),
+    [book, controlledStep, displayPrice],
+  );
   const center = Number(snapStep(displayPrice || 1, step).toFixed(8));
   const visibleRowCount = Math.max(13, Math.min(45, rowCount));
   const rows = useMemo(
@@ -683,7 +732,9 @@ export function OrderBook({
         : status === "waiting"
           ? "waiting"
           : "unavailable";
-  const symbol = marketName.replace("/USD", "").replace("-PERP", "");
+  // Anchored so a USDC spot pair does not become "APTC": the old unanchored
+  // "/USD" match cut the middle out of "APT/USDC". Perp names are unaffected.
+  const symbol = marketName.replace(/\/USDC?$/, "").replace("-PERP", "");
 
   return (
     <section className={cn("surface-1 flex min-h-[320px] flex-col overflow-hidden rounded-[16px] bg-[#111111] text-zinc-100", className)}>

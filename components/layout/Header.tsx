@@ -14,6 +14,7 @@ import { Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Trade" },
+  { href: "/swap", label: "Swap" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
   // Link visibility only — this is a client component, so it cannot read the

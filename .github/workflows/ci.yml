@@ -32,6 +32,10 @@ jobs:
         run: pnpm test:sealed
       - name: CASH rewards selftest
         run: pnpm test:cash-rewards
+      - name: Decibel spot selftests (swap venue, deployment pins, confirmation)
+        run: pnpm test:decibel-spot && pnpm test:decibel-spot-deployment && pnpm test:decibel-spot-confirmation && pnpm test:decibel-spot-ambiguity
+      - name: CASH orderbook selftests
+        run: pnpm test:cash-orderbook && pnpm test:cash-orderbook-ambiguity && pnpm test:cash-orderbook-launch
       - name: Strategy artifacts selftest
         run: pnpm exec tsx scripts/strategy-artifacts-selftest.ts
       - name: App reliability selftest

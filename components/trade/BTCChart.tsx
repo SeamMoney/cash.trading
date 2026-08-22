@@ -160,6 +160,10 @@ export interface Market {
   marketName?: string;
   mode?: string;
   fundingRateBps?: number | null;
+  /** Quote for selector rows that have no perpData (spot pairs). */
+  displayPrice?: number | null;
+  /** Short venue label shown in place of leverage in the spot variant. */
+  venueLabel?: string;
 }
 
 const CATEGORIES = [
@@ -571,6 +575,8 @@ export function MarketModal({
   allDescription = "Crypto, stocks, and commodities",
   loading = false,
   network,
+  selectorVariant = "default",
+  disabledLabel = "Preview only",
 }: {
   open: boolean;
   selected: string;
@@ -589,6 +595,9 @@ export function MarketModal({
   allDescription?: string;
   loading?: boolean;
   network: DecibelPublicNetwork;
+  /** "spot" drops the perps-only columns; "default" is unchanged. */
+  selectorVariant?: "default" | "spot";
+  disabledLabel?: string;
 }) {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
 
@@ -614,6 +623,10 @@ export function MarketModal({
   const allSelected = selectableMarkets.length > 0 && selectableMarkets.every((market) => activeIds.includes(market.id));
 
   if (!open) return null;
+
+  const selectorGridSm = selectorVariant === "spot"
+    ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
+    : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]";
 
   const marketContent = (
     <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
@@ -654,20 +667,30 @@ export function MarketModal({
         ))}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
-        <span className="text-xs font-bold">Symbol</span>
+      <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] ${selectorGridSm} sm:gap-x-4 sm:px-3`}>
+        <span className="text-xs font-bold">
+          {selectorVariant === "spot" ? "" : "Symbol"}
+        </span>
         <span className="hidden text-right text-xs font-bold sm:block">Price</span>
-        <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
-        <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
-        <span className="text-right text-xs font-bold">Lev.</span>
+        {selectorVariant === "default" && (
+          <>
+            <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
+            <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
+          </>
+        )}
+        <span className="text-right text-xs font-bold">
+          {selectorVariant === "spot" ? "Venue" : "Lev."}
+        </span>
       </div>
 
       <div className="pr-1 sm:max-h-[min(62dvh,600px)] sm:overflow-y-auto sm:overscroll-contain sm:scrollbar-thin">
         <div>
           <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
-            <span className="text-[10px] font-bold uppercase text-[#555]">
-              {activeCategoryLabel}
-            </span>
+            {selectorVariant === "default" && (
+              <span className="text-[10px] font-bold uppercase text-[#555]">
+                {activeCategoryLabel}
+              </span>
+            )}
             {loading && (
               <span className="text-[10px] font-bold uppercase text-green-500/60">
                 Syncing
@@ -678,7 +701,7 @@ export function MarketModal({
             {filteredMarkets.map((market) => {
               const isActive = activeIds.includes(market.id);
               const isDisabled = disabledIds.includes(market.id);
-              const mark = market.perpData?.seedPrice ?? 0;
+              const mark = market.perpData?.seedPrice ?? market.displayPrice ?? 0;
               const fundingText =
                 market.fundingRateBps == null
                   ? "—"
@@ -697,7 +720,7 @@ export function MarketModal({
                       onClose();
                     }
                   }}
-                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors ${selectorGridSm} sm:gap-x-4 sm:px-3 ${
                     isDisabled
                       ? "cursor-not-allowed text-[#444] opacity-55"
                       : isActive
@@ -719,7 +742,7 @@ export function MarketModal({
                       <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
                     )}
                     {isDisabled && (
-                      <span className="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-600">Preview only</span>
+                      <span className="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-600">{disabledLabel}</span>
                     )}
                   </span>
                   <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
@@ -730,18 +753,24 @@ export function MarketModal({
                         })
                       : "—"}
                   </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
-                    {fundingText}
-                  </span>
-                  <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
-                    {market.perpData?.openInterestLabel ?? "—"}
-                  </span>
+                  {selectorVariant === "default" && (
+                    <>
+                      <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
+                        {fundingText}
+                      </span>
+                      <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
+                        {market.perpData?.openInterestLabel ?? "—"}
+                      </span>
+                    </>
+                  )}
                   <span
                     className={`text-right text-xs font-bold tabular-nums ${
                       isActive ? "text-green-400" : "text-[#666]"
                     }`}
                   >
-                    {market.leverage > 0 ? `${market.leverage}x` : "Spot"}
+                    {selectorVariant === "spot"
+                      ? market.venueLabel ?? "Spot"
+                      : market.leverage > 0 ? `${market.leverage}x` : "Spot"}
                   </span>
                 </button>
               );

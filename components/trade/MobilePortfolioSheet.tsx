@@ -18,19 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ArrowLeftRight,
-  BarChart3,
-  Bot,
-  CandlestickChart,
-  ChevronUp,
-  Rocket,
-  Trophy,
-  type LucideIcon,
-} from "lucide-react";
-import { NAV_ITEMS } from "@/components/layout/Header";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
-import { cn } from "@/lib/utils";
+import { BarChart3, Bot, CandlestickChart, Rocket, Trophy } from "lucide-react";
 import {
   animateMobileSheetSpring,
   MOBILE_SHEET_MID_VH,
@@ -39,25 +27,16 @@ import {
   mobileSheetRubberBand,
 } from "@/lib/mobile-sheet-motion";
 
-/* The collapsed sheet is a grab handle and one word. At 72px it was tall
-   enough to sit on top of the order ticket's last rows and its primary CTA;
-   44px is the touch-target floor and nothing more. */
-const PEEK_FROM_BOTTOM = 44;
+const PEEK_FROM_BOTTOM = 72;
 const INITIAL_SHEET_OFFSET = 800;
-/** Panel radius (--radius, 16px) — the morph in applyPosition animates to it. */
-const SHEET_RADIUS_PX = 16;
-const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-// The nav list is the Header's (one source of truth for routes, labels and the
-// Automation gate); only the icons are local.
-const NAV_ICONS: Record<string, LucideIcon> = {
-  "/": CandlestickChart,
-  "/swap": ArrowLeftRight,
-  "/portfolio": BarChart3,
-  "/launchpad": Rocket,
-  "/automation": Bot,
-  "/points": Trophy,
-};
+const NAV_ITEMS = [
+  { href: "/", label: "Trade", icon: CandlestickChart },
+  { href: "/portfolio", label: "Portfolio", icon: BarChart3 },
+  { href: "/launchpad", label: "Launchpad", icon: Rocket },
+  { href: "/automation", label: "Bots", icon: Bot },
+  { href: "/points", label: "Points", icon: Trophy },
+] as const;
 
 export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -151,13 +130,10 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
     }
 
     const radiusProgress = Math.max(0, Math.min(1, top / midTop));
-    const radius = radiusProgress * SHEET_RADIUS_PX;
+    const radius = radiusProgress * 20;
     if (innerRef.current) {
       innerRef.current.style.borderRadius = `${radius}px ${radius}px 0 0`;
-      // Fade the themed hairline in/out rather than a literal white alpha so
-      // the light theme keeps its own border colour.
-      innerRef.current.style.borderColor =
-        `color-mix(in srgb, var(--card-border) ${Math.round(radiusProgress * 100)}%, transparent)`;
+      innerRef.current.style.borderColor = `rgba(255,255,255,${radiusProgress * 0.08})`;
     }
 
     const contentProgress = Math.max(0, Math.min(1, (progress - 0.08) / 0.25));
@@ -385,12 +361,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
         className="fixed left-0 right-0 z-[100] lg:hidden"
         style={{
           visibility: keyboardOpen ? "hidden" : undefined,
-          // The sheet's own chrome takes no taps: while it is collapsed its
-          // box still lies over the order ticket, and it was swallowing the
-          // rows underneath it. Only the peek control, the scrollable content
-          // and the nav opt back in (drag still works — the listeners are on
-          // this element and the events bubble up from those children).
-          pointerEvents: "none",
+          pointerEvents: keyboardOpen ? "none" : undefined,
           bottom: 0,
           top: "auto",
           height: "100dvh",
@@ -404,35 +375,37 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
       >
         <div
           ref={innerRef}
-          className="pointer-events-none flex h-full flex-col overflow-hidden rounded-t-[var(--radius)] border border-b-0 border-card-border bg-background-secondary"
+          className="flex h-full flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-white/[0.08] bg-[#101010]"
+          style={{ backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
         >
-          {/* Peek header — handle and title are one 44px control, so the only
-              part of the sheet that takes a tap while collapsed is the thing
-              that opens it. */}
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            className={cn(
-              "pointer-events-auto w-full shrink-0 cursor-grab px-4 pb-2 pt-1.5",
-              FOCUS_RING,
-              "focus-visible:ring-inset",
-            )}
-            style={{ touchAction: "none" }}
-            onClick={handleTap}
-          >
-            <span className="mx-auto mb-1.5 block h-1 w-9 rounded-full bg-white/[0.15]" />
-            <span className="flex items-center justify-between">
-              <span className="font-display text-[13px] font-semibold text-foreground">Portfolio</span>
-              <ChevronUp
-                aria-hidden="true"
-                strokeWidth={2.5}
-                className={`h-3 w-3 text-zinc-400 transition-transform duration-200 motion-reduce:transition-none ${isOpen ? "rotate-180" : ""}`}
-              />
-            </span>
-          </button>
+          {/* Peek header */}
+          <div className="shrink-0" style={{ touchAction: "none" }}>
+            <div className="flex justify-center pb-1.5 pt-2.5">
+              <div className="h-[4px] w-9 rounded-full bg-white/[0.15]" />
+            </div>
+            <button className="w-full px-5 pb-2.5 text-left" onClick={handleTap}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-display text-[13px] font-semibold text-zinc-100">Portfolio</div>
+                  <div className="text-[11px] text-zinc-500">Positions, orders, and account state</div>
+                </div>
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.06]">
+                  <svg
+                    className={`h-3 w-3 text-zinc-400 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                  </svg>
+                </div>
+              </div>
+            </button>
+          </div>
 
           {/* Content (fades in as the sheet opens) */}
-          <div ref={contentRef} className="pointer-events-auto flex min-h-0 flex-1 flex-col" style={{ opacity: 0 }}>
+          <div ref={contentRef} className="flex min-h-0 flex-1 flex-col" style={{ opacity: 0 }}>
             <div
               ref={scrollAreaRef}
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
@@ -443,30 +416,26 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
           </div>
 
           {/* Bottom nav */}
-          <nav aria-label="Primary" className="pointer-events-auto shrink-0 border-t border-card-border">
+          <div className="shrink-0 border-t border-white/[0.06]">
             <div className="flex items-center justify-around px-2 py-2">
               {NAV_ITEMS.map((item) => {
                 const isActive =
                   item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-                const Icon = NAV_ICONS[item.href] ?? CandlestickChart;
+                const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    aria-current={isActive ? "page" : undefined}
                     onClick={() => snapTo(0)}
-                    className={cn(
-                      "relative flex min-w-11 flex-col items-center gap-1 rounded-[var(--radius-sm)] px-2 py-2",
-                      PRESSABLE_CONTROL,
-                      FOCUS_RING,
-                      isActive ? "text-accent" : "text-zinc-500 hover:text-zinc-300",
-                    )}
+                    className={`relative flex flex-col items-center gap-1 rounded-xl px-3 py-2 transition-all duration-200 ease-out ${
+                      isActive ? "text-accent" : "text-zinc-500 active:scale-95"
+                    }`}
                   >
                     {isActive && (
-                      <span className="absolute -top-0.5 left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full bg-accent" />
+                      <span className="absolute -top-0.5 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full bg-accent" />
                     )}
-                    <Icon className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
-                    <span className="text-[11px] font-medium leading-none">
+                    <Icon className="h-[20px] w-[20px]" strokeWidth={1.8} />
+                    <span className={`text-[10px] font-medium leading-none ${isActive ? "text-accent" : "text-zinc-600"}`}>
                       {item.label}
                     </span>
                   </Link>
@@ -474,7 +443,7 @@ export function MobilePortfolioSheet({ children }: { children: ReactNode }) {
               })}
             </div>
             <div className="pb-[env(safe-area-inset-bottom)]" />
-          </nav>
+          </div>
         </div>
       </div>
     </>

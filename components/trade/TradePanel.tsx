@@ -8,9 +8,6 @@ import { explorerTxUrl } from "@/lib/constants";
 import { getEstimatedLiquidationPrice } from "@/lib/trade-utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
-import { PANEL } from "@/components/portfolio/portfolio-surface";
-import { Skeleton } from "@/components/ui/skeleton";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { emitDecibelTradeConfirmed } from "@/lib/decibel-trade-events";
 import { extractConfirmedDecibelFill } from "@/lib/decibel-trade-fill";
@@ -31,14 +28,13 @@ import {
 // import { OrderBook } from "@/components/trade/OrderBook";
 
 const LEVERAGE_MIN = 1.1;
-/** Drawer height: pt-4 + 44px slider hit area + mt-2 + the min/max caption. */
-const SLIDER_CONTENT_HEIGHT = 92;
-const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-/* House style is sentence case: no uppercase, no letter-spacing. min-h-11
-   keeps the side switch a 44px touch target without a visible box. */
-const SIDE_BUTTON =
-  "inline-flex min-h-11 items-center rounded-[var(--radius-xs)] px-1 text-sm font-display font-semibold transition-colors";
+const SLIDER_CONTENT_HEIGHT = 72;
+
+function shortAddress(value?: string | null) {
+  if (!value) return "—";
+  if (value.length <= 13) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
 
 type OrderLifecycle =
   | "idle"
@@ -85,11 +81,7 @@ export function TradePanel({
   const [collateralOpen, setCollateralOpen] = useState(false);
   const [leverage, setLeverage] = useState(1.1);
   const [dragging, setDragging] = useState(false);
-  // Open at every width. It used to open only from `lg` up, so a phone got the
-  // text "Leverage 1.1x" and no way to see that leverage was adjustable at all
-  // — the one control that decides liquidation distance, hidden on the screen
-  // most people trade from. The row below still collapses it.
-  const [leverageOpen, setLeverageOpen] = useState(true);
+  const [leverageOpen, setLeverageOpen] = useState(false);
   const [tradeStatus, setTradeStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [tradeAction, setTradeAction] = useState<"idle" | "order">("idle");
   const [orderLifecycle, setOrderLifecycle] = useState<OrderLifecycle>("idle");
@@ -130,6 +122,27 @@ export function TradePanel({
   const canSubmitDecibel = Boolean(canUseDecibel && marketAllowsOrders && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
+  const accountState = !connected
+    ? "Wallet disconnected"
+    : isLoadingSubaccounts
+      ? "Checking account"
+      : lookupIncomplete
+        ? "Needs refresh"
+        : hasDecibelAccount
+          ? "Ready"
+          : "No Decibel account";
+  const marketState = !supportedDecibelMarket
+    ? "Unavailable"
+    : marketStatus?.isOpen === false
+      ? marketStatus.mode || "Closed"
+      : "Open";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setLeverageOpen(true);
+    }
+  }, []);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
@@ -525,68 +538,50 @@ export function TradePanel({
         ? `Long ${market}`
         : `Short ${market}`;
   return (
-    /* One panel, not three. The rail used to be a bare side switch plus two
-       floating bordered cards next to two single-panel neighbours — three
-       surface grammars in one row, and a bordered card inside a bordered
-       column. It is now the shared PANEL with its sections separated by
-       hairlines, which is the house rule (docs/UX-GRADING.md § 4.4). */
-    <div className={cn(PANEL, "flex flex-col", className)}>
-      {/* Side switch — the panel's header strip. The fee chip that used to sit
-          opposite printed a fixed "0.034%" that no route ever computed, so it
-          is gone rather than restated: the panel shows only numbers it can
-          derive. */}
-      <div className="flex items-center gap-3 border-b border-card-border px-4">
-        <button
-          type="button"
-          aria-pressed={isLong}
-          onClick={() => {
-            setSide("long");
-            if (tradeStatus !== "submitting") setOrderLifecycle("idle");
-          }}
-          className={cn(
-            SIDE_BUTTON,
-            FOCUS_RING,
-            isLong ? "text-success" : "text-zinc-500 hover:text-zinc-300",
-          )}
-        >
-          Long
-        </button>
-        <span className="text-zinc-600">/</span>
-        <button
-          type="button"
-          aria-pressed={!isLong}
-          onClick={() => {
-            setSide("short");
-            if (tradeStatus !== "submitting") setOrderLifecycle("idle");
-          }}
-          className={cn(
-            SIDE_BUTTON,
-            FOCUS_RING,
-            !isLong ? "text-danger" : "text-zinc-500 hover:text-zinc-300",
-          )}
-        >
-          Short
-        </button>
+    <div className={cn("flex flex-col", className)}>
+      {/* Header row */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-pressed={isLong}
+            onClick={() => {
+              setSide("long");
+              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+            }}
+            className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
+              isLong ? "text-success" : "text-zinc-600 hover:text-zinc-400"
+            }`}
+          >
+            {isLong ? "You are LONG" : "Long"}
+          </button>
+          <span className="text-zinc-700">/</span>
+          <button
+            type="button"
+            aria-pressed={!isLong}
+            onClick={() => {
+              setSide("short");
+              if (tradeStatus !== "submitting") setOrderLifecycle("idle");
+            }}
+            className={`text-[14px] font-display font-black uppercase tracking-wider transition-colors ${
+              !isLong ? "text-danger" : "text-zinc-600 hover:text-zinc-400"
+            }`}
+          >
+            {!isLong ? "You are SHORT" : "Short"}
+          </button>
+        </div>
+        <span className="rounded-md bg-white/[0.03] px-2.5 py-1 text-[11px] font-mono text-zinc-500">
+          0.034% Fee
+        </span>
       </div>
 
-      {/* Amount section. Padding is tight on phones so the primary CTA below
-          stays within thumb reach; sm+ keeps the roomier rhythm. */}
-      <div>
-        <div className="flex items-center justify-between px-4 pt-2 font-mono text-[11px] tabular-nums text-zinc-500">
-          {/* A bar in the number's place while the account is being looked
-              up, not an em dash: "—" is this panel's word for "there is no
-              number", and the lookup is not that. Same Skeleton the points
-              leaderboard uses, sized to the value it stands in for. */}
-          <span className="flex items-center gap-1">
-            Available{" "}
-            {connected && isLoadingSubaccounts ? (
-              <Skeleton className="h-3 w-16" />
-            ) : availableUsdc == null ? (
-              "—"
-            ) : (
-              availableUsdc.toLocaleString(undefined, { maximumFractionDigits: 6 })
-            )}{" "}
-            USDC
+      {/* Amount input card */}
+      <div className="overflow-hidden rounded-[14px] bg-[#0e0e0e] sm:border sm:border-white/[0.06]">
+        <div className="flex items-center justify-between px-4 pt-3 font-mono text-[10px] tabular-nums text-zinc-500 sm:px-5">
+          <span>
+            Available {availableUsdc == null
+              ? "—"
+              : availableUsdc.toLocaleString(undefined, { maximumFractionDigits: 6 })} USDC
           </span>
           <button
             type="button"
@@ -597,19 +592,13 @@ export function TradePanel({
               setOrderLifecycle("idle");
             }}
             disabled={availableUsdc == null || availableUsdc <= 0}
-            className={cn(
-              // The chip stays small, but an invisible 44px-tall band centred
-              // on it carries the tap so the control is thumb-reachable.
-              "relative rounded-[var(--radius-xs)] px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-600",
-              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
-              FOCUS_RING,
-            )}
+            className="rounded px-2 py-1 text-[10px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
           >
             MAX
           </button>
         </div>
         {/* Input row */}
-        <div className="relative z-[1] flex items-center justify-between bg-background-tertiary px-4 py-1.5 sm:py-4">
+        <div className="relative z-[1] flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3 sm:px-5 sm:py-4">
           <input
             ref={inputRef}
             type="text"
@@ -632,10 +621,8 @@ export function TradePanel({
                 handleSubmit();
               }
             }}
-            /* text-2xl is the house hero-number size; the old inline 28px was
-               off-scale and its taller line box was the single biggest row in
-               the ticket on a phone. */
-            className="w-full min-w-0 rounded-[var(--radius-xs)] bg-transparent font-mono text-2xl font-bold tracking-tight text-foreground placeholder-zinc-600 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ fontSize: "28px" }}
+            className="bg-transparent font-mono font-bold text-white placeholder-zinc-600 outline-none w-full min-w-0 tracking-tight"
           />
           <div ref={collateralDropdownRef} className="relative shrink-0 ml-4">
             <button
@@ -645,20 +632,17 @@ export function TradePanel({
               aria-expanded={collateralOpen}
               aria-haspopup="menu"
               onClick={() => setCollateralOpen((open) => !open)}
-              className={cn(
-                "flex min-h-11 items-center gap-2 rounded-[var(--radius-sm)] bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]",
-                FOCUS_RING,
-              )}
+              className="flex items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2 transition-colors hover:bg-white/[0.08]"
             >
               <TokenLogo token={collateralToken} size={22} />
-              <span className="text-sm font-display font-semibold text-foreground">
+              <span className="text-[14px] font-display font-semibold text-white">
                 {collateralToken}
               </span>
               <ChevronDown className={`h-3 w-3 text-zinc-500 transition-transform ${collateralOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {collateralOpen && (
-              <div id="trade-collateral-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[var(--radius-sm)] border border-card-border bg-background-elevated p-1 shadow-2xl shadow-black/40">
+              <div id="trade-collateral-menu" role="menu" className="absolute right-0 top-[calc(100%+8px)] z-30 flex w-[178px] flex-col gap-1 rounded-[10px] border border-white/[0.08] bg-[#181818] p-1 shadow-2xl shadow-black/40">
                 {COLLATERAL_TOKENS.map((token) => {
                   const active = token.symbol === collateralToken;
                   return (
@@ -676,13 +660,11 @@ export function TradePanel({
                           setOrderLifecycle("idle");
                         }
                       }}
-                      className={cn(
-                        "flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2.5 py-2 text-left transition-colors",
-                        FOCUS_RING,
+                      className={`w-full flex items-center justify-between gap-3 rounded-[9px] px-2.5 py-2 text-left transition-colors ${
                         active
-                          ? "bg-white/[0.05] text-foreground"
-                          : "text-zinc-400 hover:bg-white/[0.03] hover:text-foreground",
-                      )}
+                          ? "bg-white/[0.05] text-white"
+                          : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
+                      }`}
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <TokenLogo token={token.symbol} size={20} />
@@ -690,13 +672,13 @@ export function TradePanel({
                           <span className="block text-[13px] font-display font-semibold leading-tight">
                             {token.symbol}
                           </span>
-                          <span className="block text-[11px] leading-tight text-zinc-500">
+                          <span className="block text-[10px] text-[#555] leading-tight">
                             {token.name}
                           </span>
                         </span>
                       </span>
                       {active && (
-                        <Check className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
+                        <Check className="h-3 w-3 shrink-0 text-green-400" aria-hidden="true" />
                       )}
                     </button>
                   );
@@ -707,13 +689,13 @@ export function TradePanel({
         </div>
 
         {/* Leverage mini drawer */}
-        <div>
+        <div className="bg-[#0e0e0e]">
           <div
-            className="overflow-hidden transition-[height] duration-150 ease-out motion-reduce:transition-none"
+            className="overflow-hidden transition-[height] duration-150 ease-out"
             style={{ height: leverageOpen ? SLIDER_CONTENT_HEIGHT : 0 }}
           >
             <div
-              className="px-4 pt-4 transition-transform duration-150 ease-out motion-reduce:transition-none"
+              className="px-5 pt-4 transition-transform duration-150 ease-out"
               style={{ transform: leverageOpen ? "translateY(0)" : "translateY(-12px)" }}
             >
               <div
@@ -724,13 +706,7 @@ export function TradePanel({
                 aria-valuemin={LEVERAGE_MIN}
                 aria-valuenow={leverage}
                 aria-valuetext={`${leverage.toFixed(1)} times`}
-                className={cn(
-                  // 44px tall hit area, 24px visible bar. updateLeverage reads
-                  // only rect.left/rect.width, so the taller box is inert to
-                  // the drag math.
-                  "relative flex h-11 cursor-pointer touch-none items-center rounded-full",
-                  FOCUS_RING,
-                )}
+                className="relative h-[24px] rounded-full bg-zinc-800 cursor-pointer touch-none overflow-hidden"
                 onKeyDown={handleLeverageKeyDown}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
@@ -738,32 +714,36 @@ export function TradePanel({
                 role="slider"
                 tabIndex={leverageOpen ? 0 : -1}
               >
-                <div className="relative h-6 w-full overflow-hidden rounded-full bg-zinc-800">
-                  {leveragePct > 0 && (
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `calc(${leveragePct}% + 12px)`,
-                        background: isLong ? "var(--accent)" : "var(--danger)",
-                      }}
-                    />
-                  )}
-                </div>
+                {leveragePct > 0 && (
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    style={{
+                      width: `calc(${leveragePct}% + 12px)`,
+                      background: isLong
+                        ? "var(--accent)"
+                        : "linear-gradient(90deg, #b91c1c 0%, #F21A1A 100%)",
+                    }}
+                  />
+                )}
                 <div
-                  className="absolute top-1/2 z-[2] h-5 w-5 -translate-y-1/2 rounded-full"
+                  className="absolute top-[2px] w-[20px] h-[20px] rounded-full z-[2]"
                   style={{
                     left: `clamp(2px, calc(${leveragePct}% - 10px), calc(100% - 22px))`,
-                    background: isLong ? "var(--accent)" : "var(--danger)",
+                    background: isLong ? "var(--accent)" : "#F21A1A",
                     filter: `brightness(${dragging ? 1.3 : 1.1})`,
                     boxShadow: dragging
-                      ? `0 0 12px color-mix(in srgb, ${isLong ? "var(--accent)" : "var(--danger)"} 60%, transparent)`
+                      ? `0 0 12px ${isLong ? "rgba(57,255,20,0.55)" : "rgba(242,26,26,0.6)"}`
                       : "none",
                   }}
                 />
               </div>
-              <div className="mt-2 flex items-center justify-between font-mono text-xs font-bold text-zinc-500">
-                <span>{LEVERAGE_MIN}x</span>
-                <span>{maxLeverage}x</span>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-[12px] font-mono font-bold text-zinc-500">
+                  {LEVERAGE_MIN}x
+                </span>
+                <span className="text-[12px] font-mono font-bold text-zinc-500">
+                  {maxLeverage}x
+                </span>
               </div>
             </div>
           </div>
@@ -773,97 +753,64 @@ export function TradePanel({
             aria-controls="trade-leverage-slider"
             aria-expanded={leverageOpen}
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
-            className={cn(
-              "flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-xs)] px-4 pb-3 pt-2",
-              FOCUS_RING,
-            )}
+            className="flex w-full flex-col items-center gap-1 px-5 pb-3 pt-2"
           >
-            <span className="text-[11px] font-display font-semibold text-zinc-500">
-              Leverage
-            </span>
-            <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
-              {leverage.toFixed(1)}x
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-display font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                Leverage
+              </span>
+              <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
+                {leverage.toFixed(1)}x
+              </span>
+            </div>
+            <div className="h-[3px] w-8 rounded-full bg-zinc-600" />
           </button>
         </div>
       </div>
 
-      {/* Order details. Every row here is derived from the amount the user
-          typed, so with no amount there is no order and all of them read "—".
-          Est. liquidation used to be the exception: it printed a concrete
-          price at rest, beside two rows that correctly said "—", for a
-          position that did not exist. A leveraged-perp panel must not state a
-          liquidation price the user's inputs did not produce, so it now takes
-          the same guard as Order value and Margin required.
-
-          Leverage (already in the drawer above), Est. liquidation and Margin
-          required fold away below sm. At 390x844 the ticket's primary CTA has
-          to clear the collapsed portfolio sheet's 44px peek (MobilePortfolioSheet
-          PEEK_FROM_BOTTOM), and those rows plus the roomier py-3 are what put
-          it under. Order value already carries the USD notional that Margin
-          required restates, and at rest the folded rows would only repeat the
-          "—" the visible row shows.
-
-          There is no slippage or fee row: the perp order route returns neither
-          a quoted impact nor a fee rate, and the two literals that used to sit
-          here ("Est: 0.00% / Max: 8%", "0.0340% / 0.0110%") never moved for any
-          input. A row the page cannot compute is removed, not faked. */}
-      {(() => {
+      {/* Order details — auto-shows when amount is entered */}
+      {amount && parseFloat(amount) > 0 && currentPrice > 0 && (() => {
         const amt = parseFloat(amount);
-        const hasAmount = Number.isFinite(amt) && amt > 0;
-        const hasPrice = currentPrice > 0;
-        const orderValue = hasAmount ? amt * leverage : null;
-        const orderBase = orderValue != null && hasPrice ? orderValue / currentPrice : null;
+        const orderValue = amt * leverage;
+        const orderBtc = orderValue / currentPrice;
         const marginRequired = orderValue;
-        // Same guard Order value and Margin required already use: no order
-        // value, no liquidation price to quote.
-        const estLiqPrice = hasPrice && orderValue != null
-          ? getEstimatedLiquidationPrice(currentPrice, side, leverage)
-          : null;
-        const usd = (value: number) =>
-          `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const estLiqPrice = getEstimatedLiquidationPrice(currentPrice, side, leverage);
         return (
-          /* flex + gap, not space-y: Tailwind v4's space-y-2 hangs a
-             margin-block-end on every :not(:last-child), and the last child
-             here is display:none below sm — so the phone column ended in 8px
-             of margin under its only visible row. Flex gaps exist only
-             between boxes that actually render. */
-          <dl className="flex flex-col gap-2 border-t border-card-border px-4 py-2 font-mono text-[11px] tabular-nums sm:py-3">
-            <div className="hidden justify-between sm:flex">
-              <dt className="text-zinc-500">Leverage</dt>
-              <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
+          <div className="mt-3 hidden rounded-[10px] bg-[#0e0e0e] p-4 text-[11px] font-mono tabular-nums animate-enter sm:block sm:border sm:border-white/[0.06]">
+            <div className="space-y-2.5">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Leverage</span>
+              <span className="text-white font-semibold">{leverage.toFixed(1)}x</span>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Order value</dt>
-              <dd className="text-right text-foreground">
-                {orderValue == null || orderBase == null
-                  ? "—"
-                  : `${orderBase.toFixed(4)} ${market.split("/")[0]} / ${orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`}
-              </dd>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Order Value</span>
+              <span className="text-white">{orderBtc.toFixed(4)} {market.split("/")[0]} / {orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
             </div>
-            <div className="hidden justify-between gap-3 sm:flex">
-              <dt className="text-zinc-500">Est. liquidation at {leverage.toFixed(1)}x</dt>
-              <dd className="text-foreground">
-                {estLiqPrice == null ? "—" : usd(estLiqPrice)}
-              </dd>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Est. Liquidation</span>
+              <span className="text-white">${estLiqPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            <div className="hidden justify-between sm:flex">
-              <dt className="text-zinc-500">Margin required</dt>
-              <dd className="text-foreground">
-                {marginRequired == null ? "—" : usd(marginRequired)}
-              </dd>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Margin Required</span>
+              <span className="text-white">${marginRequired.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-          </dl>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Slippage</span>
+              <span className="text-zinc-400">Est: 0.00% / Max: 8%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Fees</span>
+              <span className="text-zinc-400">0.0340% / 0.0110%</span>
+            </div>
+            </div>
+          </div>
         );
       })()}
 
       {/* Submit button — when no wallet is connected this is the page's
           primary CTA, so it must be clickable and open the selector rather
-          than sit disabled. It is the panel's last row and fills it edge to
-          edge: the margin and the radius it used to carry pushed the button
-          past the fold on a 390x844 phone. */}
+          than sit disabled. */}
       <button
-        type="button"
         onClick={
           !connected
             ? () => window.dispatchEvent(new CustomEvent("cash:open-wallet-selector"))
@@ -871,33 +818,28 @@ export function TradePanel({
         }
         disabled={connected && !canSubmitDecibel}
         className={cn(
-          // text-accent-foreground, not text-white: --success is neon green, so
-          // white on the filled button measured 1.36:1. The near-black
-          // foreground reads 15:1 on green and 4.8:1 on --danger, in both
-          // themes (light flips --color-white but not this token).
-          "min-h-11 w-full py-3 text-sm font-display font-semibold disabled:cursor-not-allowed",
-          PRESSABLE_CONTROL,
-          FOCUS_RING,
+          "mt-3 w-full rounded-[10px] py-3.5 text-[14px] font-display font-bold uppercase tracking-wider transition-all disabled:cursor-not-allowed sm:mt-4",
+          (canSubmitDecibel || !connected) && "active:scale-[0.98]",
           isOrderSuccess
-            ? "bg-success text-accent-foreground"
+            ? "bg-success text-white"
             : !connected
               ? "bg-accent text-black hover:brightness-110"
               : canSubmitDecibel
                 ? isLong
-                  ? "bg-success text-accent-foreground hover:brightness-110"
-                  : "bg-danger text-accent-foreground hover:brightness-110"
-                : "border border-card-border bg-white/[0.04] text-zinc-500"
+                  ? "bg-success text-white hover:brightness-110"
+                  : "bg-danger text-white hover:brightness-110"
+                : "border border-white/[0.06] bg-white/[0.04] text-zinc-500"
         )}
       >
         {isOrderSubmitting ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin motion-reduce:animate-none" />
+            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             Signing...
           </span>
         ) : isOrderSuccess ? (
           <span className="flex items-center justify-center gap-2">
             <Check className="h-4 w-4" aria-hidden="true" strokeWidth={3} />
-            Order submitted
+            Order Submitted
           </span>
         ) : (
           <>{submitLabel}</>
@@ -909,9 +851,9 @@ export function TradePanel({
           id="trade-status-message"
           aria-live={tradeStatus === "error" ? "assertive" : "polite"}
           role={tradeStatus === "error" ? "alert" : "status"}
-          className={`border-t border-card-border px-4 py-2 text-[11px] ${
+          className={`mt-3 rounded-md px-3 py-2 text-[11px] ${
             tradeStatus === "error"
-              ? "bg-danger/10 text-danger"
+              ? "bg-red-500/10 text-red-300"
               : "bg-white/[0.03] text-zinc-400"
           }`}
         >
@@ -921,13 +863,53 @@ export function TradePanel({
               href={explorerTxUrl(statusHash)}
               target="_blank"
               rel="noreferrer"
-              className={cn("mt-1 inline-block rounded-[var(--radius-xs)] text-accent underline", FOCUS_RING)}
+              className="mt-1 inline-block text-accent underline"
             >
               View transaction
             </a>
           )}
         </div>
       )}
+
+      <div className="mt-auto hidden pt-4 xl:block">
+        <div className="border-t border-white/[0.06] pt-4 font-mono text-[11px] tabular-nums">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-zinc-500">Execution</span>
+            <span
+              className={cn(
+                "rounded-[6px] px-2 py-1 text-[10px]",
+                canUseDecibel && marketAllowsOrders ? "bg-green-500/10 text-green-400" : "bg-white/[0.04] text-zinc-500",
+              )}
+            >
+              {canUseDecibel && marketAllowsOrders ? "READY" : "WAITING"}
+            </span>
+          </div>
+          <div className="space-y-2.5 text-zinc-500">
+            <div className="flex justify-between gap-4">
+              <span>Account</span>
+              <span className="text-right text-zinc-300">{accountState}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Subaccount</span>
+              <span className="text-right text-zinc-300">{shortAddress(selectedSubaccount)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Market</span>
+              <span className="text-right text-zinc-300">{marketState}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Network</span>
+              <span className="text-right text-zinc-300">{decibelNetwork}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Max lev.</span>
+              <span className="text-right text-zinc-300">{maxLeverage}x</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* OrderBook — hidden for now (Decibel depth API unavailable on mainnet) */}
     </div>
   );
 }

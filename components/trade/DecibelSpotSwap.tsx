@@ -19,7 +19,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import {
   CashSwapTransactionState,
   type SwapTransactionReceipt,
@@ -34,7 +33,6 @@ import {
   type SpotSwapReviewRow,
 } from "@/components/trade/swap/SpotSwapReview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Skeleton } from "@/components/ui/skeleton";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import {
   confirmDecibelSpotTransaction,
@@ -152,9 +150,7 @@ export interface DecibelSpotSwapProps {
 
 const POLL_MS = 5_000;
 const APT_GAS_RESERVE_ATOMIC = 1_000_000n; // 0.01 APT
-const SLIPPAGE_PERCENT = `${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`;
-// "Max 0.5%" never said what the 0.5% was a maximum of.
-const SLIPPAGE_LABEL = `Slippage ${SLIPPAGE_PERCENT}`;
+const SLIPPAGE_LABEL = `Max ${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`;
 
 function iconFor(symbol: AssetSymbol) {
   if (symbol === "BTC") return "/tokens/btc.png";
@@ -556,7 +552,7 @@ function DetailRow({ label, value, tone }: {
   tone?: "warning" | "positive";
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-[13px] leading-5">
+    <div className="flex items-start justify-between gap-4 text-[12px] leading-5">
       <span className="text-muted-foreground">{label}</span>
       <span className={cn(
         "text-right font-mono tabular-nums text-foreground-secondary",
@@ -575,17 +571,17 @@ function EmptyFillState({ onNewSwap }: { onNewSwap: () => void }) {
       <span className="grid size-16 place-items-center rounded-full border border-card-border bg-background-elevated text-foreground-secondary">
         <Info aria-hidden="true" className="size-7" strokeWidth={2.5} />
       </span>
-      <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-2xl font-semibold text-foreground outline-none">
+      <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none">
         No fill this time
       </h3>
-      <p className="mt-2 max-w-[330px] text-pretty text-[13px] leading-5 text-foreground-secondary">
+      <p className="mt-2 max-w-[330px] text-pretty text-[12px] leading-5 text-foreground-secondary">
         No liquidity was available inside your protected price. The unfilled amount stayed in your wallet.
       </p>
       <button
         type="button"
         onClick={onNewSwap}
         className={cn(
-          "mt-6 min-h-12 w-full rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-6 min-h-12 w-full rounded-[var(--radius-sm)] bg-accent px-4 text-[14px] font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
           PRESSABLE_CONTROL,
         )}
       >
@@ -1748,7 +1744,7 @@ export function DecibelSpotSwap({
       { label: direction === "buy" ? "Maximum buy price" : "Minimum sell price", value: `${limit} USDC` },
       { label: "Estimated Decibel fee", value: `${fee} ${feeSymbol}` },
       { label: "Unfilled portion", value: "Returns to wallet" },
-      { label: "Max price movement", value: SLIPPAGE_PERCENT },
+      { label: "Max price movement", value: SLIPPAGE_LABEL.replace("Max ", "") },
       { label: "Venue", value: "Decibel spot", tone: "positive" },
     ];
   }, [base, direction, highRisk, priceImpact, quote, quotePrice, spread, toDecimals, toSymbol]);
@@ -1781,52 +1777,47 @@ export function DecibelSpotSwap({
     <section aria-label={`${market.marketName} spot swap`} className="w-full rounded-[var(--radius)] bg-background-secondary p-2">
       <div className="flex h-14 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <h2 className="font-display text-base font-semibold text-foreground">Swap</h2>
+          <h2 className="font-display text-[17px] font-semibold text-foreground">Swap</h2>
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className={cn(
-                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[11px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
+                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[10px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                   PRESSABLE_CONTROL,
                 )}
-                aria-label={`${SLIPPAGE_LABEL}. Open maximum price movement details.`}
+                aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
               >
                 {SLIPPAGE_LABEL}
               </button>
             </PopoverTrigger>
             <PopoverContent aria-label="Maximum price movement" align="start" className="w-[260px] p-3">
-              <p className="text-[13px] font-semibold text-foreground">Maximum price movement</p>
+              <p className="text-[12px] font-semibold text-foreground">Maximum price movement</p>
               <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">
                 The on-chain limit price stays within 0.5% of the reviewed live depth. Any unfilled amount returns to your wallet.
               </p>
             </PopoverContent>
           </Popover>
         </div>
-        {/* Always rendered. Gating this on `snapshotStatus !== "ready" ||
-            quoteExpired` meant the one control in the card header blinked in
-            and out with the poll: present in a light capture caught mid-poll,
-            absent from the dark capture taken a second later, which reads as a
-            theme bug. text-foreground-secondary, not text-muted-foreground —
-            #b4b4b4 over #0f0f0f beats #999999, and 10.0:1 beats 6.6:1 in
-            light. */}
-        <button
-          type="button"
-          onClick={() => setRefreshNonce((value) => value + 1)}
-          disabled={snapshotStatus === "loading" || refreshing || interactionLocked}
-          className={cn(
-            "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
-            PRESSABLE_CONTROL,
-          )}
-          aria-label={`Refresh ${market.marketName} quote`}
-          title="Refresh quote"
-        >
-          <RotateCcw
-            aria-hidden="true"
-            strokeWidth={3}
-            className={cn("size-5", (snapshotStatus === "loading" || refreshing) && "animate-spin motion-reduce:animate-none")}
-          />
-        </button>
+        {(snapshotStatus !== "ready" || quoteExpired) ? (
+          <button
+            type="button"
+            onClick={() => setRefreshNonce((value) => value + 1)}
+            disabled={snapshotStatus === "loading" || refreshing || interactionLocked}
+            className={cn(
+              "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
+              PRESSABLE_CONTROL,
+            )}
+            aria-label={`Refresh ${market.marketName} quote`}
+            title="Refresh quote"
+          >
+            <RotateCcw
+              aria-hidden="true"
+              strokeWidth={3}
+              className={cn("size-5", (snapshotStatus === "loading" || refreshing) && "animate-spin motion-reduce:animate-none")}
+            />
+          </button>
+        ) : null}
       </div>
 
       <AnimatePresence initial={false} mode="popLayout">
@@ -1874,6 +1865,7 @@ export function DecibelSpotSwap({
               fromDecimals,
               fromSymbol,
             )}
+            payLabel="You pay up to"
             receiveAmount={outputDisplay}
             receiveLabel="Estimated receive"
             safetyCopy="The 0.5% limit price is enforced on-chain. Decibel deducts its current spot fee from the asset you receive, and any unfilled amount returns to your wallet."
@@ -1882,25 +1874,17 @@ export function DecibelSpotSwap({
         </SwapFlowScreen>
       ) : (
         <SwapFlowScreen key="form" reducedMotion={Boolean(reduceMotion)}>
-          <div className={cn(
-            "flex flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4 transition-colors duration-150 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring motion-reduce:transition-none",
-            connected && "min-h-[152px]",
-          )}>
+          <div className="flex min-h-[152px] flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4 transition-colors duration-150 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring motion-reduce:transition-none">
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
-              <label htmlFor={inputId}>You pay</label>
-              {/* A skeleton in the shape of the balance it becomes, not the
-                  words "Checking balance": the row does not reflow when the
-                  number lands. Same primitive the Points leaderboard uses. */}
+              <label htmlFor={inputId}>You pay up to</label>
               {connected ? (
-                balanceStatus === "loading" ? (
-                  <Skeleton role="status" aria-label="Checking balance" className="h-3 w-24 shrink-0 bg-card-hover" />
-                ) : (
-                  <span className="min-w-0 truncate text-[11px]">
-                    {fromBalance
+                <span className="min-w-0 truncate text-[11px]">
+                  {balanceStatus === "loading"
+                    ? "Checking balance"
+                    : fromBalance
                       ? <>Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatAtomic(fromBalance.atomic, fromBalance.decimals, fromSymbol)}</span></>
                       : "Balance —"}
-                  </span>
-                )
+                </span>
               ) : null}
             </div>
             <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -1935,7 +1919,7 @@ export function DecibelSpotSwap({
                 aria-invalid={Boolean(inputIssue) || undefined}
                 aria-describedby={inputIssue ? inputIssueId : undefined}
                 aria-errormessage={inputIssue ? inputIssueId : undefined}
-                className="min-w-0 flex-1 bg-transparent font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-3xl"
+                className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-[36px]"
               />
               {inputIssue ? <span id={inputIssueId} className="sr-only">{inputIssue}</span> : null}
               <SwapAssetButton
@@ -1948,10 +1932,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "pay"}
               />
             </div>
-            <div className={cn(
-              "flex flex-wrap items-center justify-between gap-2 text-[11px] leading-4",
-              connected ? "min-h-11 sm:min-h-8" : "min-h-0",
-            )}>
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] leading-4">
               <span className="min-w-0 truncate text-muted-foreground">
                 {direction === "sell" && base === "APT" && fromBalance ? "Max reserves 0.01 APT for gas" : ""}
               </span>
@@ -1965,7 +1946,7 @@ export function DecibelSpotSwap({
                       aria-label={`Use ${value.toString()}% of ${fromSymbol} balance`}
                       disabled={interactionLocked || balanceStatus !== "ready"}
                       className={cn(
-                        "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
+                        "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                         PRESSABLE_CONTROL,
                       )}
                     >
@@ -1978,7 +1959,7 @@ export function DecibelSpotSwap({
                     aria-label={`Use maximum ${fromSymbol} balance`}
                     disabled={interactionLocked || balanceStatus !== "ready"}
                     className={cn(
-                      "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
+                      "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                       PRESSABLE_CONTROL,
                     )}
                   >
@@ -1995,7 +1976,7 @@ export function DecibelSpotSwap({
               onClick={reverse}
               disabled={interactionLocked}
               className={cn(
-                "grid size-11 place-items-center rounded-[var(--radius-sm)] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                "grid size-11 place-items-center rounded-[12px] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
                 PRESSABLE_CONTROL,
               )}
               aria-label={`Switch to ${direction === "buy" ? `selling ${base}` : `buying ${base}`}`}
@@ -2010,30 +1991,25 @@ export function DecibelSpotSwap({
             </button>
           </div>
 
-          <div className={cn(
-            "flex flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4",
-            connected && "min-h-[152px]",
-          )}>
+          <div className="flex min-h-[152px] flex-col rounded-[var(--radius)] border border-transparent bg-background-tertiary p-4">
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
               <span>Estimated receive</span>
               {connected ? (
-                balanceStatus === "loading" ? (
-                  <Skeleton aria-hidden="true" className="h-3 w-24 shrink-0 bg-card-hover" />
-                ) : (
-                  <span className="truncate text-[11px]">
-                    {balances
+                <span className="truncate text-[11px]">
+                  {balanceStatus === "loading"
+                    ? "Checking balance"
+                    : balances
                       ? <>Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatAtomic(direction === "buy" ? balances.base.atomic : balances.quote.atomic, toDecimals, toSymbol)}</span></>
                       : "Balance —"}
-                  </span>
-                )
+                </span>
               ) : null}
             </div>
-            <div className="flex min-h-[68px] flex-1 items-center gap-3">
-              <div className="min-w-0 flex-1">
+            <div className="flex min-h-[76px] flex-1 items-center gap-3">
+              <div className="min-w-0 flex-1 [container-type:inline-size]">
                 <SwapQuoteAmount
                   announcement={quote ? `Estimated receive ${outputDisplay} ${toSymbol}` : ""}
                   display={outputDisplay}
-                  className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground min-[380px]:text-3xl"
+                  className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(22px,15cqw,36px)] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground"
                 />
               </div>
               <SwapAssetButton
@@ -2046,10 +2022,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "receive"}
               />
             </div>
-            <div className={cn(
-              "flex items-center text-[11px] leading-4 text-muted-foreground",
-              connected ? "min-h-11 sm:min-h-8" : "min-h-0",
-            )}>
+            <div className="flex min-h-11 items-center text-[11px] leading-4 text-muted-foreground">
               <span className="truncate">
                 {quote ? `Est. fee ${(Number(quote.maxSpotTakerFeeRateRaw) / 10_000).toFixed(3)}% · Unfilled amount returns` : ""}
               </span>
@@ -2070,7 +2043,7 @@ export function DecibelSpotSwap({
                 ? <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
                 : <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />}
               <div className="min-w-0">
-                <p className="text-pretty text-[13px] font-semibold leading-4">{notice.title}</p>
+                <p className="text-pretty text-[12px] font-semibold leading-4">{notice.title}</p>
                 {notice.body ? <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">{notice.body}</p> : null}
                 {notice.action === "acknowledge" ? (
                   <button
@@ -2079,7 +2052,7 @@ export function DecibelSpotSwap({
                     disabled={ambiguityChecking}
                     aria-busy={ambiguityChecking}
                     className={cn(
-                      "mt-2 min-h-11 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[13px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
+                      "mt-2 min-h-11 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[12px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
                       PRESSABLE_CONTROL,
                     )}
                   >
@@ -2090,42 +2063,33 @@ export function DecibelSpotSwap({
             </div>
           ) : null}
 
-          {/* Price before the button that acts on it: the summary used to sit
-              under the CTA, where it read as a footnote to a decision already
-              taken. */}
+          <button
+            type="button"
+            onClick={primaryAction}
+            disabled={cta.disabled || interactionLocked}
+            aria-busy={snapshotStatus === "loading" || submitStage !== "idle"}
+            className={cn(
+              "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-[17px] font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
+              PRESSABLE_CONTROL,
+            )}
+          >
+            {(snapshotStatus === "loading" || submitStage !== "idle") ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+            {cta.label}
+          </button>
+
           <button
             type="button"
             onClick={() => setDetailsOpen((open) => !open)}
             className={cn(
-              "mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
+              "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[12px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
               PRESSABLE_CONTROL,
             )}
             aria-expanded={detailsOpen}
             aria-controls={detailsPanelId}
           >
-            {/* Price impact rides in the collapsed summary, not only inside the
-                expanded panel: with slippage it is one of the two numbers a
-                trader checks before signing, and a number you have to go
-                looking for is a number most people never see. */}
-            {quote ? (
-              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono tabular-nums">
-                <span className="truncate">{`1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC`}</span>
-                {Number.isFinite(priceImpact) ? (
-                  <span className={cn("whitespace-nowrap", highRisk ? "text-warning" : "text-muted-foreground")}>
-                    {`· ${percent(priceImpact)} impact`}
-                  </span>
-                ) : null}
-              </span>
-            ) : (
-              // No skeleton here. The prompt is honest before the first book
-              // lands and after it does, and a grey bar sitting beside a fully
-              // populated order book reads as broken rather than loading.
-              // The copy is short enough to survive a 390px viewport intact:
-              // "Enter an amount to see price details" truncated to "price de…".
-              <span className="min-w-0 truncate font-mono tabular-nums">
-                Enter an amount for pricing
-              </span>
-            )}
+            <span className="min-w-0 truncate font-mono tabular-nums">
+              {quote ? `1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC` : "Enter an amount to see price details"}
+            </span>
             <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />
           </button>
 
@@ -2137,33 +2101,19 @@ export function DecibelSpotSwap({
                 animate={{ opacity: 1, transform: "translate3d(0, 0, 0)" }}
                 exit={reduceMotion ? undefined : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
                 transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
-                className="mx-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
+                className="mx-1 mb-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
               >
                 <DetailRow label="Route" value="Decibel spot" tone="positive" />
                 <DetailRow label="Price impact" value={Number.isFinite(priceImpact) ? percent(priceImpact) : "No midpoint"} tone={highRisk ? "warning" : undefined} />
                 <DetailRow label="Bid / ask spread" value={Number.isFinite(spread) ? percent(spread) : "One-sided book"} tone={highRisk ? "warning" : undefined} />
-                <DetailRow label="Max price movement" value={SLIPPAGE_PERCENT} />
+                <DetailRow label="Max price movement" value={`${DECIBEL_SPOT_MAX_SLIPPAGE_BPS / 100}%`} />
                 <DetailRow label="Order behavior" value="Immediate or cancel" />
-                <div className="border-t border-card-border pt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
+                <div className="border-t border-card-border pt-2 text-pretty text-[10px] leading-4 text-muted-foreground">
                   Decibel charges its current spot taker fee in the asset you receive. This integration does not add a builder fee. APT is required for network gas.
                 </div>
               </motion.div>
             ) : null}
           </AnimatePresence>
-
-          <button
-            type="button"
-            onClick={primaryAction}
-            disabled={cta.disabled || interactionLocked}
-            aria-busy={submitStage !== "idle"}
-            className={cn(
-              BUTTON_PRIMARY,
-              "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
-            )}
-          >
-            {submitStage !== "idle" ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
-            {cta.label}
-          </button>
         </SwapFlowScreen>
       )}
       </AnimatePresence>

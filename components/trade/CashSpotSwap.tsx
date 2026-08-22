@@ -20,7 +20,6 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import type {
   ControlledOrderBookData,
   OrderBookTrade,
@@ -32,7 +31,6 @@ import { SwapFlowScreen } from "@/components/trade/swap/SwapFlowScreen";
 import { SwapMarketLayout } from "@/components/trade/swap/SwapMarketLayout";
 import { SwapQuoteAmount } from "@/components/trade/swap/SwapQuoteAmount";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Skeleton } from "@/components/ui/skeleton";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import {
   confirmCashMigrationTransaction,
@@ -208,8 +206,7 @@ const PREVIEW_BALANCES: WalletBalances = {
 
 const QUOTE_STALE_AFTER_MS = 15_000;
 const HIGH_PRICE_IMPACT_PCT = 1;
-// "Max 0.5%" never said what the 0.5% was a maximum of.
-const SLIPPAGE_LABEL = `Slippage ${CASH_SWAP_SLIPPAGE_BPS / 100}%`;
+const SLIPPAGE_LABEL = `Max ${CASH_SWAP_SLIPPAGE_BPS / 100}%`;
 const PENDING_SWAP_STORAGE_PREFIX = "cash:pending-spot-swap:v1";
 const PENDING_MIGRATION_STORAGE_PREFIX = "cash:pending-legacy-migration:v1";
 
@@ -558,7 +555,7 @@ function DetailRow({ label, value, valueClassName }: {
   valueClassName?: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-[13px] leading-5">
+    <div className="flex items-start justify-between gap-4 text-[12px] leading-5">
       <span className="text-muted-foreground">{label}</span>
       <span className={cn("text-right font-mono tabular-nums text-foreground-secondary", valueClassName)}>
         {value}
@@ -2253,9 +2250,7 @@ export function CashSpotSwap({
   const minimumReceived = buyQuote?.minCashAmount ?? sellQuote?.minUsdcAmount ?? 0;
   const quoteSummary = effectivePrice > 0
     ? `1 CASH = ${formatPrice(effectivePrice)} USDC`
-    // Short enough to survive a 390px viewport intact: the longer
-    // "Enter an amount to see price details" truncated to "…price de…" there.
-    : "Enter an amount for pricing";
+    : "Enter an amount to see price details";
   const outputDisplay = outputAmount > 0
     ? formatAmount(outputAmount, toSymbol === "CASH" ? 0 : 6)
     : "0";
@@ -2431,22 +2426,22 @@ export function CashSpotSwap({
     >
       <div className="flex h-14 items-center justify-between gap-3 px-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <SwapHeading className="font-display text-base font-semibold text-foreground">Swap</SwapHeading>
+          <SwapHeading className="font-display text-[17px] font-semibold text-foreground">Swap</SwapHeading>
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className={cn(
-                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[11px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
+                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[10px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                   PRESSABLE_CONTROL,
                 )}
-                aria-label={`${SLIPPAGE_LABEL}. Open maximum price movement details.`}
+                aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
               >
                 {SLIPPAGE_LABEL}
               </button>
             </PopoverTrigger>
             <PopoverContent aria-label="Maximum price movement" align="start" className="w-[260px] p-3">
-              <p className="text-[13px] font-semibold text-foreground">Maximum price movement</p>
+              <p className="text-[12px] font-semibold text-foreground">Maximum price movement</p>
               <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">
                 Your transaction will revert if execution moves more than 0.5% beyond the reviewed quote. This launch setting is fixed.
               </p>
@@ -2457,25 +2452,25 @@ export function CashSpotSwap({
           <span className="sr-only" role="status" aria-live="polite">
             {effectiveLoading ? "Checking orderbook" : bookReady ? "Orderbook ready" : null}
           </span>
-          {/* Always rendered, matching DecibelSpotSwap: a header control that
-              appears and disappears with the poll reads as a rendering bug. */}
-          <button
-            type="button"
-            onClick={() => void fetchDepth(undefined, true)}
-            disabled={refreshing || effectiveLoading || interactionLocked || isPreview}
-            className={cn(
-              "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
-              PRESSABLE_CONTROL,
-            )}
-            aria-label="Refresh CASH orderbook quote"
-            title="Refresh quote"
-          >
-            <RotateCcw
-              aria-hidden="true"
-              strokeWidth={3}
-              className={cn("size-5", (refreshing || effectiveLoading) && "animate-spin motion-reduce:animate-none")}
-            />
-          </button>
+          {(!bookReady || quoteStale) && (
+            <button
+              type="button"
+              onClick={() => void fetchDepth(undefined, true)}
+              disabled={refreshing || effectiveLoading || interactionLocked || isPreview}
+              className={cn(
+                "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
+                PRESSABLE_CONTROL,
+              )}
+              aria-label="Refresh CASH orderbook quote"
+              title="Refresh quote"
+            >
+              <RotateCcw
+                aria-hidden="true"
+                strokeWidth={3}
+                className={cn("size-5", (refreshing || effectiveLoading) && "animate-spin motion-reduce:animate-none")}
+              />
+            </button>
+          )}
         </div>
       </div>
 
@@ -2542,15 +2537,11 @@ export function CashSpotSwap({
       >
         <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
           <label htmlFor={inputId}>You pay</label>
-          {/* A skeleton in the shape of the balance it becomes, not the words
-              "Checking balance": the row does not reflow when the number
-              lands. Same primitive the Points leaderboard uses. */}
           {effectiveConnected && (
-            balanceLoading ? (
-              <Skeleton role="status" aria-label="Checking balance" className="h-3 w-24 shrink-0 bg-card-hover" />
-            ) : (
-              <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-                {balanceError
+            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+              {balanceLoading
+                ? "Checking balance"
+                : balanceError
                   ? balanceError
                   : fromBalance === null
                     ? "Balance —"
@@ -2559,8 +2550,7 @@ export function CashSpotSwap({
                           Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatWalletBalance(fromBalance, fromSymbol)}</span>
                         </>
                       )}
-              </span>
-            )
+            </span>
           )}
         </div>
         <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -2594,7 +2584,7 @@ export function CashSpotSwap({
             aria-invalid={insufficientBalance || belowMinimum || executionLimitReached || undefined}
             aria-describedby={inputIssue ? inputIssueId : undefined}
             aria-errormessage={inputIssue ? inputIssueId : undefined}
-            className="min-w-0 flex-1 bg-transparent font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-3xl"
+            className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/45 disabled:cursor-not-allowed disabled:opacity-55 min-[380px]:text-[36px]"
           />
           {inputIssue && <span id={inputIssueId} className="sr-only">{inputIssue}</span>}
           <SwapAssetButton
@@ -2607,7 +2597,7 @@ export function CashSpotSwap({
             expanded={assetSelectorSide === "pay"}
           />
         </div>
-        <div className="flex min-h-11 items-center justify-between gap-2 text-[11px] leading-4 sm:min-h-8">
+        <div className="flex min-h-11 items-center justify-between gap-2 text-[11px] leading-4">
           <span className={cn(
             "min-w-0 truncate text-muted-foreground",
             effectiveConnected && fromBalance !== null && fromBalance > 0 && "hidden",
@@ -2629,7 +2619,7 @@ export function CashSpotSwap({
                   onClick={() => setBalanceFraction(percent / 100)}
                   disabled={interactionLocked || balanceLoading}
                   className={cn(
-                    "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
+                    "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                     PRESSABLE_CONTROL,
                   )}
                   aria-label={`Use ${percent}% of ${fromSymbol} balance`}
@@ -2642,7 +2632,7 @@ export function CashSpotSwap({
                 onClick={setMaximum}
                 disabled={interactionLocked || balanceLoading}
                 className={cn(
-                  "min-h-11 rounded-[var(--radius-sm)] px-2 text-[11px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45 sm:min-h-8",
+                  "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`Use maximum ${fromSymbol} balance`}
@@ -2660,7 +2650,7 @@ export function CashSpotSwap({
           onClick={reverse}
           disabled={interactionLocked}
           className={cn(
-            "grid size-11 place-items-center rounded-[var(--radius-sm)] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+            "grid size-11 place-items-center rounded-[12px] border-4 border-background-secondary bg-background-elevated text-muted-foreground outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
             PRESSABLE_CONTROL,
           )}
           aria-label={`Switch to ${direction === "buy" ? "selling CASH" : "buying CASH"}`}
@@ -2682,27 +2672,25 @@ export function CashSpotSwap({
         <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
           <span>You receive</span>
           {effectiveConnected && (
-            balanceLoading ? (
-              <Skeleton aria-hidden="true" className="h-3 w-24 shrink-0 bg-card-hover" />
-            ) : (
-              <span className="truncate text-[11px]">
-                {toBalance === null
+            <span className="truncate text-[11px]">
+              {balanceLoading
+                ? "Checking balance"
+                : toBalance === null
                   ? "Balance —"
                   : (
                       <>
                         Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatWalletBalance(toBalance, toSymbol)}</span>
                       </>
                     )}
-              </span>
-            )
+            </span>
           )}
         </div>
-        <div className="flex min-h-[68px] flex-1 items-center gap-3">
-          <div className="min-w-0 flex-1">
+        <div className="flex min-h-[76px] flex-1 items-center gap-3">
+          <div className="min-w-0 flex-1 [container-type:inline-size]">
             <SwapQuoteAmount
               announcement={activeQuote ? `Estimated receive ${outputDisplay} ${toSymbol}` : ""}
               display={outputDisplay}
-              className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground min-[380px]:text-3xl"
+              className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(22px,15cqw,36px)] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground"
             />
           </div>
           <SwapAssetButton
@@ -2715,7 +2703,7 @@ export function CashSpotSwap({
             expanded={assetSelectorSide === "receive"}
           />
         </div>
-        <div className="flex min-h-11 items-center justify-between gap-3 text-[11px] leading-4 text-muted-foreground sm:min-h-8">
+        <div className="flex min-h-11 items-center justify-between gap-3 text-[12px] leading-4 text-muted-foreground">
           <span className="truncate">
             {toUsdEquivalent > 0 ? `≈ $${formatAmount(toUsdEquivalent, 2)}` : ""}
           </span>
@@ -2738,7 +2726,7 @@ export function CashSpotSwap({
             <div className="flex min-w-0 flex-1 items-start gap-2.5">
               <TokenIcon symbol="CASH" />
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold leading-4 text-foreground">
+                <p className="text-[12px] font-semibold leading-4 text-foreground">
                   {formatWalletBalance(walletBalances.legacyCash ?? 0, "CASH")} legacy CASH
                 </p>
                 <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">
@@ -2752,7 +2740,7 @@ export function CashSpotSwap({
               disabled={migrationButtonDisabled}
               aria-busy={migrationStage !== "idle"}
               className={cn(
-                "inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[13px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55",
+                "inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-border-strong bg-background-elevated px-3 text-[12px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55",
                 PRESSABLE_CONTROL,
               )}
             >
@@ -2779,7 +2767,7 @@ export function CashSpotSwap({
               ? <CircleAlert aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", noticeIconStyles)} />
               : <Info aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", noticeIconStyles)} />}
             <div className="min-w-0">
-              <p className="text-pretty text-[13px] font-semibold leading-4">{notice.title}</p>
+              <p className="text-pretty text-[12px] font-semibold leading-4">{notice.title}</p>
               {notice.body && (
                 <p className="mt-1 text-pretty text-[11px] leading-4 text-foreground-secondary">{notice.body}</p>
               )}
@@ -2799,26 +2787,39 @@ export function CashSpotSwap({
         )}
       </AnimatePresence>
 
-      {/* Price before the button that acts on it: the summary used to sit
-          under the CTA, where it read as a footnote to a decision already
-          taken. */}
+      <button
+        type="button"
+        onClick={handlePrimaryAction}
+        disabled={cta.disabled || previewState === "disabled"}
+        aria-busy={submitStage !== "idle" || effectiveLoading}
+        className={cn(
+          "mt-3 flex min-h-14 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-accent px-4 py-2 text-center font-display text-[17px] font-semibold leading-5 text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
+          PRESSABLE_CONTROL,
+          previewState === "hover" && "brightness-95",
+          previewState === "focus-visible" && "ring-2 ring-ring ring-offset-2 ring-offset-background",
+          previewState === "active" && "scale-[0.98]",
+        )}
+      >
+        {(submitStage !== "idle" || effectiveLoading) && (
+          <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+        )}
+        {cta.label}
+      </button>
+
       <button
         type="button"
         onClick={() => setDetailsOpen((open) => !open)}
         className={cn(
-          "mt-3 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[13px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-card-border bg-background px-3 text-left text-[12px] text-muted-foreground outline-none hover:border-border-strong hover:text-foreground-secondary focus-visible:ring-2 focus-visible:ring-ring",
           PRESSABLE_CONTROL,
         )}
         aria-expanded={detailsOpen}
         aria-controls={detailsPanelId}
       >
-        {/* No skeleton here. The prompt is honest before the first book lands
-            and after it does, and a grey bar sitting beside a fully populated
-            order book reads as broken rather than loading. */}
-        <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
+        <span className="min-w-0 truncate font-mono tabular-nums">{quoteSummary}</span>
         <span className="flex shrink-0 items-center gap-1.5">
           {quoteAgeSeconds !== null && bookReady && quoteStale && (
-            <span className="text-[11px] text-warning">Stale</span>
+            <span className="text-[10px] text-warning">Stale</span>
           )}
           <ChevronDown
             aria-hidden="true"
@@ -2838,7 +2839,7 @@ export function CashSpotSwap({
             animate={{ opacity: 1, transform: "translate3d(0, 0, 0)" }}
             exit={reduceMotion ? undefined : { opacity: 0, transform: "translate3d(0, -4px, 0)" }}
             transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
-            className="mx-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
+            className="mx-1 mb-1 mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-card p-3"
           >
             <DetailRow label="Route" value="Direct CASH orderbook" valueClassName="text-accent" />
             <DetailRow
@@ -2871,31 +2872,12 @@ export function CashSpotSwap({
               label="Max price movement"
               value={`${(CASH_SWAP_SLIPPAGE_BPS / 100).toFixed(1)}%`}
             />
-            <div className="border-t border-card-border pt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
+            <div className="border-t border-card-border pt-2 text-pretty text-[10px] leading-4 text-muted-foreground">
               Settles directly to your Aptos wallet. APT is required for network gas.
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      <button
-        type="button"
-        onClick={handlePrimaryAction}
-        disabled={cta.disabled || previewState === "disabled"}
-        aria-busy={submitStage !== "idle" || effectiveLoading}
-        className={cn(
-          BUTTON_PRIMARY,
-          "mt-3 w-full gap-2 disabled:bg-background-elevated disabled:text-muted-foreground disabled:opacity-100",
-          previewState === "hover" && "brightness-95",
-          previewState === "focus-visible" && "ring-2 ring-ring ring-offset-2 ring-offset-background",
-          previewState === "active" && "scale-[0.98]",
-        )}
-      >
-        {(submitStage !== "idle" || effectiveLoading) && (
-          <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
-        )}
-        {cta.label}
-      </button>
 
         </SwapFlowScreen>
       )}

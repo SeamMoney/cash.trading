@@ -2,23 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Coins, ExternalLink, ShieldCheck } from "lucide-react";
-// The same file lib/cash-rewards.ts computes every voucher from, so the rate
-// printed in the header is the rate the server pays — not a second copy of it.
-import rewardConfig from "@/config/cash-rewards.json";
 import { NumberTicker } from "@/components/ui/number-ticker";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  BUTTON_ACCENT_OUTLINE,
-  BUTTON_NEUTRAL,
-  PANEL,
-  PANEL_TITLE,
-  SECTION_GAP,
-  STAT_GRID,
-  STAT_LABEL,
-  STAT_NOTE,
-  STAT_TILE,
-  STAT_VALUE,
-} from "@/components/portfolio/portfolio-surface";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { explorerAccountUrl, explorerTxUrl } from "@/lib/constants";
 import type { DecibelPublicNetwork } from "@/lib/decibel-public";
@@ -56,11 +40,6 @@ type RewardSnapshot = {
     disabledReason?: string;
     walletEpochCapCash: number;
     globalEpochCapCash: number;
-    // Already on every response; the panel simply never read them, which is
-    // how the header could promise CASH without naming a rate.
-    rewardRateCashPerUsd: number;
-    capitalHourRewardCash: number;
-    epochDurationSeconds: number;
   };
   contract: {
     status: string;
@@ -138,9 +117,9 @@ function resetCountdown(epochEndsAt: string, now: number) {
 }
 
 function statusTone(status: string) {
-  if (status === "live") return "bg-success/10 text-success";
-  if (status === "issuer_mismatch") return "bg-danger/10 text-danger";
-  return "bg-warning/10 text-warning";
+  if (status === "live") return "bg-green-500/10 text-green-400";
+  if (status === "issuer_mismatch") return "bg-red-500/10 text-red-300";
+  return "bg-yellow-500/10 text-yellow-300";
 }
 
 export function CashRewardsPanel({ connected, network, owner, subaccount }: Props) {
@@ -407,16 +386,6 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
       : snapshot?.contract.status === "live"
         ? "Nothing new to claim"
         : "Claims unlock after canary funding";
-  // True only while the first snapshot is in flight; `loading` terminates in
-  // the fetch's finally, so a skeleton cannot become the new permanent dash.
-  const snapshotPending = loading && !snapshot;
-  // The live snapshot wins; the bundled config covers the moments before it
-  // lands, so the header never states the promise without the price.
-  const feeRate = snapshot?.config.rewardRateCashPerUsd ?? rewardConfig.feeRewardCashPerUsd;
-  const capitalRate = snapshot?.config.capitalHourRewardCash ?? rewardConfig.capitalHourRewardCash;
-  const epochDays = Math.round(
-    (snapshot?.config.epochDurationSeconds ?? rewardConfig.epochDurationSeconds) / 86_400,
-  );
   const builderApproved = Boolean(builderStatus?.approval.approved);
   const builderRoutingActive = Boolean(
     builderApproved && builderStatus?.enrollmentOpen,
@@ -427,131 +396,97 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
   const visibleStatus = builderActionStatus ?? claimStatus;
 
   return (
-    <section className={cn(SECTION_GAP, PANEL)}>
-      {/* The rule under the header separates it from the body; with no body it
-          doubled up against the panel's own bottom edge. */}
-      <div
-        className={cn(
-          "flex flex-wrap items-start justify-between gap-4 px-4 py-3.5",
-          connected && subaccount && "border-b border-card-border",
-        )}
-      >
+    <section className="mt-8 overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#050505]">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#1a1a1a] px-5 py-4 sm:px-6">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex size-9 items-center justify-center rounded-[var(--radius-sm)] bg-success/10 text-success">
+          <div className="mt-0.5 flex size-9 items-center justify-center rounded-[4px] bg-green-500/10 text-green-400">
             <Coins className="size-4" aria-hidden="true" />
           </div>
           <div>
-            <h2 className={PANEL_TITLE}>CASH rewards</h2>
-            {/* Was "Earn CASH from the fees you pay and the capital you keep in
-                Decibel positions." — a promise with no rate, no period and
-                nothing to check it against. These are the two rates the two
-                figures below ("Fee rewards", "Capital-time rewards") are
-                computed from. */}
-            <p className="mt-1 max-w-2xl text-pretty text-xs leading-5 text-muted-foreground">
-              <span className="font-mono tabular-nums text-foreground">{compactCash(feeRate)} CASH</span>
-              {" "}per $1 of fees paid, plus{" "}
-              <span className="font-mono tabular-nums text-foreground">{compactCash(capitalRate)} CASH</span>
-              {" "}per $1 of margin held per hour. Resets every {epochDays} days.
+            <h2 className="text-[15px] font-semibold text-zinc-200">CASH rewards</h2>
+            <p className="mt-1 max-w-2xl text-pretty text-[12px] leading-5 text-zinc-500">
+              Earn from verified fees and capital kept in Decibel positions. Rewards use actual activity, not inflated leverage notional.
             </p>
           </div>
         </div>
         {snapshot && (
-          <span className={cn("rounded-full px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide", statusTone(snapshot.contract.status))}>
+          <span className={cn("rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wide", statusTone(snapshot.contract.status))}>
             {snapshot.contract.statusLabel}
           </span>
         )}
       </div>
 
-      {/* Disconnected this rendered "Connect a wallet with a Decibel trading
-          account to preview verified CASH earnings." — a third copy of the ask
-          the page header's button already makes. The panel keeps its one
-          sentence above, which says what CASH rewards are; the body appears
-          when there is an account to report on. */}
-      {connected && subaccount ? (
+      {!connected || !subaccount ? (
+        <div className="px-6 py-8 text-[13px] text-zinc-500">
+          Connect a wallet with a Decibel trading account to preview verified CASH earnings.
+        </div>
+      ) : (
         <>
           {snapshot && snapshot.contract.status !== "live" && (
-            <div role="status" className="border-b border-warning/20 bg-warning/10 px-4 py-3 text-pretty text-[11px] leading-5 text-warning">
+            <div role="status" className="border-b border-yellow-500/15 bg-yellow-500/5 px-5 py-3 text-pretty text-[11px] leading-5 text-yellow-200/80 sm:px-6">
               Preview only — no CASH has been issued. Weekly estimates reset and do not carry into a new reward week.
             </div>
           )}
-          <div className={cn(STAT_GRID, "sm:grid-cols-2 lg:grid-cols-4")}>
-            <div className={STAT_TILE}>
-              <p className={STAT_LABEL}>Estimated this week</p>
-              {/* Was "…" while loading, then an em dash, then a number —
-                  three different widths in one slot. */}
-              {snapshotPending ? (
-                <Skeleton className="mt-2 h-8 w-[8ch]" />
-              ) : (
-                <NumberTicker
-                  value={estimatedEarned}
-                  fallback="—"
-                  format={{ maximumFractionDigits: 0 }}
-                  suffix=" CASH"
-                  className={cn(STAT_VALUE, "text-success")}
-                />
-              )}
-              <p className={STAT_NOTE}>
+          <div className="grid gap-px bg-[#1a1a1a] sm:grid-cols-2 lg:grid-cols-4">
+            <div className="bg-[#050505] px-5 py-5 sm:px-6">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">Estimated this week</p>
+              <NumberTicker
+                value={estimatedEarned}
+                fallback={loading ? "Loading..." : "—"}
+                format={{ maximumFractionDigits: 0 }}
+                suffix=" CASH"
+                className="mt-2 block font-mono text-[24px] font-semibold text-green-400"
+              />
+              <p className="mt-2 text-[11px] text-zinc-600">
                 Server-verified · resets in {snapshot ? resetCountdown(snapshot.epochEndsAt, clock) : "—"}
               </p>
             </div>
-            <div className={STAT_TILE}>
-              <p className={STAT_LABEL}>
+            <div className="bg-[#050505] px-5 py-5 sm:px-6">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">
                 {snapshot?.contract.status === "live" ? "Claimable" : "Verified accrued"}
               </p>
-              {snapshotPending ? (
-                <Skeleton className="mt-2 h-8 w-[8ch]" />
-              ) : (
-                <NumberTicker
-                  value={snapshot?.totals.claimableCash}
-                  fallback="—"
-                  format={{ maximumFractionDigits: 0 }}
-                  suffix=" CASH"
-                  className={STAT_VALUE}
-                />
-              )}
-              <p className={STAT_NOTE}>
+              <NumberTicker
+                value={snapshot?.totals.claimableCash}
+                fallback="—"
+                format={{ maximumFractionDigits: 0 }}
+                suffix=" CASH"
+                className="mt-2 block font-mono text-[24px] font-semibold text-zinc-200"
+              />
+              <p className="mt-2 text-[11px] text-zinc-600">
                 {snapshot?.contract.status === "live"
                   ? "Owner-bound, expiring voucher"
                   : "Unlocks after the distributor launches"}
               </p>
             </div>
-            <div className={STAT_TILE}>
-              <p className={STAT_LABEL}>Claimed this week</p>
-              {snapshotPending ? (
-                <Skeleton className="mt-2 h-8 w-[8ch]" />
-              ) : (
-                <NumberTicker
-                  value={snapshot?.totals.claimedCash}
-                  fallback="—"
-                  format={{ maximumFractionDigits: 0 }}
-                  suffix=" CASH"
-                  className={STAT_VALUE}
-                />
-              )}
-              <p className={STAT_NOTE}>Cumulative on-chain record</p>
+            <div className="bg-[#050505] px-5 py-5 sm:px-6">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">Claimed this week</p>
+              <NumberTicker
+                value={snapshot?.totals.claimedCash}
+                fallback="—"
+                format={{ maximumFractionDigits: 0 }}
+                suffix=" CASH"
+                className="mt-2 block font-mono text-[24px] font-semibold text-zinc-200"
+              />
+              <p className="mt-2 text-[11px] text-zinc-600">Cumulative on-chain record</p>
             </div>
-            <div className={STAT_TILE}>
-              <p className={STAT_LABEL}>Wallet CASH</p>
-              {snapshotPending ? (
-                <Skeleton className="mt-2 h-8 w-[8ch]" />
-              ) : (
-                <NumberTicker
-                  value={snapshot?.totals.walletBalanceCash}
-                  fallback="—"
-                  format={{ maximumFractionDigits: 0 }}
-                  suffix=" CASH"
-                  className={STAT_VALUE}
-                />
-              )}
-              <p className={STAT_NOTE}>Decibel owner account balance</p>
+            <div className="bg-[#050505] px-5 py-5 sm:px-6">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">Wallet CASH</p>
+              <NumberTicker
+                value={snapshot?.totals.walletBalanceCash}
+                fallback="—"
+                format={{ maximumFractionDigits: 0 }}
+                suffix=" CASH"
+                className="mt-2 block font-mono text-[24px] font-semibold text-zinc-200"
+              />
+              <p className="mt-2 text-[11px] text-zinc-600">Decibel owner account balance</p>
             </div>
           </div>
 
-          <div className="grid gap-6 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-6 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div>
               <div className="flex items-center justify-between gap-4 text-[11px]">
-                <span className="text-muted-foreground">Weekly wallet ceiling</span>
-                <span className="font-mono tabular-nums text-foreground">
+                <span className="text-zinc-500">Weekly wallet ceiling</span>
+                <span className="font-mono tabular-nums text-zinc-400">
                   {snapshot ? `${compactCash(snapshot.totals.earnedCash)} / ${compactCash(snapshot.config.walletEpochCapCash)} CASH` : "—"}
                 </span>
               </div>
@@ -561,52 +496,52 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(progress)}
-                className="mt-2 h-1.5 overflow-hidden rounded-full bg-background-tertiary"
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-900"
               >
-                <div className="h-full rounded-full bg-success" style={{ width: `${progress}%` }} />
+                <div className="h-full rounded-full bg-green-500" style={{ width: `${progress}%` }} />
               </div>
 
-              <dl className="mt-5 grid gap-3 text-xs sm:grid-cols-3">
+              <dl className="mt-5 grid gap-3 text-[12px] sm:grid-cols-3">
                 <div>
-                  <dt className="text-muted-foreground">Verified fills</dt>
-                  <dd className="mt-1 font-mono tabular-nums text-foreground">{snapshot?.verified.fills ?? "—"}</dd>
+                  <dt className="text-zinc-600">Verified fills</dt>
+                  <dd className="mt-1 font-mono tabular-nums text-zinc-300">{snapshot?.verified.fills ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Fee rewards</dt>
-                  <dd className="mt-1 font-mono tabular-nums text-foreground">{snapshot ? `${compactCash(snapshot.components.feesCash)} CASH` : "—"}</dd>
+                  <dt className="text-zinc-600">Fee rewards</dt>
+                  <dd className="mt-1 font-mono tabular-nums text-zinc-300">{snapshot ? `${compactCash(snapshot.components.feesCash)} CASH` : "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Capital-time rewards</dt>
-                  <dd className="mt-1 font-mono tabular-nums text-foreground">{snapshot ? `${compactCash(snapshot.components.capitalHoursCash)} CASH` : "—"}</dd>
+                  <dt className="text-zinc-600">Capital-time rewards</dt>
+                  <dd className="mt-1 font-mono tabular-nums text-zinc-300">{snapshot ? `${compactCash(snapshot.components.capitalHoursCash)} CASH` : "—"}</dd>
                 </div>
               </dl>
               {snapshot?.verified.truncated && (
-                <p className="mt-3 text-[11px] text-warning">
+                <p className="mt-3 text-[11px] text-yellow-300">
                   This account exceeded the 1,000-fill preview window. The displayed estimate is conservative.
                 </p>
               )}
             </div>
 
-            <div className="rounded-[var(--radius-sm)] border border-card-border bg-card p-4">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                <ShieldCheck className="size-3.5 text-success" aria-hidden="true" />
+            <div className="rounded-[4px] border border-[#1a1a1a] bg-[#0a0a0a] p-4">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500">
+                <ShieldCheck className="size-3.5 text-green-400" aria-hidden="true" />
                 On-chain guardrails
               </div>
-              <div className="mt-3 space-y-2 text-[11px] text-muted-foreground">
+              <div className="mt-3 space-y-2 text-[11px] text-zinc-500">
                 <div className="flex justify-between gap-4">
                   <span>Epoch emission cap</span>
-                  <span className="font-mono tabular-nums text-foreground">{snapshot ? `${compactCash(snapshot.config.globalEpochCapCash)} CASH` : "—"}</span>
+                  <span className="font-mono tabular-nums text-zinc-300">{snapshot ? `${compactCash(snapshot.config.globalEpochCapCash)} CASH` : "—"}</span>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span>Vault balance</span>
-                  <span className="font-mono tabular-nums text-foreground">{snapshot ? `${compactCash(snapshot.contract.vaultBalanceCash)} CASH` : "—"}</span>
+                  <span className="font-mono tabular-nums text-zinc-300">{snapshot ? `${compactCash(snapshot.contract.vaultBalanceCash)} CASH` : "—"}</span>
                 </div>
                 {snapshot && (
                   <a
                     href={explorerAccountUrl(snapshot.contract.managerAddress, network)}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-between gap-4 text-muted-foreground hover:text-foreground"
+                    className="flex items-center justify-between gap-4 text-zinc-500 hover:text-zinc-300"
                   >
                     <span>Isolated manager</span>
                     <span className="flex items-center gap-1 font-mono">
@@ -616,16 +551,16 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                   </a>
                 )}
               </div>
-              <div className="mt-4 border-t border-card-border pt-4">
+              <div className="mt-4 border-t border-[#1a1a1a] pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-medium text-foreground">cash.trading Builder fee</span>
+                  <span className="text-[11px] font-medium text-zinc-300">cash.trading Builder fee</span>
                   <span className={cn(
-                    "rounded-full px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide",
+                    "rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide",
                     builderRoutingActive
-                      ? "bg-success/10 text-success"
+                      ? "bg-green-500/10 text-green-400"
                       : builderApproved
-                        ? "bg-warning/10 text-warning"
-                      : "bg-background-tertiary text-muted-foreground",
+                        ? "bg-yellow-500/10 text-yellow-300"
+                      : "bg-zinc-800 text-zinc-500",
                   )}>
                     {builderLoading
                       ? "Checking"
@@ -636,13 +571,13 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                           : "Off"}
                   </span>
                 </div>
-                <p className="mt-2 text-pretty text-[11px] leading-4 text-muted-foreground">
+                <p className="mt-2 text-pretty text-[10px] leading-4 text-zinc-600">
                   {builderStatus?.enabled
                     ? `Optional ${builderStatus.feeBps} bp (${builderStatus.feePercent.toFixed(2)}%) Builder fee per order. Decibel protocol fees still apply. This approval is on-chain and revocable any time.`
                     : "Builder fees are unavailable. No cash.trading fee is being added."}
                 </p>
                 {builderStatus?.enabled && !builderStatus.approval.readable && (
-                  <p className="mt-2 text-[11px] leading-4 text-warning">
+                  <p className="mt-2 text-[10px] leading-4 text-yellow-300">
                     Approval could not be verified, so orders remain fee-free from cash.trading.
                   </p>
                 )}
@@ -655,11 +590,10 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                     !builderStatus?.enabled ||
                     (!builderApproved && !builderCanEnable)
                   }
-                  title={builderStatus?.enabled ? undefined : "Builder fees are switched off for this deployment"}
-                  className={cn(BUTTON_NEUTRAL, "mt-3 w-full text-[13px]")}
+                  className="mt-3 w-full rounded-[4px] border border-[#252525] bg-[#111] px-3 py-2 text-[11px] font-medium text-zinc-300 hover:bg-[#171717] disabled:cursor-not-allowed disabled:text-zinc-700"
                 >
                   {builderAction
-                    ? "Confirming…"
+                    ? "Confirming..."
                     : builderApproved
                       ? "Revoke Builder fee"
                       : builderCanEnable
@@ -667,32 +601,29 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                         : "Builder fee unavailable"}
                 </button>
               </div>
-              {/* Outline, not a second accent fill — Deposit USDC is the page's
-                  one primary action and both are on screen together. */}
               <button
                 type="button"
                 onClick={claim}
                 disabled={!snapshot?.voucher || claiming}
-                title={snapshot?.voucher ? undefined : claimLabel}
-                className={cn(BUTTON_ACCENT_OUTLINE, "mt-3")}
+                className="mt-4 w-full rounded-[4px] bg-accent px-4 py-2.5 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95 disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:text-zinc-600"
               >
                 {claimLabel}
               </button>
             </div>
           </div>
         </>
-      ) : null}
+      )}
 
       {(error || visibleStatus) && (
         <div
           role={error || visibleStatus?.tone === "error" ? "alert" : "status"}
           className={cn(
-            "border-t border-card-border px-4 py-3 text-xs",
+            "border-t border-[#1a1a1a] px-5 py-3 text-[12px] sm:px-6",
             error || visibleStatus?.tone === "error"
-              ? "text-danger"
+              ? "text-red-300"
               : visibleStatus?.tone === "success"
-                ? "text-success"
-                : "text-muted-foreground",
+                ? "text-green-300"
+                : "text-zinc-400",
           )}
         >
           {error || visibleStatus?.message}
@@ -701,7 +632,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
               href={explorerTxUrl(visibleStatus.hash, network)}
               target="_blank"
               rel="noreferrer"
-              className="ml-2 inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
+              className="ml-2 inline-flex items-center gap-1 underline underline-offset-4 hover:text-zinc-200"
             >
               View transaction <ExternalLink className="size-3" aria-hidden="true" />
             </a>

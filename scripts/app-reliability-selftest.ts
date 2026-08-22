@@ -471,27 +471,8 @@ assert.match(orderBook, /onDecibelTradeConfirmed/);
 assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
 assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
 assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
-// 17 rows fill the swap card's ~504px without an at-rest scroll; 21 needed ~572px.
-assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
-// The book carries its own height and IS the grid item — it used to be pulled
-// out of flow inside a relative wrapper to match the card, which left the
-// ladder box shorter than a whole number of 24px rows and sliced the last row
-// through the middle of its glyphs. 672px is the Trade page's column height,
-// reused verbatim so the same component clips on neither page.
-assert.match(swapMarketLayout, /className="min-w-0 h-\[452px\] sm:h-\[572px\] xl:h-\[672px\]"/);
-assert.ok(
-  !swapMarketLayout.includes("lg:order-"),
-  "paint order must match DOM order — the card is first in the DOM and must be first on screen",
-);
-assert.match(swapMarketLayout, /lg:items-stretch/);
-assert.ok(
-  !swapMarketLayout.includes("lg:absolute") && !swapMarketLayout.includes("lg:inset-0"),
-  "the book must stay in flow — out-of-flow sizing is what produced the clipped ladder row",
-);
-assert.ok(
-  !swapMarketLayout.includes("overflow-y-auto"),
-  "the swap column must not nest a scroll inside the page scroll",
-);
+assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 21 : 11\}/);
+assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:h-\[672px\]"/);
 assert.equal(
   (swapMarketLayout.match(/<OrderBook/g) ?? []).length,
   1,
@@ -848,7 +829,6 @@ for (const [name, source] of [
   ["trade panel", tradePanel],
   ["positions", positionsComponent],
   ["account manager", accountManager],
-  ["portfolio page", portfolioPage],
   ["cash rewards panel", cashRewardsPanel],
 ] as const) {
   assert.match(source, /explorerTxUrl/);

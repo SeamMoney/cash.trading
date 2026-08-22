@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
-import { Header, PageConnectCta } from "@/components/layout/Header";
 import {
   MarketModal,
   type Market,
@@ -17,8 +15,6 @@ import {
   type DecibelSpotSide,
   type ValidatedDecibelSpotMarket,
 } from "@/lib/decibel-spot";
-import { PAGE_SHELL_WIDE } from "@/lib/surface";
-import { cn } from "@/lib/utils";
 
 type SwapMarketName = "CASH/USDC" | "APT/USDC" | "BTC/USDC";
 type SwapAssetId = "CASH" | "APT" | "BTC" | "USDC";
@@ -168,7 +164,6 @@ function placeholderMarket(
 }
 
 export function SwapPageClient() {
-  const { connected } = useWallet();
   const [spotMarkets, setSpotMarkets] = useState<ValidatedDecibelSpotMarket[]>([]);
   const [registryStatus, setRegistryStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [selectedMarket, setSelectedMarket] = useState<SwapMarketName>(DEFAULT_MARKET);
@@ -346,18 +341,7 @@ export function SwapPageClient() {
   } as const;
 
   return (
-    // Disconnected, the swap card renders the filled "Connect wallet" primary,
-    // so the header must not render its outline copy 500px above it.
-    <PageConnectCta present={!connected}>
-    {/* pb-10 is the stacked column's bottom breathing room. From md the page
-        already ends on <main>'s own padding, and the extra 40px only pushed
-        black under the last card — the same trim /trade makes with pb-12
-        md:pb-0. */}
-    <div className="cash-trade-theme min-h-screen bg-background pb-10 md:pb-0">
-      <Header />
-      {/* PAGE_SHELL_WIDE, not a private 1800px measure — see TradePageClient. */}
-      <main className={cn(PAGE_SHELL_WIDE, "relative z-10 py-3 sm:py-4 lg:py-5")}>
-        <h1 className="sr-only">Swap spot assets</h1>
+    <>
       {!selectedDecibelMarket ? (
         <CashSpotSwap key={`cash-${formKey}`} {...sharedProps} />
       ) : (
@@ -385,8 +369,6 @@ export function SwapPageClient() {
         network="mainnet"
         selectorVariant="spot"
       />
-      </main>
-    </div>
-    </PageConnectCta>
+    </>
   );
 }

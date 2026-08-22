@@ -22,14 +22,14 @@ export const NAV_ITEMS: { href: string; label: string }[] = [
   // "Sealed vaults", not "Vaults": /trade lists Decibel's own vault registry under
   // that word, and two tabs naming the same noun for two different registries is the
   // app disagreeing with itself about how many vaults exist.
-  { href: "/launchpad", label: "Sealed vaults" },
+  { href: "/launchpad", label: "Launchpad" },
   // Link visibility only — this is a client component, so it cannot read the
   // server-side BOT_OWNER_ADDRESSES allowlist. Access is enforced by that
   // allowlist in the API and by a redirect on /automation itself; this flag
   // just avoids advertising a link that would bounce. Showing it is never a
   // security decision.
   ...(process.env.NEXT_PUBLIC_BOT_AUTOMATION_UI === "1" || process.env.NODE_ENV !== "production"
-    ? [{ href: "/automation", label: "Strategy runner" }]
+    ? [{ href: "/automation", label: "Automation" }]
     : []),
   { href: "/points", label: "Points" },
 ];

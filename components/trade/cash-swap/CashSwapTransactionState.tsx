@@ -30,10 +30,6 @@ interface CashSwapTransactionStateProps {
   verificationIssue: string;
 }
 
-const SCREEN_TITLE =
-  "mt-5 font-display text-2xl font-semibold text-foreground outline-none";
-const SCREEN_BODY = "mt-2 text-pretty text-[13px] leading-5 text-foreground-secondary";
-
 function formatAmount(value: number | string, symbol: string) {
   if (typeof value === "string") return value;
   return new Intl.NumberFormat("en-US", {
@@ -49,7 +45,7 @@ function TransactionLink({ hash, label = "View on Aptos" }: { hash: string; labe
       target="_blank"
       rel="noreferrer"
       className={cn(
-        "inline-flex min-h-12 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-card-border bg-background-elevated px-4 text-sm font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-card-border bg-background-elevated px-4 text-[12px] font-semibold text-foreground outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring",
         PRESSABLE_CONTROL,
       )}
     >
@@ -76,26 +72,26 @@ export function CashSwapTransactionState({
     return (
       <div className="flex min-h-[430px] flex-col items-center justify-center px-4 py-8 text-center">
         <div className="flex w-full flex-col items-center" role="status" aria-live="polite">
-          <span className="grid size-16 place-items-center rounded-full bg-accent text-accent-foreground">
+          <span className="grid size-16 place-items-center rounded-full bg-accent text-black shadow-[0_0_40px_rgba(0,213,75,0.18)]">
             <Check aria-hidden="true" className="size-7" strokeWidth={2.5} />
           </span>
-          <h3 data-swap-screen-heading tabIndex={-1} className={SCREEN_TITLE}>{successTitle}</h3>
-          <p className={cn(SCREEN_BODY, "max-w-[320px]")}>
+          <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none">{successTitle}</h3>
+          <p className="mt-2 max-w-[320px] text-[12px] leading-5 text-foreground-secondary">
             {successBody}
           </p>
 
           <div className="mt-6 w-full rounded-[var(--radius)] border border-card-border bg-card p-4 text-left">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{receipt.quoted ? "Quoted execution" : "Executed"}</p>
+            <p className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{receipt.quoted ? "Quoted execution" : "Executed"}</p>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="break-words font-mono text-lg font-medium leading-6 tabular-nums text-foreground">
+                <p className="break-words font-mono text-[20px] font-medium leading-7 tabular-nums text-foreground">
                   {formatAmount(receipt.paid, receipt.fromSymbol)} {receipt.fromSymbol}
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">Paid</p>
               </div>
               <span aria-hidden="true" className="text-muted-foreground">→</span>
               <div className="min-w-0 text-right">
-                <p className="break-words font-mono text-lg font-medium leading-6 tabular-nums text-foreground">
+                <p className="break-words font-mono text-[20px] font-medium leading-7 tabular-nums text-foreground">
                   {formatAmount(receipt.received, receipt.toSymbol)} {receipt.toSymbol}
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">Received</p>
@@ -109,7 +105,7 @@ export function CashSwapTransactionState({
             type="button"
             onClick={onNewSwap}
             className={cn(
-              "min-h-12 flex-1 rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+              "min-h-12 flex-1 rounded-[var(--radius-sm)] bg-accent px-4 text-[14px] font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
               PRESSABLE_CONTROL,
             )}
           >
@@ -128,10 +124,14 @@ export function CashSwapTransactionState({
           <span className="grid size-16 place-items-center rounded-full border border-warning/35 bg-warning/[0.08] text-foreground">
             <CircleAlert aria-hidden="true" className="size-7" strokeWidth={2.5} />
           </span>
-          <h3 data-swap-screen-heading tabIndex={-1} className={SCREEN_TITLE}>
+          <h3
+            data-swap-screen-heading
+            tabIndex={-1}
+            className="mt-5 font-display text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none"
+          >
             Execution needs review
           </h3>
-          <p className={cn(SCREEN_BODY, "max-w-[340px]")}>
+          <p className="mt-2 max-w-[340px] text-pretty text-[12px] leading-5 text-foreground-secondary">
             {verificationIssue} The form is locked so this swap cannot be submitted twice.
           </p>
         </div>
@@ -164,8 +164,8 @@ export function CashSwapTransactionState({
             <LoaderCircle aria-hidden="true" className="size-7 animate-spin motion-reduce:animate-none" />
           )}
         </span>
-        <h3 data-swap-screen-heading tabIndex={-1} className={SCREEN_TITLE}>{title}</h3>
-        <p className={cn(SCREEN_BODY, "max-w-[330px]")}>{body}</p>
+        <h3 data-swap-screen-heading tabIndex={-1} className="mt-5 font-display text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none">{title}</h3>
+        <p className="mt-2 max-w-[330px] text-pretty text-[12px] leading-5 text-foreground-secondary">{body}</p>
       </div>
 
       {pendingHash && (
@@ -175,7 +175,7 @@ export function CashSwapTransactionState({
               type="button"
               onClick={onCheck}
               className={cn(
-                "inline-flex min-h-12 items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-accent px-4 text-[12px] font-semibold text-accent-foreground outline-none hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring",
                 PRESSABLE_CONTROL,
               )}
             >

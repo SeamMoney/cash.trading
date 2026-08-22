@@ -22,28 +22,8 @@ interface SwapMarketLayoutProps {
 const DESKTOP_MARKET_QUERY = "(min-width: 1024px)";
 
 /**
- * Renders the swap card above (or, where there is room, beside) the Trade
- * page's shared OrderBook component.
- *
- * The split starts at `lg`. Holding it back to `2xl` meant a 576px card alone
- * in the middle of a 1440px laptop with the book pushed below the fold and two
- * thirds of the screen left black. From `lg` the row takes the page shell's
- * full measure (`lg:max-w-none` releases the `max-w-xl` that caps the stacked
- * form) — it used to impose a private 1120px frame inside a wider `<main>`,
- * which put ~136px of black down each side of the swap and made the content's
- * left edge jump when you moved between /swap and /trade. Below `lg` both
- * stack in that one `max-w-xl` column, swap first.
- *
- * The book declares its own height at every width: the 452/572px it already
- * used stacked, and from `xl` the 672px /trade gives this same component. It
- * used to be pinned to the swap card instead (`absolute inset-0`), which made
- * a 424px ticket the whole page — the ladder was left 347px for 15 rows that
- * cannot go under 24px each (368px), so it overflowed and the last row was cut
- * mid-glyph, and the page ended 37% of the way up a 900px viewport. A declared
- * height ends both: 490px of ladder at `sm`, 598px at `xl`, against a hard
- * ceiling of 17 rows x 24px = 408px, so `minmax(24px, 1fr)` always has room to
- * stretch to an exact fit and never has to overflow. The trades list still
- * scrolls inside that height.
+ * Keeps every spot swap surface aligned with the Trade page's responsive
+ * market rails while rendering the same shared OrderBook component.
  */
 export function SwapMarketLayout({
   children,
@@ -60,16 +40,18 @@ export function SwapMarketLayout({
   }, []);
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-none lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch lg:gap-4">
-      <div className="min-w-0">
+    <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-[1120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start 2xl:gap-4">
+      <div className="min-w-0 lg:order-2 lg:h-[672px] lg:[&>*]:h-full lg:[&>*]:min-h-0 lg:[&>*]:overflow-y-auto lg:[&>*]:overscroll-contain lg:[&>*]:scrollbar-thin">
         {children}
       </div>
 
-      <OrderBook
-        {...orderBookProps}
-        rowCount={desktopMarketLayout ? 17 : 11}
-        className="min-w-0 h-[452px] sm:h-[572px] xl:h-[672px]"
-      />
+      <div className="min-w-0 lg:order-1">
+        <OrderBook
+          {...orderBookProps}
+          rowCount={desktopMarketLayout ? 21 : 11}
+          className="h-[452px] sm:h-[572px] lg:h-[672px]"
+        />
+      </div>
     </div>
   );
 }

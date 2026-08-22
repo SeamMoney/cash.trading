@@ -7,7 +7,7 @@ import { Area, AreaChart } from "@/components/charts/area-chart";
 import { Grid } from "@/components/charts/grid";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { XAxis } from "@/components/charts/x-axis";
-import { Header, PageConnectCta } from "@/components/layout/Header";
+import { Header } from "@/components/layout/Header";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,47 +21,13 @@ import {
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
-import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { isValidAptosAddress } from "@/lib/decibel";
-import { PAGE_SHELL_WIDE } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
-// The app's one skeleton primitive, already shaping the /points leaderboard's
-// loading rows. Imported rather than re-authored: two skeleton systems is how
-// a pulse ends up a different grey on two pages.
-import { Skeleton } from "@/components/ui/skeleton";
 import { CashRewardsPanel } from "@/components/portfolio/CashRewardsPanel";
-import {
-  BUTTON_NEUTRAL,
-  BUTTON_PRIMARY,
-  CARD_ROW,
-  CARD_ROW_GRID,
-  CARD_ROW_LABEL,
-  CARD_ROW_VALUE,
-  INPUT,
-  INPUT_LABEL,
-  PANEL,
-  ROW_ACTION,
-  SECTION_GAP,
-  SECTION_TITLE,
-  SEGMENTED,
-  SEGMENTED_ITEM,
-  SEGMENTED_ITEM_ACTIVE,
-  STAT_GRID_PANEL,
-  STAT_LABEL,
-  STAT_NOTE,
-  STAT_TILE,
-  STAT_VALUE,
-  TAB,
-  TAB_ACTIVE,
-  TABLE,
-  TABLE_EMPTY,
-  TABLE_HEAD,
-  TABLE_ROW,
-  signTone,
-} from "@/components/portfolio/portfolio-surface";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
+import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 
 type Position = {
   market: string;
@@ -173,12 +139,18 @@ type ActionStatus = {
   hash?: string;
 };
 
-// Only surfaces that are actually wired to a Decibel read. The page used to
-// carry seven more tabs (TWAPs, TWAP History, Trade History, Funding History,
-// Order History, Transfers, and a Collateral tab that rendered the Balances
-// table verbatim); none of them had a fetch behind it, so every one promised
-// rows that could never arrive.
-const TABS = ["Positions", "Open orders", "Balances"] as const;
+const TABS = [
+  "Balances",
+  "Collateral",
+  "Positions",
+  "Open Orders",
+  "TWAPs",
+  "TWAP History",
+  "Trade History",
+  "Funding History",
+  "Order History",
+  "Transfers",
+] as const;
 
 const PORTFOLIO_CHART_RANGES: ReadonlyArray<{
   value: PortfolioChartRange;
@@ -190,9 +162,6 @@ const PORTFOLIO_CHART_RANGES: ReadonlyArray<{
   { value: "90d", label: "90d" },
   { value: "all", label: "All" },
 ];
-
-const DEFAULT_CHART_METRIC = "pnl" as const;
-const DEFAULT_CHART_RANGE: PortfolioChartRange = "30d";
 
 function formatUsd(value: number | null | undefined, signed = false) {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -378,19 +347,11 @@ function decibelWsOpenOrderToOpenOrder(
   };
 }
 
-// The dashed underline this row used to carry read as "hover me for a
-// definition" and nothing was ever bound to it.
-function OverviewRow({ label, value, tone, pending }: { label: string; value: string; tone?: string; pending?: boolean }) {
+function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 py-1.5 text-[13px]">
-      <span className="text-muted-foreground">{label}</span>
-      {pending ? (
-        /* The row's own 13px line box, so the column does not reflow as the
-           eight values land one request at a time. */
-        <Skeleton className="h-[19px] w-16" />
-      ) : (
-        <span className={cn("font-mono tabular-nums text-foreground", tone)}>{value}</span>
-      )}
+    <div className="flex items-baseline justify-between gap-6 py-1 text-[13px]">
+      <span className="text-zinc-500 underline decoration-dashed underline-offset-4">{label}</span>
+      <span className={cn("font-mono tabular-nums text-zinc-300", tone)}>{value}</span>
     </div>
   );
 }
@@ -417,9 +378,8 @@ export function PortfolioPageClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Positions");
-  const tabPanelId = "portfolio-tabpanel";
-  const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">(DEFAULT_CHART_METRIC);
-  const [chartRange, setChartRange] = useState<PortfolioChartRange>(DEFAULT_CHART_RANGE);
+  const [chartMetric, setChartMetric] = useState<"pnl" | "portfolio">("pnl");
+  const [chartRange, setChartRange] = useState<PortfolioChartRange>("30d");
   const [historyPoints, setHistoryPoints] = useState<PortfolioHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -430,6 +390,7 @@ export function PortfolioPageClient() {
   // Deposit reuses the full account modal (wallet, account creation, bridge)
   // rather than a second bespoke deposit form.
   const [depositOpen, setDepositOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawRecipient, setWithdrawRecipient] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
@@ -456,20 +417,12 @@ export function PortfolioPageClient() {
     (selectedSubaccount ? shortAddress(selectedSubaccount) : "No Decibel account");
   const chartColor =
     chartMetric === "pnl" && (historyPoints.at(-1)?.value ?? 0) < 0
-      ? "var(--danger)"
+      ? "#e8774f"
       : "var(--accent)";
   const chartData = useMemo(
     () => historyPoints as unknown as Record<string, unknown>[],
     [historyPoints],
   );
-  // Nine enabled options over an empty frame read as a broken chart. The
-  // controls appear once there is something to switch between: a rendered
-  // series, or a non-default selection the reader has to be able to undo.
-  const chartSeriesRendered = historyPoints.length >= 2;
-  const chartControlsVisible =
-    chartSeriesRendered
-    || chartMetric !== DEFAULT_CHART_METRIC
-    || chartRange !== DEFAULT_CHART_RANGE;
 
   useEffect(() => {
     stateRef.current = state;
@@ -827,23 +780,10 @@ export function PortfolioPageClient() {
   }, [connected, decibelNetwork, fetchAccountState, selectedSubaccount]);
 
   const totalPnl = overview?.unrealizedPnl ?? null;
-  // Every number on this page used to arrive by resizing from an em dash. Both
-  // flags are true only while a request that will resolve them is in flight —
-  // `loading` and `isLoadingSubaccounts` both terminate, so a skeleton can
-  // never outlive its fetch and become the new permanent placeholder.
-  const accountPending = connected && !overview && (loading || isLoadingSubaccounts);
-  const feesPending = feeSummaryLoading && !feeSummary;
   const openPositionReturn =
     totalPnl != null && overview?.totalMargin && overview.totalMargin > 0
       ? (totalPnl / overview.totalMargin) * 100
       : null;
-  // A disabled control has to say why it is disabled (D4). Disconnected is not
-  // a case here: the pair is replaced by one "Connect wallet" primary.
-  const withdrawDisabledReason = withdrawing
-    ? "A withdrawal is already in flight"
-    : !hasDecibelAccount
-      ? "No Decibel trading account on this wallet"
-      : undefined;
 
   const handleWithdraw = useCallback(async () => {
     if (withdrawingRef.current || withdrawalTokenRef.current) return;
@@ -1107,168 +1047,82 @@ export function PortfolioPageClient() {
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
-    // PageConnectCta: disconnected, this page renders the filled "Connect
-    // wallet" primary below, so the header must not render its outline copy.
-    <PageConnectCta present={!connected}>
-    {/* No min-h-screen. Disconnected this page is a title, one line and a
-        button; reserving a viewport under them held ~600px of black open to
-        say nothing. <body> paints --page-background, so the page ending early
-        ends the content, not the background. */}
-    <div className="cash-trade-theme bg-background text-zinc-200">
+    <div className="cash-trade-theme min-h-screen bg-black text-zinc-200">
       <Header />
-      {/* The shell is shared, not restated: /portfolio is the dense tier the
-          trade and swap pages now also render, so the content's left edge no
-          longer moves as you change tabs. */}
-      <main className={PAGE_SHELL_WIDE}>
-        <div className={cn("flex flex-wrap items-center justify-between gap-4", connected && "mb-6")}>
-          <div className="min-w-0">
-            <h1 className={SECTION_TITLE}>Portfolio</h1>
-            {/* One line under the title in both states, because it is the same
-                slot: connected it names the account you are looking at,
-                disconnected it says what will land here. Disconnected it used
-                to say "Connect wallet to load Decibel account state" — the same
-                request as the button beside it — and then the sentence that
-                replaced it was drawn inside a dashed 1370x110 box further down
-                the page. /launchpad already argues the case in its own comment:
-                a bordered box around one line is a frame around nothing. */}
-            <p className="mt-1 max-w-md text-pretty text-xs leading-relaxed text-muted-foreground">
-              {connected
-                ? `${selectedLabel} · ${decibelNetwork}`
-                : "Equity, PnL, positions and orders load here once you connect."}
+      <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-balance text-[18px] font-semibold text-zinc-200">Portfolio</h1>
+            <p className="mt-1 text-pretty text-[12px] text-zinc-600">
+              {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
             </p>
           </div>
-          <div className="flex flex-wrap items-start gap-2">
-            {connected ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setDepositOpen(true)}
-                  className={BUTTON_PRIMARY}
-                >
-                  Deposit USDC
-                </button>
-                {/* Neutral, not a second accent fill: one primary per screen.
-                    The reason lived in a title attribute, i.e. nowhere on a
-                    phone; it now sits under the control it explains instead of
-                    wrapping under Deposit. */}
-                <div className="flex flex-col items-start">
-                  <button
-                    type="button"
-                    onClick={() => setWithdrawOpen(true)}
-                    disabled={Boolean(withdrawDisabledReason)}
-                    className={BUTTON_NEUTRAL}
-                  >
-                    {withdrawing ? "Withdrawing…" : "Withdraw USDC"}
-                  </button>
-                  {withdrawDisabledReason ? (
-                    <p className={STAT_NOTE}>{withdrawDisabledReason}</p>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              /* Disconnected, the loudest control was "Deposit USDC" next to a
-                 button explaining you need a wallet first. One primary, the
-                 same one every other page uses, and the reason disappears with
-                 the control it was explaining. */
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new Event("cash:open-wallet-selector"))}
-                className={BUTTON_PRIMARY}
-              >
-                Connect wallet
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            {/* Never disabled: disconnected users get the wallet selector,
+                which beats a dead button. */}
+            <button
+              type="button"
+              onClick={() => (connected ? setDepositOpen(true) : setConnectOpen(true))}
+              className="rounded-[4px] bg-accent px-4 py-2 text-[12px] font-semibold text-black transition-[filter] hover:brightness-95"
+            >
+              Deposit USDC
+            </button>
+            <button
+              type="button"
+              onClick={() => setWithdrawOpen(true)}
+              disabled={!connected || !hasDecibelAccount || withdrawing}
+              className="rounded-[4px] bg-zinc-200 px-4 py-2 text-[12px] font-semibold text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
+            >
+              {withdrawing ? "Withdrawing..." : "Withdraw USDC"}
+            </button>
           </div>
         </div>
 
-        {/* Disconnected, everything below this line — four em-dash tiles, an
-            em-dash hero, a rewards promise and a twelve-column table of
-            nothing — asked the same question the button above already asks.
-            Nothing is rendered instead: the one sentence that survived is the
-            line under the title, so the page below the header is empty and
-            therefore short.
-
-            Deliberately not a structural preview, and the three candidates
-            were each tried on paper first:
-              · Skeletons. Skeleton is imported and used 20 times below, but
-                every one of those is gated on `accountPending`, which is
-                `connected && !overview && (loading || isLoadingSubaccounts)`.
-                Disconnected there is no request in flight and never will be
-                until the button above is pressed, so a skeleton here would be
-                a loading animation for a fetch nobody started.
-              · Em-dash tiles. That is what was deleted; see above.
-              · Global numbers borrowed from /trade. True, but true about the
-                protocol, not about you. Under an <h1>Portfolio</h1> it answers
-                a question the reader did not ask and still does not show the
-                shape of this page.
-            Every panel below is a pure function of the connected address —
-            equity, unrealized PnL, 30-day volume, fees paid, portfolio
-            history, positions, open orders, collateral. None of them has an
-            address-free form, so there is no honest preview to render. The
-            sentence under the title does the work a preview would: it names
-            the panels in the order they arrive (equity and PnL tiles, then the
-            chart, then the positions/orders tabs) in one line rather than
-            700px of scaffolding. */}
-        {connected ? (
-        <>
-
-        {/* Two columns on a phone: four stacked tiles were 390px of scrolling
-            before the page's first real content. */}
-        <section className={cn(STAT_GRID_PANEL, "grid-cols-2 md:grid-cols-4")}>
+        <section className="grid gap-px overflow-hidden rounded-[4px] border border-[#1a1a1a] bg-[#1a1a1a] md:grid-cols-4">
           {[
             {
-              label: "Portfolio value",
+              label: "Portfolio Value",
               value: formatUsd(overview?.equity),
               raw: overview?.equity,
-              pending: accountPending,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "PnL",
               value: formatUsd(totalPnl, true),
               raw: totalPnl,
-              pending: accountPending,
-              tone: signTone(totalPnl),
+              tone: totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]",
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
             },
             {
-              label: "30-day volume",
+              label: "30 Day Volume",
               value: formatVolume(overview?.volume30d),
               raw: overview?.volume30d,
-              pending: accountPending,
               format: { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 },
             },
             {
-              label: "Total fees paid",
-              // The "…" this rendered while loading was a third width for one
-              // slot: ellipsis, then em dash, then a number.
-              value: feeSummaryError || !feeSummary
-                ? "—"
-                : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
+              label: "Total Fees Paid",
+              value: feeSummaryLoading
+                ? "..."
+                : feeSummaryError || !feeSummary
+                  ? "—"
+                  : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
               raw: feeSummary && !feeSummary.truncated ? feeSummary.totalFeesPaidUsd : undefined,
-              pending: feesPending,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
           ].map((item) => (
-            <div key={item.label} className={STAT_TILE}>
-              <p className={STAT_LABEL}>{item.label}</p>
-              {item.pending ? (
-                /* mt-2 + h-8 is exactly the box STAT_VALUE occupies, so the
-                   tile holds its height when the number lands. */
-                <Skeleton className="mt-2 h-8 w-[7ch]" />
-              ) : (
-                <p className={cn(STAT_VALUE, "tone" in item && item.tone)}>
-                  {"raw" in item && item.raw != null ? (
-                    <NumberTicker
-                      value={item.raw}
-                      fallback={item.value}
-                      format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
-                    />
-                  ) : (
-                    item.value
-                  )}
-                </p>
-              )}
+            <div key={item.label} className="bg-[#050505] px-6 py-5">
+              <p className="text-[13px] text-zinc-500">{item.label}</p>
+              <p className={cn("mt-2 font-mono text-[26px] font-semibold tabular-nums text-zinc-200", "tone" in item && item.tone)}>
+                {"raw" in item && item.raw != null ? (
+                  <NumberTicker
+                    value={item.raw}
+                    fallback={item.value}
+                    format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
+                  />
+                ) : (
+                  item.value
+                )}
+              </p>
             </div>
           ))}
         </section>
@@ -1280,105 +1134,101 @@ export function PortfolioPageClient() {
           subaccount={selectedSubaccount}
         />
 
-        <section className={cn(SECTION_GAP, "grid gap-8 lg:grid-cols-[310px_minmax(0,1fr)]")}>
+        <section className="mt-10 grid gap-10 lg:grid-cols-[310px_minmax(0,1fr)]">
           <aside>
-            <h2 className={SECTION_TITLE}>Overview</h2>
-            {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
-                and a "Trading portfolio" row that restated Portfolio value all
-                lived here as permanent em dashes with no reader behind them. */}
-            <div className="mt-4">
-              <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} pending={accountPending} />
-              <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} pending={accountPending} />
+            <h2 className="text-balance text-[18px] font-semibold text-zinc-200">Overview</h2>
+            <div className="mt-6">
+              <OverviewRow label="Open Position Return" value={formatPct(openPositionReturn)} tone={openPositionReturn != null && openPositionReturn >= 0 ? "text-green-400" : "text-[#e8774f]"} />
+              <OverviewRow label="30d Volume" value={formatVolume(overview?.volume30d)} />
               <OverviewRow
-                label="Total fees paid"
-                pending={feesPending}
+                label="Total Fees Paid"
                 value={
-                  feeSummaryError || !feeSummary
-                    ? "—"
-                    : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
+                  feeSummaryLoading
+                    ? "..."
+                    : feeSummaryError || !feeSummary
+                      ? "—"
+                      : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
                 }
               />
-              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} pending={accountPending} />
-              <OverviewRow label="Available to withdraw" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} pending={accountPending} />
-              <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} pending={accountPending} />
-              <OverviewRow label="Margin used" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} pending={accountPending} />
-              <OverviewRow label="Total position" value={formatUsd(overview?.totalNotional)} pending={accountPending} />
+              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={(overview?.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-[#e8774f]"} />
+              <OverviewRow label="Trading Portfolio" value={formatUsd(overview?.equity)} tone="text-green-400" />
+              <OverviewRow label="Vault Allocation" value="—" />
+              <OverviewRow label="Sharpe Ratio" value="—" />
+              <OverviewRow label="Max Drawdown" value="—" />
+              <OverviewRow label="Weekly Win Rate (12w)" value="—" />
+              <OverviewRow label="Withdrawable Share" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(4)}%` : "—"} />
+              <OverviewRow label="Avg. Leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
+              <OverviewRow label="Cross-margin Ratio" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} tone="text-green-400" />
+              <OverviewRow label="Cross-account Position" value={formatUsd(overview?.totalNotional)} />
             </div>
           </aside>
 
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                {/* "PnL" everywhere: this heading said "Profit/loss" while the
-                    stat tile, the metric switch and the tooltip under it all
-                    said PnL — three names for one number. */}
-                <h2 className={SECTION_TITLE}>
-                  {chartMetric === "pnl" ? "PnL" : "Portfolio value"}
+                <h2 className="text-balance text-[18px] font-semibold text-zinc-200">
+                  {chartMetric === "pnl" ? "Profit/Loss" : "Portfolio Value"}
                 </h2>
-                {accountPending ? (
-                  <Skeleton className="mt-2 h-8 w-40" />
-                ) : (
-                  <NumberTicker
-                    value={chartMetric === "pnl" ? totalPnl : overview?.equity}
-                    fallback="—"
-                    format={{
-                      style: "currency",
-                      currency: "USD",
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                      signDisplay: chartMetric === "pnl" ? "always" : "auto",
-                    }}
-                    className="mt-2 block font-mono text-2xl font-semibold text-foreground"
-                  />
-                )}
+                <NumberTicker
+                  value={chartMetric === "pnl" ? totalPnl : overview?.equity}
+                  fallback="—"
+                  format={{
+                    style: "currency",
+                    currency: "USD",
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                    signDisplay: chartMetric === "pnl" ? "always" : "auto",
+                  }}
+                  className="mt-3 block font-mono text-[28px] font-semibold text-zinc-200"
+                />
               </div>
-              {chartControlsVisible ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <div className={SEGMENTED} role="group" aria-label="Chart metric">
+              <div className="flex flex-wrap items-center justify-end gap-2 text-[12px]">
+                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
                   {[
                     ["pnl", "PnL"],
-                    ["portfolio", "Portfolio value"],
+                    ["portfolio", "Portfolio Val."],
                   ].map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setChartMetric(value as "pnl" | "portfolio")}
                       aria-pressed={chartMetric === value}
-                      className={cn(SEGMENTED_ITEM, chartMetric === value && SEGMENTED_ITEM_ACTIVE)}
+                      className={cn(
+                        "rounded-[3px] px-2 py-1 text-zinc-500",
+                        chartMetric === value && "bg-[#2a2a2a] text-zinc-200",
+                      )}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-                <div className={SEGMENTED} role="group" aria-label="Chart range">
+                <div className="rounded-[4px] bg-[#1d1d1d] p-1">
                   {PORTFOLIO_CHART_RANGES.map((range) => (
                     <button
                       key={range.value}
                       type="button"
                       onClick={() => setChartRange(range.value)}
                       aria-pressed={chartRange === range.value}
-                      className={cn(SEGMENTED_ITEM, chartRange === range.value && SEGMENTED_ITEM_ACTIVE)}
+                      className={cn(
+                        "rounded-[3px] px-2 py-1 text-zinc-500",
+                        chartRange === range.value && "bg-[#2a2a2a] text-zinc-200",
+                      )}
                     >
                       {range.label}
                     </button>
                   ))}
                 </div>
               </div>
-              ) : null}
             </div>
-            {/* The 360px well is reserved for the whole life of the fetch, so
-                the chart drops in without shifting the page. It only exists on
-                the connected branch: reserving a viewport for one sentence is
-                what made this page read as half empty. */}
             <div className="mt-6 h-[360px] min-h-[260px]">
-              {chartSeriesRendered ? (
+              {historyPoints.length >= 2 ? (
                 <AreaChart
                   data={chartData}
                   xDataKey="date"
                   aspectRatio="auto"
                   className="!h-full"
                   margin={{ top: 12, right: 8, bottom: 30, left: 8 }}
-                  animationDuration={200}
+                  animationDuration={350}
                   touchAction="pan-y"
                 >
                   <Grid
@@ -1411,23 +1261,21 @@ export function PortfolioPageClient() {
                   />
                   <XAxis numTicks={5} />
                 </AreaChart>
-              ) : historyLoading ? (
-                /* Was the sentence "Loading 7d portfolio history…" centred in
-                    an empty 360px frame; the skeleton is the shape of the
-                    thing being fetched. */
-                <Skeleton className="h-full w-full rounded-[var(--radius)]" aria-label={`Loading ${chartRange} portfolio history`} role="status" />
               ) : (
-                <div
-                  role="status"
-                  className="flex h-full flex-col items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed border-card-border px-6 py-8 text-center"
-                >
-                  <span className="text-[13px] text-foreground">
-                    {!selectedSubaccount
-                      ? "Select a Decibel account to load portfolio history"
-                      : historyError || `No ${chartRange} portfolio history was returned`}
+                <div className="flex h-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-[#2a2a2a] px-6 text-center">
+                  <span className="text-[13px] text-zinc-500">
+                    {!connected
+                      ? "Connect a wallet to see your Decibel portfolio"
+                      : !selectedSubaccount
+                        ? "Select a Decibel account to load portfolio history"
+                        : historyLoading
+                          ? `Loading ${chartRange} portfolio history...`
+                          : historyError || `No ${chartRange} portfolio history was returned`}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Current equity and PnL above are live; cash.trading does not fabricate missing history.
+                  <span className="text-[11px] text-zinc-700">
+                    {connected
+                      ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
+                      : "Live equity, PnL, positions, and orders will load after connection."}
                   </span>
                 </div>
               )}
@@ -1435,106 +1283,63 @@ export function PortfolioPageClient() {
           </section>
         </section>
 
-        <section className={cn(SECTION_GAP, PANEL)}>
-          <div
-            role="tablist"
-            aria-label="Account detail"
-            className="flex items-center gap-1 overflow-x-auto border-b border-card-border px-2"
-          >
-            {TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                id={`${tabPanelId}-${tab.replace(/\s+/g, "-").toLowerCase()}`}
-                aria-selected={activeTab === tab}
-                aria-controls={tabPanelId}
-                onClick={() => setActiveTab(tab)}
-                className={cn(TAB, activeTab === tab && TAB_ACTIVE)}
-              >
-                {tab}{tab === "Positions" && positions.length > 0 ? ` (${positions.length})` : ""}
-              </button>
-            ))}
+        <section className="mt-8 overflow-hidden rounded-[4px] border border-[#242424] bg-[#141414]">
+          <div className="flex items-center justify-between gap-4 overflow-x-auto border-b border-[#242424] px-3">
+            <div className="flex min-w-max items-center gap-4">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "py-3 text-[13px] text-zinc-500 transition-colors hover:text-zinc-300",
+                    activeTab === tab && "border-b-2 border-zinc-200 text-zinc-200",
+                  )}
+                >
+                  {tab}{tab === "Positions" && positions.length > 0 ? ` (${positions.length})` : ""}
+                </button>
+              ))}
+            </div>
+            <span className="shrink-0 text-[12px] text-zinc-500">All</span>
           </div>
 
-          <div
-            id={tabPanelId}
-            role="tabpanel"
-            aria-labelledby={`${tabPanelId}-${activeTab.replace(/\s+/g, "-").toLowerCase()}`}
-          >
-          {activeTab === "Balances" ? (
-            /* Positions and Open orders each ship a md:hidden card stack; this
-               tab was the one that did not, so a single row of collateral cost
-               a 680px scroll floor inside a 358px phone — 322px of sideways
-               drag to read four numbers.
-               Two of those four were also not properties of a USDC balance.
-               "USD value" rendered overview.equity, and equity is
-               collateral + unrealizedPnl (see decibelWsOverviewToOverview), so
-               $1,000 of USDC with +$200 open PnL claimed a USD value of
-               $1,200 — a stablecoin repriced by a perp. "PnL" rendered the
-               account-wide unrealized PnL on a collateral row. Both are
-               already correct one screen up, in the Portfolio value and PnL
-               tiles. Deleting them leaves Coin / Total balance / Available
-               balance: an actual balances table, and three columns that fit a
-               phone, so TABLE's w-full is the only width this needs. */
-            <table className={TABLE}>
-              <caption className="sr-only">Decibel collateral balances</caption>
-              <thead>
-                <tr className={TABLE_HEAD}>
-                  <th scope="col">Coin</th>
-                  <th scope="col">Total balance</th>
-                  <th scope="col">Available balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className={TABLE_ROW}>
-                  <td>USDC</td>
-                  {accountPending ? (
-                    <>
-                      <td><Skeleton className="h-[19px] w-20" /></td>
-                      <td><Skeleton className="h-[19px] w-20" /></td>
-                    </>
-                  ) : (
-                    <>
-                      <td>{formatUsd(overview?.collateral)}</td>
-                      <td>{formatUsd(overview?.crossWithdrawable)}</td>
-                    </>
-                  )}
-                </tr>
-              </tbody>
-            </table>
-          ) : activeTab === "Open orders" ? (
+          {activeTab === "Balances" || activeTab === "Collateral" ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-left text-[13px]">
+                <thead className="text-zinc-500">
+                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
+                    <th>Coin</th>
+                    <th>Total Balance</th>
+                    <th>Available Balance</th>
+                    <th>USD Value</th>
+                    <th>PnL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
+                    <td>USDC</td>
+                    <td>{formatUsd(overview?.collateral)}</td>
+                    <td>{formatUsd(overview?.crossWithdrawable)}</td>
+                    <td>{formatUsd(overview?.equity)}</td>
+                    <td className={totalPnl == null ? "text-zinc-500" : totalPnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(totalPnl, true)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : activeTab === "Open Orders" ? (
             <>
             <div className="md:hidden">
-              {accountPending ? (
-                /* "No open orders" was rendered while the fetch was still in
-                   flight — an answer the page did not have yet. */
-                Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className={CARD_ROW}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <Skeleton className="h-[19px] w-24" />
-                        <Skeleton className="mt-1 h-4 w-16" />
-                      </div>
-                      <Skeleton className="h-5 w-12" />
-                    </div>
-                    <div className={CARD_ROW_GRID}>
-                      <Skeleton className="h-8 w-24" />
-                      <Skeleton className="ml-auto h-8 w-20" />
-                    </div>
-                  </div>
-                ))
-              ) : openOrders.length === 0 ? (
-                <div className={TABLE_EMPTY}>No open orders</div>
+              {openOrders.length === 0 ? (
+                <div className="px-4 py-12 text-center text-zinc-600">No open orders</div>
               ) : openOrders.map((order) => {
                 const orderId = String(order.orderId);
                 const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
                 return (
-                <div key={orderId} className={CARD_ROW}>
+                <div key={orderId} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-foreground">{order.market}</div>
-                      <div className={cn("mt-1 text-[11px] font-semibold uppercase tracking-wide", order.isBuy ? "text-success" : "text-danger")}>
+                      <div className="truncate font-semibold text-zinc-100">{order.market}</div>
+                      <div className={cn("mt-1 text-[11px] font-semibold uppercase", order.isBuy ? "text-green-400" : "text-[#e8774f]")}>
                         {order.isBuy ? "Buy" : "Sell"} · {order.status ?? "Open"}
                       </div>
                     </div>
@@ -1542,22 +1347,21 @@ export function PortfolioPageClient() {
                       type="button"
                       onClick={() => void handleCancelOrder(order)}
                       disabled={!canCancel}
-                      title={order.marketAddress ? undefined : "This order has no market address to cancel against"}
-                      className={ROW_ACTION}
+                      className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
                     >
                       {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
                     </button>
                   </div>
-                  <div className={CARD_ROW_GRID}>
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
                     <div>
-                      <div className={CARD_ROW_LABEL}>Remaining / original</div>
-                      <div className={CARD_ROW_VALUE}>
+                      <div className="text-zinc-600">Remaining / Original</div>
+                      <div className="mt-0.5 font-mono tabular-nums">
                         {formatNumber(order.remainingSize)} / {formatNumber(order.origSize)}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className={CARD_ROW_LABEL}>Price</div>
-                      <div className={CARD_ROW_VALUE}>
+                      <div className="text-zinc-600">Price</div>
+                      <div className="mt-0.5 font-mono tabular-nums">
                         {formatPrice(order.price)}
                       </div>
                     </div>
@@ -1568,50 +1372,40 @@ export function PortfolioPageClient() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className={cn(TABLE, "min-w-[820px]")}>
-                <caption className="sr-only">Open Decibel orders</caption>
-                <thead>
-                  <tr className={TABLE_HEAD}>
-                    <th scope="col">Market</th>
-                    <th scope="col">Side</th>
-                    <th scope="col">Remaining</th>
-                    <th scope="col">Original</th>
-                    <th scope="col">Price</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Order ID</th>
-                    <th scope="col">Action</th>
+              <table className="w-full min-w-[820px] text-left text-[13px]">
+                <thead className="text-zinc-500">
+                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
+                    <th>Market</th>
+                    <th>Side</th>
+                    <th>Remaining</th>
+                    <th>Original</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>Order ID</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {accountPending ? (
-                    Array.from({ length: 3 }).map((_, index) => (
-                      <tr key={index} className={TABLE_ROW}>
-                        {["w-24", "w-10", "w-14", "w-14", "w-20", "w-12", "w-16", "w-12"].map((width, cell) => (
-                          <td key={cell}><Skeleton className={cn("h-[19px]", width)} /></td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : openOrders.length === 0 ? (
-                    <tr><td colSpan={8} className={TABLE_EMPTY}>No open orders</td></tr>
+                  {openOrders.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-12 text-center text-zinc-600">No open orders</td></tr>
                   ) : openOrders.map((order) => {
                     const orderId = String(order.orderId);
                     const canCancel = Boolean(order.marketAddress && !cancelingOrderIds.has(orderId));
                     return (
-                    <tr key={orderId} className={TABLE_ROW}>
+                    <tr key={orderId} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
                       <td>{order.market}</td>
-                      <td className={order.isBuy ? "text-success" : "text-danger"}>{order.isBuy ? "Buy" : "Sell"}</td>
+                      <td className={order.isBuy ? "text-green-400" : "text-[#e8774f]"}>{order.isBuy ? "Buy" : "Sell"}</td>
                       <td>{formatNumber(order.remainingSize)}</td>
                       <td>{formatNumber(order.origSize)}</td>
                       <td>{formatPrice(order.price)}</td>
                       <td>{order.status ?? "Open"}</td>
-                      <td className="font-mono text-muted-foreground">{orderId.slice(-8)}</td>
+                      <td className="font-mono text-zinc-500">{orderId.slice(-8)}</td>
                       <td>
                         <button
                           type="button"
                           onClick={() => void handleCancelOrder(order)}
                           disabled={!canCancel}
-                          title={order.marketAddress ? undefined : "This order has no market address to cancel against"}
-                          className={ROW_ACTION}
+                          className="underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
                         >
                           {cancelingOrderIds.has(orderId) ? "Canceling" : "Cancel"}
                         </button>
@@ -1626,45 +1420,23 @@ export function PortfolioPageClient() {
           ) : activeTab === "Positions" ? (
             <>
             <div className="md:hidden">
-              {accountPending ? (
-                /* The loaded row's own shape: a title line over the same
-                   two-column block, so the list does not grow under the thumb
-                   when the positions land. */
-                Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className={CARD_ROW}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <Skeleton className="h-[19px] w-24" />
-                        <Skeleton className="mt-1 h-4 w-12" />
-                      </div>
-                      <Skeleton className="h-5 w-12" />
-                    </div>
-                    {/* Eight cells, the count a loaded position renders, so the
-                        list does not grow under the thumb on arrival. */}
-                    <div className={CARD_ROW_GRID}>
-                      {Array.from({ length: 8 }).map((__, cell) => (
-                        <Skeleton key={cell} className={cn("h-8", cell % 2 ? "ml-auto w-20" : "w-24")} />
-                      ))}
-                    </div>
-                  </div>
-                ))
-              ) : positions.length === 0 ? (
-                <div className={TABLE_EMPTY}>No open positions</div>
+              {positions.length === 0 ? (
+                <div className="px-4 py-12 text-center text-zinc-600">No open positions</div>
               ) : positions.map((position) => {
                 const key = positionKey(position);
                 const pnl = position.estimatedPnl;
                 const pnlPct = pnl != null && position.marginUsed > 0 ? (pnl / position.marginUsed) * 100 : null;
                 return (
-                  <div key={key} className={CARD_ROW}>
+                  <div key={key} className="border-t border-[#242424] px-4 py-4 text-[13px] text-zinc-300">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-semibold text-foreground">
+                        <div className="truncate font-semibold text-zinc-100">
                           {position.market.replace("/USD", "")} {position.leverage.toFixed(0)}x
                         </div>
                         <div
                           className={cn(
-                            "mt-1 text-[11px] font-semibold uppercase tracking-wide",
-                            position.isLong ? "text-success" : "text-danger",
+                            "mt-1 text-[11px] font-semibold uppercase",
+                            position.isLong ? "text-green-400" : "text-[#e8774f]",
                           )}
                         >
                           {position.isLong ? "Long" : "Short"}
@@ -1674,37 +1446,37 @@ export function PortfolioPageClient() {
                         type="button"
                         onClick={() => void handleClosePosition(position)}
                         disabled={closingKeys.has(key)}
-                        className={ROW_ACTION}
+                        className="shrink-0 underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
                       >
                         {closingKeys.has(key) ? "Closing" : "Close"}
                       </button>
                     </div>
 
-                    <div className={CARD_ROW_GRID}>
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
                       <div>
-                        <div className={CARD_ROW_LABEL}>Size</div>
-                        <div className={CARD_ROW_VALUE}>
+                        <div className="text-zinc-600">Size</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
                           {formatNumber(Math.abs(position.size))} {position.market.split("/")[0]}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={CARD_ROW_LABEL}>Value</div>
-                        <div className={CARD_ROW_VALUE}>
+                        <div className="text-zinc-600">Value</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
                           {formatUsd(position.value)}
                         </div>
                       </div>
                       <div>
-                        <div className={CARD_ROW_LABEL}>Entry / mark</div>
-                        <div className={CARD_ROW_VALUE}>
+                        <div className="text-zinc-600">Entry / Mark</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
                           {formatPrice(position.entryPrice)} / {formatPrice(position.markPrice)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={CARD_ROW_LABEL}>Est. PnL</div>
-                        <div className={cn(CARD_ROW_VALUE, signTone(pnl))}>
+                        <div className="text-zinc-600">Est. PnL</div>
+                        <div className={cn("mt-0.5 font-mono tabular-nums", pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]")}>
                           {formatUsd(pnl, true)}
                           {pnlPct !== null && (
-                            <span className="ml-1 text-muted-foreground">
+                            <span className="ml-1 text-zinc-500">
                               ({pnlPct >= 0 ? "+" : ""}
                               {pnlPct.toFixed(1)}%)
                             </span>
@@ -1712,24 +1484,18 @@ export function PortfolioPageClient() {
                         </div>
                       </div>
                       <div>
-                        <div className={CARD_ROW_LABEL}>Est. liq. price</div>
-                        <div className={CARD_ROW_VALUE}>
+                        <div className="text-zinc-600">Liq.</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
                           {formatPrice(position.estimatedLiquidationPrice)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={CARD_ROW_LABEL}>Margin / funding</div>
-                        <div className={CARD_ROW_VALUE}>
+                        <div className="text-zinc-600">Margin / Funding</div>
+                        <div className="mt-0.5 font-mono tabular-nums">
                           {formatUsd(position.marginUsed)}
-                          <span className={cn("ml-2", signTone(position.unrealizedFunding))}>
+                          <span className={cn("ml-2", position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]")}>
                             {formatUsd(position.unrealizedFunding, true)}
                           </span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className={CARD_ROW_LABEL}>Take profit / stop loss</div>
-                        <div className={CARD_ROW_VALUE}>
-                          {formatPrice(position.tpTriggerPrice)} / {formatPrice(position.slTriggerPrice)}
                         </div>
                       </div>
                     </div>
@@ -1739,42 +1505,33 @@ export function PortfolioPageClient() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className={cn(TABLE, "min-w-[1160px]")}>
-                <caption className="sr-only">Open Decibel positions</caption>
-                <thead>
-                  <tr className={TABLE_HEAD}>
-                    <th scope="col">Coin/side</th>
-                    <th scope="col">Size</th>
-                    <th scope="col">Value</th>
-                    <th scope="col">Entry price</th>
-                    <th scope="col">Mark price</th>
-                    <th scope="col">Est. PnL</th>
-                    <th scope="col">Est. liq. price</th>
-                    <th scope="col">Margin</th>
-                    <th scope="col">Funding</th>
-                    <th scope="col">TP / SL</th>
-                    <th scope="col">Close</th>
+              <table className="w-full min-w-[1160px] text-left text-[13px]">
+                <thead className="text-zinc-500">
+                  <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium">
+                    <th>Coin/Side</th>
+                    <th>Size</th>
+                    <th>Value</th>
+                    <th>Entry Price</th>
+                    <th>Mark Price</th>
+                    <th>Est. PnL</th>
+                    <th>Est. Liq. Price</th>
+                    <th>Margin</th>
+                    <th>Funding</th>
+                    <th>TP/SL</th>
+                    <th>Close</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {accountPending ? (
-                    Array.from({ length: 3 }).map((_, index) => (
-                      <tr key={index} className={TABLE_ROW}>
-                        {["w-28", "w-16", "w-16", "w-20", "w-20", "w-16", "w-20", "w-24", "w-14", "w-24", "w-12"].map((width, cell) => (
-                          <td key={cell}><Skeleton className={cn("h-[19px]", width)} /></td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : positions.length === 0 ? (
-                    <tr><td colSpan={11} className={TABLE_EMPTY}>No open positions</td></tr>
+                  {positions.length === 0 ? (
+                    <tr><td colSpan={11} className="px-4 py-12 text-center text-zinc-600">No open positions</td></tr>
                   ) : positions.map((position) => {
                     const key = positionKey(position);
                     const pnl = position.estimatedPnl;
                     return (
-                      <tr key={key} className={TABLE_ROW}>
+                      <tr key={key} className="border-t border-[#242424] text-zinc-300 [&>td]:px-4 [&>td]:py-4">
                         <td>
                           <span>{position.market.replace("/USD", "")} {position.leverage.toFixed(0)}x</span>{" "}
-                          <span className={cn("rounded-[var(--radius-xs)] px-1.5 py-0.5 text-[11px]", position.isLong ? "bg-success/15 text-success" : "bg-danger/15 text-danger")}>
+                          <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[11px]", position.isLong ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-300")}>
                             {position.isLong ? "Long" : "Short"}
                           </span>
                         </td>
@@ -1782,19 +1539,17 @@ export function PortfolioPageClient() {
                         <td>{formatUsd(position.value)}</td>
                         <td>{formatPrice(position.entryPrice)}</td>
                         <td>{formatPrice(position.markPrice)}</td>
-                        <td className={signTone(pnl)}>{formatUsd(pnl, true)}</td>
+                        <td className={pnl == null ? "text-zinc-500" : pnl >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(pnl, true)}</td>
                         <td>{formatPrice(position.estimatedLiquidationPrice)}</td>
                         <td>{formatUsd(position.marginUsed)} {position.isIsolated ? "(Iso)" : "(Cross)"}</td>
-                        <td className={signTone(position.unrealizedFunding)}>{formatUsd(position.unrealizedFunding, true)}</td>
-                        {/* Was a hard-coded "-- / --" while the real trigger
-                            prices were already on the position. */}
-                        <td>{formatPrice(position.tpTriggerPrice)} / {formatPrice(position.slTriggerPrice)}</td>
+                        <td className={position.unrealizedFunding == null ? "text-zinc-500" : position.unrealizedFunding >= 0 ? "text-green-400" : "text-[#e8774f]"}>{formatUsd(position.unrealizedFunding, true)}</td>
+                        <td>-- / --</td>
                         <td>
                           <button
                             type="button"
                             onClick={() => void handleClosePosition(position)}
                             disabled={closingKeys.has(key)}
-                            className={ROW_ACTION}
+                            className="underline decoration-zinc-500 underline-offset-4 hover:text-white disabled:cursor-not-allowed disabled:text-zinc-700"
                           >
                             {closingKeys.has(key) ? "Closing" : "Close"}
                           </button>
@@ -1806,19 +1561,20 @@ export function PortfolioPageClient() {
               </table>
             </div>
             </>
-          ) : null}
-          </div>
+          ) : (
+            <div className="px-4 py-12 text-center text-[13px] text-zinc-600">
+              {activeTab} will appear here when Decibel returns rows for this account.
+            </div>
+          )}
         </section>
 
-        {/* The disconnected line here ("Connect wallet to load your Decibel
-            portfolio.") was a fifth request to connect, at the bottom of the
-            page, where nothing can act on it. */}
-        {(loading || error || actionStatus || (connected && !hasDecibelAccount && !isLoadingSubaccounts)) && (
-          <div className={cn(SECTION_GAP, "text-xs")} role="status" aria-live="polite">
-            {loading && <span className="text-muted-foreground">Updating…</span>}
-            {error && <span className="text-danger">{error}</span>}
+        {(loading || error || actionStatus || !connected || (connected && !hasDecibelAccount && !isLoadingSubaccounts)) && (
+          <div className="mt-4 text-[12px]">
+            {loading && <span className="text-zinc-600">updating...</span>}
+            {error && <span className="text-[#e8774f]">{error}</span>}
+            {!connected && <span className="text-zinc-600">Connect wallet to load your Decibel portfolio.</span>}
             {connected && !hasDecibelAccount && !isLoadingSubaccounts && (
-              <span className="text-muted-foreground">
+              <span className="text-zinc-600">
                 {lookupError || lookupIncomplete
                   ? `Decibel account lookup is incomplete${lookupError ? `: ${lookupError}` : "."}`
                   : "No Decibel trading account detected."}
@@ -1826,66 +1582,53 @@ export function PortfolioPageClient() {
             )}
             {actionStatus && (
               <div className={cn(
-                "mt-2 rounded-[var(--radius-sm)] px-3 py-2",
-                actionStatus.tone === "error" ? "bg-danger/10 text-danger" :
-                  actionStatus.tone === "success" ? "bg-success/10 text-success" :
-                    "bg-card text-muted-foreground",
+                "mt-2 rounded-[4px] px-3 py-2",
+                actionStatus.tone === "error" ? "bg-red-500/10 text-red-300" :
+                  actionStatus.tone === "success" ? "bg-green-500/10 text-green-300" :
+                    "bg-white/[0.04] text-zinc-400",
               )}>
                 {actionStatus.message}
-                {/* The hash was carried through every action and never shown. */}
-                {actionStatus.hash && (
-                  <a
-                    href={explorerTxUrl(actionStatus.hash, decibelNetwork)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ml-2 inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
-                  >
-                    View transaction
-                  </a>
-                )}
               </div>
             )}
           </div>
         )}
-
-        </>
-        ) : null}
       </main>
 
       <WalletAccountModal open={depositOpen} onClose={() => setDepositOpen(false)} />
+      <WalletSelector open={connectOpen} onClose={() => setConnectOpen(false)} />
       <AlertDialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-        <AlertDialogContent className="rounded-[var(--radius)] border-card-border bg-background-secondary text-foreground">
+        <AlertDialogContent className="border-[#242424] bg-[#101010] text-zinc-100">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-balance text-[13px] font-semibold">Withdraw USDC</AlertDialogTitle>
-            <AlertDialogDescription className="text-pretty text-[13px] text-muted-foreground">
+            <AlertDialogTitle className="text-balance">Withdraw USDC</AlertDialogTitle>
+            <AlertDialogDescription className="text-pretty text-zinc-500">
               Decibel withdraws collateral to your wallet first. If the recipient differs, you will sign a second USDC transfer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3">
             <label className="block">
-              <span className={INPUT_LABEL}>Amount</span>
+              <span className="text-[11px] text-zinc-500">Amount</span>
               <input
                 value={withdrawAmount}
                 onChange={(event) => setWithdrawAmount(event.target.value.replace(/[^0-9.]/g, ""))}
                 disabled={withdrawing}
                 inputMode="decimal"
                 placeholder="0.00"
-                className={INPUT}
+                className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
               />
             </label>
             <label className="block">
-              <span className={INPUT_LABEL}>Recipient Aptos address</span>
+              <span className="text-[11px] text-zinc-500">Recipient Aptos address</span>
               <input
                 value={withdrawRecipient}
                 onChange={(event) => setWithdrawRecipient(event.target.value)}
                 disabled={withdrawing}
-                placeholder={owner || "0x…"}
-                className={INPUT}
+                placeholder={owner || "0x..."}
+                className="mt-1 w-full rounded-[4px] border border-[#242424] bg-black px-3 py-2 font-mono text-sm outline-none focus:border-zinc-500"
               />
             </label>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-[var(--radius-sm)] border-card-border bg-transparent text-foreground hover:border-border-strong hover:bg-card">
+            <AlertDialogCancel className="border-[#303030] bg-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-white">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -1894,14 +1637,13 @@ export function PortfolioPageClient() {
                 event.preventDefault();
                 void handleWithdraw();
               }}
-              className="rounded-[var(--radius-sm)] bg-accent text-accent-foreground hover:brightness-95"
+              className="bg-zinc-200 text-black hover:bg-white"
             >
-              {withdrawing ? "Withdrawing…" : "Withdraw"}
+              {withdrawing ? "Withdrawing..." : "Withdraw"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
-    </PageConnectCta>
   );
 }

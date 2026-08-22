@@ -225,7 +225,7 @@ const INDICATOR_LABEL: Record<number, string> = {
 const SIG_LABEL = ["NEUTRAL", "BUY", "SELL"];
 const SIG_COLOR = ["text-zinc-400", "text-emerald-400", "text-red-400"];
 const SIG_BG    = [
-  "bg-[#1a1a1a] border-[#2a2a2a]",          // neutral
+  "bg-card border-card-border",          // neutral
   "bg-emerald-500/15 border-emerald-500/13",   // buy
   "bg-red-500/15 border-red-500/13",           // sell
 ];
@@ -535,16 +535,16 @@ export function OnChainChart({
   const latestPrice = candles.at(-1)?.close ?? onChain?.lastPrice ?? 0;
 
   return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#0d0d0d] overflow-hidden">
+    <div className="rounded-xl border border-card-border bg-background-secondary overflow-hidden">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a] gap-2 flex-wrap">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-card-border gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[11px] font-semibold text-white">{asset}</span>
-          <span className="text-[10px] text-zinc-600">·</span>
-          <span className="text-[10px] text-zinc-500">{iLabel}({shortPeriod}{longPeriod !== shortPeriod ? `,${longPeriod}` : ""})</span>
+          <span className="text-[11px] text-zinc-600">·</span>
+          <span className="text-[11px] text-zinc-500">{iLabel}({shortPeriod}{longPeriod !== shortPeriod ? `,${longPeriod}` : ""})</span>
           {hasOnChain && (
             <span className={cn(
-              "text-[10px] font-bold px-1.5 py-0.5 rounded border transition-all",
+              "text-[11px] font-bold px-1.5 py-0.5 rounded border transition-all",
               SIG_BG[sig], SIG_COLOR[sig],
               sigFlashing && sig === 1 && "signal-bloom-buy",
               sigFlashing && sig === 2 && "signal-bloom-sell",
@@ -553,7 +553,7 @@ export function OnChainChart({
             </span>
           )}
           {loadingC && (
-            <span className="text-[10px] text-zinc-600 animate-pulse">loading…</span>
+            <span className="text-[11px] text-zinc-600 animate-pulse">loading…</span>
           )}
         </div>
 
@@ -566,7 +566,7 @@ export function OnChainChart({
                 key={t.label}
                 onClick={() => setTf(t)}
                 className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded transition-colors",
+                  "text-[11px] px-1.5 py-0.5 rounded transition-colors",
                   t.label === tf.label
                     ? "bg-zinc-700 text-white"
                     : "text-zinc-500 hover:text-zinc-300",
@@ -582,7 +582,7 @@ export function OnChainChart({
             <button
               onClick={() => setConnectDec((v) => !v)}
               className={cn(
-                "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors",
+                "flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-colors",
                 connectDec
                   ? "border-violet-500/40 bg-violet-500/10 text-violet-400"
                   : "border-zinc-800 text-zinc-600 hover:text-zinc-400",
@@ -599,7 +599,7 @@ export function OnChainChart({
               onClick={pushPrice}
               disabled={pushing}
               className={cn(
-                "text-[10px] px-2 py-0.5 rounded border transition-colors",
+                "text-[11px] px-2 py-0.5 rounded border transition-colors",
                 pushing
                   ? "border-zinc-800 text-zinc-600 cursor-wait"
                   : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white",
@@ -635,7 +635,7 @@ export function OnChainChart({
       )}
 
       {/* ── Stats row ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 px-3 py-1.5 border-t border-[#1e1e1e] text-[10px] text-zinc-600 flex-wrap">
+      <div className="flex items-center gap-4 px-3 py-1.5 border-t border-card-border text-[11px] text-zinc-600 flex-wrap">
         {hasOnChain ? (
           <>
             {(() => {
@@ -702,7 +702,7 @@ export function OnChainChart({
       {/* ── Last push line ───────────────────────────────────────────────────── */}
       {manualKeeperEnabled && lastPush && (
         <div className="px-3 pb-1.5">
-          <p className="text-[10px] text-zinc-700 font-mono truncate">{lastPush}</p>
+          <p className="text-[11px] text-zinc-700 font-mono truncate">{lastPush}</p>
         </div>
       )}
 
@@ -719,7 +719,7 @@ export function OnChainChart({
           ) : (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <span className={cn("font-bold uppercase text-[10px] px-1 py-0.5 rounded",
+                <span className={cn("font-bold uppercase text-[11px] px-1 py-0.5 rounded",
                   decibelTx.side === "long" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400")}>
                   {decibelTx.side?.toUpperCase()}
                 </span>
@@ -728,7 +728,7 @@ export function OnChainChart({
               </div>
               {decibelTx.explorerUrl && (
                 <a href={decibelTx.explorerUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] text-violet-400/70 hover:text-violet-400">tx →</a>
+                  className="text-[11px] text-violet-400/70 hover:text-violet-400">tx →</a>
               )}
             </div>
           )}

@@ -1137,7 +1137,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
-              label: "Unrealized P&L",
+              label: "Unrealized PnL",
               value: formatUsd(overview.unrealizedPnl, { signed: true }),
               raw: overview.unrealizedPnl,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
@@ -1147,7 +1147,7 @@ export function Positions({ showOverview = true }: { showOverview?: boolean } = 
                   : "text-danger",
             },
             {
-              label: "Realized P&L",
+              label: "Realized PnL",
               value:
                 overview.realizedPnl !== null
                   ? formatUsd(overview.realizedPnl, { signed: true })

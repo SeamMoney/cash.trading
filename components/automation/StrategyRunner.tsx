@@ -34,7 +34,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { Header } from "@/components/layout/Header";
+import { Header, PageConnectCta } from "@/components/layout/Header";
 import {
   BUTTON_NEUTRAL,
   BUTTON_PRIMARY,
@@ -182,7 +182,10 @@ function StrategyRow({
       {picker ? (
         <span
           aria-hidden
-          className="shrink-0 self-center text-[11px] text-muted-foreground underline underline-offset-4"
+          /* 44px tall and 13px, the same floor every other inline action on
+             the app holds. It was an 11px line of text with no height of its
+             own — the smallest tap target on the page. */
+          className="inline-flex min-h-11 shrink-0 items-center self-center text-[13px] text-muted-foreground underline underline-offset-4"
         >
           Change
         </span>
@@ -755,6 +758,9 @@ export function StrategyRunner() {
         : "Run on my account";
 
   return (
+    /* PageConnectCta: disconnected, this page's own accent primary reads
+       "Connect wallet", so the header drops its outline copy of the same act. */
+    <PageConnectCta present={!connected}>
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-8">
@@ -802,6 +808,52 @@ export function StrategyRunner() {
           <div className="grid content-start gap-6">
             {/* ── Settings ─────────────────────────────────────────────── */}
             <section className={PANEL}>
+              {/* The action is the first thing in this panel, not the last.
+                  Below `lg` the five settings stack, and with the button under
+                  them it measured y=1059 in an 844-tall phone — ~300px past
+                  the fold, so the page's one purpose was on the second screen.
+                  Every field below it has a working default (capital fills
+                  from your equity), and the line under the button names the
+                  one thing still missing when something is. */}
+              <div className={cn(PANEL_BODY, "border-b border-card-border")}>
+                {running ? (
+                  <button
+                    type="button"
+                    onClick={() => void stop()}
+                    disabled={phase === "stopping"}
+                    className={cn(BUTTON_NEUTRAL, TOUCH, "w-full")}
+                  >
+                    {phase === "stopping" ? "Stopping…" : "Stop runner"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void run()}
+                    disabled={busy || Boolean(startBlockedReason)}
+                    title={startBlockedReason || undefined}
+                    className={cn(BUTTON_PRIMARY, TOUCH, "w-full")}
+                  >
+                    {primaryLabel}
+                  </button>
+                )}
+                <p className={cn(HELP, "mt-2")} aria-live="polite">
+                  {error ? (
+                    <span className="text-danger">{error}</span>
+                  ) : note ? (
+                    note
+                  ) : startBlockedReason ? (
+                    startBlockedReason
+                  ) : connected ? (
+                    "One signature the first time, then it trades on its own."
+                  ) : (
+                    "Connect a wallet to run a strategy on your own account."
+                  )}
+                </p>
+                <p className={cn(HELP, "mt-1")}>
+                  Taker fees and a 0.10% builder fee apply on every fill
+                </p>
+              </div>
+
               <div className={PANEL_HEAD}>
                 <h2 className={PANEL_TITLE}>Settings</h2>
                 {locked ? (
@@ -955,44 +1007,6 @@ export function StrategyRunner() {
                 </div>
               </div>
 
-              <div className={cn(PANEL_BODY, "border-t border-card-border")}>
-                <p className={cn(HELP, "mb-2")}>
-                  Taker fees and a 0.10% builder fee apply on every fill
-                </p>
-                {running ? (
-                  <button
-                    type="button"
-                    onClick={() => void stop()}
-                    disabled={phase === "stopping"}
-                    className={cn(BUTTON_NEUTRAL, TOUCH, "w-full")}
-                  >
-                    {phase === "stopping" ? "Stopping…" : "Stop runner"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void run()}
-                    disabled={busy || Boolean(startBlockedReason)}
-                    title={startBlockedReason || undefined}
-                    className={cn(BUTTON_PRIMARY, TOUCH, "w-full")}
-                  >
-                    {primaryLabel}
-                  </button>
-                )}
-                <p className={cn(HELP, "mt-2")} aria-live="polite">
-                  {error ? (
-                    <span className="text-danger">{error}</span>
-                  ) : note ? (
-                    note
-                  ) : startBlockedReason ? (
-                    startBlockedReason
-                  ) : connected ? (
-                    "One signature the first time, then it trades on its own."
-                  ) : (
-                    "Connect a wallet to run a strategy on your own account."
-                  )}
-                </p>
-              </div>
             </section>
 
             {/* ── Status ───────────────────────────────────────────────── */}
@@ -1203,5 +1217,6 @@ export function StrategyRunner() {
         ) : null}
       </main>
     </div>
+    </PageConnectCta>
   );
 }

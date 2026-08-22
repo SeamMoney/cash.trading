@@ -1414,7 +1414,7 @@ export function DecibelAccountManager({ className }: { className?: string }) {
             { label: "Available USDC", value: overview?.crossWithdrawable, signed: false },
             { label: "Collateral", value: overview?.collateral, signed: false },
             {
-              label: "Unrealized P&L",
+              label: "Unrealized PnL",
               value: overview?.unrealizedPnl,
               signed: true,
               tone:

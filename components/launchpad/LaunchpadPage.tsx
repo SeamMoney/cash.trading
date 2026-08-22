@@ -1,11 +1,16 @@
 "use client";
 
 /**
- * /launchpad — the Vaults page.
+ * /launchpad — the Sealed vaults page.
  *
  * Two things live here and nothing else: the list of sealed vaults on the configured network,
  * and the flow that launches a new one. The launch flow replaces the list in place rather than
  * opening a second surface, so there is exactly one primary action on screen at any time.
+ *
+ * "Sealed" is load-bearing in the name, not decoration. One tab away /trade renders
+ * "Decibel Vaults (N)" from a different registry — Decibel's own vault contract. These are
+ * strategy vaults whose rules the chain enforces, and the two lists disagreeing about how many
+ * "Vaults" exist was the app contradicting itself.
  */
 import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
@@ -26,6 +31,7 @@ import {
   SEGMENTED_ITEM,
   SEGMENTED_ITEM_ACTIVE,
 } from "@/components/portfolio/portfolio-surface";
+import { PAGE_SHELL } from "@/lib/surface";
 
 export function LaunchpadPage() {
   const { connected, account } = useWallet();
@@ -41,15 +47,16 @@ export function LaunchpadPage() {
   const isEmpty = !loading && !error && vaults.length === 0;
   const showMine = connected && mineOnly && Boolean(addr);
 
-  // Empty, the sub-line said nothing but the network name — a label under a title
-  // that names no quantity. Dropped rather than padded; every other state still
-  // carries the network alongside a number that needs it.
+  // Every state names a quantity AND the source it came from. The empty case used to
+  // resolve to null, which left the page saying nothing about where it had looked — a
+  // list that is empty on mainnet and a list that is empty because it read testnet are
+  // different facts, and the reader could not tell them apart.
   const subline = loading
-    ? "Loading vaults…"
+    ? `Loading vaults… · ${network}`
     : error
       ? `Vault list unavailable · ${network}`
       : vaults.length === 0
-        ? null
+        ? `No sealed vaults · ${network}`
         : `${vaults.length} vault${vaults.length === 1 ? "" : "s"} · ${liveCount} running · ${network}`;
 
   return (
@@ -57,14 +64,19 @@ export function LaunchpadPage() {
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
     <div className="cash-trade-theme min-h-screen bg-background text-foreground">
       <Header />
-      {/* One readable column. At 1536px the flow's rows ran 1330px wide with their
-          content in the left 40%. The column claims no height of its own: the page
-          ends where its content ends, so an empty list is a short page instead of
-          one sentence floating in a reserved viewport. */}
-      <main className="mx-auto flex w-full max-w-[900px] flex-col px-4 py-8 sm:px-8">
-        <div className="mb-5 flex items-center justify-between gap-4">
+      {/* PAGE_SHELL, not a private measure. The app shipped five different <main>
+          widths, so the content's left edge moved as you changed tabs; this page's
+          900 is now the shared reading tier rather than a number that happens to
+          match /points. The column claims no height of its own: the page ends where
+          its content ends, so an empty list is a short page, not one sentence
+          floating in a reserved viewport. */}
+      <main className={cn(PAGE_SHELL, "flex flex-col")}>
+        {/* Empty, the title block and the empty state are one object — the sub-line
+            already states the count and the network, and the sentence under it is the
+            same thought continued. 20px of air between them read as a missing section. */}
+        <div className={cn("flex items-center justify-between gap-4", isEmpty ? "mb-3" : "mb-5")}>
           <div className="min-w-0">
-            <h1 className={SECTION_TITLE}>Vaults</h1>
+            <h1 className={SECTION_TITLE}>Sealed vaults</h1>
             {/* Always mounted at one line's height, so the live region survives
                 the loading → empty transition and the header block does not
                 change height when the sub-line goes quiet. */}

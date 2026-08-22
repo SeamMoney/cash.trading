@@ -19,7 +19,10 @@ export const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/", label: "Trade" },
   { href: "/swap", label: "Swap" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/launchpad", label: "Launchpad" },
+  // "Sealed vaults", not "Vaults": /trade lists Decibel's own vault registry under
+  // that word, and two tabs naming the same noun for two different registries is the
+  // app disagreeing with itself about how many vaults exist.
+  { href: "/launchpad", label: "Sealed vaults" },
   // Link visibility only — this is a client component, so it cannot read the
   // server-side BOT_OWNER_ADDRESSES allowlist. Access is enforced by that
   // allowlist in the API and by a redirect on /automation itself; this flag
@@ -67,7 +70,7 @@ function CashWordmark() {
   );
 }
 
-export function Header({ constrained = false }: { constrained?: boolean } = {}) {
+export function Header() {
   const { connected, wallet } = useWallet();
   const pageHasConnectCta = useContext(PageConnectCtaContext);
   const pathname = usePathname();
@@ -240,13 +243,12 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
   return (
     <>
       <header className="relative z-50 isolate border-b border-card-border bg-background">
-        <div
-          className={
-            constrained
-              ? "mx-auto flex h-[72px] w-full max-w-7xl items-center justify-between px-4 sm:px-6"
-              : "mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8"
-          }
-        >
+        {/* Same measure and same gutters as PAGE_SHELL_WIDE, so the wordmark starts
+            where the page's content starts and the wallet cluster ends where it ends.
+            This used to be a `constrained` ternary offering a second, 7xl width — no
+            caller ever passed it, so it was a third page width the app could not even
+            reach. Deleted with the prop. */}
+        <div className="mx-auto flex h-[72px] w-full max-w-[1536px] items-center justify-between px-4 sm:px-8">
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
             <button
@@ -281,7 +283,12 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
                       FOCUS_RING,
-                      "rounded-[var(--radius-sm)] px-3.5 py-1.5 text-sm font-medium transition-colors",
+                      // px-3, not px-3.5: six items plus the wordmark plus the
+                      // balance/wallet cluster already crowd the row at the md
+                      // breakpoint, and "Sealed vaults" is a wider label than the
+                      // "Launchpad" it replaces. Tightening the gutter buys back
+                      // more than the rename spends.
+                      "whitespace-nowrap rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium transition-colors",
                       isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300",
                     )}
                   >

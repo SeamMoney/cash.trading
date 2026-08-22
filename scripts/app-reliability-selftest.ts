@@ -462,21 +462,21 @@ assert.match(orderBook, /formatUsdNotional\(trade\.price, trade\.size\)/);
 assert.match(orderBook, /onDecibelTradeConfirmed/);
 assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
 assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
-assert.match(swapMarketLayout, /2xl:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
+assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
 // 17 rows fill the swap card's ~504px without an at-rest scroll; 21 needed ~572px.
 assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
 // On desktop the book is taken out of flow inside a stretched grid item so it
 // matches the swap card's height exactly without ever adding to it; below lg it
 // keeps the Trade page's mobile heights.
-assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] 2xl:absolute 2xl:inset-0 2xl:h-auto"/);
-assert.match(swapMarketLayout, /2xl:items-stretch/);
+assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:absolute lg:inset-0 lg:h-auto"/);
+assert.match(swapMarketLayout, /lg:items-stretch/);
 assert.match(
   swapMarketLayout,
-  /<div className="relative min-w-0 2xl:order-1">\s*<OrderBook/,
+  /<div className="relative min-w-0 lg:order-1">\s*<OrderBook/,
   "the absolutely positioned book needs a relative wrapper or it escapes the grid item",
 );
 assert.ok(
-  !swapMarketLayout.includes("2xl:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
+  !swapMarketLayout.includes("lg:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
   "the swap column must size to its content — no fixed desktop height and no nested scroll",
 );
 assert.equal(

@@ -164,10 +164,15 @@ export function SealedVaultFeed({
     // Unframed and aligned to the page, not to the viewport: no panel around it,
     // no gutter of its own inside the column's gutter, and no padding held open
     // to keep a box from collapsing. It reads as the line under the title.
+    //
+    // The measure is on the block, not on one paragraph inside it, so the whole
+    // empty state is a 448px-wide object instead of three items strewn across the
+    // page column. Its own "No vaults yet" heading is gone: the page sub-line above
+    // already says "No sealed vaults · <network>", which states the same fact and
+    // adds the source — two headings saying "no vaults" was the emptier page.
     return (
-      <div className="flex flex-col items-start gap-3">
-        <p className="text-[13px] font-semibold text-foreground">No vaults yet</p>
-        <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+      <div className="flex max-w-md flex-col items-start gap-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           A sealed vault trades on Decibel under rules the chain enforces.
         </p>
         <button type="button" onClick={onLaunch} className={BUTTON_PRIMARY}>

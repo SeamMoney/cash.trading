@@ -32,6 +32,7 @@ import { SwapFlowScreen } from "@/components/trade/swap/SwapFlowScreen";
 import { SwapMarketLayout } from "@/components/trade/swap/SwapMarketLayout";
 import { SwapQuoteAmount } from "@/components/trade/swap/SwapQuoteAmount";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import {
   confirmCashMigrationTransaction,
@@ -2454,25 +2455,25 @@ export function CashSpotSwap({
           <span className="sr-only" role="status" aria-live="polite">
             {effectiveLoading ? "Checking orderbook" : bookReady ? "Orderbook ready" : null}
           </span>
-          {(!bookReady || quoteStale) && (
-            <button
-              type="button"
-              onClick={() => void fetchDepth(undefined, true)}
-              disabled={refreshing || effectiveLoading || interactionLocked || isPreview}
-              className={cn(
-                "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
-                PRESSABLE_CONTROL,
-              )}
-              aria-label="Refresh CASH orderbook quote"
-              title="Refresh quote"
-            >
-              <RotateCcw
-                aria-hidden="true"
-                strokeWidth={3}
-                className={cn("size-5", (refreshing || effectiveLoading) && "animate-spin motion-reduce:animate-none")}
-              />
-            </button>
-          )}
+          {/* Always rendered, matching DecibelSpotSwap: a header control that
+              appears and disappears with the poll reads as a rendering bug. */}
+          <button
+            type="button"
+            onClick={() => void fetchDepth(undefined, true)}
+            disabled={refreshing || effectiveLoading || interactionLocked || isPreview}
+            className={cn(
+              "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
+              PRESSABLE_CONTROL,
+            )}
+            aria-label="Refresh CASH orderbook quote"
+            title="Refresh quote"
+          >
+            <RotateCcw
+              aria-hidden="true"
+              strokeWidth={3}
+              className={cn("size-5", (refreshing || effectiveLoading) && "animate-spin motion-reduce:animate-none")}
+            />
+          </button>
         </div>
       </div>
 
@@ -2539,11 +2540,15 @@ export function CashSpotSwap({
       >
         <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
           <label htmlFor={inputId}>You pay</label>
+          {/* A skeleton in the shape of the balance it becomes, not the words
+              "Checking balance": the row does not reflow when the number
+              lands. Same primitive the Points leaderboard uses. */}
           {effectiveConnected && (
-            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-              {balanceLoading
-                ? "Checking balance"
-                : balanceError
+            balanceLoading ? (
+              <Skeleton role="status" aria-label="Checking balance" className="h-3 w-24 shrink-0 bg-card-hover" />
+            ) : (
+              <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                {balanceError
                   ? balanceError
                   : fromBalance === null
                     ? "Balance —"
@@ -2552,7 +2557,8 @@ export function CashSpotSwap({
                           Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatWalletBalance(fromBalance, fromSymbol)}</span>
                         </>
                       )}
-            </span>
+              </span>
+            )
           )}
         </div>
         <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -2674,17 +2680,19 @@ export function CashSpotSwap({
         <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
           <span>You receive</span>
           {effectiveConnected && (
-            <span className="truncate text-[11px]">
-              {balanceLoading
-                ? "Checking balance"
-                : toBalance === null
+            balanceLoading ? (
+              <Skeleton aria-hidden="true" className="h-3 w-24 shrink-0 bg-card-hover" />
+            ) : (
+              <span className="truncate text-[11px]">
+                {toBalance === null
                   ? "Balance —"
                   : (
                       <>
                         Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatWalletBalance(toBalance, toSymbol)}</span>
                       </>
                     )}
-            </span>
+              </span>
+            )
           )}
         </div>
         <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -2802,7 +2810,14 @@ export function CashSpotSwap({
         aria-expanded={detailsOpen}
         aria-controls={detailsPanelId}
       >
-        <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
+        {/* The first book has not landed, so there is no price to invite an
+            amount for yet. A bar the width of that line, not a prompt the page
+            cannot honour. */}
+        {effectiveLoading && effectivePrice <= 0 ? (
+          <Skeleton role="status" aria-label="Loading price details" className="h-3.5 w-52 max-w-full bg-card-hover" />
+        ) : (
+          <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
+        )}
         <span className="flex shrink-0 items-center gap-1.5">
           {quoteAgeSeconds !== null && bookReady && quoteStale && (
             <span className="text-[11px] text-warning">Stale</span>

@@ -24,8 +24,13 @@ import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { explorerTxUrl } from "@/lib/constants";
 import { buildAndSign, waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { isValidAptosAddress } from "@/lib/decibel";
+import { PAGE_SHELL_WIDE } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 import { NumberTicker } from "@/components/ui/number-ticker";
+// The app's one skeleton primitive, already shaping the /points leaderboard's
+// loading rows. Imported rather than re-authored: two skeleton systems is how
+// a pulse ends up a different grey on two pages.
+import { Skeleton } from "@/components/ui/skeleton";
 import { CashRewardsPanel } from "@/components/portfolio/CashRewardsPanel";
 import {
   BUTTON_NEUTRAL,
@@ -375,11 +380,17 @@ function decibelWsOpenOrderToOpenOrder(
 
 // The dashed underline this row used to carry read as "hover me for a
 // definition" and nothing was ever bound to it.
-function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function OverviewRow({ label, value, tone, pending }: { label: string; value: string; tone?: string; pending?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-6 py-1.5 text-[13px]">
       <span className="text-muted-foreground">{label}</span>
-      <span className={cn("font-mono tabular-nums text-foreground", tone)}>{value}</span>
+      {pending ? (
+        /* The row's own 13px line box, so the column does not reflow as the
+           eight values land one request at a time. */
+        <Skeleton className="h-[19px] w-16" />
+      ) : (
+        <span className={cn("font-mono tabular-nums text-foreground", tone)}>{value}</span>
+      )}
     </div>
   );
 }
@@ -816,6 +827,12 @@ export function PortfolioPageClient() {
   }, [connected, decibelNetwork, fetchAccountState, selectedSubaccount]);
 
   const totalPnl = overview?.unrealizedPnl ?? null;
+  // Every number on this page used to arrive by resizing from an em dash. Both
+  // flags are true only while a request that will resolve them is in flight —
+  // `loading` and `isLoadingSubaccounts` both terminate, so a skeleton can
+  // never outlive its fetch and become the new permanent placeholder.
+  const accountPending = connected && !overview && (loading || isLoadingSubaccounts);
+  const feesPending = feeSummaryLoading && !feeSummary;
   const openPositionReturn =
     totalPnl != null && overview?.totalMargin && overview.totalMargin > 0
       ? (totalPnl / overview.totalMargin) * 100
@@ -1095,7 +1112,10 @@ export function PortfolioPageClient() {
     <PageConnectCta present={!connected}>
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
-      <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
+      {/* The shell is shared, not restated: /portfolio is the dense tier the
+          trade and swap pages now also render, so the content's left edge no
+          longer moves as you change tabs. */}
+      <main className={PAGE_SHELL_WIDE}>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className={SECTION_TITLE}>Portfolio</h1>
@@ -1152,6 +1172,13 @@ export function PortfolioPageClient() {
           </div>
         </div>
 
+        {/* Disconnected, everything below this line — four em-dash tiles, an
+            em-dash hero, a rewards promise and a twelve-column table of
+            nothing — asked the same question the button above already asks.
+            One prompt is rendered instead, and it says what lands here. */}
+        {connected ? (
+        <>
+
         {/* Two columns on a phone: four stacked tiles were 390px of scrolling
             before the page's first real content. */}
         <section className={cn(STAT_GRID_PANEL, "grid-cols-2 md:grid-cols-4")}>
@@ -1160,12 +1187,14 @@ export function PortfolioPageClient() {
               label: "Portfolio value",
               value: formatUsd(overview?.equity),
               raw: overview?.equity,
+              pending: accountPending,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
             {
               label: "PnL",
               value: formatUsd(totalPnl, true),
               raw: totalPnl,
+              pending: accountPending,
               tone: signTone(totalPnl),
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" },
             },
@@ -1173,32 +1202,40 @@ export function PortfolioPageClient() {
               label: "30-day volume",
               value: formatVolume(overview?.volume30d),
               raw: overview?.volume30d,
+              pending: accountPending,
               format: { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 },
             },
             {
               label: "Total fees paid",
-              value: feeSummaryLoading
-                ? "…"
-                : feeSummaryError || !feeSummary
-                  ? "—"
-                  : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
+              // The "…" this rendered while loading was a third width for one
+              // slot: ellipsis, then em dash, then a number.
+              value: feeSummaryError || !feeSummary
+                ? "—"
+                : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`,
               raw: feeSummary && !feeSummary.truncated ? feeSummary.totalFeesPaidUsd : undefined,
+              pending: feesPending,
               format: { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 },
             },
           ].map((item) => (
             <div key={item.label} className={STAT_TILE}>
               <p className={STAT_LABEL}>{item.label}</p>
-              <p className={cn(STAT_VALUE, "tone" in item && item.tone)}>
-                {"raw" in item && item.raw != null ? (
-                  <NumberTicker
-                    value={item.raw}
-                    fallback={item.value}
-                    format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
-                  />
-                ) : (
-                  item.value
-                )}
-              </p>
+              {item.pending ? (
+                /* mt-2 + h-8 is exactly the box STAT_VALUE occupies, so the
+                   tile holds its height when the number lands. */
+                <Skeleton className="mt-2 h-8 w-[7ch]" />
+              ) : (
+                <p className={cn(STAT_VALUE, "tone" in item && item.tone)}>
+                  {"raw" in item && item.raw != null ? (
+                    <NumberTicker
+                      value={item.raw}
+                      fallback={item.value}
+                      format={"format" in item ? item.format as Intl.NumberFormatOptions : undefined}
+                    />
+                  ) : (
+                    item.value
+                  )}
+                </p>
+              )}
             </div>
           ))}
         </section>
@@ -1210,36 +1247,31 @@ export function PortfolioPageClient() {
           subaccount={selectedSubaccount}
         />
 
-        <section className={cn(SECTION_GAP, "grid gap-8", connected && "lg:grid-cols-[310px_minmax(0,1fr)]")}>
-          {/* Disconnected, every row below is an em dash. The chart's empty
-              state already says what to do, so the column is not rendered. */}
-          {connected ? (
-            <aside>
-              <h2 className={SECTION_TITLE}>Overview</h2>
-              {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
-                  and a "Trading portfolio" row that restated Portfolio value all
-                  lived here as permanent em dashes with no reader behind them. */}
-              <div className="mt-4">
-                <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} />
-                <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} />
-                <OverviewRow
-                  label="Total fees paid"
-                  value={
-                    feeSummaryLoading
-                      ? "…"
-                      : feeSummaryError || !feeSummary
-                        ? "—"
-                        : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
-                  }
-                />
-                <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} />
-                <OverviewRow label="Available to withdraw" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} />
-                <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} />
-                <OverviewRow label="Margin used" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} />
-                <OverviewRow label="Total position" value={formatUsd(overview?.totalNotional)} />
-              </div>
-            </aside>
-          ) : null}
+        <section className={cn(SECTION_GAP, "grid gap-8 lg:grid-cols-[310px_minmax(0,1fr)]")}>
+          <aside>
+            <h2 className={SECTION_TITLE}>Overview</h2>
+            {/* Vault allocation, Sharpe ratio, Max drawdown, Weekly win rate
+                and a "Trading portfolio" row that restated Portfolio value all
+                lived here as permanent em dashes with no reader behind them. */}
+            <div className="mt-4">
+              <OverviewRow label="Open position return" value={formatPct(openPositionReturn)} tone={signTone(openPositionReturn)} pending={accountPending} />
+              <OverviewRow label="30-day volume" value={formatVolume(overview?.volume30d)} pending={accountPending} />
+              <OverviewRow
+                label="Total fees paid"
+                pending={feesPending}
+                value={
+                  feeSummaryError || !feeSummary
+                    ? "—"
+                    : `${formatUsd(feeSummary.totalFeesPaidUsd)}${feeSummary.truncated ? "+" : ""}`
+                }
+              />
+              <OverviewRow label="Realized PnL" value={formatUsd(overview?.realizedPnl, true)} tone={signTone(overview?.realizedPnl)} pending={accountPending} />
+              <OverviewRow label="Available to withdraw" value={overview?.equity ? `${((overview.crossWithdrawable / overview.equity) * 100).toFixed(2)}%` : "—"} pending={accountPending} />
+              <OverviewRow label="Avg. leverage" value={overview?.leverage == null ? "—" : `${overview.leverage.toFixed(2)}x`} pending={accountPending} />
+              <OverviewRow label="Margin used" value={overview ? `${(overview.marginRatio * 100).toFixed(2)}%` : "—"} pending={accountPending} />
+              <OverviewRow label="Total position" value={formatUsd(overview?.totalNotional)} pending={accountPending} />
+            </div>
+          </aside>
 
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1250,18 +1282,22 @@ export function PortfolioPageClient() {
                 <h2 className={SECTION_TITLE}>
                   {chartMetric === "pnl" ? "PnL" : "Portfolio value"}
                 </h2>
-                <NumberTicker
-                  value={chartMetric === "pnl" ? totalPnl : overview?.equity}
-                  fallback="—"
-                  format={{
-                    style: "currency",
-                    currency: "USD",
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                    signDisplay: chartMetric === "pnl" ? "always" : "auto",
-                  }}
-                  className="mt-2 block font-mono text-2xl font-semibold text-foreground"
-                />
+                {accountPending ? (
+                  <Skeleton className="mt-2 h-8 w-40" />
+                ) : (
+                  <NumberTicker
+                    value={chartMetric === "pnl" ? totalPnl : overview?.equity}
+                    fallback="—"
+                    format={{
+                      style: "currency",
+                      currency: "USD",
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                      signDisplay: chartMetric === "pnl" ? "always" : "auto",
+                    }}
+                    className="mt-2 block font-mono text-2xl font-semibold text-foreground"
+                  />
+                )}
               </div>
               {chartControlsVisible ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -1297,11 +1333,11 @@ export function PortfolioPageClient() {
               </div>
               ) : null}
             </div>
-            {/* The 360px well is reserved only while a series can still arrive,
-                so the chart drops in without shifting the page. Disconnected
-                nothing is coming, and reserving a viewport for one sentence is
+            {/* The 360px well is reserved for the whole life of the fetch, so
+                the chart drops in without shifting the page. It only exists on
+                the connected branch: reserving a viewport for one sentence is
                 what made this page read as half empty. */}
-            <div className={cn("mt-6", connected && "h-[360px] min-h-[260px]")}>
+            <div className="mt-6 h-[360px] min-h-[260px]">
               {chartSeriesRendered ? (
                 <AreaChart
                   data={chartData}
@@ -1342,29 +1378,24 @@ export function PortfolioPageClient() {
                   />
                   <XAxis numTicks={5} />
                 </AreaChart>
+              ) : historyLoading ? (
+                /* Was the sentence "Loading 7d portfolio history…" centred in
+                    an empty 360px frame; the skeleton is the shape of the
+                    thing being fetched. */
+                <Skeleton className="h-full w-full rounded-[var(--radius)]" aria-label={`Loading ${chartRange} portfolio history`} role="status" />
               ) : (
                 <div
                   role="status"
                   className="flex h-full flex-col items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed border-card-border px-6 py-8 text-center"
                 >
-                  {/* Disconnected this said "Connect a wallet to see your
-                      Decibel portfolio" over a second line saying the same
-                      thing — the fourth ask on a page whose button already
-                      asks. One line, and it says what lands here instead. */}
                   <span className="text-[13px] text-foreground">
-                    {!connected
-                      ? "Live equity, PnL, positions and orders load here once you connect."
-                      : !selectedSubaccount
-                        ? "Select a Decibel account to load portfolio history"
-                        : historyLoading
-                          ? `Loading ${chartRange} portfolio history…`
-                          : historyError || `No ${chartRange} portfolio history was returned`}
+                    {!selectedSubaccount
+                      ? "Select a Decibel account to load portfolio history"
+                      : historyError || `No ${chartRange} portfolio history was returned`}
                   </span>
-                  {connected ? (
-                    <span className="text-[11px] text-muted-foreground">
-                      Current equity and PnL above are live; cash.trading does not fabricate missing history.
-                    </span>
-                  ) : null}
+                  <span className="text-[11px] text-muted-foreground">
+                    Current equity and PnL above are live; cash.trading does not fabricate missing history.
+                  </span>
                 </div>
               )}
             </div>
@@ -1414,10 +1445,21 @@ export function PortfolioPageClient() {
                 <tbody>
                   <tr className={TABLE_ROW}>
                     <td>USDC</td>
-                    <td>{formatUsd(overview?.collateral)}</td>
-                    <td>{formatUsd(overview?.crossWithdrawable)}</td>
-                    <td>{formatUsd(overview?.equity)}</td>
-                    <td className={signTone(totalPnl)}>{formatUsd(totalPnl, true)}</td>
+                    {accountPending ? (
+                      <>
+                        <td><Skeleton className="h-[19px] w-20" /></td>
+                        <td><Skeleton className="h-[19px] w-20" /></td>
+                        <td><Skeleton className="h-[19px] w-20" /></td>
+                        <td><Skeleton className="h-[19px] w-16" /></td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{formatUsd(overview?.collateral)}</td>
+                        <td>{formatUsd(overview?.crossWithdrawable)}</td>
+                        <td>{formatUsd(overview?.equity)}</td>
+                        <td className={signTone(totalPnl)}>{formatUsd(totalPnl, true)}</td>
+                      </>
+                    )}
                   </tr>
                 </tbody>
               </table>
@@ -1425,7 +1467,25 @@ export function PortfolioPageClient() {
           ) : activeTab === "Open orders" ? (
             <>
             <div className="md:hidden">
-              {openOrders.length === 0 ? (
+              {accountPending ? (
+                /* "No open orders" was rendered while the fetch was still in
+                   flight — an answer the page did not have yet. */
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className={CARD_ROW}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Skeleton className="h-[19px] w-24" />
+                        <Skeleton className="mt-1 h-4 w-16" />
+                      </div>
+                      <Skeleton className="h-5 w-12" />
+                    </div>
+                    <div className={CARD_ROW_GRID}>
+                      <Skeleton className="h-8 w-24" />
+                      <Skeleton className="ml-auto h-8 w-20" />
+                    </div>
+                  </div>
+                ))
+              ) : openOrders.length === 0 ? (
                 <div className={TABLE_EMPTY}>No open orders</div>
               ) : openOrders.map((order) => {
                 const orderId = String(order.orderId);
@@ -1484,7 +1544,15 @@ export function PortfolioPageClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {openOrders.length === 0 ? (
+                  {accountPending ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <tr key={index} className={TABLE_ROW}>
+                        {["w-24", "w-10", "w-14", "w-14", "w-20", "w-12", "w-16", "w-12"].map((width, cell) => (
+                          <td key={cell}><Skeleton className={cn("h-[19px]", width)} /></td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : openOrders.length === 0 ? (
                     <tr><td colSpan={8} className={TABLE_EMPTY}>No open orders</td></tr>
                   ) : openOrders.map((order) => {
                     const orderId = String(order.orderId);
@@ -1519,7 +1587,29 @@ export function PortfolioPageClient() {
           ) : activeTab === "Positions" ? (
             <>
             <div className="md:hidden">
-              {positions.length === 0 ? (
+              {accountPending ? (
+                /* The loaded row's own shape: a title line over the same
+                   two-column block, so the list does not grow under the thumb
+                   when the positions land. */
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className={CARD_ROW}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Skeleton className="h-[19px] w-24" />
+                        <Skeleton className="mt-1 h-4 w-12" />
+                      </div>
+                      <Skeleton className="h-5 w-12" />
+                    </div>
+                    {/* Eight cells, the count a loaded position renders, so the
+                        list does not grow under the thumb on arrival. */}
+                    <div className={CARD_ROW_GRID}>
+                      {Array.from({ length: 8 }).map((__, cell) => (
+                        <Skeleton key={cell} className={cn("h-8", cell % 2 ? "ml-auto w-20" : "w-24")} />
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : positions.length === 0 ? (
                 <div className={TABLE_EMPTY}>No open positions</div>
               ) : positions.map((position) => {
                 const key = positionKey(position);
@@ -1628,7 +1718,15 @@ export function PortfolioPageClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.length === 0 ? (
+                  {accountPending ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <tr key={index} className={TABLE_ROW}>
+                        {["w-28", "w-16", "w-16", "w-20", "w-20", "w-16", "w-20", "w-24", "w-14", "w-24", "w-12"].map((width, cell) => (
+                          <td key={cell}><Skeleton className={cn("h-[19px]", width)} /></td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : positions.length === 0 ? (
                     <tr><td colSpan={11} className={TABLE_EMPTY}>No open positions</td></tr>
                   ) : positions.map((position) => {
                     const key = positionKey(position);
@@ -1709,6 +1807,17 @@ export function PortfolioPageClient() {
               </div>
             )}
           </div>
+        )}
+
+        </>
+        ) : (
+          /* The one thing a disconnected visitor sees below the header: what
+             this page is for. The action is the "Connect wallet" primary
+             above — repeating the ask here is what turned one question into
+             five. */
+          <p className="rounded-[var(--radius)] border border-dashed border-card-border px-6 py-10 text-center text-[13px] text-muted-foreground">
+            Live equity, PnL, positions and orders load here once you connect.
+          </p>
         )}
       </main>
 

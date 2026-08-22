@@ -124,14 +124,20 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
           {/* These switch what the table lists, so they are the app's in-panel
               content tabs — not a fourth underlined-link grammar with an 18px
               hit area. TAB carries the 44px target and the focus ring. */}
-          <div className="flex flex-wrap items-center">
+          {/* One row, always. At 390px the four chips just overrun the panel,
+              which orphaned "Gold" on a second line under an otherwise full
+              strip; without flex-wrap it cannot break, and it scrolls sideways
+              instead, in the app's existing no-scrollbar treatment
+              (components/trade/TradePageClient.tsx). min-w-0 is what lets it
+              shrink to the panel and scroll at all. */}
+          <div className="no-scrollbar flex min-w-0 items-center overflow-x-auto overscroll-x-contain">
             {TIER_FILTERS.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 aria-pressed={tier === item.value}
                 onClick={() => setTier(item.value)}
-                className={cn(TAB, tier === item.value && TAB_ACTIVE)}
+                className={cn(TAB, "shrink-0", tier === item.value && TAB_ACTIVE)}
               >
                 {item.label}
               </button>

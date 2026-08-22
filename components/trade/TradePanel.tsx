@@ -10,6 +10,7 @@ import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { PANEL } from "@/components/portfolio/portfolio-surface";
+import { Skeleton } from "@/components/ui/skeleton";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { emitDecibelTradeConfirmed } from "@/lib/decibel-trade-events";
 import { extractConfirmedDecibelFill } from "@/lib/decibel-trade-fill";
@@ -84,7 +85,11 @@ export function TradePanel({
   const [collateralOpen, setCollateralOpen] = useState(false);
   const [leverage, setLeverage] = useState(1.1);
   const [dragging, setDragging] = useState(false);
-  const [leverageOpen, setLeverageOpen] = useState(false);
+  // Open at every width. It used to open only from `lg` up, so a phone got the
+  // text "Leverage 1.1x" and no way to see that leverage was adjustable at all
+  // — the one control that decides liquidation distance, hidden on the screen
+  // most people trade from. The row below still collapses it.
+  const [leverageOpen, setLeverageOpen] = useState(true);
   const [tradeStatus, setTradeStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [tradeAction, setTradeAction] = useState<"idle" | "order">("idle");
   const [orderLifecycle, setOrderLifecycle] = useState<OrderLifecycle>("idle");
@@ -125,13 +130,6 @@ export function TradePanel({
   const canSubmitDecibel = Boolean(canUseDecibel && marketAllowsOrders && hasTradeAmount && currentPrice > 0 && tradeStatus !== "submitting");
   const isOrderSubmitting = tradeStatus === "submitting" && tradeAction === "order";
   const isOrderSuccess = tradeStatus === "success" && tradeAction === "order";
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.matchMedia("(min-width: 1024px)").matches) {
-      setLeverageOpen(true);
-    }
-  }, []);
 
   useEffect(() => onDecibelPublicNetworkChange(setDecibelNetwork), []);
 
@@ -575,10 +573,20 @@ export function TradePanel({
           stays within thumb reach; sm+ keeps the roomier rhythm. */}
       <div>
         <div className="flex items-center justify-between px-4 pt-2 font-mono text-[11px] tabular-nums text-zinc-500">
-          <span>
-            Available {availableUsdc == null
-              ? "—"
-              : availableUsdc.toLocaleString(undefined, { maximumFractionDigits: 6 })} USDC
+          {/* A bar in the number's place while the account is being looked
+              up, not an em dash: "—" is this panel's word for "there is no
+              number", and the lookup is not that. Same Skeleton the points
+              leaderboard uses, sized to the value it stands in for. */}
+          <span className="flex items-center gap-1">
+            Available{" "}
+            {connected && isLoadingSubaccounts ? (
+              <Skeleton className="h-3 w-16" />
+            ) : availableUsdc == null ? (
+              "—"
+            ) : (
+              availableUsdc.toLocaleString(undefined, { maximumFractionDigits: 6 })
+            )}{" "}
+            USDC
           </span>
           <button
             type="button"

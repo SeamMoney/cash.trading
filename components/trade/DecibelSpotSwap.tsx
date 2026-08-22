@@ -34,6 +34,7 @@ import {
   type SpotSwapReviewRow,
 } from "@/components/trade/swap/SpotSwapReview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import {
   confirmDecibelSpotTransaction,
@@ -1802,25 +1803,30 @@ export function DecibelSpotSwap({
             </PopoverContent>
           </Popover>
         </div>
-        {(snapshotStatus !== "ready" || quoteExpired) ? (
-          <button
-            type="button"
-            onClick={() => setRefreshNonce((value) => value + 1)}
-            disabled={snapshotStatus === "loading" || refreshing || interactionLocked}
-            className={cn(
-              "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
-              PRESSABLE_CONTROL,
-            )}
-            aria-label={`Refresh ${market.marketName} quote`}
-            title="Refresh quote"
-          >
-            <RotateCcw
-              aria-hidden="true"
-              strokeWidth={3}
-              className={cn("size-5", (snapshotStatus === "loading" || refreshing) && "animate-spin motion-reduce:animate-none")}
-            />
-          </button>
-        ) : null}
+        {/* Always rendered. Gating this on `snapshotStatus !== "ready" ||
+            quoteExpired` meant the one control in the card header blinked in
+            and out with the poll: present in a light capture caught mid-poll,
+            absent from the dark capture taken a second later, which reads as a
+            theme bug. text-foreground-secondary, not text-muted-foreground —
+            #b4b4b4 over #0f0f0f beats #999999, and 10.0:1 beats 6.6:1 in
+            light. */}
+        <button
+          type="button"
+          onClick={() => setRefreshNonce((value) => value + 1)}
+          disabled={snapshotStatus === "loading" || refreshing || interactionLocked}
+          className={cn(
+            "grid size-11 place-items-center rounded-[var(--radius-sm)] text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
+            PRESSABLE_CONTROL,
+          )}
+          aria-label={`Refresh ${market.marketName} quote`}
+          title="Refresh quote"
+        >
+          <RotateCcw
+            aria-hidden="true"
+            strokeWidth={3}
+            className={cn("size-5", (snapshotStatus === "loading" || refreshing) && "animate-spin motion-reduce:animate-none")}
+          />
+        </button>
       </div>
 
       <AnimatePresence initial={false} mode="popLayout">
@@ -1882,14 +1888,19 @@ export function DecibelSpotSwap({
           )}>
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
               <label htmlFor={inputId}>You pay</label>
+              {/* A skeleton in the shape of the balance it becomes, not the
+                  words "Checking balance": the row does not reflow when the
+                  number lands. Same primitive the Points leaderboard uses. */}
               {connected ? (
-                <span className="min-w-0 truncate text-[11px]">
-                  {balanceStatus === "loading"
-                    ? "Checking balance"
-                    : fromBalance
+                balanceStatus === "loading" ? (
+                  <Skeleton role="status" aria-label="Checking balance" className="h-3 w-24 shrink-0 bg-card-hover" />
+                ) : (
+                  <span className="min-w-0 truncate text-[11px]">
+                    {fromBalance
                       ? <>Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatAtomic(fromBalance.atomic, fromBalance.decimals, fromSymbol)}</span></>
                       : "Balance —"}
-                </span>
+                  </span>
+                )
               ) : null}
             </div>
             <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -2006,13 +2017,15 @@ export function DecibelSpotSwap({
             <div className="flex h-4 items-center justify-between gap-3 text-[13px] leading-4 text-muted-foreground">
               <span>Estimated receive</span>
               {connected ? (
-                <span className="truncate text-[11px]">
-                  {balanceStatus === "loading"
-                    ? "Checking balance"
-                    : balances
+                balanceStatus === "loading" ? (
+                  <Skeleton aria-hidden="true" className="h-3 w-24 shrink-0 bg-card-hover" />
+                ) : (
+                  <span className="truncate text-[11px]">
+                    {balances
                       ? <>Balance <span className="font-mono tabular-nums text-foreground-secondary">{formatAtomic(direction === "buy" ? balances.base.atomic : balances.quote.atomic, toDecimals, toSymbol)}</span></>
                       : "Balance —"}
-                </span>
+                  </span>
+                )
               ) : null}
             </div>
             <div className="flex min-h-[68px] flex-1 items-center gap-3">
@@ -2094,20 +2107,25 @@ export function DecibelSpotSwap({
                 expanded panel: with slippage it is one of the two numbers a
                 trader checks before signing, and a number you have to go
                 looking for is a number most people never see. */}
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono tabular-nums">
-              {quote ? (
-                <>
-                  <span className="truncate">{`1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC`}</span>
-                  {Number.isFinite(priceImpact) ? (
-                    <span className={cn("whitespace-nowrap", highRisk ? "text-warning" : "text-muted-foreground")}>
-                      {`· ${percent(priceImpact)} impact`}
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                "Enter an amount to see price details"
-              )}
-            </span>
+            {quote ? (
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono tabular-nums">
+                <span className="truncate">{`1 ${base} ≈ ${quotePrice.toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC`}</span>
+                {Number.isFinite(priceImpact) ? (
+                  <span className={cn("whitespace-nowrap", highRisk ? "text-warning" : "text-muted-foreground")}>
+                    {`· ${percent(priceImpact)} impact`}
+                  </span>
+                ) : null}
+              </span>
+            ) : snapshotStatus === "loading" ? (
+              // The first book has not landed, so there is no price to invite
+              // an amount for yet. A bar the width of that line, not a prompt
+              // the page cannot honour.
+              <Skeleton role="status" aria-label="Loading price details" className="h-3.5 w-52 max-w-full bg-card-hover" />
+            ) : (
+              <span className="min-w-0 truncate font-mono tabular-nums">
+                Enter an amount to see price details
+              </span>
+            )}
             <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />
           </button>
 

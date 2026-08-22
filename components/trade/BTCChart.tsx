@@ -1201,10 +1201,11 @@ export function BTCChart({
           the shared chart components. The card keeps its border-token frame,
           so no extra rules are drawn behind the price. */}
       <div
-        // 248px below sm: at 390x844 a taller plot pushed the order form's
+        // 212px below sm: restoring the leverage slider on phones cost ~90px,
+        // and the order form's primary must clear a 390x844 fold with margin —
         // primary CTA past the fold on its own. Only the phone height moves —
         // the chart still owns more of the viewport than anything else.
-        className="relative h-[248px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
+        className="relative h-[212px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
         style={{ "--chart-grid": "transparent" } as React.CSSProperties}
       >
         {isPerpsMarket && (

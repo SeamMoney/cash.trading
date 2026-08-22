@@ -11,9 +11,13 @@ import {
   onDecibelTradeConfirmed,
   type DecibelTradeConfirmedDetail,
 } from "@/lib/decibel-trade-events";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type OrderBookStatus = "loading" | "live" | "waiting" | "unavailable";
+
+/** Size-column widths for the loading ladder, cycled so it reads as depth. */
+const SKELETON_BAR = ["w-10", "w-16", "w-8", "w-20", "w-12", "w-14"];
 
 export interface OrderBookLevel {
   price: number;
@@ -909,13 +913,36 @@ export function OrderBook({
               ))}
             </div>
           </div>
+        ) : activeTab === "book" && renderedStatus === "loading" ? (
+          /* The ladder's own shape while it loads, instead of the words
+             "Loading orderbook..." centred in an empty box: the panel keeps
+             the height and the three-column rhythm it will have, so the rows
+             land in place rather than the column snapping when the first
+             depth message arrives. Widths repeat on a fixed cycle — no
+             randomness, so the server and client render the same rows. */
+          <div
+            aria-busy="true"
+            aria-label={`${symbol} order book loading`}
+            className="grid min-h-0 flex-1 py-1"
+            style={{ gridTemplateRows: `repeat(${visibleRowCount}, minmax(24px, 1fr))` }}
+          >
+            {Array.from({ length: visibleRowCount }).map((_, index) => (
+              <div
+                key={index}
+                aria-hidden="true"
+                className="grid h-full min-h-6 grid-cols-3 items-center gap-2 px-3"
+              >
+                <Skeleton className={cn("ml-auto h-[10px]", SKELETON_BAR[index % SKELETON_BAR.length])} />
+                <Skeleton className="mx-auto h-[10px] w-14" />
+                <Skeleton className={cn("mr-auto h-[10px]", SKELETON_BAR[(index + 3) % SKELETON_BAR.length])} />
+              </div>
+            ))}
+          </div>
         ) : activeTab === "book" ? (
           <div className="flex min-h-48 flex-1 items-center justify-center text-center font-mono text-xs text-zinc-400">
-            {renderedStatus === "loading"
-              ? "Loading orderbook..."
-              : renderedStatus === "unavailable"
-                ? "Orderbook unavailable"
-                : "Waiting for live orders"}
+            {renderedStatus === "unavailable"
+              ? "Orderbook unavailable"
+              : "Waiting for live orders"}
           </div>
         ) : (
           <TradesTable trades={renderedTrades} network={renderedNetwork} status={renderedTradesStatus} />

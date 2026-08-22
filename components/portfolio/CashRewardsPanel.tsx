@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Coins, ExternalLink, ShieldCheck } from "lucide-react";
+// The same file lib/cash-rewards.ts computes every voucher from, so the rate
+// printed in the header is the rate the server pays — not a second copy of it.
+import rewardConfig from "@/config/cash-rewards.json";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   BUTTON_ACCENT_OUTLINE,
   BUTTON_NEUTRAL,
@@ -52,6 +56,11 @@ type RewardSnapshot = {
     disabledReason?: string;
     walletEpochCapCash: number;
     globalEpochCapCash: number;
+    // Already on every response; the panel simply never read them, which is
+    // how the header could promise CASH without naming a rate.
+    rewardRateCashPerUsd: number;
+    capitalHourRewardCash: number;
+    epochDurationSeconds: number;
   };
   contract: {
     status: string;
@@ -398,6 +407,16 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
       : snapshot?.contract.status === "live"
         ? "Nothing new to claim"
         : "Claims unlock after canary funding";
+  // True only while the first snapshot is in flight; `loading` terminates in
+  // the fetch's finally, so a skeleton cannot become the new permanent dash.
+  const snapshotPending = loading && !snapshot;
+  // The live snapshot wins; the bundled config covers the moments before it
+  // lands, so the header never states the promise without the price.
+  const feeRate = snapshot?.config.rewardRateCashPerUsd ?? rewardConfig.feeRewardCashPerUsd;
+  const capitalRate = snapshot?.config.capitalHourRewardCash ?? rewardConfig.capitalHourRewardCash;
+  const epochDays = Math.round(
+    (snapshot?.config.epochDurationSeconds ?? rewardConfig.epochDurationSeconds) / 86_400,
+  );
   const builderApproved = Boolean(builderStatus?.approval.approved);
   const builderRoutingActive = Boolean(
     builderApproved && builderStatus?.enrollmentOpen,
@@ -423,8 +442,16 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
           </div>
           <div>
             <h2 className={PANEL_TITLE}>CASH rewards</h2>
+            {/* Was "Earn CASH from the fees you pay and the capital you keep in
+                Decibel positions." — a promise with no rate, no period and
+                nothing to check it against. These are the two rates the two
+                figures below ("Fee rewards", "Capital-time rewards") are
+                computed from. */}
             <p className="mt-1 max-w-2xl text-pretty text-xs leading-5 text-muted-foreground">
-              Earn CASH from the fees you pay and the capital you keep in Decibel positions.
+              <span className="font-mono tabular-nums text-foreground">{compactCash(feeRate)} CASH</span>
+              {" "}per $1 of fees paid, plus{" "}
+              <span className="font-mono tabular-nums text-foreground">{compactCash(capitalRate)} CASH</span>
+              {" "}per $1 of margin held per hour. Resets every {epochDays} days.
             </p>
           </div>
         </div>
@@ -450,13 +477,19 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
           <div className={cn(STAT_GRID, "sm:grid-cols-2 lg:grid-cols-4")}>
             <div className={STAT_TILE}>
               <p className={STAT_LABEL}>Estimated this week</p>
-              <NumberTicker
-                value={estimatedEarned}
-                fallback={loading ? "…" : "—"}
-                format={{ maximumFractionDigits: 0 }}
-                suffix=" CASH"
-                className={cn(STAT_VALUE, "text-success")}
-              />
+              {/* Was "…" while loading, then an em dash, then a number —
+                  three different widths in one slot. */}
+              {snapshotPending ? (
+                <Skeleton className="mt-2 h-8 w-[8ch]" />
+              ) : (
+                <NumberTicker
+                  value={estimatedEarned}
+                  fallback="—"
+                  format={{ maximumFractionDigits: 0 }}
+                  suffix=" CASH"
+                  className={cn(STAT_VALUE, "text-success")}
+                />
+              )}
               <p className={STAT_NOTE}>
                 Server-verified · resets in {snapshot ? resetCountdown(snapshot.epochEndsAt, clock) : "—"}
               </p>
@@ -465,13 +498,17 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
               <p className={STAT_LABEL}>
                 {snapshot?.contract.status === "live" ? "Claimable" : "Verified accrued"}
               </p>
-              <NumberTicker
-                value={snapshot?.totals.claimableCash}
-                fallback="—"
-                format={{ maximumFractionDigits: 0 }}
-                suffix=" CASH"
-                className={STAT_VALUE}
-              />
+              {snapshotPending ? (
+                <Skeleton className="mt-2 h-8 w-[8ch]" />
+              ) : (
+                <NumberTicker
+                  value={snapshot?.totals.claimableCash}
+                  fallback="—"
+                  format={{ maximumFractionDigits: 0 }}
+                  suffix=" CASH"
+                  className={STAT_VALUE}
+                />
+              )}
               <p className={STAT_NOTE}>
                 {snapshot?.contract.status === "live"
                   ? "Owner-bound, expiring voucher"
@@ -480,24 +517,32 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
             </div>
             <div className={STAT_TILE}>
               <p className={STAT_LABEL}>Claimed this week</p>
-              <NumberTicker
-                value={snapshot?.totals.claimedCash}
-                fallback="—"
-                format={{ maximumFractionDigits: 0 }}
-                suffix=" CASH"
-                className={STAT_VALUE}
-              />
+              {snapshotPending ? (
+                <Skeleton className="mt-2 h-8 w-[8ch]" />
+              ) : (
+                <NumberTicker
+                  value={snapshot?.totals.claimedCash}
+                  fallback="—"
+                  format={{ maximumFractionDigits: 0 }}
+                  suffix=" CASH"
+                  className={STAT_VALUE}
+                />
+              )}
               <p className={STAT_NOTE}>Cumulative on-chain record</p>
             </div>
             <div className={STAT_TILE}>
               <p className={STAT_LABEL}>Wallet CASH</p>
-              <NumberTicker
-                value={snapshot?.totals.walletBalanceCash}
-                fallback="—"
-                format={{ maximumFractionDigits: 0 }}
-                suffix=" CASH"
-                className={STAT_VALUE}
-              />
+              {snapshotPending ? (
+                <Skeleton className="mt-2 h-8 w-[8ch]" />
+              ) : (
+                <NumberTicker
+                  value={snapshot?.totals.walletBalanceCash}
+                  fallback="—"
+                  format={{ maximumFractionDigits: 0 }}
+                  suffix=" CASH"
+                  className={STAT_VALUE}
+                />
+              )}
               <p className={STAT_NOTE}>Decibel owner account balance</p>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { Header } from "@/components/layout/Header";
+import { Header, PageConnectCta } from "@/components/layout/Header";
 import { SECTION_TITLE } from "@/components/portfolio/portfolio-surface";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
@@ -114,6 +114,10 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
+    // PageConnectCta: with no owner the profile card below renders the filled
+    // "Connect wallet", so the header must not render its outline copy of the
+    // same act ~500px away — one act, one button.
+    <PageConnectCta present={!owner}>
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
       {/* One readable column, the same measure /launchpad settled on. At 1536px
@@ -121,5 +125,6 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
           rank sat 470px from its AMPs and the row stopped reading as a row. */}
       <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-8">{content}</main>
     </div>
+    </PageConnectCta>
   );
 }

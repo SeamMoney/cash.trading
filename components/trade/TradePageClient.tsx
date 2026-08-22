@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
-import { Header } from "@/components/layout/Header";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { Header, PageConnectCta } from "@/components/layout/Header";
 import { BTCChart } from "@/components/trade/BTCChart";
 import { OrderBook } from "@/components/trade/OrderBook";
 import { Positions as DecibelPositions } from "@/components/trade/Positions";
@@ -1032,6 +1033,7 @@ export function TradePageClient({
   // only way into the deposit flow.
   const [mobileDepositOpen, setMobileDepositOpen] = useState(false);
   const [mobileConnectOpen, setMobileConnectOpen] = useState(false);
+  const { connected } = useWallet();
   const { owner, selectedSubaccount } = useDecibelSubaccounts();
   const { signAndSubmitDecibelTransaction } = useDecibelTransactionSubmitter();
   const isMobile = useIsMobile();
@@ -1129,8 +1131,12 @@ export function TradePageClient({
   );
 
   return (
-    /* pb-12 clears the collapsed sheet's 44px peek — it used to reserve 96px
-       for a 72px peek, so the page ended in dead space. */
+    /* PageConnectCta: disconnected, the trade panel's own accent primary reads
+       "Connect wallet", so the header must not render its outline copy of the
+       same act a few hundred pixels above it. */
+    <PageConnectCta present={!connected}>
+    {/* pb-12 clears the collapsed sheet's 44px peek — it used to reserve 96px
+        for a 72px peek, so the page ended in dead space. */}
     <div className="min-h-screen pb-12 md:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
@@ -1306,5 +1312,6 @@ export function TradePageClient({
       )}
 
     </div>
+    </PageConnectCta>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
+import { Header, PageConnectCta } from "@/components/layout/Header";
 import {
   MarketModal,
   type Market,
@@ -164,6 +166,7 @@ function placeholderMarket(
 }
 
 export function SwapPageClient() {
+  const { connected } = useWallet();
   const [spotMarkets, setSpotMarkets] = useState<ValidatedDecibelSpotMarket[]>([]);
   const [registryStatus, setRegistryStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [selectedMarket, setSelectedMarket] = useState<SwapMarketName>(DEFAULT_MARKET);
@@ -341,7 +344,13 @@ export function SwapPageClient() {
   } as const;
 
   return (
-    <>
+    // Disconnected, the swap card renders the filled "Connect wallet" primary,
+    // so the header must not render its outline copy 500px above it.
+    <PageConnectCta present={!connected}>
+    <div className="cash-trade-theme min-h-screen bg-background pb-10">
+      <Header />
+      <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
+        <h1 className="sr-only">Swap spot assets</h1>
       {!selectedDecibelMarket ? (
         <CashSpotSwap key={`cash-${formKey}`} {...sharedProps} />
       ) : (
@@ -369,6 +378,8 @@ export function SwapPageClient() {
         network="mainnet"
         selectorVariant="spot"
       />
-    </>
+      </main>
+    </div>
+    </PageConnectCta>
   );
 }

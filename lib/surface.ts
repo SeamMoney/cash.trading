@@ -19,6 +19,35 @@
  * tokens with their own private palette or modal grammar.
  */
 
+/**
+ * The `<main>` element's class — the page shell.
+ *
+ * The app shipped FIVE of these (900 on /points and /launchpad, max-w-7xl on
+ * /automation, 1536 on /portfolio, 1800 on /trade and /swap), so the content's
+ * left edge moved ~230px as you changed tabs. Two tiers, not five:
+ *
+ *   PAGE_SHELL       reading pages — a list, a leaderboard, a form. A row has
+ *                    to read as a row: at 1536 the /points leaderboard stretched
+ *                    to 1368px around ~570px of content, putting a rank 470px
+ *                    from its AMPs.
+ *   PAGE_SHELL_WIDE  the dense pages — /portfolio, /trade, /swap — where three
+ *                    columns (chart + book + ticket) genuinely need the width.
+ *                    1536 is /portfolio's existing value; adopting it on /trade
+ *                    and /swap is what makes those three agree.
+ *
+ * Both carry the same gutters, so on any viewport below the narrow tier's
+ * max-width every page in the app starts its content at exactly the same x.
+ *
+ * A page that needs a tighter vertical rhythm than py-8 (the trade page runs
+ * py-3/4/5 so the chart clears the fold) overrides it through `cn`, which is
+ * tailwind-merge: `cn(PAGE_SHELL_WIDE, "py-3 sm:py-4 lg:py-5")`. Override the
+ * padding, never the width — the width is the thing being made consistent.
+ */
+export const PAGE_SHELL = "mx-auto w-full max-w-[900px] px-4 py-8 sm:px-8";
+
+/** @see PAGE_SHELL — the dense tier. */
+export const PAGE_SHELL_WIDE = "mx-auto w-full max-w-[1536px] px-4 py-8 sm:px-8";
+
 /** Outer panel — the biggest containers on a page. */
 export const SURFACE_PANEL =
   "rounded-[var(--radius)] border border-card-border bg-background-secondary";

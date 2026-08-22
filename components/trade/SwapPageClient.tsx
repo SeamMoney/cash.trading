@@ -368,10 +368,10 @@ export function SwapPageClient() {
         categories={SWAP_CATEGORIES}
         disabledIds={disabledIds}
         disabledLabel={registryStatus === "loading" ? "Checking" : "Unavailable"}
-        title={selectorSide === "pay" ? "Choose what you pay" : "Choose what you receive"}
-        description={registryStatus === "unavailable"
-          ? "Decibel spot assets are temporarily unavailable and will retry automatically. CASH is not live yet."
-          : "Choose a live Decibel spot asset against USDC. CASH is not live yet."}
+        // No subtitle: you tapped the pay or receive button to get here, and
+        // each row already states its own venue ("Decibel", "Not live yet",
+        // "Unavailable"). Repeating that as prose said nothing new.
+        title="Select asset"
         loading={registryStatus === "loading"}
         network="mainnet"
         selectorVariant="spot"

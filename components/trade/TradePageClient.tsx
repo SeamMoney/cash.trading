@@ -1231,7 +1231,12 @@ export function TradePageClient({
         </div>
         </main>
       </div>
-      {isMobile && (
+      {/* Connected only. The peek is a 44px fixed bar that sits over the order
+          ticket's primary CTA, and what it peeks at is your positions — of
+          which a disconnected visitor has none. Covering the one button the
+          page is asking them to press, to preview an empty list, is a bad
+          trade. Nav to the portfolio is a tap away in the header either way. */}
+      {isMobile && connected && (
         <MobilePortfolioSheet>
           {/* Funding was only reachable through the header's balance chip,
               which the sheet covers on mobile — deposits need a way in here. */}

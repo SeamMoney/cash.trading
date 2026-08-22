@@ -29,7 +29,7 @@ export const NAV_ITEMS: { href: string; label: string }[] = [
   // just avoids advertising a link that would bounce. Showing it is never a
   // security decision.
   ...(process.env.NEXT_PUBLIC_BOT_AUTOMATION_UI === "1" || process.env.NODE_ENV !== "production"
-    ? [{ href: "/automation", label: "Automation" }]
+    ? [{ href: "/automation", label: "Strategy runner" }]
     : []),
   { href: "/points", label: "Points" },
 ];

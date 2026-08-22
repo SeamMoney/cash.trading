@@ -71,8 +71,12 @@
 
 :root {
   /* Page chrome behind every surface. The light theme overrides these two and
-     nothing else at this level — everything else flows from .cash-trade-theme. */
-  --page-background: #000000;
+     nothing else at this level — everything else flows from .cash-trade-theme.
+     This MUST equal .cash-trade-theme's --background: html/body paint it while
+     the theme block paints the app, so any divergence draws a hard seam wherever
+     a page is shorter than the viewport. That is exactly what happened when the
+     short pages stopped reserving a screen with min-h-screen. */
+  --page-background: #0a0a0a;
   --page-color-scheme: dark;
   /* Toasts render in a portal outside .cash-trade-theme, so they read their
      colours from the document root rather than the product theme block. */
@@ -984,7 +988,9 @@ body.font-mono {
    ============================================================================= */
 
 :root[data-theme="light"] {
-  --page-background: #ffffff;
+  /* Matches .cash-trade-theme's light --background (--lt-surface-1) — see the
+     dark declaration for why these two must not diverge. */
+  --page-background: #fafafa;
   --page-color-scheme: light;
   --toast-background: #ffffff;
   --toast-foreground: #18181b;

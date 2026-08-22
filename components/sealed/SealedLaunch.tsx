@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Launch a vault.
+ * Launch a bot.
  *
- * Three steps and a button. Pick a strategy (Donchian Breakout is preselected), approve the
- * markets and caps, name it, hit Launch. Every trading rule has a bound-checked default and the
- * controls are segmented choices, not sliders or free text — there is no number a creator can
- * type here that the chain wouldn't have to reject.
+ * Two decisions and a button. Pick a strategy (the first one is preselected), keep or edit the
+ * name we generated, hit Launch. Visibility defaults to proprietary. Every trading rule has a
+ * bound-checked default and lives behind a closed disclosure; when you do open it, the controls
+ * are segmented choices, not sliders or free text — there is no number a creator can type here
+ * that the chain wouldn't have to reject.
  *
  * Behind that one button are three wallet signatures, and that is the protocol floor, not
  * laziness:
@@ -27,7 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { ChevronDown, Lock, Globe, ExternalLink, Zap, Server, X } from "lucide-react";
+import { ChevronDown, Lock, Globe, Check, ExternalLink, Zap, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThinkingState, TaskList, DataTable, type AgentTask } from "@/components/ui/agent";
@@ -40,11 +41,10 @@ import {
   ProductSegmented,
   ProductSelectorButton,
 } from "@/components/ui/product-surface";
-import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
-import { FOCUS_RING } from "@/lib/surface";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
-import { FLIP_RATE, SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
+import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
+import { SURFACE_CARD_SOLID } from "@/lib/surface";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
 import { StrategySourceEditor } from "@/components/launchpad/StrategySourceEditor";
 import {
@@ -56,7 +56,6 @@ import { SealedBacktest } from "@/components/sealed/SealedBacktest";
 import {
   MarketLogo,
   apiMarketToMarket,
-  isPerpApiMarket,
   type DecibelApiMarket,
   type Market,
 } from "@/components/trade/BTCChart";
@@ -96,8 +95,6 @@ interface SealedConfig {
     depositorPaysPct: number;
     creatorKeepsPct: number;
     platformTakesPct: number;
-    /** The fee split in one sentence, composed server-side from the numbers above. */
-    summary?: string;
   };
 }
 
@@ -142,38 +139,9 @@ const CADENCE_CHOICES = [
 ];
 const SEED_CHOICES = [100, 250, 1000];
 
-/**
- * Display order for the catalog. The three with the most defensible default behaviour lead;
- * Swing Consensus — eight votes and the weakest backtest — goes last rather than first, where it
- * used to be preselected for every new creator.
- */
-const CATALOG_ORDER = [
-  "breakout-channel",
-  "rsi-reversion",
-  "sma-trend",
-  "ema-cross",
-  "bollinger-breakout",
-  "multi-asset-momentum",
-  "swing-consensus",
-];
-const rankOf = (s: CatalogStrategy) => {
-  const i = CATALOG_ORDER.indexOf(s.id);
-  return i === -1 ? CATALOG_ORDER.length - 1.5 : i;
-};
-const ORDERED_CATALOG: CatalogStrategy[] = [...SEALED_CATALOG].sort((a, b) => rankOf(a) - rankOf(b));
-const DEFAULT_STRATEGY = ORDERED_CATALOG[0];
-
 /** The launch steps, in order. `done` gates resumption. */
 type StepId = "commit" | "vault" | "bind" | "delegate";
 const LAUNCH_STEPS: readonly StepId[] = ["commit", "vault", "bind", "delegate"];
-
-/** The three screens of the flow. Distinct from the on-chain launch steps above. */
-type Stage = 1 | 2 | 3;
-const STAGES: Array<{ n: Stage; label: string }> = [
-  { n: 1, label: "Strategy" },
-  { n: 2, label: "Markets & limits" },
-  { n: 3, label: "Name & fund" },
-];
 
 function asTxData(payload: {
   function: string;
@@ -202,30 +170,20 @@ async function postJson(url: string, body: unknown) {
   return { ok: res.ok && json.ok === true, json };
 }
 
-export function SealedLaunch({
-  onLaunched,
-  onCancel,
-}: {
-  onLaunched?: () => void;
-  /** Leave the flow. Hidden while a launch is in flight. */
-  onCancel?: () => void;
-}) {
+export function SealedLaunch({ onLaunched }: { onLaunched?: () => void }) {
   const { connected, account, signAndSubmitTransaction } = useWallet();
   const reducedMotion = useReducedMotion();
 
   const [config, setConfig] = useState<SealedConfig | null>(null);
-  const [configError, setConfigError] = useState(false);
   const [preflight, setPreflight] = useState<Preflight | null>(null);
 
-  const [stage, setStage] = useState<Stage>(1);
-  const [maxStage, setMaxStage] = useState<Stage>(1);
-  const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY.id);
+  const [strategyId, setStrategyId] = useState(SEALED_CATALOG[0].id);
   const [customPine, setCustomPine] = useState("");
   const [importedScript, setImportedScript] = useState<PineMarketplaceSelection | null>(null);
   const [editingSource, setEditingSource] = useState(false);
   const [tvUrl, setTvUrl] = useState("");
   const [tvBusy, setTvBusy] = useState(false);
-  const [vaultName, setVaultName] = useState(DEFAULT_STRATEGY.label);
+  const [vaultName, setVaultName] = useState(SEALED_CATALOG[0].label);
   const nameTouched = useRef(false);
   const [isPrivate, setIsPrivate] = useState(true);
   // Default ON: a bot nobody runs is not a bot. The trade-off is stated in full below.
@@ -244,13 +202,7 @@ export function SealedLaunch({
   const [marketOptionsLoading, setMarketOptionsLoading] = useState(true);
   const [previewMarket, setPreviewMarket] = useState("BTC/USD");
   const [marketAccessOpen, setMarketAccessOpen] = useState(false);
-  // Heavy panes mount only once opened: Monaco, the candle renderer and the evaluator together
-  // cost more than the rest of the page, and most launches never open them.
-  const [importOpen, setImportOpen] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
-  const [chartOpen, setChartOpen] = useState(false);
-  const [backtestOpen, setBacktestOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const workbenchRef = useRef<HTMLDivElement>(null);
 
   // Progress. Each address is the receipt for a completed step, so a retry resumes.
   const [step, setStep] = useState<StepId | null>(null);
@@ -277,7 +229,6 @@ export function SealedLaunch({
       .then((j) => {
         const cfg = j as SealedConfig;
         setConfig(cfg);
-        setConfigError(false);
         setPctBps(cfg.defaults?.pctBps ?? 1000);
         setMaxLeverageX100(cfg.defaults?.maxLeverageX100 ?? 200);
         setMinBarIntervalS(cfg.defaults?.minBarIntervalS ?? 60);
@@ -285,10 +236,7 @@ export function SealedLaunch({
         setMarkets(cfg.markets?.[0]?.name ? [cfg.markets[0].name] : []);
         setPreviewMarket(cfg.markets?.[0]?.name ?? "BTC/USD");
       })
-      .catch(() => {
-        setConfig(null);
-        setConfigError(true);
-      });
+      .catch(() => setConfig(null));
   }, []);
 
   useEffect(() => {
@@ -299,11 +247,7 @@ export function SealedLaunch({
       .then((response) => response.json())
       .then((payload: { markets?: DecibelApiMarket[] }) => {
         if (controller.signal.aborted || !Array.isArray(payload.markets)) return;
-        setMarketOptions(
-          payload.markets
-            .filter(isPerpApiMarket)
-            .map(apiMarketToMarket),
-        );
+        setMarketOptions(payload.markets.map(apiMarketToMarket));
       })
       .catch(() => undefined)
       .finally(() => {
@@ -359,9 +303,7 @@ export function SealedLaunch({
       pair: market.name,
       leverage: 0,
       category: "crypto" as const,
-      // Placeholder tint for a market the chart carries no palette for. The
-      // token, not a literal grey, which would stay near-black on a white page.
-      color: "var(--card-border)",
+      color: "#27272a",
     });
   }, [config?.markets, marketOptions]);
   const toggleMarketAccess = useCallback((id: string) => {
@@ -412,15 +354,6 @@ export function SealedLaunch({
     [],
   );
 
-  /** Back to the catalog after an import or an edit. */
-  const resetSource = useCallback(() => {
-    setCustomPine("");
-    setImportedScript(null);
-    setEditingSource(false);
-    setCommitInfo(null);
-    if (!nameTouched.current && selected) setVaultName(selected.label);
-  }, [selected]);
-
   const useMarketplaceScript = useCallback((script: PineMarketplaceSelection) => {
     setCustomPine(script.source);
     setImportedScript(script);
@@ -430,6 +363,22 @@ export function SealedLaunch({
     setError(null);
     if (!nameTouched.current) setVaultName(script.title);
   }, []);
+
+  useEffect(() => {
+    if (!importedScript) return;
+    // Two frames let the marketplace dialog unmount and restore body scrolling before the
+    // mobile page is repositioned. A single immediate scroll was swallowed by iOS Safari.
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        workbenchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [importedScript]);
 
   const importTradingView = useCallback(async () => {
     if (!tvUrl.trim()) return;
@@ -705,10 +654,9 @@ export function SealedLaunch({
     if (error && i === doneThrough) return "failed";
     return "pending";
   };
-  const creationFee = config?.economics.creationFeeUsdc ?? 100;
   const tasks: AgentTask[] = [
     { id: "commit", label: "Hash the strategy", detail: commitInfo?.commitment, state: stateFor("commit") },
-    { id: "vault", label: "Create the Decibel vault", detail: decibelVaultAddr ?? `Signature 1 — pays the ${creationFee} USDC protocol fee and seeds the vault`, state: stateFor("vault") },
+    { id: "vault", label: "Create the Decibel vault", detail: decibelVaultAddr ?? "Signature 1 — pays the 100 USDC protocol fee and seeds the vault", state: stateFor("vault") },
     { id: "bind", label: "Seal the strategy on-chain", detail: svAddr ?? "Signature 2 — freezes the commitment and every rule, permanently", state: stateFor("bind") },
     { id: "delegate", label: "Hand trading to the sealed module", detail: delegated ? "Delegated" : "Signature 3 — the only thing that can place an order for this vault", state: stateFor("delegate") },
   ];
@@ -718,7 +666,7 @@ export function SealedLaunch({
     ? "Live"
     : started
       ? `Resume launch (step ${doneThrough + 1} of 4)`
-      : "Launch vault";
+      : "Launch bot";
 
   const explorerBase =
     config?.network === "mainnet"
@@ -727,158 +675,33 @@ export function SealedLaunch({
   const explorerSuffix = `?network=${config?.network ?? "testnet"}`;
 
   const previewMode = Boolean(config && !config.ready);
-  const totalUsdc = config
-    ? config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc
-    : null;
-  const feeSplit = config
-    ? (config.economics.summary
-      ?? `${config.economics.depositorPaysPct}% of profits — you keep ${config.economics.creatorKeepsPct}%, platform takes ${config.economics.platformTakesPct}%.`)
-    : null;
-
-  // ── Stage navigation ───────────────────────────────────────────────────────
-  const goTo = useCallback((next: Stage) => {
-    setStage(next);
-    setMaxStage((m) => (next > m ? next : m));
-    // The panel header is the natural landmark for "a new screen" — on a phone the previous
-    // step's controls would otherwise still fill the viewport after the swap.
-    panelRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
-  }, [reducedMotion]);
-
-  const openWalletSelector = () => window.dispatchEvent(new Event("cash:open-wallet-selector"));
-
-  const sourceLabel = importedScript
-    ? importedScript.title
-    : usingCustom
-      ? "Edited source"
-      : selected?.label ?? "";
-
-  /**
-   * The action row. Rendered twice — in the desktop panel footer and in the fixed mobile bar —
-   * so the primary action is never below the fold on either.
-   */
-  const footer = (compact: boolean) => {
-    const primary = (() => {
-      if (stage < 3) {
-        return (
-          <button
-            type="button"
-            onClick={() => goTo((stage + 1) as Stage)}
-            disabled={busy}
-            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
-          >
-            Continue
-          </button>
-        );
-      }
-      // One visible label at every width: the long form wrapped to two lines inside the
-      // w-56 desktop box and broke the row's own height. The banner above carries the
-      // reason on screen; the accessible name carries it for a screen reader.
-      if (previewMode) {
-        return (
-          <div
-            role="status"
-            aria-label="Launch unavailable in preview mode"
-            className={cn(PRODUCT_CONTROL_CLASS, "flex min-h-11 w-full items-center justify-center gap-2 px-4 font-display text-sm font-semibold text-muted-foreground")}
-          >
-            <Lock className="h-4 w-4" aria-hidden />
-            Launch unavailable
-          </div>
-        );
-      }
-      if (live) {
-        return (
-          <button
-            type="button"
-            onClick={onCancel}
-            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
-          >
-            Done
-          </button>
-        );
-      }
-      if (!connected) {
-        return (
-          <button
-            type="button"
-            onClick={openWalletSelector}
-            className={cn(BUTTON_PRIMARY, "min-h-11 w-full px-5 font-display font-bold")}
-          >
-            Connect wallet
-          </button>
-        );
-      }
-      return (
-        <ActionButton
-          onClick={launch}
-          state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
-          successLabel="Live"
-          errorLabel={started ? (compact ? `Resume ${doneThrough + 1}/4` : `Resume (step ${doneThrough + 1} of 4)`) : "Try again"}
-          disabled={live}
-          className="!min-h-11 !py-2.5"
-        >
-          {compact && started ? `Resume ${doneThrough + 1}/4` : buttonLabel}
-        </ActionButton>
-      );
-    })();
-
-    return (
-      <div className="flex items-center gap-3">
-        {stage > 1 && !live && (
-          <button
-            type="button"
-            onClick={() => goTo((stage - 1) as Stage)}
-            disabled={busy}
-            className={cn(
-              "shrink-0 rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-40",
-              PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-            )}
-          >
-            Back
-          </button>
-        )}
-        {totalUsdc !== null && !previewMode && (
-          <div className="ml-auto min-w-0 shrink-0 text-right">
-            <span className="block text-[11px] leading-none text-muted-foreground">Required</span>
-            <span className="mt-0.5 block font-mono text-[13px] font-semibold leading-none tabular-nums text-foreground">
-              {totalUsdc} <span className="text-[11px] font-normal text-muted-foreground">USDC</span>
-            </span>
-          </div>
-        )}
-        <div className={cn("min-w-0", compact ? "flex-1" : "w-56 shrink-0", totalUsdc === null && "ml-auto")}>
-          {primary}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="w-full">
-      {/* Preview banner above the flow — the unavailable state must be the first thing read,
-          not something discovered after configuring everything. */}
+      {/* Preview banner spans both columns — the unavailable state must be the first thing
+          read, not something discovered after configuring everything. */}
       {previewMode && (
-        <div className="mb-3 rounded-[var(--radius)] border border-warning/20 bg-warning/[0.06] px-3 py-2.5 sm:p-4">
-          <p className="font-display text-[13px] font-semibold text-warning">
-            Preview mode · launching is unavailable on {config?.network}
+        <div className="mb-3 rounded-[var(--radius)] border border-amber-500/14 bg-amber-500/[0.06] px-3 py-2.5 sm:p-4">
+          <p className="font-display text-[13px] font-semibold text-amber-300 sm:text-[14px]">
+            Preview mode · launching unavailable on {config?.network}
           </p>
-          <p className="mt-1 hidden text-[13px] leading-relaxed text-warning/70 sm:block">
-            The sealed-vault attestor isn&apos;t configured here. You can pick a strategy, see
+          <p className="mt-1 hidden text-[13px] leading-relaxed text-amber-200/70 sm:block">
+            The sealed-vault contract isn&apos;t deployed here yet. You can pick a strategy, see
             its program hash and read the full cost breakdown — nothing can be funded or
             launched.
           </p>
-          {/* Env-var names and a pnpm command are for whoever runs the deploy, not for
-              someone reading a vault page in production. */}
-          {process.env.NODE_ENV !== "production" && config?.missing && config.missing.length > 0 && (
+          {config?.missing && config.missing.length > 0 && (
             <details className="mt-2.5">
-              <summary className="cursor-pointer list-none text-xs text-warning/60 underline underline-offset-2 hover:text-warning">
+              <summary className="cursor-pointer list-none text-[12px] text-amber-200/60 underline underline-offset-2 hover:text-amber-200">
                 Developer details
               </summary>
               <div className="mt-2 space-y-1">
                 {config.missing.map((m) => (
-                  <p key={m} className="font-mono text-[11px] text-warning/80">{m}</p>
+                  <p key={m} className="font-mono text-[11px] text-amber-300/80">{m}</p>
                 ))}
-                <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">
+                <p className="pt-1 text-[11px] leading-relaxed text-zinc-400">
                   Publish with{" "}
-                  <span className="font-mono text-foreground">
+                  <span className="font-mono text-zinc-300">
                     pnpm sealed:publish --network {config.network}
                   </span>{" "}
                   and set the values it prints. See docs/DEPLOY-SEALED.md.
@@ -886,15 +709,6 @@ export function SealedLaunch({
               </div>
             </details>
           )}
-        </div>
-      )}
-
-      {configError && (
-        <div className="mb-3">
-          <Banner tone="error">
-            <span className="block font-semibold">Launch settings are unavailable right now.</span>
-            <span className="mt-1 block">Fees and markets could not be loaded. Reload the page to try again.</span>
-          </Banner>
         </div>
       )}
 
@@ -911,622 +725,631 @@ export function SealedLaunch({
         selectedIds={markets}
       />
 
-      <div ref={panelRef} className="scroll-mt-4">
+      {/* The original Whop launchpad worked because this was one bounded workbench: source on
+          the left, deployment decisions on the right, and the visual result attached below.
+          Keep every newer cash.trading capability, but restore that information architecture. */}
+      <div ref={workbenchRef} className="scroll-mt-4">
         <ProductPanel className="overflow-hidden">
-          <header className="flex items-start justify-between gap-3 border-b border-card-border px-4 py-3 sm:px-5">
+          <header className="flex items-center justify-between gap-3 border-b border-card-border bg-card px-4 py-3 sm:px-5">
             <div className="min-w-0">
-              <h2 className="font-display text-[13px] font-semibold text-foreground">
-                Launch a vault
+              {/* Names this stage specifically. It used to repeat the enclosing
+                  panel's "Deploy a Strategy" verbatim, so the same four words
+                  appeared twice within ~110px and the tab looked like it had
+                  changed nothing. */}
+              <h2 className="font-display text-[14px] font-semibold text-foreground sm:text-[15px]">
+                Launch a sealed vault
               </h2>
-              <ol className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs" aria-label="Steps">
-                {STAGES.map((s, i) => {
-                  const reachable = s.n <= maxStage && !busy && !live;
-                  const current = s.n === stage;
-                  return (
-                    <li key={s.n} className="flex items-center gap-1">
-                      {i > 0 && <span aria-hidden className="text-muted-foreground/60">›</span>}
-                      <button
-                        type="button"
-                        onClick={() => reachable && goTo(s.n)}
-                        disabled={!reachable}
-                        aria-current={current ? "step" : undefined}
-                        className={cn(
-                          "rounded-[var(--radius-xs)] px-1 py-0.5 disabled:cursor-default",
-                          FOCUS_RING,
-                          current ? "font-semibold text-foreground" : "text-muted-foreground",
-                          reachable && !current && "hover:text-foreground",
-                        )}
-                      >
-                        <span className="font-mono tabular-nums">{s.n}</span> {s.label}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
+              <p className="mt-0.5 hidden text-[11px] text-muted-foreground sm:block">
+                Import Pine, verify the chart, then bind the strategy to a Decibel vault.
+              </p>
             </div>
-            {onCancel && !busy && !live && (
-              <button
-                type="button"
-                onClick={onCancel}
-                aria-label="Close launch flow"
-                className={cn(
-                  "-mr-2 -mt-1 flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground hover:bg-card-hover hover:text-foreground",
-                  PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-                )}
-              >
-                <X className="size-4" aria-hidden />
-              </button>
-            )}
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+              Pine → Aptos
+            </span>
           </header>
 
-          {/* ══ Step 1 · Strategy ══ */}
-          {stage === 1 && (
-            <div className="divide-y divide-card-border">
-              <ProductSection
-                title="Choose a strategy"
-                description="Every strategy here compiles to Move and runs on-chain. Backtest any of them in the next step."
-              >
-                <div role="radiogroup" aria-label="Strategy" className="flex flex-col gap-1">
-                  {usingCustom && (
-                    <div
-                      role="radio"
-                      aria-checked
-                      className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-accent/30 bg-accent/[0.06] px-3 py-2.5"
-                    >
-                      <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-accent" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="truncate font-display text-[13px] font-semibold text-foreground">{sourceLabel}</span>
-                          <Tag>{importedScript ? "Imported" : "Edited"}</Tag>
-                        </div>
-                        {importedScript?.author && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">by {importedScript.author}</p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={resetSource}
-                        disabled={busy}
-                        className={cn("shrink-0 rounded-[var(--radius-xs)] px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40", PRODUCT_PRESSABLE_CLASS, FOCUS_RING)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-                  {ORDERED_CATALOG.map((strategy) => {
-                    const active = !usingCustom && strategy.id === strategyId;
-                    return (
-                      <button
-                        key={strategy.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => {
-                          setCustomPine("");
-                          setEditingSource(false);
-                          pickStrategy(strategy);
-                        }}
-                        disabled={busy}
-                        className={cn(
-                          "flex min-h-11 w-full items-start gap-3 rounded-[var(--radius-sm)] border px-3 py-2.5 text-left disabled:opacity-40",
-                          PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
-                          active
-                            ? "border-accent/30 bg-accent/[0.06]"
-                            : "border-card-border bg-background-tertiary hover:border-border-strong",
-                        )}
-                      >
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "mt-1.5 size-2 shrink-0 rounded-full",
-                            active ? "bg-accent" : "border border-border-strong",
-                          )}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span className={cn("font-display text-[13px] font-semibold", active ? "text-foreground" : "text-foreground-secondary")}>
-                              {strategy.label}
-                            </span>
-                            <Tag>{strategy.category}</Tag>
-                            <Tag>{FLIP_RATE[strategy.turnover]}</Tag>
-                          </span>
-                          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                            {strategy.blurb}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </ProductSection>
+          <div className="grid grid-cols-1 gap-3 p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+        {/* ══ LEFT: source ══ */}
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* Import is a first-class path, not a footnote under the code block. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <input
+              value={tvUrl}
+              onChange={(e) => setTvUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && importTradingView()}
+              placeholder="Paste a TradingView script URL"
+              disabled={busy}
+              aria-label="TradingView indicator URL"
+              className={cn(inputCls, "col-span-2 sm:col-span-1")}
+            />
+            <button
+              type="button"
+              onClick={importTradingView}
+              disabled={busy || tvBusy || !tvUrl.trim()}
+              className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, "shrink-0 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground hover:border-accent/18 disabled:pointer-events-none disabled:opacity-40")}
+            >
+              {tvBusy ? "Fetching…" : "Import"}
+            </button>
+            <PineMarketplace
+              activeSelection={activeMarketplaceSelection}
+              disabled={busy}
+              launcherOnly
+              market={previewMarket}
+              onUse={useMarketplaceScript}
+            />
+          </div>
 
-              <Disclosure
-                label="Import from TradingView"
-                open={importOpen}
-                onToggle={setImportOpen}
-              >
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                  <input
-                    value={tvUrl}
-                    onChange={(e) => setTvUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && importTradingView()}
-                    placeholder="Paste a TradingView script URL"
-                    disabled={busy}
-                    aria-label="TradingView indicator URL"
-                    className={inputCls}
-                  />
+          <details className={cn(SURFACE_CARD_SOLID, "group overflow-hidden")}>
+            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 font-display text-[12px] font-semibold text-zinc-300 hover:text-white">
+              <span>Vault-ready examples</span>
+              <ChevronDown className="h-4 w-4 text-zinc-600 transition-transform group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="flex gap-1.5 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap border-t border-card-border py-2 overscroll-x-contain sm:overflow-x-visible">
+              {SEALED_CATALOG.map((strategy) => {
+                const active = !usingCustom && strategy.id === strategyId;
+                return (
                   <button
+                    key={strategy.id}
                     type="button"
-                    onClick={importTradingView}
-                    disabled={busy || tvBusy || !tvUrl.trim()}
-                    className={cn(PRODUCT_CONTROL_CLASS, PRODUCT_PRESSABLE_CLASS, FOCUS_RING, "min-h-11 shrink-0 px-4 font-display text-[13px] font-semibold text-foreground hover:border-accent/18 disabled:pointer-events-none disabled:opacity-40")}
-                  >
-                    {tvBusy ? "Fetching…" : "Import"}
-                  </button>
-                  <div className="col-span-2">
-                    <PineMarketplace
-                      activeSelection={activeMarketplaceSelection}
-                      disabled={busy}
-                      launcherOnly
-                      market={previewMarket}
-                      onUse={useMarketplaceScript}
-                    />
-                  </div>
-                </div>
-                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                  Only close-price strategies compile. OHLC and volume scripts are rejected at launch.
-                </p>
-              </Disclosure>
-
-              {error && stage === 1 && (
-                <div className="p-4">
-                  <Banner tone="error" onDismiss={() => { setError(null); setErrorList([]); }}>
-                    <span className="block font-semibold">{error}</span>
-                  </Banner>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ══ Step 2 · Markets & limits ══ */}
-          {stage === 2 && (
-            <div className="divide-y divide-card-border">
-              <ProductSection
-                title="Markets"
-                description={
-                  markets.length === executionMarketOptions.length && markets.length > 1
-                    ? `All ${markets.length} supported markets approved. Two or more makes this a portfolio vault.`
-                    : `${markets.length} market${markets.length === 1 ? "" : "s"} approved. Two or more makes this a portfolio vault.`
-                }
-              >
-                <ProductSelectorButton
-                  onClick={() => setMarketAccessOpen(true)}
-                  disabled={busy}
-                  aria-label="Configure vault market access"
-                  aria-haspopup="dialog"
-                  aria-expanded={marketAccessOpen}
-                  aria-busy={marketOptionsLoading && executionMarketOptions.length === 0}
-                  className="w-full"
-                  icon={<MarketLogo market={previewMarket} size={24} />}
-                  label="Vault market access"
-                  value={isPortfolio ? markets.map((m) => m.replace("/USD", "")).join(", ") : previewMarket}
-                  detail={
-                    marketOptionsLoading && executionMarketOptions.length === 0
-                      ? "Loading"
-                      : markets.length === executionMarketOptions.length && markets.length > 1
-                        ? "All approved"
-                        : `${markets.length} approved`
-                  }
-                />
-              </ProductSection>
-
-              {/* Only show portfolio-specific rules when several markets are approved. */}
-              {config && isPortfolio && (
-                <ProductSection
-                  title="Portfolio safeguards"
-                  description={`Evaluated separately on each market; holds up to ${Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)} positions.`}
-                >
-                  <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
-                    <Review
-                      k="Total exposure cap"
-                      v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
-                    />
-                    <Review
-                      k="Per position"
-                      v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
-                    />
-                    <Review
-                      k="Auto-close after"
-                      v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
-                    />
-                    <Review
-                      k="Funding stop-out"
-                      v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
-                    />
-                  </dl>
-                </ProductSection>
-              )}
-
-              <ProductSection
-                title="Limits"
-                description="Ceilings the contract enforces on every trade. Frozen when the vault goes live."
-              >
-                <div className="space-y-3">
-                  <Segmented label="Order size" hint="Share of vault NAV per order." options={ORDER_SIZE_CHOICES} value={pctBps} onChange={setPctBps} disabled={busy} />
-                  <Segmented label="Max leverage" hint="Hard cap the contract enforces." options={LEVERAGE_CHOICES} value={maxLeverageX100} onChange={setMaxLeverageX100} disabled={busy} />
-                  <Segmented label="Trade cadence" hint="Minimum time between bars." options={CADENCE_CHOICES} value={minBarIntervalS} onChange={setMinBarIntervalS} disabled={busy} />
-                  <Segmented label="Seed capital" hint="Your own USDC, at risk." options={SEED_CHOICES.map((v) => ({ label: `${v}`, value: v }))} value={seedUsdc} onChange={setSeedUsdc} disabled={busy} />
-                  <p className="border-t border-card-border pt-2.5 text-xs leading-relaxed text-muted-foreground">
-                    Slippage {(config?.defaults.slippageBps ?? 30) / 100}% and the{" "}
-                    {config?.economics.feeIntervalDays ?? 30}-day fee interval are protocol floors, not choices.
-                  </p>
-                </div>
-              </ProductSection>
-
-              <ProductSection title="Source & operation">
-                <div className="space-y-3">
-                  <div>
-                    <p className="mb-1.5 font-display text-xs font-semibold text-foreground">Source visibility</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <RailChoice
-                        active={isPrivate}
-                        onClick={() => setIsPrivate(true)}
-                        disabled={busy}
-                        icon={<Lock className="h-3.5 w-3.5" aria-hidden />}
-                        title="Private"
-                        body="Only a commitment goes on-chain. Reveal later to prove every trade came from it."
-                      />
-                      <RailChoice
-                        active={!isPrivate}
-                        onClick={() => setIsPrivate(false)}
-                        disabled={busy}
-                        icon={<Globe className="h-3.5 w-3.5" aria-hidden />}
-                        title="Public"
-                        body="Published with the vault so anyone can check it against the trades it made."
-                      />
-                    </div>
-                    <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-                      {isPrivate
-                        ? "Only a commitment goes on-chain. Reveal later to prove every trade came from it."
-                        : "Published with the vault so anyone can check it against the trades it made."}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-1.5 font-display text-xs font-semibold text-foreground">Who runs it</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <RailChoice
-                        active={managed}
-                        onClick={() => setManaged(true)}
-                        disabled={busy}
-                        icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
-                        title="We run it"
-                        body="Runs every minute automatically. We keep an encrypted copy to execute it — so we can technically read it."
-                      />
-                      <RailChoice
-                        active={!managed}
-                        onClick={() => setManaged(false)}
-                        disabled={busy}
-                        icon={<Server className="h-3.5 w-3.5" aria-hidden />}
-                        title="I run it myself"
-                        body="We never receive your source. The vault trades only while your attestor is running."
-                      />
-                    </div>
-                    <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-                      {managed
-                        ? "Runs every minute automatically. We keep an encrypted copy to execute it — so we can technically read it."
-                        : "We never receive your source. The vault trades only while your attestor is running."}
-                    </p>
-                  </div>
-                </div>
-              </ProductSection>
-
-              {/* The heavy panes. Each mounts only once opened. */}
-              <Disclosure label="View strategy source" detail={sourceLabel} open={sourceOpen} onToggle={setSourceOpen}>
-                {sourceOpen && (selected || usingCustom) && (
-                  <StrategySourceEditor
-                    pineScript={effectivePine}
-                    sourceName={importedScript?.title ?? selected?.id ?? "strategy"}
-                    originalUrl={importedScript?.url || selected?.source?.url}
-                    editing={editingSource}
-                    canReset={usingCustom}
+                    onClick={() => {
+                      setCustomPine("");
+                      pickStrategy(strategy);
+                    }}
                     disabled={busy}
-                    creatorAddress={account?.address.toString()}
-                    marketAddress={primaryMarketAddress}
-                    onEditingChange={(nextEditing) => {
-                      if (nextEditing && !usingCustom && selected) {
-                        setCustomPine(selected.script);
-                        setImportedScript(null);
-                      }
-                      setEditingSource(nextEditing);
-                    }}
-                    onPineChange={(source) => {
-                      setCustomPine(source);
-                      setCommitInfo(null);
-                    }}
-                    onReset={resetSource}
-                  />
-                )}
-              </Disclosure>
+                    aria-pressed={active}
+                    className={cn(
+                      "w-[210px] shrink-0 rounded-[var(--radius-sm)] border px-3 py-2 text-left disabled:opacity-40 sm:w-[calc(50%-0.1875rem)]",
+                      PRODUCT_PRESSABLE_CLASS,
+                      active
+                        ? "border-accent/15 bg-accent/[0.06]"
+                        : "border-transparent bg-card hover:border-border-strong hover:bg-card-hover",
+                    )}
+                  >
+                    <span className={cn("block font-display text-[12px] font-semibold", active ? "text-accent" : "text-zinc-200")}>{strategy.label}</span>
+                    <span className="mt-0.5 line-clamp-1 block text-[10px] text-zinc-500">{strategy.blurb}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </details>
 
-              <Disclosure label="Preview on chart" detail={previewMarket} open={chartOpen} onToggle={setChartOpen} flush>
-                {chartOpen && effectivePine && (
-                  <PineVisualPreview
-                    asset={previewMarket}
-                    embedded
-                    pineScript={effectivePine}
-                    title={activeMarketplaceSelection?.title ?? selected?.label}
-                  />
-                )}
-              </Disclosure>
-
-              <Disclosure label="Backtest" detail="fees and funding included" open={backtestOpen} onToggle={setBacktestOpen}>
-                {backtestOpen && effectivePine && (
-                  <SealedBacktest
-                    asset={primaryMarket}
-                    markets={markets}
-                    initialCapital={seedUsdc}
-                    maxLeverageX100={maxLeverageX100}
-                    pctBps={pctBps}
-                    pineScript={effectivePine}
-                    slippageBps={config?.defaults?.slippageBps ?? 30}
-                  />
-                )}
-              </Disclosure>
+          {/* What the selected strategy actually does. */}
+          {!usingCustom && selected && (
+            <div className={cn(SURFACE_CARD_SOLID, "px-4 py-3")}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 className="font-display text-[15px] font-semibold text-white">
+                  {selected.label}
+                </h3>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <Tag>{selected.category}</Tag>
+                  <Tag>{selected.direction}</Tag>
+                  <Tag>{isPortfolio ? `${markets.length} markets` : primaryMarket}</Tag>
+                  <Tag>
+                    {minBarIntervalS < 60 ? `${minBarIntervalS}s` : `${minBarIntervalS / 60}m`} bars
+                  </Tag>
+                  <Tag>{selected.turnover} turnover</Tag>
+                </span>
+              </div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-300">{selected.blurb}</p>
+              <p className="mt-1 font-mono text-[11px] text-zinc-500">
+                Draws {selected.draws.toLowerCase()}.
+              </p>
+              {selected.source && (
+                <a
+                  href={selected.source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex font-mono text-[11px] text-zinc-500 underline decoration-white/15 underline-offset-2 transition-colors hover:text-zinc-300"
+                >
+                  Adapted from {selected.source.label}
+                </a>
+              )}
             </div>
           )}
 
-          {/* ══ Step 3 · Name & fund ══ */}
-          {stage === 3 && (
-            <div className="divide-y divide-card-border">
-              <ProductSection
-                title={<label htmlFor="vault-name">Vault name</label>}
-                description="The public name depositors see. Your source stays separate."
-              >
-                <input
-                  id="vault-name"
-                  value={vaultName}
-                  onChange={(e) => {
-                    nameTouched.current = true;
-                    setVaultName(e.target.value);
-                  }}
-                  disabled={busy || live}
-                  placeholder="Momentum Alpha"
-                  className={inputCls}
-                />
-              </ProductSection>
+          {/* The old Whop deployer felt like an IDE because Pine and its generated Move source
+              shared one stable, full-height workbench. Keep that density and preserve the exact
+              vault-target transpilation used by the sealed commitment. */}
+          {(selected || usingCustom) && (
+            <StrategySourceEditor
+              pineScript={effectivePine}
+              sourceName={importedScript?.title ?? selected?.id ?? "strategy"}
+              originalUrl={importedScript?.url || selected?.source?.url}
+              editing={editingSource}
+              canReset={usingCustom}
+              disabled={busy}
+              creatorAddress={account?.address.toString()}
+              marketAddress={primaryMarketAddress}
+              onEditingChange={(nextEditing) => {
+                if (nextEditing && !usingCustom && selected) {
+                  setCustomPine(selected.script);
+                  setImportedScript(null);
+                }
+                setEditingSource(nextEditing);
+              }}
+              onPineChange={(source) => {
+                setCustomPine(source);
+                setCommitInfo(null);
+              }}
+              onReset={() => {
+                setCustomPine("");
+                setImportedScript(null);
+                setEditingSource(false);
+                setCommitInfo(null);
+              }}
+            />
+          )}
 
-              {/* Cost — every number from /api/sealed/config, nothing hard-coded. */}
-              {config ? (
-                <ProductSection
-                  title="Required to launch"
-                  action={(
-                    <span className="font-mono text-base font-semibold tabular-nums text-accent">
-                      {totalUsdc} USDC
+          {/* Compile result */}
+          <AnimatePresence>
+            {commitInfo && (
+              <Reveal>
+                <div className="space-y-2">
+                  <DataTable
+                    columns={["Compiled", "Value"]}
+                    rows={[
+                      ["Program hash", <span key="h" className="text-accent">{commitInfo.commitment}</span>],
+                      ["Module", commitInfo.moduleName],
+                      ["Market", commitInfo.market.name],
+                      ["Warm-up", `${commitInfo.warmupBars} bars`],
+                    ]}
+                    caption="This hash is your strategy's on-chain identity."
+                  />
+                  {commitInfo.warnings.length > 0 && (
+                    <Banner tone="warn">
+                      {commitInfo.warnings.map((w) => (
+                        <span key={w} className="block">{w}</span>
+                      ))}
+                    </Banner>
+                  )}
+                </div>
+              </Reveal>
+            )}
+          </AnimatePresence>
+
+        </div>
+
+        {/* ══ RIGHT: decisions + action, sticky ══ */}
+        <div className="min-w-0 lg:self-start" aria-label="Launch settings">
+          <ProductPanel className="overflow-hidden">
+          <div className="flex flex-col divide-y divide-card-border">
+            {/* Name */}
+            <ProductSection
+              title={<label htmlFor="vault-name">Bot name</label>}
+              description="The public name depositors see. Your source stays separate."
+            >
+              <input
+                id="vault-name"
+                value={vaultName}
+                onChange={(e) => {
+                  nameTouched.current = true;
+                  setVaultName(e.target.value);
+                }}
+                disabled={busy}
+                placeholder="Momentum Alpha"
+                className={inputCls}
+              />
+            </ProductSection>
+
+            <ProductSection
+              title="Markets to trade"
+              description={
+                markets.length === executionMarketOptions.length && markets.length > 1
+                  ? `All ${markets.length} supported markets are approved.`
+                  : `${markets.length} market${markets.length === 1 ? "" : "s"} approved for this bot.`
+              }
+            >
+              <ProductSelectorButton
+                onClick={() => setMarketAccessOpen(true)}
+                disabled={busy}
+                aria-label="Configure bot market access"
+                aria-haspopup="dialog"
+                aria-expanded={marketAccessOpen}
+                aria-busy={marketOptionsLoading && executionMarketOptions.length === 0}
+                className="w-full"
+                icon={<MarketLogo market={previewMarket} size={24} />}
+                label="Bot market access"
+                value={previewMarket}
+                detail={
+                  marketOptionsLoading && executionMarketOptions.length === 0
+                    ? "Loading"
+                    : markets.length === executionMarketOptions.length && markets.length > 1
+                      ? "All approved"
+                      : `${markets.length} approved`
+                }
+              />
+            </ProductSection>
+
+            {/* Only show portfolio-specific rules when several markets are approved. */}
+            {config && isPortfolio && (
+              <ProductSection
+                title="Portfolio safeguards"
+                description={`${markets.length} markets approved for this bot.`}
+              >
+                <p className="text-pretty text-[12px] leading-relaxed text-zinc-300">
+                  The strategy is evaluated separately on each approved market and can hold up
+                  to {Math.min(config.portfolioDefaults?.maxPositions ?? 4, markets.length)} positions.
+                </p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                  <Review
+                    k="Total exposure cap"
+                    v={`${(config.portfolioDefaults?.maxPortfolioLeverageX100 ?? 300) / 100}x NAV`}
+                  />
+                  <Review
+                    k="Per position"
+                    v={`${(config.portfolioDefaults?.maxPctBps ?? 2500) / 100}% max`}
+                  />
+                  <Review
+                    k="Auto-close after"
+                    v={`${Math.round(((config.portfolioDefaults?.maxHoldBars ?? 1440) * minBarIntervalS) / 3600)}h`}
+                  />
+                  <Review
+                    k="Funding stop-out"
+                    v={`${(config.portfolioDefaults?.maxAdverseFundingBps ?? 200) / 100}%`}
+                  />
+                </dl>
+              </ProductSection>
+            )}
+
+            {/* Source visibility */}
+            <ProductSection title="Source visibility">
+              <div className="grid grid-cols-2 gap-1.5">
+                <RailChoice
+                  active={isPrivate}
+                  onClick={() => setIsPrivate(true)}
+                  disabled={busy}
+                  icon={<Lock className="h-3.5 w-3.5" aria-hidden />}
+                  title="Private"
+                  body="Only a commitment goes on-chain. Reveal later to prove every trade came from it."
+                />
+                <RailChoice
+                  active={!isPrivate}
+                  onClick={() => setIsPrivate(false)}
+                  disabled={busy}
+                  icon={<Globe className="h-3.5 w-3.5" aria-hidden />}
+                  title="Public"
+                  body="Published with the vault so anyone can check it against the trades it made."
+                />
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                {isPrivate
+                  ? "Only a commitment goes on-chain. Reveal later to prove every trade came from it."
+                  : "Published with the vault so anyone can check it against the trades it made."}
+              </p>
+            </ProductSection>
+
+            {/* Who runs it */}
+            <ProductSection title="Who runs it">
+              <div className="grid grid-cols-2 gap-1.5">
+                <RailChoice
+                  active={managed}
+                  onClick={() => setManaged(true)}
+                  disabled={busy}
+                  icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
+                  title="We run it"
+                  body="Runs every minute automatically. We keep an encrypted copy to execute it — so we can technically read it."
+                />
+                <RailChoice
+                  active={!managed}
+                  onClick={() => setManaged(false)}
+                  disabled={busy}
+                  icon={<Server className="h-3.5 w-3.5" aria-hidden />}
+                  title="I run it myself"
+                  body="We never receive your source. The vault trades only while your attestor is running."
+                />
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                {managed
+                  ? "Runs every minute automatically. We keep an encrypted copy to execute it — so we can technically read it."
+                  : "We never receive your source. The vault trades only while your attestor is running."}
+              </p>
+            </ProductSection>
+
+            {/* Cost */}
+            {config && (
+              <ProductSection
+                title="Required to launch"
+                action={(
+                  <span className="font-mono text-[15px] font-semibold tabular-nums text-accent">
+                    {config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc} USDC
+                  </span>
+                )}
+              >
+                <dl className="space-y-1.5">
+                  <RailRow k="Decibel protocol fee" v={`${config.economics.creationFeeUsdc}`} />
+                  <RailRow k="Our launch fee" v={`${config.economics.launchFeeUsdc}`} />
+                  <RailRow k="Starting capital" v={`${seedUsdc}`} tone="warn" />
+                </dl>
+                {/* Three lines of caveat on a phone pushed everything else off-screen, so the
+                    mobile version keeps only the part that changes a decision. */}
+                <p className="mt-1.5 text-[12px] leading-relaxed text-amber-400/80 lg:hidden">
+                  Starting capital is at risk — it is traded, not a fee.
+                </p>
+                <p className="mt-1.5 hidden text-[12px] leading-relaxed text-zinc-400 lg:block">
+                  Starting capital is not a fee — it is traded by the strategy and exposed to its
+                  gains and losses. The launch fee is once per vault; swapping indicators later is
+                  free.
+                </p>
+                <div className="mt-2.5 space-y-1.5 border-t border-card-border pt-2.5">
+                  <PotRow
+                    label="Decibel balance"
+                    need={config.economics.creationFeeUsdc + seedUsdc}
+                    have={preflight?.usdc}
+                  />
+                  <PotRow
+                    label="Wallet"
+                    need={config.economics.launchFeeUsdc}
+                    have={preflight?.walletUsdc}
+                  />
+                </div>
+                <dl className="mt-2.5 space-y-1.5 border-t border-card-border pt-2.5">
+                  <RailRow
+                    k="Performance fee"
+                    v={`${config.economics.depositorPaysPct}%`}
+                    note={`Depositors pay. You get ${config.economics.creatorKeepsPct}%.`}
+                  />
+                  <RailRow
+                    k="Trading fee"
+                    v={`${config.economics.builderFeeBps / 100}%`}
+                    note="Per fill, on notional."
+                  />
+                </dl>
+                {!config.economics.termsOnChain && (
+                  <p className="mt-2 text-[12px] leading-relaxed text-amber-500/90">
+                    Estimated — the contract isn&apos;t deployed here, so these are defaults.
+                  </p>
+                )}
+              </ProductSection>
+            )}
+
+            {/* Rules */}
+            <details className="group overflow-hidden bg-background-secondary">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3.5 font-display text-[13px] font-semibold text-foreground-secondary transition-colors hover:text-foreground">
+                <span>Execution settings</span>
+                <span className="font-normal text-muted-foreground">· defaults applied</span>
+                <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+              </summary>
+              <div className="space-y-3 border-t border-card-border px-4 py-3.5">
+                <Segmented label="Order size" hint="Share of vault NAV per order." options={ORDER_SIZE_CHOICES} value={pctBps} onChange={setPctBps} disabled={busy} />
+                <Segmented label="Max leverage" hint="Hard cap the contract enforces." options={LEVERAGE_CHOICES} value={maxLeverageX100} onChange={setMaxLeverageX100} disabled={busy} />
+                <Segmented label="Trade cadence" hint="Minimum time between bars." options={CADENCE_CHOICES} value={minBarIntervalS} onChange={setMinBarIntervalS} disabled={busy} />
+                <Segmented label="Seed capital" hint="Your own USDC, at risk." options={SEED_CHOICES.map((v) => ({ label: `${v}`, value: v }))} value={seedUsdc} onChange={setSeedUsdc} disabled={busy} />
+                <p className="border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-zinc-400">
+                  Frozen when your bot goes live. Slippage {(config?.defaults.slippageBps ?? 30) / 100}%
+                  and the {config?.economics.feeIntervalDays ?? 30}-day fee interval are protocol
+                  floors, not choices.
+                </p>
+              </div>
+            </details>
+
+            {/* Risk, immediately before the action */}
+            {config && (
+              <ProductSection title="Before you launch">
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+                  <Review k="Direction" v={usingCustom ? "Per your script" : (selected?.direction ?? "—")} />
+                  <Review
+                    k={isPortfolio ? "Markets" : "Market"}
+                    // Bare tickers when there are several: four "/USD" suffixes wrap the value
+                    // onto a second line and add nothing — every market here is USD-quoted.
+                    v={isPortfolio ? markets.map((m) => m.replace("/USD", "")).join(", ") : primaryMarket}
+                  />
+                  <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
+                  <Review
+                    k="Max leverage"
+                    v={`${effectiveLeverageX100 / 100}x`}
+                    tone={effectiveLeverageX100 > 200 ? "warn" : undefined}
+                  />
+                  <Review k="Order size" v={`${effectivePctBps / 100}% of NAV`} />
+                  <Review k="Runs" v={managed ? "Automatically" : "Only while you run it"} tone={managed ? undefined : "warn"} />
+                </dl>
+                {(scriptPctBps !== null || scriptLeverageX100 !== null) && (
+                  <p className="mt-2.5 border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-zinc-300">
+                    Your script sets its own{" "}
+                    {scriptPctBps !== null && scriptLeverageX100 !== null
+                      ? "size and leverage"
+                      : scriptPctBps !== null
+                        ? "position size"
+                        : "leverage"}
+                    .{" "}
+                    {/* Naming the cap matters: "your script chooses" printed next to a number
+                        SMALLER than the script asked for reads as a contradiction, and the
+                        creator would go looking for a bug that is really a working limit. */}
+                    {scriptPctBps !== null && scriptPctBps > pctBps ? (
+                      <>
+                        It asks for {scriptPctBps / 100}% per position; the {pctBps / 100}% order
+                        size above caps it.
+                      </>
+                    ) : scriptLeverageX100 !== null && scriptLeverageX100 > maxLeverageX100 ? (
+                      <>
+                        It asks for {scriptLeverageX100 / 100}x; the {maxLeverageX100 / 100}x cap
+                        above limits it.
+                      </>
+                    ) : (
+                      <>The settings above are ceilings it stays inside.</>
+                    )}
+                  </p>
+                )}
+                <p className="mt-2.5 border-t border-card-border pt-2.5 text-[12px] leading-relaxed text-zinc-400">
+                  Leveraged perpetual futures. At {effectiveLeverageX100 / 100}x, a{" "}
+                  <span className="font-semibold text-white">
+                    {(100 / (effectiveLeverageX100 / 100)).toFixed(0)}%
+                  </span>{" "}
+                  adverse move wipes out the capital behind a full-size position. On-chain
+                  enforcement guarantees the vault follows your rules — not that they are
+                  profitable.
+                </p>
+              </ProductSection>
+            )}
+
+            {/* Live pipeline */}
+            <AnimatePresence>
+              {(busy || started) && (
+                <motion.div
+                  initial={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(4px)" }}
+                  animate={{ opacity: 1, transform: "none" }}
+                  exit={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(-4px)" }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                  className="space-y-3"
+                >
+                  {step === "commit" && (
+                    <ThinkingState label="Compiling your strategy" steps={thinkSteps} />
+                  )}
+                  <TaskList tasks={tasks} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {error && (
+                <Banner tone="error" onDismiss={() => { setError(null); setErrorList([]); }}>
+                  <span className="block font-semibold">{error}</span>
+                  {errorList.length > 0 && (
+                    <ul className="mt-1.5 space-y-1">
+                      {errorList.map((e) => (
+                        <li key={e} className="text-[12px] leading-relaxed text-red-300/80">• {e}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {started && !live && (
+                    <span className="mt-2 block text-[12px] leading-relaxed text-red-300/70">
+                      {doneThrough >= 2
+                        ? "Your Decibel vault exists and its funds are safe — resuming will not create a second one."
+                        : "Nothing has been spent yet."}
                     </span>
                   )}
-                >
-                  <dl className="space-y-1.5">
-                    <RailRow k="Decibel protocol fee" v={`${config.economics.creationFeeUsdc} USDC`} />
-                    <RailRow k="Our launch fee" v={`${config.economics.launchFeeUsdc} USDC`} />
-                    <RailRow k="Starting capital" v={`${seedUsdc} USDC`} tone="warn" />
-                  </dl>
-                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                    Starting capital is not a fee — it is traded by the strategy and exposed to its
-                    gains and losses. The launch fee is once per vault; swapping strategies later is free.
-                  </p>
-                  {connected && (
-                    <div className="mt-2.5 space-y-1.5 border-t border-card-border pt-2.5">
-                      <PotRow
-                        label="Decibel balance"
-                        need={config.economics.creationFeeUsdc + seedUsdc}
-                        have={preflight?.usdc}
-                      />
-                      <PotRow
-                        label="Wallet"
-                        need={config.economics.launchFeeUsdc}
-                        have={preflight?.walletUsdc}
-                      />
-                    </div>
-                  )}
-                  <dl className="mt-2.5 space-y-1.5 border-t border-card-border pt-2.5">
-                    <RailRow
-                      k="Performance fee"
-                      v={`${config.economics.depositorPaysPct}%`}
-                      note={feeSplit ?? undefined}
-                    />
-                    <RailRow
-                      k="Trading fee"
-                      v={`${config.economics.builderFeeBps / 100}%`}
-                      note="Per fill, on notional."
-                    />
-                  </dl>
-                  {!config.economics.termsOnChain && (
-                    <p className="mt-2 text-xs leading-relaxed text-warning/90">
-                      Estimated — the contract isn&apos;t deployed here, so these are defaults.
-                    </p>
-                  )}
-                </ProductSection>
-              ) : (
-                <ProductSection title="Required to launch">
-                  {configError ? (
-                    <p className="text-xs text-muted-foreground">Costs unavailable — launch settings did not load.</p>
-                  ) : (
-                    <div className="space-y-1.5" aria-busy>
-                      {[0, 1, 2].map((i) => (
-                        <div key={i} className="h-4 animate-pulse rounded-[var(--radius-xs)] bg-card motion-reduce:animate-none" />
-                      ))}
-                    </div>
-                  )}
-                </ProductSection>
+                </Banner>
               )}
+            </AnimatePresence>
 
-              {/* Risk, immediately before the action */}
-              {config && (
-                <ProductSection title="Before you launch">
-                  <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-3">
-                    <Review k="Strategy" v={sourceLabel} />
-                    <Review k="Direction" v={usingCustom ? "Per your script" : (selected?.direction ?? "—")} />
-                    <Review
-                      k={isPortfolio ? "Markets" : "Market"}
-                      // Bare tickers when there are several: four "/USD" suffixes wrap the value
-                      // onto a second line and add nothing — every market here is USD-quoted.
-                      v={isPortfolio ? markets.map((m) => m.replace("/USD", "")).join(", ") : primaryMarket}
-                    />
-                    <Review k="Capital at risk" v={`${seedUsdc} USDC`} tone="warn" />
-                    <Review
-                      k="Max leverage"
-                      v={`${effectiveLeverageX100 / 100}x`}
-                      tone={effectiveLeverageX100 > 200 ? "warn" : undefined}
-                    />
-                    <Review k="Order size" v={`${effectivePctBps / 100}% of NAV`} />
-                    <Review k="Runs" v={managed ? "Automatically" : "Only while you run it"} tone={managed ? undefined : "warn"} />
-                    <Review k="Source" v={isPrivate ? "Private" : "Public"} />
-                  </dl>
-                  {(scriptPctBps !== null || scriptLeverageX100 !== null) && (
-                    <p className="mt-2.5 border-t border-card-border pt-2.5 text-xs leading-relaxed text-foreground-secondary">
-                      Your script sets its own{" "}
-                      {scriptPctBps !== null && scriptLeverageX100 !== null
-                        ? "size and leverage"
-                        : scriptPctBps !== null
-                          ? "position size"
-                          : "leverage"}
-                      .{" "}
-                      {/* Naming the cap matters: "your script chooses" printed next to a number
-                          SMALLER than the script asked for reads as a contradiction, and the
-                          creator would go looking for a bug that is really a working limit. */}
-                      {scriptPctBps !== null && scriptPctBps > pctBps ? (
-                        <>
-                          It asks for {scriptPctBps / 100}% per position; the {pctBps / 100}% order
-                          size caps it.
-                        </>
-                      ) : scriptLeverageX100 !== null && scriptLeverageX100 > maxLeverageX100 ? (
-                        <>
-                          It asks for {scriptLeverageX100 / 100}x; the {maxLeverageX100 / 100}x cap
-                          limits it.
-                        </>
-                      ) : (
-                        <>The limits you set are ceilings it stays inside.</>
-                      )}
-                    </p>
-                  )}
-                  <p className="mt-2.5 border-t border-card-border pt-2.5 text-xs leading-relaxed text-muted-foreground">
-                    Leveraged perpetual futures. At {effectiveLeverageX100 / 100}x, a{" "}
-                    <span className="font-semibold text-foreground">
-                      {(100 / (effectiveLeverageX100 / 100)).toFixed(0)}%
-                    </span>{" "}
-                    adverse move wipes out the capital behind a full-size position. On-chain
-                    enforcement guarantees the vault follows your rules — not that they are
-                    profitable.
-                  </p>
-                  {!started && !previewMode && connected && (
-                    <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
-                      Three wallet signatures — Decibel requires each to be its own transaction.
-                    </p>
-                  )}
-                </ProductSection>
+            <AnimatePresence>
+              {live && svAddr && (
+                <Banner tone="success">
+                  <span className="block font-semibold">Your bot is live and trading.</span>
+                  <span className="mt-2 flex flex-col gap-1">
+                    <ExplorerLink label="Strategy" addr={svAddr} base={explorerBase} suffix={explorerSuffix} />
+                    {decibelVaultAddr && (
+                      <ExplorerLink label="Vault" addr={decibelVaultAddr} base={explorerBase} suffix={explorerSuffix} />
+                    )}
+                  </span>
+                </Banner>
               )}
+            </AnimatePresence>
 
-              {/* Live pipeline, errors, success */}
-              {(busy || started || error) && (
-                <div className="space-y-3 p-4">
-                  <AnimatePresence>
-                    {(busy || started) && (
-                      <motion.div
-                        initial={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(4px)" }}
-                        animate={{ opacity: 1, transform: "none" }}
-                        exit={{ opacity: 0, transform: reducedMotion ? "none" : "translateY(-4px)" }}
-                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                        className="space-y-3"
-                      >
-                        {step === "commit" && (
-                          <ThinkingState label="Compiling your strategy" steps={thinkSteps} />
-                        )}
-                        <TaskList tasks={tasks} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+          </div>
 
-                  <AnimatePresence>
-                    {commitInfo && (
-                      <Reveal>
-                        <div className="space-y-2">
-                          <DataTable
-                            columns={["Compiled", "Value"]}
-                            rows={[
-                              ["Program hash", <span key="h" className="text-accent">{commitInfo.commitment}</span>],
-                              ["Module", commitInfo.moduleName],
-                              ["Market", commitInfo.market.name],
-                              ["Warm-up", `${commitInfo.warmupBars} bars`],
-                            ]}
-                            caption="This hash is your strategy's on-chain identity."
-                          />
-                          {commitInfo.warnings.length > 0 && (
-                            <Banner tone="warn">
-                              {commitInfo.warnings.map((w) => (
-                                <span key={w} className="block">{w}</span>
-                              ))}
-                            </Banner>
-                          )}
-                        </div>
-                      </Reveal>
-                    )}
-                  </AnimatePresence>
+          {/* Pinned action. Desktop only — on a phone this sits ~3000px down the page, so the
+              mobile action is a fixed bottom bar instead (below). */}
+          <div className="hidden shrink-0 border-t border-card-border bg-background-secondary p-3 lg:block">
+            {config && !previewMode && (
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <span className="text-[12px] text-zinc-400">Required to launch</span>
+                <span className="font-mono text-[14px] font-semibold tabular-nums text-white">
+                  {config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc} USDC
+                </span>
+              </div>
+            )}
+            {previewMode ? (
+              <div
+                role="status"
+                className={cn(PRODUCT_CONTROL_CLASS, "flex w-full items-center justify-center gap-2 px-4 py-3.5 font-display text-[14px] font-semibold text-muted-foreground")}
+              >
+                <Lock className="h-4 w-4" aria-hidden />
+                Launch unavailable in preview mode
+              </div>
+            ) : (
+              <ActionButton
+                onClick={launch}
+                state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
+                successLabel="Live"
+                errorLabel={started ? `Resume (step ${doneThrough + 1} of 4)` : "Try again"}
+                disabled={live}
+              >
+                {buttonLabel}
+              </ActionButton>
+            )}
+            {!started && !previewMode && (
+              <p className="mt-1.5 text-center text-[12px] leading-relaxed text-zinc-400">
+                Three wallet signatures — Decibel requires each to be its own transaction.
+              </p>
+            )}
+          </div>
+          </ProductPanel>
+        </div>
+      </div>
 
-                  <AnimatePresence>
-                    {error && (
-                      <Banner tone="error" onDismiss={() => { setError(null); setErrorList([]); }}>
-                        <span className="block font-semibold">{error}</span>
-                        {errorList.length > 0 && (
-                          <ul className="mt-1.5 space-y-1">
-                            {errorList.map((e) => (
-                              <li key={e} className="text-xs leading-relaxed text-destructive/80">• {e}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {started && !live && (
-                          <span className="mt-2 block text-xs leading-relaxed text-destructive/70">
-                            {doneThrough >= 2
-                              ? "Your Decibel vault exists and its funds are safe — resuming will not create a second one."
-                              : "Nothing has been spent yet."}
-                          </span>
-                        )}
-                      </Banner>
-                    )}
-                  </AnimatePresence>
-
-                  <AnimatePresence>
-                    {live && svAddr && (
-                      <Banner tone="success">
-                        <span className="block font-semibold">Your vault is live and trading.</span>
-                        <span className="mt-2 flex flex-col gap-1">
-                          <ExplorerLink label="Strategy" addr={svAddr} base={explorerBase} suffix={explorerSuffix} />
-                          {decibelVaultAddr && (
-                            <ExplorerLink label="Vault" addr={decibelVaultAddr} base={explorerBase} suffix={explorerSuffix} />
-                          )}
-                        </span>
-                      </Banner>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
+          {/* Whop's deploy screen put the rendered strategy after the editor and rail. It lets
+              creators understand the source first, then inspect the full-width visual result
+              without sacrificing half of the chart to form controls. */}
+          {effectivePine && (
+            <section className="border-t border-card-border">
+              <PineVisualPreview
+                asset={previewMarket}
+                embedded
+                pineScript={effectivePine}
+                title={activeMarketplaceSelection?.title ?? selected?.label}
+              />
+            </section>
           )}
 
-          {/* Desktop action row. On a phone the same controls sit in a fixed bottom bar. */}
-          <div className="hidden border-t border-card-border bg-background-secondary p-3 lg:block">
-            {footer(false)}
-          </div>
+          {/* Keep cash.trading's real evaluator beneath the visual preview. This is additive to
+              the original Whop workbench, not a second disconnected page. */}
+          {effectivePine && (
+            <section className="border-t border-card-border p-2 sm:p-3">
+              <SealedBacktest
+                asset={primaryMarket}
+                markets={markets}
+                initialCapital={seedUsdc}
+                maxLeverageX100={maxLeverageX100}
+                pctBps={pctBps}
+                pineScript={effectivePine}
+                slippageBps={config?.defaults?.slippageBps ?? 30}
+              />
+            </section>
+          )}
         </ProductPanel>
       </div>
 
       {/*
-        Mobile action bar. Fixed to the viewport so the primary action is always one thumb
-        away, with the total beside it so the commitment is never out of sight.
+        Mobile action bar. The launch button lived at the very bottom of a 3200px page on a
+        phone — a user had to scroll four screens past content they had already decided on to
+        reach it, which is the single worst thing about a checkout flow. Fixed to the viewport
+        instead, with the total beside it so the commitment is never out of sight.
       */}
       <div
         className="fixed inset-x-0 bottom-0 z-40 border-t border-card-border bg-background/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:hidden"
       >
-        {footer(true)}
+        {previewMode ? (
+          <div
+            role="status"
+            className={cn(PRODUCT_CONTROL_CLASS, "flex w-full items-center justify-center gap-2 px-4 py-3 font-display text-[14px] font-semibold text-muted-foreground")}
+          >
+            <Lock className="h-4 w-4" aria-hidden />
+            Launch unavailable
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            {config && (
+              <div className="min-w-0 shrink-0">
+                <span className="block text-[11px] leading-none text-zinc-400">Required</span>
+                <span className="mt-0.5 block font-mono text-[15px] font-semibold leading-none tabular-nums text-white">
+                  {config.economics.creationFeeUsdc + config.economics.launchFeeUsdc + seedUsdc}
+                  <span className="ml-1 text-[11px] text-zinc-400">USDC</span>
+                </span>
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <ActionButton
+                onClick={launch}
+                state={busy ? "pending" : live ? "success" : error ? "error" : "idle"}
+                successLabel="Live"
+                errorLabel={started ? `Resume ${doneThrough + 1}/4` : "Try again"}
+                disabled={live}
+              >
+                {live ? "Live" : started ? `Resume ${doneThrough + 1}/4` : "Launch bot"}
+              </ActionButton>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Spacer so the bar never covers the last card. */}
@@ -1536,47 +1359,7 @@ export function SealedLaunch({
 }
 
 const inputCls =
-  "min-h-11 w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:border-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:text-[13px]";
-
-/** A collapsed section. The heavy children are the caller's to mount only when `open`. */
-function Disclosure({
-  label,
-  detail,
-  open,
-  onToggle,
-  flush,
-  children,
-}: {
-  label: string;
-  detail?: string;
-  open: boolean;
-  onToggle: (open: boolean) => void;
-  /** No inner padding — for full-bleed content like the chart. */
-  flush?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details
-      open={open}
-      onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}
-      className="group"
-    >
-      <summary
-        className={cn(
-          "flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 font-display text-[13px] font-semibold text-foreground-secondary hover:text-foreground [&::-webkit-details-marker]:hidden",
-          FOCUS_RING,
-        )}
-      >
-        <span>{label}</span>
-        {detail && <span className="min-w-0 truncate font-normal text-muted-foreground">· {detail}</span>}
-        <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-      </summary>
-      <div className={cn("border-t border-card-border", flush ? "" : "px-4 py-3.5")}>
-        {children}
-      </div>
-    </details>
-  );
-}
+  "w-full rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-accent/16 focus:outline-none disabled:opacity-50";
 
 /** Segmented choice. Replaces every slider and number input in this flow — the set of legal
  *  values is small and known, so picking from it is both faster and impossible to get wrong. */
@@ -1598,8 +1381,8 @@ function Segmented<T extends string | number>({
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <span className="font-display text-xs font-semibold text-foreground">{label}</span>
-        <span className="text-right text-xs leading-relaxed text-muted-foreground">{hint}</span>
+        <span className="font-display text-[12px] font-semibold text-white">{label}</span>
+        <span className="text-right text-[12px] leading-relaxed text-zinc-400">{hint}</span>
       </div>
       <ProductSegmented
         role="radiogroup"
@@ -1614,8 +1397,8 @@ function Segmented<T extends string | number>({
             disabled={disabled}
             onClick={() => onChange(o.value)}
             className={cn(
-              "min-h-9 flex-1 rounded-[var(--radius-xs)] px-2 py-1.5 font-mono text-xs tabular-nums transition-colors disabled:opacity-50",
-              PRODUCT_PRESSABLE_CLASS, FOCUS_RING,
+              "flex-1 rounded-[var(--radius-xs)] px-2 py-1.5 font-mono text-[11px] tabular-nums transition-colors disabled:opacity-50",
+              PRODUCT_PRESSABLE_CLASS,
               o.value === value
                 ? "bg-accent/15 text-accent"
                 : "text-muted-foreground hover:bg-card-hover hover:text-foreground-secondary",
@@ -1629,7 +1412,7 @@ function Segmented<T extends string | number>({
   );
 }
 
-/** A two-way choice. Full-width row rather than a half-width card — at 360px the
+/** A choice in the right rail. Full-width row rather than a half-width card — at 360px the
  *  side-by-side card pair wrapped into unreadable slivers. */
 function RailChoice({
   active, onClick, disabled, icon, title, body,
@@ -1650,14 +1433,13 @@ function RailChoice({
       className={cn(
         PRODUCT_CONTROL_CLASS,
         PRODUCT_PRESSABLE_CLASS,
-        FOCUS_RING,
-        "min-h-11 p-2.5 text-left disabled:pointer-events-none disabled:opacity-50",
+        "min-h-10 p-2.5 text-left disabled:pointer-events-none disabled:opacity-50",
         active
-          ? "border-accent/30 bg-accent/[0.06]"
+          ? "border-accent/18 bg-accent/[0.06]"
           : "hover:border-border-strong hover:bg-card-hover",
       )}
     >
-      <span className={cn("flex items-center gap-1.5", active ? "text-accent" : "text-foreground-secondary")}>
+      <span className={cn("flex items-center gap-1.5", active ? "text-accent" : "text-zinc-300")}>
         {icon}
         <span className="font-display text-[13px] font-semibold">{title}</span>
       </span>
@@ -1666,22 +1448,22 @@ function RailChoice({
   );
 }
 
-/** A single money line. */
+/** A single money line in the rail. */
 function RailRow({ k, v, note, tone }: { k: string; v: string; note?: string; tone?: "warn" }) {
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <dt className="text-xs text-foreground-secondary">{k}</dt>
+        <dt className="text-[12px] text-zinc-300">{k}</dt>
         <dd
           className={cn(
-            "shrink-0 font-mono text-xs tabular-nums",
-            tone === "warn" ? "text-warning" : "text-foreground",
+            "shrink-0 font-mono text-[12px] tabular-nums",
+            tone === "warn" ? "text-amber-400" : "text-zinc-200",
           )}
         >
           {v}
         </dd>
       </div>
-      {note && <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{note}</p>}
+      {note && <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-400">{note}</p>}
     </div>
   );
 }
@@ -1694,9 +1476,9 @@ function ExplorerLink({
       href={`${base}/${addr}${suffix}`}
       target="_blank"
       rel="noreferrer"
-      className={cn("group inline-flex min-w-0 items-center gap-1.5 rounded-[var(--radius-xs)] text-[11px] text-muted-foreground transition-colors hover:text-accent", FOCUS_RING)}
+      className="group inline-flex items-center gap-1.5 text-[10px] text-zinc-500 transition-colors hover:text-accent"
     >
-      <span className="w-14 shrink-0">{label}</span>
+      <span className="w-12 shrink-0 uppercase tracking-wide">{label}</span>
       <span className="truncate font-mono">{addr}</span>
       <ExternalLink className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
     </a>
@@ -1706,7 +1488,7 @@ function ExplorerLink({
 /** Small metadata chip. Deliberately readable rather than 9px uppercase. */
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-full bg-card-hover px-2 py-0.5 text-[11px] font-medium text-foreground-secondary">
+    <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-medium text-zinc-300">
       {children}
     </span>
   );
@@ -1714,9 +1496,9 @@ function Tag({ children }: { children: React.ReactNode }) {
 
 function Review({ k, v, tone }: { k: string; v: string; tone?: "warn" }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{k}</dt>
-      <dd className={cn("mt-0.5 truncate font-display text-[13px] font-semibold", tone === "warn" ? "text-warning" : "text-foreground")}>
+    <div>
+      <dt className="text-[12px] text-zinc-500">{k}</dt>
+      <dd className={cn("mt-0.5 font-display text-[14px] font-semibold", tone === "warn" ? "text-amber-400" : "text-white")}>
         {v}
       </dd>
     </div>
@@ -1730,15 +1512,15 @@ function PotRow({ label, need, have }: { label: string; need: number; have?: num
   const known = typeof have === "number";
   const ok = known && have >= need;
   return (
-    <div className="flex items-baseline justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{label}</span>
+    <div className="flex items-baseline justify-between gap-3 text-[12px]">
+      <span className="text-zinc-400">{label}</span>
       <span className="shrink-0 font-mono tabular-nums">
-        <span className={ok ? "text-accent" : known ? "text-warning" : "text-muted-foreground"}>
+        <span className={ok ? "text-accent" : known ? "text-amber-400" : "text-zinc-500"}>
           {known ? have.toFixed(2) : "—"}
         </span>
-        <span className="text-muted-foreground"> / {need} USDC</span>
+        <span className="text-zinc-500"> / {need} USDC</span>
         {known && !ok && (
-          <span className="ml-1.5 text-warning">add {(need - have).toFixed(2)}</span>
+          <span className="ml-1.5 text-amber-400">add {(need - have).toFixed(2)}</span>
         )}
       </span>
     </div>

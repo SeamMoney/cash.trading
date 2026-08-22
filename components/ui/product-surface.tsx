@@ -116,7 +116,7 @@ export function ProductSelectorButton({
       variant="ghost"
       data-slot="product-selector"
       className={cn(
-        "!inline-flex !h-10 min-w-0 !justify-start gap-2 !rounded-[var(--radius-sm)] !border !border-transparent !bg-transparent !px-2 !py-1.5 text-left hover:!border-card-border hover:!bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
+        "!inline-flex !h-10 min-w-0 !justify-start gap-2 !rounded-[8px] !border !border-transparent !bg-transparent !px-2 !py-1.5 text-left hover:!border-card-border hover:!bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-40",
         PRODUCT_PRESSABLE_CLASS,
         className,
       )}
@@ -128,7 +128,7 @@ export function ProductSelectorButton({
         {value}
       </span>
       {detail && (
-        <span className="hidden shrink-0 rounded-[var(--radius-xs)] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px] font-semibold leading-4 text-muted-foreground sm:inline-flex">
+        <span className="hidden shrink-0 rounded-[6px] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-muted-foreground sm:inline-flex">
           {detail}
         </span>
       )}
@@ -167,7 +167,7 @@ export function ProductBadge({
       size="1"
       variant="surface"
       className={cn(
-        "inline-flex items-center rounded-[var(--radius-xs)] border border-card-border bg-card px-2 py-0.5 font-mono text-[11px] font-semibold uppercase leading-4 text-foreground-secondary",
+        "inline-flex items-center rounded-[var(--radius-xs)] border border-card-border bg-card px-2 py-1 font-mono text-[9px] font-semibold uppercase text-foreground-secondary",
         className,
       )}
       {...props}

@@ -73,11 +73,11 @@ export function ActionButton({
       disabled={disabled || state === "pending"}
       aria-busy={state === "pending"}
       className={cn(
-        "relative flex w-full items-center justify-center rounded-[var(--radius-sm)] px-4 py-3.5 font-display text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40",
+        "relative flex w-full items-center justify-center rounded-[var(--radius-sm)] px-5 py-3.5 font-display text-[14px] font-bold disabled:cursor-not-allowed disabled:opacity-40",
         PRESSABLE_CONTROL,
         variant === "primary"
           ? "bg-accent text-accent-foreground hover:opacity-90"
-          : "border border-card-border bg-background-tertiary text-foreground hover:border-border-strong",
+          : "border border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/18",
         state === "error" && "bg-red-500 text-white",
         className,
       )}
@@ -128,10 +128,10 @@ export function ValidatedField({
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between">
-        <label htmlFor={fieldId} className="font-display text-[13px] font-semibold text-foreground">
+        <label htmlFor={fieldId} className="font-display text-[13px] font-semibold text-white">
           {label}
         </label>
-        {hint && <span className="text-[11px] text-zinc-600">{hint}</span>}
+        {hint && <span className="text-[10px] text-zinc-600">{hint}</span>}
       </div>
       <motion.input
         id={fieldId}
@@ -147,8 +147,8 @@ export function ValidatedField({
           : { transform: "translateX(0px)" }}
         transition={{ duration: 0.24, ease: EASE }}
         className={cn(
-          "w-full rounded-[var(--radius-sm)] border bg-background px-3 py-2.5 text-[13px] text-foreground placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
-          err ? "border-red-500/12" : "border-card-border focus:border-accent/16",
+          "w-full rounded-[10px] border bg-[#0d0d0d] px-3 py-2.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none disabled:opacity-50",
+          err ? "border-red-500/12" : "border-white/[0.06] focus:border-accent/16",
         )}
       />
       {validate && (
@@ -181,7 +181,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={cn("animate-pulse rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary motion-reduce:animate-none", className)}
+      className={cn("animate-pulse rounded-[10px] border border-white/[0.06] bg-[#141414] motion-reduce:animate-none", className)}
     />
   );
 }
@@ -218,9 +218,9 @@ export function ContentState({
             ? (
               <div
                 role="alert"
-                className="rounded-[var(--radius)] border border-red-500/16 bg-red-500/5 px-4 py-6 text-center"
+                className="rounded-[16px] border border-red-500/16 bg-red-500/5 px-5 py-6 text-center"
               >
-                <p className="text-xs text-red-400">{error}</p>
+                <p className="text-[12px] text-red-400">{error}</p>
               </div>
             )
             : empty
@@ -253,7 +253,7 @@ export function Banner({
       role={tone === "error" || tone === "warn" ? "alert" : "status"}
       className={cn(
         "flex items-start gap-2.5 rounded-[var(--radius)] border p-3.5",
-        tone === "info" && "border-card-border bg-background-tertiary",
+        tone === "info" && "border-white/[0.06] bg-[#141414]",
         tone === "success" && "border-accent/16 bg-accent/5",
         tone === "warn" && "border-amber-500/14 bg-amber-500/5",
         tone === "error" && "border-red-500/16 bg-red-500/5",
@@ -271,7 +271,7 @@ export function Banner({
       />
       <div
         className={cn(
-          "min-w-0 flex-1 text-xs leading-snug",
+          "min-w-0 flex-1 text-[12px] leading-snug",
           tone === "success" && "text-accent",
           tone === "warn" && "text-amber-400/90",
           tone === "error" && "text-red-400",
@@ -285,7 +285,7 @@ export function Banner({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className={cn("shrink-0 rounded-[var(--radius-xs)] p-0.5 text-zinc-600 hover:text-foreground", PRESSABLE_CONTROL)}
+          className={cn("shrink-0 rounded p-0.5 text-zinc-600 hover:text-white", PRESSABLE_CONTROL)}
         >
           <X className="h-3 w-3" />
         </button>
@@ -347,15 +347,15 @@ export function Modal({
             animate={{ opacity: 1, transform: "none" }}
             exit={{ opacity: 0, transform: reduced ? "none" : "translateY(8px) scale(0.98)" }}
             transition={{ duration: MED, ease: EASE }}
-            className="relative w-full max-w-lg overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary shadow-2xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-[var(--radius)] border border-white/[0.06] bg-[#111] shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-card-border px-4 py-3">
-              <h2 className="font-display text-sm font-bold text-foreground">{title}</h2>
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <h2 className="font-display text-[14px] font-bold text-white">{title}</h2>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className={cn("rounded-[var(--radius-xs)] p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-foreground", PRESSABLE_CONTROL)}
+                className={cn("rounded p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-white", PRESSABLE_CONTROL)}
               >
                 <X className="h-4 w-4" />
               </button>

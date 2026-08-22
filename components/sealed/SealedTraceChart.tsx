@@ -99,13 +99,13 @@ function Plot({
   return (
     <svg height={height} role="img" aria-label="Vault price trace with its own fills" width={width}>
       <g transform={`translate(${margin.left},${margin.top})`}>
-        <GridRows height={innerHeight} numTicks={4} scale={yScale} stroke="var(--chart-grid)" width={innerWidth} />
-        <GridColumns height={innerHeight} numTicks={5} scale={xScale} stroke="var(--chart-grid)" width={innerWidth} />
+        <GridRows height={innerHeight} numTicks={4} scale={yScale} stroke="var(--chart-grid, #1e1e1e)" width={innerWidth} />
+        <GridColumns height={innerHeight} numTicks={5} scale={xScale} stroke="var(--chart-grid, #1e1e1e)" width={innerWidth} />
 
         <LinePath
           curve={curveLinear}
           data={points}
-          stroke="var(--chart-foreground-muted)"
+          stroke="#7c8496"
           strokeWidth={1.25}
           x={(p) => xScale(new Date(p.t * 1_000))}
           y={(p) => yScale(p.v)}
@@ -116,7 +116,7 @@ function Plot({
           const y = yScale(f.price / PRICE_SCALE);
           // Opens are filled, closes are hollow — you can read the position lifecycle
           // off the chart without a legend lookup for every mark.
-          const color = f.reduceOnly ? "var(--chart-foreground-muted)" : f.isBuy ? "var(--success)" : "var(--danger)";
+          const color = f.reduceOnly ? "#7c8496" : f.isBuy ? "#39ff14" : "#ff6b6b";
           const size = 4.5;
           const pts = f.isBuy
             ? `${x},${y - size} ${x - size},${y + size} ${x + size},${y + size}`
@@ -139,7 +139,7 @@ function Plot({
         {yScale.ticks(4).map((tick) => (
           <text
             dominantBaseline="middle"
-            fill="var(--chart-label)"
+            fill="var(--chart-label, #7f7f7f)"
             fontFamily="monospace"
             fontSize={9}
             key={tick}
@@ -162,14 +162,14 @@ export const SealedTraceChart = memo(function SealedTraceChart(props: Props) {
   const closes = fills.filter((f) => f.reduceOnly).length;
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-chart-background">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border bg-background-secondary px-3 py-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-500">
+    <div className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-[#0d0d14]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[#111] px-3 py-1.5">
+        <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">
           On-chain trace · last {trace.length} bars
         </span>
-        <div className="flex items-center gap-3 font-mono text-[11px] text-zinc-500">
+        <div className="flex items-center gap-3 font-mono text-[9px] text-zinc-500">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0 w-0 border-x-[4px] border-b-[7px] border-x-transparent border-b-success" />
+            <span className="inline-block h-0 w-0 border-x-[4px] border-b-[7px] border-x-transparent border-b-[#39ff14]" />
             {opens} open
           </span>
           <span className="flex items-center gap-1.5">
@@ -184,7 +184,7 @@ export const SealedTraceChart = memo(function SealedTraceChart(props: Props) {
         </ParentSize>
       </div>
       {fills.length === 0 && (
-        <p className="border-t border-card-border px-3 py-1.5 font-mono text-[11px] leading-relaxed text-zinc-500">
+        <p className="border-t border-white/[0.06] px-3 py-1.5 font-mono text-[9px] leading-relaxed text-zinc-500">
           The price series the contract signed on every bar. No fills are plotted —
           either this vault has not traded yet, or its creator runs their own attestor
           and we never saw the transactions.

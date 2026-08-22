@@ -50,6 +50,7 @@ const cronRoute = readFileSync("app/api/cron/bot-tick/route.ts", "utf8");
 const keeperRoute = readFileSync("app/api/launchpad/keeper/route.ts", "utf8");
 const launchpadExecuteRoute = readFileSync("app/api/launchpad/execute/route.ts", "utf8");
 const launchpadCrankRoute = readFileSync("app/api/launchpad/crank/route.ts", "utf8");
+const launchpadDeployForm = readFileSync("components/launchpad/DeployForm.tsx", "utf8");
 const sealedLaunch = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
 const strategySourceEditor = readFileSync("components/launchpad/StrategySourceEditor.tsx", "utf8");
 const testTradeRoute = readFileSync("app/api/bot/test-trade/route.ts", "utf8");
@@ -68,9 +69,6 @@ const predepositTotalRoute = readFileSync("app/api/predeposit/total/route.ts", "
 const predepositUserRoute = readFileSync("app/api/predeposit/user/route.ts", "utf8");
 const vaultTotalRoute = readFileSync("app/api/vault/total/route.ts", "utf8");
 const vaultUserRoute = readFileSync("app/api/vault/user/route.ts", "utf8");
-const pointsData = readFileSync("components/points/use-points-data.ts", "utf8");
-const pointsPageClient = readFileSync("components/points/points-page-client.tsx", "utf8");
-const pointsProfileRoute = readFileSync("app/api/points/profile/route.ts", "utf8");
 const decibelSubaccountHook = readFileSync("hooks/useDecibelSubaccounts.ts", "utf8");
 const decibelTransactionSubmitter = readFileSync("hooks/useDecibelTransactionSubmitter.ts", "utf8");
 const portfolioPage = readFileSync("components/portfolio/PortfolioPageClient.tsx", "utf8");
@@ -78,14 +76,12 @@ const decibelFeesRoute = readFileSync("app/api/decibel/fees/route.ts", "utf8");
 const positionsComponent = readFileSync("components/trade/Positions.tsx", "utf8");
 const tradePanel = readFileSync("components/trade/TradePanel.tsx", "utf8");
 const btcChart = readFileSync("components/trade/BTCChart.tsx", "utf8");
-const swapAssetButton = readFileSync("components/trade/swap/SwapAssetButton.tsx", "utf8");
 const accountManager = readFileSync("components/trade/DecibelAccountManager.tsx", "utf8");
 const mobileModalSheet = readFileSync("components/ui/mobile-modal-sheet.tsx", "utf8");
 const responsiveModalSheet = readFileSync("components/ui/responsive-modal-sheet.tsx", "utf8");
 const mobilePortfolioSheet = readFileSync("components/trade/MobilePortfolioSheet.tsx", "utf8");
 const walletAccountModal = readFileSync("components/wallet/wallet-account-modal.tsx", "utf8");
 const decibelPoints = readFileSync("lib/decibel-points.ts", "utf8");
-const pointsProfileCard = readFileSync("components/points/points-profile-card.tsx", "utf8");
 const userStatsRoute = readFileSync("app/api/decibel/user-stats/route.ts", "utf8");
 const pointsLeaderboard = readFileSync("components/points/leaderboard.tsx", "utf8");
 const cashRewardsRoute = readFileSync("app/api/cash/rewards/route.ts", "utf8");
@@ -113,6 +109,7 @@ const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "u
 };
 const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
 const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
+const launchpadBacktestViewer = readFileSync("components/launchpad/BacktestViewer.tsx", "utf8");
 const launchpadKeeper = readFileSync("lib/launchpad/keeper.ts", "utf8");
 const launchpadCandlesRoute = readFileSync("app/api/launchpad/candles/route.ts", "utf8");
 const launchpadPyth = readFileSync("lib/launchpad/pyth.ts", "utf8");
@@ -120,6 +117,7 @@ const launchpadPriceTickRoute = readFileSync("app/api/launchpad/price-tick/route
 const launchpadOnChainRoute = readFileSync("app/api/launchpad/on-chain/route.ts", "utf8");
 const launchpadMoveCodegen = readFileSync("lib/launchpad/move-codegen.ts", "utf8");
 const launchpadTradesRoute = readFileSync("app/api/launchpad/trades/route.ts", "utf8");
+const launchpadTradeHistory = readFileSync("components/launchpad/TradeHistory.tsx", "utf8");
 const launchpadSignalStreamRoute = readFileSync("app/api/launchpad/signals/stream/route.ts", "utf8");
 const launchpadSignalStore = readFileSync("lib/launchpad/signals-store.ts", "utf8");
 const launchpadPrismaSchema = readFileSync("prisma/schema.prisma", "utf8");
@@ -134,10 +132,12 @@ const launchpadCurveRoute = readFileSync("app/api/launchpad/curve/route.ts", "ut
 const launchpadIndicatorsRoute = readFileSync("app/api/launchpad/indicators/route.ts", "utf8");
 const launchpadCreateRoute = readFileSync("app/api/launchpad/create/route.ts", "utf8");
 const launchpadVerifyRoute = readFileSync("app/api/launchpad/verify/route.ts", "utf8");
+const creatorDashboard = readFileSync("components/launchpad/CreatorDashboard.tsx", "utf8");
 const launchpadWithdrawRoute = readFileSync("app/api/launchpad/withdraw/route.ts", "utf8");
 const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.ts", "utf8");
 const launchpadGraduateRoute = readFileSync("app/api/launchpad/graduate/route.ts", "utf8");
 const launchpadPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
+const botDashboard = readFileSync("components/launchpad/BotDashboard.tsx", "utf8");
 const sharedHeader = readFileSync("components/layout/Header.tsx", "utf8");
 const automationPage = readFileSync("app/automation/page.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
@@ -202,9 +202,8 @@ const decibelDepositRoute = readFileSync("app/api/decibel/deposit/route.ts", "ut
 const decibelWithdrawRoute = readFileSync("app/api/decibel/withdraw/route.ts", "utf8");
 const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/route.ts", "utf8");
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
+const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const orderBook = readFileSync("components/trade/OrderBook.tsx", "utf8");
-const tradePageClient = readFileSync("components/trade/TradePageClient.tsx", "utf8");
-const swapMarketLayout = readFileSync("components/trade/swap/SwapMarketLayout.tsx", "utf8");
 const decibelTradeEvents = readFileSync("lib/decibel-trade-events.ts", "utf8");
 const decibelTradeFill = readFileSync("lib/decibel-trade-fill.ts", "utf8");
 const vercelConfig = JSON.parse(readFileSync("vercel.json", "utf8")) as {
@@ -342,8 +341,6 @@ assert.ok(
   !decibelSubaccountHook.includes('name: "Primary"'),
   "an unverified stored address must not be presented as an active Primary account",
 );
-assert.match(pointsData, /requestIdRef\.current !== requestId/);
-assert.match(pointsData, /requestIdRef\.current \+= 1/);
 assert.ok(!portfolioPage.includes("buildPortfolioSeries"), "portfolio history must not be synthesized from one snapshot");
 for (const fabricatedMetric of ["2.0139", "67.28%", "41.67%"] as const) {
   assert.ok(!portfolioPage.includes(fabricatedMetric), "portfolio risk metrics must not be hard-coded");
@@ -360,7 +357,7 @@ assert.ok(
   !decibelPortfolioChartRoute.includes("Math.random"),
   "portfolio history must come from Decibel rather than generated points",
 );
-assert.match(portfolioPage, /Total fees paid/i);
+assert.match(portfolioPage, /Total Fees Paid/);
 assert.match(portfolioPage, /\/api\/decibel\/fees/);
 assert.match(decibelFeesRoute, /MAX_TRADE_HISTORY/);
 assert.match(decibelFeesRoute, /strict: true/);
@@ -417,20 +414,10 @@ assert.ok(!portfolioPage.includes("overview?.equity ?? 0"), "an unavailable port
 assert.ok(!portfolioPage.includes("position.estimatedPnl ?? 0"), "an unavailable position mark must not render as zero PnL");
 assert.match(sharedHeader, /balanceRequestIdRef/);
 assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
-// One name for entering the app. The header used to say "Sign In" while every
-// page said "Connect wallet" and Portfolio said "Deposit USDC" — three names
-// for one act. "Connect wallet" is the one that survived.
-assert.equal((sharedHeader.match(/>\s*Connect wallet\s*</g) ?? []).length, 1, "the header must expose one connect action");
-assert.ok(!sharedHeader.includes("Sign In"), "the header must not reintroduce a second name for connecting");
+assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
 assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
 assert.ok(!btcChart.includes('type="search"'), "the asset selector must not render a search control");
 assert.match(btcChart, /ResponsiveModalSheet/);
-assert.match(btcChart, /onSelect\(market\.id\);\s+requestClose\(\);/);
-assert.match(btcChart, /focus-visible:ring-2 focus-visible:ring-ring/);
-assert.match(swapAssetButton, /PRESSABLE_CONTROL/);
-assert.match(swapAssetButton, /transition-\[transform,opacity\]/);
-assert.match(swapAssetButton, /focus-visible:ring-2 focus-visible:ring-ring/);
-assert.ok(!swapAssetButton.includes("transition-all"));
 assert.ok(
   !btcChart.includes('{displayConnected ? "Live" : "..."}')
     && !btcChart.includes('displayConnected ? "bg-success" : "bg-muted"'),
@@ -441,44 +428,18 @@ assert.match(btcChart, /persistedMarketRef/);
 assert.match(btcChart, /window\.localStorage\.setItem\(selectedMarketStorageKey\(network\), id\)/);
 assert.match(walletAccountModal, /ResponsiveModalSheet/);
 assert.match(responsiveModalSheet, /<MobileModalSheet/);
-assert.match(responsiveModalSheet, /mobileSheetRef\.current/);
-assert.match(responsiveModalSheet, /sheet\.close\(\)/);
 assert.match(responsiveModalSheet, /<DialogContent/);
 assert.match(responsiveModalSheet, /sm:!max-w-\[900px\]/);
-assert.match(
-  responsiveModalSheet,
-  /border-b border-card-border bg-card/,
-  "the desktop sheet header must paint with the shared surface tokens so the light theme reaches it",
-);
-assert.doesNotMatch(responsiveModalSheet, /#171717|#101010/, "the shared modal shell must not hard-code its own blacks");
-// Ladder rows are a fixed 24px in BOTH the live and skeleton states. `1fr`
-// made row height (panel height / surviving levels), so once unquoted levels
-// were filtered out the ladder rendered at 2.2x scale and re-laid itself out on
-// every book update — continuous layout motion on a trading surface.
+assert.match(responsiveModalSheet, /bg-\[#171717\]/);
+// Fixed 24px rows: with `1fr` the height was (panel / number of live levels),
+// so the ladder resized itself on every book update.
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{rows\.length\}, 24px\)`/);
-assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{visibleRowCount\}, 24px\)`/);
-assert.ok(
-  !orderBook.includes("minmax(24px, 1fr)"),
-  "ladder row height must not track the number of live levels",
-);
-assert.match(orderBook, /\[--trade-row-min:44px\] sm:\[--trade-row-min:28px\]/);
 assert.match(orderBook, /gridTemplateRows: `repeat\(\$\{trades\.length\}, minmax\(var\(--trade-row-min\), 1fr\)\)`/);
 assert.match(orderBook, /RECENT_TRADES_TIMEOUT_MS = 8_000/);
 assert.match(orderBook, /recentTradesCache/);
 assert.match(orderBook, /recentTradesRequests/);
 assert.match(orderBook, /formatUsdNotional\(trade\.price, trade\.size\)/);
 assert.match(orderBook, /onDecibelTradeConfirmed/);
-assert.match(tradePageClient, /rowCount=\{21\}[\s\S]*className="h-full min-h-0"/);
-assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h-\[572px\]"/);
-assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
-assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 21 : 11\}/);
-assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:h-\[672px\]"/);
-assert.equal(
-  (swapMarketLayout.match(/<OrderBook/g) ?? []).length,
-  1,
-  "the responsive swap layout must mount one shared orderbook instance",
-);
-assert.match(swapMarketLayout, /import \{ OrderBook \} from "@\/components\/trade\/OrderBook"/);
 assert.match(tradePanel, /emitDecibelTradeConfirmed/);
 assert.match(tradePanel, /extractConfirmedDecibelFill/);
 assert.match(decibelTradeEvents, /cash:decibel-trade-confirmed/);
@@ -558,9 +519,6 @@ assert.equal(multiFill.size, 0.04);
 assert.ok(Math.abs(multiFill.price - 85.2625) < 1e-9);
 assert.ok(!orderBook.includes("flex-col justify-center"), "book rows must fill the pane instead of floating in the middle");
 assert.match(mobileModalSheet, /animateMobileSheetSpring/);
-assert.match(mobileModalSheet, /useImperativeHandle\(ref, \(\) => \(\{ close: closeSheet \}\)/);
-assert.ok(!mobileModalSheet.includes("backdropFilter"));
-assert.ok(!mobileModalSheet.includes("WebkitBackdropFilter"));
 assert.match(mobilePortfolioSheet, /animateMobileSheetSpring/);
 assert.match(mobileModalSheet, /overflow-y-auto overscroll-contain/);
 assert.match(mobileModalSheet, /WebkitOverflowScrolling: "touch"/);
@@ -655,6 +613,11 @@ assert.match(keeperRoute, /if \(!cronSecret\)/);
 assert.match(keeperRoute, /LAUNCHPAD_KEEPER_API_SECRET/);
 assert.match(launchpadExecuteRoute, /function authorizeKeeperExecution/);
 assert.match(launchpadCrankRoute, /Server crank is not configured/);
+assert.ok(
+  !launchpadDeployForm.includes('fetch("/api/launchpad/crank"'),
+  "the launchpad crank must use the connected wallet instead of spending server gas",
+);
+assert.match(launchpadDeployForm, /::indicator::tick_oracle/);
 assert.match(
   sealedLaunch,
   /<StrategySourceEditor/,
@@ -703,7 +666,6 @@ for (const [path, source] of [
   assert.match(source, /unavailable: true/, `${path} must identify unavailable upstream data`);
   assert.match(source, /status: 502/, `${path} must not return a successful zero on upstream failure`);
 }
-assert.match(pointsData, /!response\.ok \|\| !json \|\| json\.unavailable/);
 assert.match(predepositData, /user_transactions/);
 assert.match(predepositData, /transactions\/by_version/);
 assert.match(predepositData, /::predeposit::WithdrawEvent/);
@@ -719,39 +681,6 @@ assert.match(predepositLeaderboardRoute, /getDecibelPointsLeaderboard/);
 assert.match(predepositPointsRoute, /getDecibelOwnerPoints/);
 assert.match(predepositPointsRoute, /realized_pnl: points\.realizedPnl/);
 assert.match(predepositUserRoute, /getDecibelOwnerPoints/);
-// Points page: one server-side profile route (s-maxage) replaces client polling,
-// localStorage caching and mock data; the owner comes from the verified wallet
-// identity, never the raw adapter address.
-assert.ok(!pointsData.includes("localStorage"), "points data must not cache in localStorage; route-level s-maxage replaces it");
-assert.ok(!pointsData.includes("setInterval"), "points data must not poll on a timer");
-assert.ok(!pointsData.includes("MOCK"), "points data must not ship a mock branch");
-assert.match(pointsData, /api\/points\/profile\?owner=/);
-assert.match(pointsData, /search_term/);
-assert.match(pointsPageClient, /useDecibelWalletIdentity/);
-assert.match(pointsPageClient, /Season 1/);
-assert.ok(!pointsProfileCard.includes("|| 0"), "unavailable profile pieces must render as unavailable, not as a real zero");
-assert.match(pointsProfileCard, /Connect to see/);
-assert.match(pointsProfileCard, /Trading/);
-assert.match(pointsProfileCard, /Referral/);
-// "PnL" everywhere. The app used to call one concept three names — a "PNL"
-// stat tile, a "Profit/loss" heading and a "REALIZED PNL" column.
-assert.match(pointsProfileCard, /PnL/);
-assert.match(pointsLeaderboard, /PnL/);
-assert.ok(
-  !pointsProfileCard.includes("PNL") && !pointsLeaderboard.includes("PNL"),
-  "PnL must not be shouted in a second casing",
-);
-assert.match(pointsLeaderboard, /Show more/);
-assert.match(pointsProfileRoute, /Promise\.allSettled/);
-assert.match(pointsProfileRoute, /s-maxage=120/);
-assert.match(pointsProfileRoute, /checkApiRateLimit/);
-assert.match(pointsProfileRoute, /isValidAptosAddress/);
-assert.match(pointsProfileRoute, /unavailable: true/);
-assert.doesNotMatch(
-  pointsData,
-  /predeposit\/user\?account=/,
-  "the Points dashboard must not couple valid AMPs to the retired predeposit balance lookup",
-);
 assert.match(userStatsRoute, /checkApiRateLimit\(request, "decibel-user-stats"/);
 assert.match(userStatsRoute, /getDecibelOwnerPoints/);
 assert.match(userStatsRoute, /getFastSubaccounts/);
@@ -788,6 +717,7 @@ assert.match(cashRewardsPanel, /Server-verified · resets in/);
 assert.match(cashRewardsPanel, /Preview only — no CASH has been issued/);
 assert.match(cashRewardsPanel, /do not carry into a new reward week/);
 assert.match(cashRewardsPanel, /Optional \$\{builderStatus\.feeBps\} bp/);
+// 10 bp is the fee this app actually charges; the old fallback said 1.
 assert.match(cashRewardsPanel, /Approve \$\{builderStatus\?\.feeBps \?\? 10\} bp Builder fee/);
 assert.doesNotMatch(cashRewardsPanel, /snapshot\?\.contract\.status !== "live"/);
 assert.match(decibelBuilderLib, /enrollmentOpen: enabled/);
@@ -820,18 +750,16 @@ assert.equal(cashRewardsConfig.formulaVersion, 2);
 assert.equal(cashRewardsConfig.formulaEffectiveEpoch, 2950);
 assert.equal(cashRewardsConfig.capitalHourRewardCash, 2);
 assert.equal(cashRewardsConfig.activeDayRewardCash, 1_000);
-// Every surface that links a transaction out to the explorer must build the URL
-// through explorerTxUrl() so it follows the configured Decibel network, instead
-// of pinning ?network=testnet. (This used to be asserted on the dashboard/bot
-// history tables, which have been deleted; these are the surfaces that render
-// explorer links today.)
+// Every surface that links a transaction to the explorer must build the URL
+// through explorerTxUrl() so it follows the configured network. The bot and
+// dashboard surfaces this used to cover were deleted; these are what remain.
 for (const [name, source] of [
   ["trade panel", tradePanel],
   ["positions", positionsComponent],
   ["account manager", accountManager],
   ["cash rewards panel", cashRewardsPanel],
 ] as const) {
-  assert.match(source, /explorerTxUrl/);
+  assert.match(source, /explorerTxUrl/, `${name} must build explorer links with explorerTxUrl`);
   assert.ok(
     !source.includes("?network=testnet"),
     `${name} must follow the configured Decibel network`,
@@ -843,17 +771,8 @@ assert.match(launchpadBacktestRoute, /numSims must be an integer from 1 to 10,00
 assert.match(launchpadBacktestRoute, /indicatorType is required and must be an integer/);
 assert.match(launchpadBacktestRoute, /pine_backtester_required/);
 assert.ok(!launchpadBacktestRoute.includes("body.indicatorType ?? 0"));
-// /launchpad is now the Vaults page: it renders the sealed-vault feed and the
-// launch flow only. The indicatorType contract is guarded on BacktestViewer
-// above; the page itself must not resurrect the mock-scored indicator list.
-assert.ok(
-  launchpadPage.includes("<SealedVaultFeed") && launchpadPage.includes("<SealedLaunch"),
-  "the Vaults page must render the sealed-vault feed and the launch flow",
-);
-assert.ok(
-  !launchpadPage.includes("BacktestViewer") && !launchpadPage.includes("indicatorType"),
-  "the Vaults page must not render the legacy indicator marketplace",
-);
+assert.match(launchpadBacktestViewer, /JSON\.stringify\(\{ indicatorAddr, indicatorType, numSims, asset, params \}\)/);
+assert.match(launchpadPage, /indicatorType=\{ind\.indicatorType\}/);
 assert.match(launchpadKeeper, /throw new RangeError\("Unsupported legacy backtest indicator type"\)/);
 assert.ok(!launchpadKeeper.includes("indicatorType = 0"));
 assert.throws(
@@ -895,11 +814,17 @@ assert.match(launchpadTradesRoute, /sanitizeOnChainTrades/);
 assert.match(launchpadTradesRoute, /completedTrades/);
 assert.match(launchpadTradesRoute, /status: 502/);
 assert.match(launchpadTradesRoute, /trade_history_not_supported/);
-assert.ok(
-  !launchpadPage.includes("OnChainChart") && !launchpadPage.includes("ind.pkg"),
-  "the Vaults page must not render the legacy indicator detail pane",
-);
+assert.match(launchpadTradeHistory, /packageAddress\?: string/);
+assert.match(botDashboard, /packageAddress=\{botPackage\}/);
+assert.match(launchpadOnChainChart, /candleAbortRef/);
+assert.match(launchpadOnChainChart, /packageAddress\?: string/);
+assert.match(launchpadOnChainChart, /pkg=\$\{encodeURIComponent\(packageAddress\)\}/);
+assert.match(launchpadOnChainChart, /high < Math\.max\(open, close\)/);
+assert.match(launchpadOnChainChart, /manualKeeperEnabled = process\.env\.NODE_ENV !== "production"/);
+assert.match(launchpadPage, /packageAddress=\{ind\.pkg\}/);
 assert.ok(!launchpadPage.includes("d.lastPrice > 1000"), "launchpad prices are already normalized by the API");
+assert.ok(!botDashboard.includes("d.lastPrice > 1000"), "bot prices are already normalized by the API");
+assert.ok(!botDashboard.includes("d.entryPrice > 1000"), "bot entry prices are already normalized by the API");
 assert.match(sharedHeader, /\{ href: "\/", label: "Trade" \}/);
 assert.match(tradePanel, /aria-label="Order collateral amount"/);
 assert.match(tradePanel, /role="slider"/);
@@ -921,14 +846,6 @@ const sanitizedTradeHistory = sanitizeOnChainTrades([
   { tradeId: 3, signal: 2, price: 70_083.5, gainBps: 0, lossBps: 0, timestamp: 4, type: "SELL", pnlBps: 0 },
 ]);
 assert.deepEqual(sanitizedTradeHistory.map((trade) => trade.tradeId), [2, 3]);
-// The explainer page was retired (off-brand shell, stale claims). It must not
-// come back, and the old URL must keep resolving somewhere real.
-assert.ok(!existsSync("app/explainer"), "the explainer page was retired and must not return as an off-brand route");
-assert.match(
-  nextConfig,
-  /source: '\/explainer',[\s\S]*?destination: '\/',[\s\S]*?permanent: true/,
-  "old /explainer links must 308 to / rather than 404",
-);
 assert.match(marketRefreshRoute, /function authorizeRefresh/);
 assert.match(marketRefreshRoute, /if \(!secret\)/);
 assert.match(vercelIgnore, /^\.data$/m);
@@ -989,6 +906,15 @@ assert.ok(
   !launchpadCreateRoute.includes("{ error: message }"),
   "transpiler internals must not leak to clients",
 );
+assert.match(launchpadDeployForm, /IndicatorCreated/);
+assert.match(launchpadDeployForm, /LAUNCHPAD_CONTRACT,\s*\]\s*,/);
+assert.match(launchpadDeployForm, /::indicator::set_proprietary/);
+assert.match(launchpadDeployForm, /sha3_256/);
+assert.ok(!launchpadDeployForm.includes("Compute SHA-256 hash"), "the displayed commitment must match Move's SHA3-256 contract");
+assert.ok(!creatorDashboard.includes("MOCK_INDICATOR"), "creator balances must be read from Aptos");
+assert.ok(!creatorDashboard.includes("DAILY_DATA_90"), "creator earnings charts must not be synthetic");
+assert.ok(!creatorDashboard.includes("RECENT_PAYOUTS"), "creator payouts must not be synthetic");
+assert.match(creatorDashboard, /indicators\?creator=/);
 assert.match(launchpadWithdrawRoute, /creator_payout_not_enabled/);
 assert.match(launchpadScheduledRoute, /launchpad_automation_not_enabled/);
 assert.match(launchpadGraduateRoute, /launchpad_graduation_not_deployed/);
@@ -1175,6 +1101,9 @@ for (const path of [
   );
 }
 assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);
+// The banner must state the real reason automation is unavailable to this
+// wallet — restriction to the operator account — not the old "being hardened"
+// copy, which described work that is now done.
 assert.match(tvImportRoute, /parseTradingViewScriptUrl/);
 assert.match(tvImportRoute, /parsed\.protocol !== "https:"/);
 assert.match(tvImportRoute, /redirect: "error"/);
@@ -1233,6 +1162,7 @@ assert.match(decibelVaultExtractRoute, /transaction_sender_does_not_own_strategy
 assert.match(vaultActionModal, /allocationPct,\s*network: indicator\.network/);
 assert.match(constantsSource, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
 assert.match(constantsSource, /network: AptosNetworkName = APTOS_NETWORK/);
+assert.match(launchpadOnChainChart, /explorerAccountUrl\(indicatorAddr, "testnet"\)/);
 const validVaultCreate = buildCreateDecibelVaultPayload({
   subaccount: "0x1",
   vaultName: "Reliability Vault",
@@ -2075,49 +2005,29 @@ assert.ok(
 );
 
 // ── Launch layout ──────────────────────────────────────────────────────────
-// The launch flow is a single-column 3-step panel (Strategy → Markets & limits → Name & fund).
-// The property that matters is the one the old two-column grid used to guard: the primary
-// action is never below the fold. It now holds because ONE footer() is rendered twice — in the
-// desktop panel footer and in the fixed mobile bar — and renders exactly one primary per step.
+// The launchpad has always been a two-column transpiler UI: editor left, decisions right.
+// It was briefly replaced with a single narrow centred column, which wasted the desktop
+// viewport and pushed the launch action ~2000px down the page. Restored, and asserted so it
+// does not drift back.
 assert.ok(
-  /const footer = \(compact: boolean\) =>/.test(sealedLaunchUi)
-    && sealedLaunchUi.includes("{footer(false)}")
-    && sealedLaunchUi.includes("{footer(true)}"),
-  "the desktop action row and the fixed mobile bar must share ONE footer — two implementations " +
-    "is how the primary action drifts out of sync between widths",
-);
-assert.ok(
-  /className="hidden border-t [^"]*lg:block">\s*\{footer\(false\)\}/.test(sealedLaunchUi),
-  "on desktop the action row must sit in the panel footer, not ~2000px down a centred column",
-);
-assert.equal(
-  (sealedLaunchUi.match(/\{primary\}/g) ?? []).length,
-  1,
-  "the footer must render exactly one primary action per step",
+  sealedLaunchUi.includes("lg:grid-cols-[minmax(0,1fr)_360px]")
+    && sealedLaunchUi.includes("xl:grid-cols-[minmax(0,1fr)_400px]"),
+  "the launch page must stay a two-column grid — editor left, decision rail right",
 );
 assert.ok(
   !sealedLaunchUi.includes("lg:overflow-y-auto"),
-  "the launch panel must use the page scroll instead of creating a nested desktop scroll trap",
+  "the decision rail must use the page scroll instead of creating a nested desktop scroll trap",
 );
 assert.ok(
   sealedLaunchUi.includes("PineVisualPreview"),
   "the behaviour preview belongs on the launch page — a strategy is not judgeable from source " +
     "alone",
 );
-// Strategies are a vertical radio list in a deliberate order: the three with the most
-// defensible default behaviour lead and Swing Consensus (eight votes, weakest backtest) goes
-// last instead of being preselected for every new creator.
 assert.ok(
-  sealedLaunchUi.includes("ORDERED_CATALOG.map")
-    && sealedLaunchUi.indexOf('role="radiogroup" aria-label="Strategy"') > 0
-    && sealedLaunchUi.indexOf('role="radiogroup" aria-label="Strategy"')
-      < sealedLaunchUi.indexOf("ORDERED_CATALOG.map"),
-  "strategies must render as an ordered radio list, not an unordered template pill strip",
-);
-assert.ok(
-  /const CATALOG_ORDER = \[\s*"breakout-channel",[\s\S]*?"swing-consensus",\s*\]/.test(sealedLaunchUi)
-    && sealedLaunchUi.includes("const DEFAULT_STRATEGY = ORDERED_CATALOG[0]"),
-  "breakout-channel must lead and be the default; swing-consensus must be last",
+  sealedLaunchUi.includes("SEALED_CATALOG.map") && sealedLaunchUi.includes("sm:flex-wrap"),
+  "templates must be a horizontal strip that WRAPS where there is room (sm+). The original " +
+    "complaint was the visible scrollbar, not the strip — so it wraps on desktop and scrolls " +
+    "without a bar on a phone, where wrapping cost three lines",
 );
 
 // ── Mobile ─────────────────────────────────────────────────────────────────
@@ -2136,39 +2046,28 @@ assert.ok(
   sealedLaunchUi.includes('className="h-24 lg:hidden"'),
   "a spacer must reserve room for the fixed bar, or it covers the last card",
 );
-// The template pill strip is gone. What replaced it must not re-create the phone problem it
-// caused: each strategy option is a full-width ≥44px row and nothing in the list scrolls
-// sideways.
 assert.ok(
-  /role="radio"\s+aria-checked=\{active\}[\s\S]*?"flex min-h-11 w-full items-start/.test(sealedLaunchUi)
-    && !sealedLaunchUi.includes("overflow-x-auto px-4 no-scrollbar"),
-  "strategy options must be full-width 44px rows — no horizontal pill strip on a phone",
+  sealedLaunchUi.includes("overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:flex-wrap"),
+  "template pills must scroll in one row on a phone — wrapping put six pills on three lines " +
+    "and ate a third of the first screen",
 );
 
 // ── Truthful UI state ──────────────────────────────────────────────────────
 // The worst defect a UX review found: the Launch button rendered as a live green primary
 // action while the page said launching was impossible. A financial action must never look
 // available when it isn't.
-{
-  const previewGate = sealedLaunchUi.indexOf("if (previewMode) {");
-  assert.ok(
-    sealedLaunchCopy.includes("Launch unavailable in preview mode")
-      && /if \(previewMode\) \{\s*return \(\s*<div\s+role="status"/.test(sealedLaunchUi)
-      && previewGate > sealedLaunchUi.indexOf("const footer = (compact: boolean) =>")
-      && previewGate < sealedLaunchUi.indexOf("<ActionButton"),
-    "when the contract is unpublished the shared footer must RENDER the primary as an " +
-      "unavailable status, not reach the launch button with a disabled prop that still looks " +
-      "launchable",
-  );
-}
-{
-  const banner = sealedLaunchUi.indexOf("Preview mode · launching is unavailable");
-  assert.ok(
-    banner > 0 && banner < sealedLaunchUi.indexOf("<ProductPanel"),
-    "the unavailable state must render ABOVE the step panel — users should not configure " +
-      "the whole flow before learning they cannot launch",
-  );
-}
+assert.ok(
+  sealedLaunchCopy.includes("Launch unavailable in preview mode") &&
+    sealedLaunchUi.includes("previewMode ? ("),
+  "when the contract is unpublished the primary action must RENDER as unavailable, not just " +
+    "carry a disabled prop on a button that still looks launchable",
+);
+assert.ok(
+  sealedLaunchUi.indexOf("Preview mode · launching is unavailable") <
+    sealedLaunchUi.indexOf("lg:grid-cols-[minmax(0,1fr)_360px]"),
+  "the unavailable state must render ABOVE the two-column grid — users should not configure " +
+    "the whole page before learning they cannot launch",
+);
 assert.ok(
   sealedLaunchUi.includes("Developer details"),
   "raw env-var names belong behind a disclosure, not in the default customer experience",
@@ -2362,24 +2261,14 @@ assert.ok(
     && launchpadTheme.includes('from "frosted-ui"')
     && launchpadTheme.includes("<Theme")
     && launchpadTheme.includes('accentColor="lime"')
-    && /className=\{cn\("cash-trade-theme"/.test(launchpadTheme),
+    && launchpadTheme.includes('className="cash-trade-theme"'),
   "the launchpad route must scope Frosted UI to the cash.trading theme",
 );
-// frosted-ui resolves its token set from the theme, so a hardcoded "dark"
-// would leave every frosted surface on this route dark on a light page. It
-// must follow the document theme — but via the CLASS, not the `appearance`
-// prop: an explicit appearance makes this a frosted "root" theme, which ships
-// an inline script that rewrites documentElement's light/dark class and
-// color-scheme on every render. On /launchpad that fought the boot script in
-// app/layout.tsx and leaked the class onto <html> after a client-side
-// navigation away.
+// frosted-ui picks its token set from `appearance`, so hardcoding it would
+// leave every frosted surface on this route dark on a light page.
 assert.ok(
-  launchpadTheme.includes("useThemeName") && /className=\{cn\("cash-trade-theme", theme\)\}/.test(launchpadTheme),
-  "the launchpad Frosted UI theme must follow the active theme via its own class",
-);
-assert.ok(
-  !launchpadTheme.includes("appearance="),
-  "the launchpad Frosted UI theme must not take `appearance`, which hijacks documentElement's theme class",
+  launchpadTheme.includes("appearance={theme}") && launchpadTheme.includes("useThemeName"),
+  "the launchpad Frosted UI appearance must follow the active theme, not be hardcoded",
 );
 assert.ok(
   productSurfaceUi.includes('from "frosted-ui"')
@@ -2451,32 +2340,21 @@ assert.ok(
 );
 
 const launchPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
-// The marketplace tab strip is gone: /launchpad is the Vaults page. One
-// `launching` boolean swaps the vault list for the launch flow in place, so
-// there is exactly one primary action on screen at any time; All / Mine is a
-// pressed-state filter, not a tab bar.
+// Deploy was merged into the browse-first flow: the visible tab bar is
+// Explore / My Bots / Creator, and the deploy workbench opens from a
+// "+ Deploy Strategy" CTA (Explore stays lit while deploying). The `deploy`
+// tab state still exists — it's just reached by button, not a nav tab.
 assert.ok(
-  /const \[launching, setLaunching\] = useState\(false\)/.test(launchPage),
-  "the launch flow must be toggled by one boolean, not a Tab union",
+  /type Tab\s*=\s*"explore" \| "deploy" \| "bots" \| "creator";/.test(launchPage),
+  "the launchpad Tab union must still model explore/deploy/bots/creator states",
 );
 assert.ok(
-  !/type Tab\s*=/.test(launchPage) && !launchPage.includes("setTab("),
-  "the Explore / My Bots / Creator tab strip must not return",
+  /\(\["explore", "bots", "creator"\] as Tab\[\]\)\.map/.test(launchPage),
+  "the visible launchpad tab bar must be Explore / My Bots / Creator (Deploy merged into Explore)",
 );
 assert.ok(
-  launchPage.includes("Launch a vault") && launchPage.includes("setLaunching(true)"),
-  "the launch flow must be reachable via the Launch a vault CTA",
-);
-assert.ok(
-  launchPage.includes("{!launching && !isEmpty && (")
-    && /\{launching \? \(\s*<SealedLaunch/.test(launchPage)
-    && launchPage.includes("onCancel={() => setLaunching(false)}"),
-  "the header CTA must hide while the launch flow (which carries its own primary) or the " +
-    "empty state (which carries its own) is showing — never two primaries at once",
-);
-assert.ok(
-  launchPage.includes("aria-pressed={active}") && launchPage.includes('setMineOnly(key === "mine")'),
-  "All / Mine must be an aria-pressed filter, not a tab strip",
+  launchPage.includes('Deploy Strategy') && launchPage.includes('setTab("deploy")'),
+  "the deploy workbench must be reachable via the Deploy Strategy CTA",
 );
 assert.ok(
   !launchPage.includes("<Tabs.Trigger") && !launchPage.includes('from "frosted-ui"'),

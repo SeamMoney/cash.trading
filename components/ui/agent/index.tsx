@@ -6,10 +6,8 @@
  * The component vocabulary from aicss.dev (code block, thinking state, task
  * list, diff, streaming text, data table) rendered in cash.trading's own
  * tokens rather than copied wholesale — the trade page's look is a hard
- * requirement, so these use `--accent`, the background-secondary /
- * background-tertiary surface ramp, `--card-border`, and the display/mono type
- * pairing used everywhere else. No literal colour lives in this file: the
- * light theme can only re-map what is a token (docs/UX-GRADING.md § 5.14).
+ * requirement, so these use `--accent`, the `#0d0d0d`/`#141414`/`#2a2a2a`
+ * surface ramp and the display/mono type pairing used everywhere else.
  *
  * Motion follows interior.dev's rules: every transition is short (≤ 200ms),
  * eased with a single curve, and disabled under `prefers-reduced-motion`.
@@ -28,20 +26,16 @@ export const DUR = 0.18;
 
 // ─── Code block ──────────────────────────────────────────────────────────────
 
-/** Nine private pastels used to live here, which meant the light theme rendered
- *  them unchanged on a near-white code surface. These are Tailwind palette
- *  classes instead: the zinc steps invert with the theme and the -500 steps have
- *  light-theme ink defined in globals.css. */
 const PINE_TOKEN_CLASS: Record<PineTokenKind, string> = {
   plain: "text-zinc-300",
-  comment: "text-zinc-500",
-  string: "text-amber-500",
-  number: "text-orange-500",
-  keyword: "text-blue-500",
-  type: "text-teal-500",
-  builtin: "text-purple-500",
-  function: "text-yellow-500",
-  operator: "text-zinc-400",
+  comment: "text-[#6f9f72]",
+  string: "text-[#a5cf7c]",
+  number: "text-[#d7a36e]",
+  keyword: "text-[#78a9f4]",
+  type: "text-[#58c4c7]",
+  builtin: "text-[#c49ae8]",
+  function: "text-[#e4cf83]",
+  operator: "text-[#8fb7e8]",
 };
 
 export function CodeBlock({
@@ -111,10 +105,10 @@ export function CodeBlock({
   }, [code, maxHeight]);
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary">
-      <div className="flex items-center justify-between border-b border-card-border bg-background-tertiary px-3 py-2">
+    <div className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#0d0d0d]">
+      <div className="flex items-center justify-between border-b border-white/[0.06] bg-[#141414] px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="rounded-[var(--radius-xs)] bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-zinc-400">
+          <span className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-zinc-400">
             {language}
           </span>
           {filename && (
@@ -127,7 +121,7 @@ export function CodeBlock({
             type="button"
             onClick={copy}
             aria-label="Copy code"
-            className="rounded-[var(--radius-xs)] p-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-white"
+            className="rounded p-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-white"
           >
             <AnimatePresence mode="wait" initial={false}>
               {copied ? (
@@ -191,10 +185,10 @@ export function CodeBlock({
             </code>
           </pre>
         </div>
-        {scrollEdges.top && <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-background-secondary to-transparent" />}
-        {scrollEdges.right && <div className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-background-secondary to-transparent" />}
-        {scrollEdges.bottom && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-background-secondary to-transparent" />}
-        {scrollEdges.left && <div className="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-background-secondary to-transparent" />}
+        {scrollEdges.top && <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.right && <div className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.bottom && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#0d0d0d] to-transparent" />}
+        {scrollEdges.left && <div className="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-[#0d0d0d] to-transparent" />}
       </div>
     </div>
   );
@@ -215,7 +209,7 @@ export function ThinkingState({
 }) {
   const reduced = useReducedMotion();
   return (
-    <div className="rounded-[var(--radius)] border border-card-border bg-background-tertiary p-3.5">
+    <div className="rounded-[16px] border border-white/[0.06] bg-[#141414] p-3.5">
       <div className="flex items-center gap-2">
         {done ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
@@ -224,7 +218,7 @@ export function ThinkingState({
         )}
         <span
           className={cn(
-            "font-display text-xs font-semibold",
+            "font-display text-[12px] font-semibold",
             done ? "text-white" : "bg-clip-text text-transparent",
           )}
           style={
@@ -232,7 +226,7 @@ export function ThinkingState({
               ? undefined
               : {
                   backgroundImage:
-                    "linear-gradient(90deg,var(--muted) 0%,var(--foreground) 45%,var(--muted) 90%)",
+                    "linear-gradient(90deg,#6b7280 0%,#e5e7eb 45%,#6b7280 90%)",
                   backgroundSize: "200% 100%",
                   animation: "agent-shimmer 1.6s linear infinite",
                 }
@@ -242,7 +236,7 @@ export function ThinkingState({
         </span>
       </div>
       {steps.length > 0 && (
-        <ul className="mt-2.5 space-y-1 border-l border-card-border pl-3">
+        <ul className="mt-2.5 space-y-1 border-l border-white/[0.06] pl-3">
           {steps.map((s, i) => (
             <motion.li
               key={s}
@@ -281,11 +275,11 @@ export function TaskList({ tasks }: { tasks: AgentTask[] }) {
           layout
           transition={{ duration: DUR, ease: EASE }}
           className={cn(
-            "flex items-start gap-2.5 rounded-[var(--radius-sm)] border px-3 py-2.5 transition-colors",
+            "flex items-start gap-2.5 rounded-[10px] border px-3 py-2.5 transition-colors",
             t.state === "done" && "border-accent/14 bg-accent/[0.04]",
             t.state === "active" && "border-white/20 bg-white/[0.03]",
             t.state === "failed" && "border-red-500/16 bg-red-500/[0.04]",
-            t.state === "pending" && "border-card-border bg-background-tertiary",
+            t.state === "pending" && "border-white/[0.06] bg-[#141414]",
           )}
         >
           <span className="mt-0.5 shrink-0">
@@ -301,14 +295,14 @@ export function TaskList({ tasks }: { tasks: AgentTask[] }) {
           <span className="min-w-0">
             <span
               className={cn(
-                "block font-display text-xs font-semibold",
+                "block font-display text-[12px] font-semibold",
                 t.state === "pending" ? "text-zinc-500" : "text-white",
               )}
             >
               {t.label}
             </span>
             {t.detail && (
-              <span className="mt-0.5 block break-all text-[11px] leading-snug text-zinc-500">
+              <span className="mt-0.5 block break-all text-[10px] leading-snug text-zinc-500">
                 {t.detail}
               </span>
             )}
@@ -353,16 +347,16 @@ export function DataTable({
   caption?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-tertiary">
+    <div className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-[#141414]">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-card-border">
+            <tr className="border-b border-white/[0.06]">
               {columns.map((c) => (
                 <th
                   key={c}
                   scope="col"
-                  className="px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-600"
+                  className="px-3 py-2 text-[9px] uppercase tracking-wide text-zinc-600"
                 >
                   {c}
                 </th>
@@ -371,7 +365,7 @@ export function DataTable({
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className={i > 0 ? "border-t border-card-border" : undefined}>
+              <tr key={i} className={i > 0 ? "border-t border-white/[0.06]" : undefined}>
                 {r.map((cell, j) => (
                   <td
                     key={j}
@@ -389,7 +383,7 @@ export function DataTable({
         </table>
       </div>
       {caption && (
-        <p className="border-t border-card-border px-3 py-2 text-[11px] leading-snug text-zinc-600">
+        <p className="border-t border-white/[0.06] px-3 py-2 text-[10px] leading-snug text-zinc-600">
           {caption}
         </p>
       )}
@@ -439,7 +433,7 @@ export function RefChip({ children, title }: { children: React.ReactNode; title?
   return (
     <span
       title={title}
-      className="mx-0.5 inline-flex items-center rounded-[var(--radius-xs)] bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-zinc-300"
+      className="mx-0.5 inline-flex items-center rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
     >
       {children}
     </span>

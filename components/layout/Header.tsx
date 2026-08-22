@@ -1,27 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { createContext, type ReactNode } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
 import { getChainFromWallet, getPreferredWalletIcon } from "@/lib/wallet-utils";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { BALANCE_UPDATE_EVENT, YIELD_CLAIM_EVENT } from "@/lib/portfolio-events";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
-import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
 
-/** Top-level navigation, in display order. Shared with the mobile portfolio sheet. */
-export const NAV_ITEMS: { href: string; label: string }[] = [
+const NAV_ITEMS = [
   { href: "/", label: "Trade" },
   { href: "/swap", label: "Swap" },
   { href: "/portfolio", label: "Portfolio" },
-  // "Sealed vaults", not "Vaults": /trade lists Decibel's own vault registry under
-  // that word, and two tabs naming the same noun for two different registries is the
-  // app disagreeing with itself about how many vaults exist.
   { href: "/launchpad", label: "Launchpad" },
   // Link visibility only — this is a client component, so it cannot read the
   // server-side BOT_OWNER_ADDRESSES allowlist. Access is enforced by that
@@ -34,34 +29,6 @@ export const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/points", label: "Points" },
 ];
 
-const FOCUS_RING =
-  "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-/**
- * Set by a page that renders its own "Connect wallet" control, so the header
- * drops its duplicate: one act, one button. (Disconnected /portfolio showed an
- * outline "Connect wallet" in the header and a filled one 70px below it.)
- *
- * Context, not the `cash:open-wallet-selector` window event: this decides what
- * the header renders, so it has to be right on the first paint. A signal read
- * after mount would paint the button and then remove it — a shift in the one
- * row that is on every page. Nothing global is added; a page opts in by
- * wrapping itself, and every page that does not keeps today's header exactly.
- */
-const PageConnectCtaContext = createContext(false);
-
-export function PageConnectCta({
-  present,
-  children,
-}: {
-  present: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <PageConnectCtaContext.Provider value={present}>{children}</PageConnectCtaContext.Provider>
-  );
-}
-
 function CashWordmark() {
   return (
     <span className="font-display text-[20px] font-bold tracking-normal text-white">
@@ -70,9 +37,8 @@ function CashWordmark() {
   );
 }
 
-export function Header() {
+export function Header({ constrained = false }: { constrained?: boolean } = {}) {
   const { connected, wallet } = useWallet();
-  const pageHasConnectCta = useContext(PageConnectCtaContext);
   const pathname = usePathname();
   const {
     adapterAddress,
@@ -215,7 +181,9 @@ export function Header() {
 
   const balanceLabel =
     balance === null
-      ? null
+      ? balanceLoading
+        ? "..."
+        : "—"
       : `$${balance.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
@@ -242,55 +210,42 @@ export function Header() {
 
   return (
     <>
-      <header className="relative z-50 isolate border-b border-card-border bg-background">
-        {/* Same measure and same gutters as PAGE_SHELL_WIDE, so the wordmark starts
-            where the page's content starts and the wallet cluster ends where it ends.
-            This used to be a `constrained` ternary offering a second, 7xl width — no
-            caller ever passed it, so it was a third page width the app could not even
-            reach. Deleted with the prop. */}
-        <div className="mx-auto flex h-[72px] w-full max-w-[1536px] items-center justify-between px-4 sm:px-8">
+      <header className="relative z-50 isolate border-b border-white/[0.06] bg-[var(--background)]">
+        <div
+          className={
+            constrained
+              ? "mx-auto flex h-[72px] w-full max-w-7xl items-center justify-between px-4 sm:px-6"
+              : "mx-auto flex h-[72px] w-full max-w-[1800px] items-center justify-between px-4 sm:px-6 lg:px-8"
+          }
+        >
           {/* Left: logo + nav */}
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className={cn(
-                PRESSABLE_CONTROL,
-                FOCUS_RING,
-                "-ml-2.5 flex size-11 items-center justify-center rounded-[var(--radius-sm)] text-zinc-300 hover:bg-white/[0.06] hover:text-white md:hidden",
-              )}
+              className="md:hidden -ml-1.5 rounded-lg p-2 text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white"
               aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <Link
-              href="/"
-              className={cn(FOCUS_RING, "shrink-0 rounded-[var(--radius-xs)] text-white")}
-              aria-label="cash.trading home"
-            >
+            <Link href="/" className="text-white shrink-0" aria-label="cash.trading home">
               <CashWordmark />
             </Link>
 
             {/* Desktop nav links */}
-            <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Primary">
+            <nav className="hidden md:flex items-center gap-1 ml-4">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    aria-current={isActive ? "page" : undefined}
-                    className={cn(
-                      FOCUS_RING,
-                      // px-3, not px-3.5: six items plus the wordmark plus the
-                      // balance/wallet cluster already crowd the row at the md
-                      // breakpoint, and "Sealed vaults" is a wider label than the
-                      // "Launchpad" it replaces. Tightening the gutter buys back
-                      // more than the rename spends.
-                      "whitespace-nowrap rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium transition-colors",
-                      isActive ? "text-white" : "text-zinc-500 hover:text-zinc-300",
-                    )}
+                    className={`px-3.5 py-1.5 rounded-lg text-[14px] font-medium transition-colors ${
+                      isActive
+                        ? "text-white"
+                        : "text-zinc-500 hover:text-zinc-300"
+                    }`}
                   >
                     {item.label}
                   </Link>
@@ -308,63 +263,37 @@ export function Header() {
               <button
                 type="button"
                 onClick={handleWalletClick}
-                className={cn(
-                  PRESSABLE_CONTROL,
-                  FOCUS_RING,
-                  "hidden h-10 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 font-mono text-[13px] tabular-nums text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200 lg:flex",
-                )}
+                className="hidden items-center gap-1.5 rounded-[10px] px-2 py-1 text-[13px] font-mono tabular-nums text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-200 lg:flex"
                 aria-label="Open account balance and Decibel settings"
               >
-                <span className="font-display text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Bal</span>
-                {balanceLabel ? (
-                  <span className="font-semibold text-white">{balanceLabel}</span>
-                ) : balanceLoading ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block h-3 w-14 animate-pulse rounded-full bg-white/[0.08] motion-reduce:animate-none"
-                  />
-                ) : (
-                  <span className="font-semibold text-zinc-500">—</span>
-                )}
+                <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-zinc-600">Bal</span>
+                <span className="font-semibold text-white">{balanceLabel}</span>
               </button>
             )}
             {connected ? (
               <button
-                type="button"
                 onClick={handleWalletClick}
-                className={cn(
-                  PRESSABLE_CONTROL,
-                  FOCUS_RING,
-                  "flex h-10 items-center gap-2 rounded-[var(--radius-sm)] border border-white/[0.08] bg-white/[0.06] px-4 text-sm font-medium text-white hover:bg-white/[0.1]",
-                )}
+                className="flex items-center gap-2 px-4 py-2 rounded-[10px] text-[14px] font-medium bg-white/[0.06] text-white border border-white/[0.08] hover:bg-white/[0.1] transition-colors"
               >
                 {walletIcon && (
-                  <img src={walletIcon} alt="" className="h-4 w-4 rounded-[var(--radius-xs)]" />
+                  <img src={walletIcon} alt="" className="w-4 h-4 rounded-[4px]" />
                 )}
                 {shortAddress}
                 {isXChain && (
-                  <span className="rounded-[var(--radius-xs)] bg-accent/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold leading-none text-accent">
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">
                     X-CHAIN
                   </span>
                 )}
               </button>
-            ) : pageHasConnectCta ? null : (
+            ) : (
               // Outlined, not filled. As a solid accent pill it competed with
               // the page's own primary action (e.g. "+ Deploy Strategy" sits
               // ~74px below it in the same corner) — two primaries means none.
-              // When the page carries the connect CTA itself, this one is not
-              // rendered at all: an outline copy of the same act is still a
-              // second entry point competing for the same click.
               <button
-                type="button"
                 onClick={handleWalletClick}
-                className={cn(
-                  PRESSABLE_CONTROL,
-                  FOCUS_RING,
-                  "h-10 rounded-[var(--radius-sm)] border border-accent/30 px-5 text-sm font-semibold text-accent hover:bg-accent/10",
-                )}
+                className="rounded-[10px] border border-accent/30 px-5 py-2 text-[14px] font-semibold text-accent transition-colors hover:bg-accent/10"
               >
-                Connect wallet
+                Sign In
               </button>
             )}
           </div>
@@ -376,13 +305,10 @@ export function Header() {
             <button
               type="button"
               aria-label="Close menu"
-              className="fixed inset-0 top-[72px] z-40 bg-black/50 md:hidden"
+              className="fixed inset-0 top-[72px] z-40 bg-black/50 backdrop-blur-sm md:hidden"
               onClick={() => setMobileMenuOpen(false)}
             />
-            <nav
-              aria-label="Primary"
-              className="absolute inset-x-0 top-[72px] z-50 flex flex-col border-b border-card-border bg-background px-3 py-2 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)] md:hidden"
-            >
+            <nav className="absolute inset-x-0 top-[72px] z-50 flex flex-col border-b border-white/[0.06] bg-[var(--background)] px-3 py-2 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)] md:hidden">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -390,21 +316,18 @@ export function Header() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    aria-current={isActive ? "page" : undefined}
-                    className={cn(
-                      FOCUS_RING,
-                      "flex min-h-11 items-center rounded-[var(--radius-sm)] px-3 text-sm font-medium transition-colors",
+                    className={`rounded-[10px] px-3 py-3 text-[15px] font-medium transition-colors ${
                       isActive
                         ? "bg-accent/15 text-accent"
-                        : "text-zinc-300 hover:bg-white/[0.05] hover:text-white",
-                    )}
+                        : "text-zinc-300 hover:bg-white/[0.05] hover:text-white"
+                    }`}
                   >
                     {item.label}
                   </Link>
                 );
               })}
-              <div className="mt-1 flex items-center justify-between border-t border-card-border px-3 pt-2">
-                <span className="text-sm font-medium text-zinc-300">Theme</span>
+              <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] px-3 pt-3">
+                <span className="text-[15px] font-medium text-zinc-300">Theme</span>
                 <ThemeToggle />
               </div>
             </nav>
@@ -423,4 +346,14 @@ export function Header() {
       />
     </>
   );
+}
+
+
+/* A page that renders its own connect button wraps itself in this so the header
+   does not render a second one. Added for the pages introduced in this cycle;
+   pages that do not use it are unaffected. */
+const PageConnectCtaContext = createContext(false);
+
+export function PageConnectCta({ present, children }: { present: boolean; children: ReactNode }) {
+  return <PageConnectCtaContext.Provider value={present}>{children}</PageConnectCtaContext.Provider>;
 }

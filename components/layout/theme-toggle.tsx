@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
-import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 export type ThemeName = "dark" | "light";
@@ -87,11 +86,9 @@ export function ThemeToggle({ className }: { className?: string }) {
       // stayed visible on mobile. twMerge resolves the display conflict in
       // the caller's favour.
       className={cn(
-        PRESSABLE_CONTROL,
-        // 44px hit area in the mobile nav sheet, compact in the desktop header.
-        "inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] md:size-8",
-        "text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200",
-        "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+        "text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200",
+        "focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent/50",
         className,
       )}
     >

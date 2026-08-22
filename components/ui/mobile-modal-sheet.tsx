@@ -464,7 +464,7 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
           cursor: "grab",
         }}
       >
-        <div className="flex h-full flex-col overflow-hidden rounded-t-[var(--radius)] border border-b-0 border-card-border bg-background-secondary">
+        <div className="flex h-full flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-white/[0.08] bg-[#101010]">
           <div
             className="shrink-0"
             data-mobile-sheet-drag-handle="true"

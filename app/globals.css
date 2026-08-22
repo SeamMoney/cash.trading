@@ -1,58 +1,3 @@
-/* =============================================================================
-   TOKEN MAP — what to reach for (docs/UX-GRADING.md § 4)
-
-   radius   panel / card / modal / sheet   rounded-[var(--radius)]      16px
-            control / button / input       rounded-[var(--radius-sm)]   10px
-            chip / badge / row highlight   rounded-[var(--radius-xs)]    6px
-            pill / dot / avatar            rounded-full
-            The named Tailwind scale snaps to the same three values (see
-            @theme inline below): rounded / -xs → 6, -sm/-md/-lg → 10,
-            -xl/-2xl/-3xl → 16. Prefer the var() form in new code.
-
-   colour   gain / long / up / success     text-success   bg-success   (#39ff14)
-            loss / short / down / error    text-danger    bg-danger    (#f21a1a)
-            brand / primary action         bg-accent  (= --primary, #39ff14)
-            warning                        text-warning
-            borders                        border-card-border, hover border-border-strong
-
-            ONE RED AND ONE GREEN — the full mapping. Everything in the left
-            column resolves to the token in the right column, in BOTH themes,
-            inside .cash-trade-theme and out (portalled dialogs and toasts
-            live outside it, which is why :root carries the same map):
-
-              --success  #39ff14   ← text-/bg-/border-/ring-success
-                                   ← green-300/400/500/600
-                                   ← emerald-300/400/500
-                                   ← signTone(v) for v >= 0
-              --danger   #f21a1a   ← text-/bg-/border-/ring-danger
-                                   ← --destructive (shadcn alias) and every
-                                     text-/bg-/border-destructive
-                                   ← red-300/400/500/600
-                                   ← signTone(v) for v < 0
-
-            Light theme: --danger darkens to --lt-danger #d01414 (5.4:1);
-            green splits by role — green as TEXT (text-success, text-green-*)
-            goes to --lt-green-ink #176f08 (5.47:1), green as a FILL
-            (bg-success, bg-accent) stays neon under near-black text.
-
-            So a private hex for a sign — the #e8774f salmon Points used, or a
-            bare bg-green-500 — is never needed and never correct: import
-            signTone from components/portfolio/portfolio-surface.ts.
-            Colour is never the only carrier of direction: pair with a sign
-            or an arrow.
-
-   type     Inter for words (body default), JetBrains Mono opt-in for numbers,
-            addresses, hashes, code. Floor 11px. Uppercase labels are 11px.
-
-   focus    every button / a / [role=button] / input gets a 2px --ring outline
-            on :focus-visible by default; components that draw their own
-            `focus-visible:ring-*` are excluded automatically.
-
-   motion   prefers-reduced-motion collapses every CSS animation/transition
-            to ~0ms globally (spinners excepted). Use PRESSABLE_CONTROL from
-            lib/surface.ts for press feedback.
-   ============================================================================= */
-
 /* frosted-ui ships unlayered CSS that would otherwise beat every Tailwind
    utility (utilities live in @layer utilities). Declaring the layer order up
    front and importing frosted into its own layer keeps frosted components
@@ -71,12 +16,8 @@
 
 :root {
   /* Page chrome behind every surface. The light theme overrides these two and
-     nothing else at this level — everything else flows from .cash-trade-theme.
-     This MUST equal .cash-trade-theme's --background: html/body paint it while
-     the theme block paints the app, so any divergence draws a hard seam wherever
-     a page is shorter than the viewport. That is exactly what happened when the
-     short pages stopped reserving a screen with min-h-screen. */
-  --page-background: #0a0a0a;
+     nothing else at this level — everything else flows from .cash-trade-theme. */
+  --page-background: #000000;
   --page-color-scheme: dark;
   /* Toasts render in a portal outside .cash-trade-theme, so they read their
      colours from the document root rather than the product theme block. */
@@ -115,15 +56,9 @@
   --accent: oklch(0.18 0.01 285);
   --accent-foreground: oklch(0.95 0 0);
 
-  /* Loss / error — the one red. `destructive` is the shadcn alias.
-     Literal #f21a1a, the same value .cash-trade-theme uses: dialogs, sheets
-     and toasts render in a portal on <body>, OUTSIDE the wrapper, so an
-     oklch approximation here meant `text-danger` in a modal was a different
-     red from `text-danger` on the page behind it. */
-  --danger: #f21a1a;
-  --danger-foreground: #ffffff;
-  --destructive: var(--danger);
-  --destructive-foreground: var(--danger-foreground);
+  /* Destructive */
+  --destructive: oklch(0.6 0.25 25);             /* Red */
+  --destructive-foreground: oklch(1 0 0);
 
   /* Utility */
   --border: oklch(0.25 0.005 285);
@@ -133,35 +68,12 @@
   /* ---------------------------------------------------------------------------
      SEMANTIC COLORS
      --------------------------------------------------------------------------- */
-  /* Gain — the one green, same literal as .cash-trade-theme for the same
-     portal reason as --danger above (was oklch(0.7 0.2 145), a duller green
-     than the brand #39ff14). */
-  --success: #39ff14;
+  --success: oklch(0.7 0.2 145);                 /* Green */
   --success-foreground: oklch(0 0 0);
   --warning: oklch(0.8 0.15 85);                 /* Orange */
   --warning-foreground: oklch(0 0 0);
   --info: oklch(0.7 0.15 250);                   /* Blue */
   --info-foreground: oklch(1 0 0);
-
-  /* ---------------------------------------------------------------------------
-     TAILWIND HUE SCALES → THE TWO SEMANTIC TOKENS
-     .cash-trade-theme redeclares these against its own --success/--danger; the
-     copy here is what covers everything the wrapper cannot reach — portalled
-     dialogs/sheets/toasts and any route that skips the wrapper. Without it the
-     same `text-red-400` renders Tailwind's red in a modal and --danger on the
-     page behind it. Steps not listed are unused (verified by grep).
-     --------------------------------------------------------------------------- */
-  --color-green-300: var(--success);
-  --color-green-400: var(--success);
-  --color-green-500: var(--success);
-  --color-green-600: var(--success);
-  --color-emerald-300: var(--success);
-  --color-emerald-400: var(--success);
-  --color-emerald-500: var(--success);
-  --color-red-300: var(--danger);
-  --color-red-400: var(--danger);
-  --color-red-500: var(--danger);
-  --color-red-600: var(--danger);
 
   /* ---------------------------------------------------------------------------
      CHART COLORS (bklit-ui compatible)
@@ -186,11 +98,13 @@
   /* ---------------------------------------------------------------------------
      RADIUS TOKENS
      --------------------------------------------------------------------------- */
-  /* Canonical set, identical inside and outside .cash-trade-theme so pages
-     that skip the wrapper (/explainer, wallet dialog) share one dialect. */
-  --radius: 16px;       /* panel / card / modal / sheet */
-  --radius-sm: 10px;    /* control / button / input */
-  --radius-xs: 6px;     /* chip / badge */
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
   --radius-full: 9999px;
 
   /* ---------------------------------------------------------------------------
@@ -232,8 +146,8 @@
   --shadow-md: 0 4px 6px oklch(0 0 0 / 0.3);
   --shadow-lg: 0 10px 15px oklch(0 0 0 / 0.4);
   --shadow-xl: 0 20px 25px oklch(0 0 0 / 0.5);
-  --shadow-glow: 0 0 20px oklch(0.9 0.29 142 / 0.3);
-  --shadow-glow-strong: 0 0 40px oklch(0.9 0.29 142 / 0.5);
+  --shadow-glow: 0 0 20px oklch(0.95 0.2 102 / 0.3);
+  --shadow-glow-strong: 0 0 40px oklch(0.95 0.2 102 / 0.5);
 
   /* ---------------------------------------------------------------------------
      ANIMATION
@@ -251,12 +165,12 @@
      --------------------------------------------------------------------------- */
   --sidebar: oklch(0.05 0.005 285);
   --sidebar-foreground: oklch(1 0 0);
-  --sidebar-primary: var(--primary);
+  --sidebar-primary: oklch(0.95 0.2 102);
   --sidebar-primary-foreground: oklch(0 0 0);
   --sidebar-accent: oklch(0.15 0.01 285);
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.2 0.005 285);
-  --sidebar-ring: var(--ring);
+  --sidebar-ring: oklch(0.95 0.2 102);
 }
 
 /* Dark mode - same as root for Decibel's dark-first design */
@@ -267,7 +181,7 @@
   --card-foreground: oklch(1 0 0);
   --popover: oklch(0.1 0.005 285);
   --popover-foreground: oklch(1 0 0);
-  --primary: oklch(0.9 0.29 142);                /* brand green, never yellow */
+  --primary: oklch(0.95 0.2 102);
   --primary-foreground: oklch(0 0 0);
   --secondary: oklch(0.15 0.005 285);
   --secondary-foreground: oklch(0.9 0 0);
@@ -275,11 +189,11 @@
   --muted-foreground: oklch(0.6 0 0);
   --accent: oklch(0.18 0.01 285);
   --accent-foreground: oklch(0.95 0 0);
-  --destructive: var(--danger);
-  --destructive-foreground: var(--danger-foreground);
+  --destructive: oklch(0.6 0.25 25);
+  --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.25 0.005 285);
   --input: oklch(0.12 0.005 285);
-  --ring: oklch(0.9 0.29 142);
+  --ring: oklch(0.95 0.2 102);
 }
 
 /* =============================================================================
@@ -319,7 +233,6 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-danger: var(--danger);
-  --color-danger-foreground: var(--danger-foreground);
   --color-border: var(--border);
   --color-border-accent: var(--border-accent);
   --color-border-strong: var(--border-strong);
@@ -356,18 +269,13 @@
   --color-chart-ring-background: var(--chart-ring-background);
   --color-chart-label: var(--chart-label);
 
-  /* Radius — the named scale snaps to the three canonical tokens so
-     `rounded-lg` can no longer land 2px off a control and `rounded-2xl` 4px
-     off a panel. Bare `rounded` (Tailwind's 4px) becomes the chip radius. */
-  --radius: var(--radius-xs);
-  --radius-xs: var(--radius-xs);
+  /* Radius */
   --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-sm);
-  --radius-lg: var(--radius-sm);
-  --radius-xl: var(--radius);
-  --radius-2xl: var(--radius);
-  --radius-3xl: var(--radius);
-  --radius-4xl: var(--radius);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
   --radius-full: var(--radius-full);
 
   /* Sidebar */
@@ -405,10 +313,7 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* No `overflow-x: clip` here. It makes scrollWidth === clientWidth by
-     construction, so it does not prevent overflow — it only hides it, and it
-     makes "no horizontal scroll" impossible to measure. If something overflows,
-     fix the element that overflows. */
+  /* Hide scrollbars on all browsers */
   html, body {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */
@@ -421,33 +326,15 @@
     height: 0;
   }
 
-  /* Typography defaults.
-
-     Headings deliberately declare NO font-family. The face is chosen by ROLE,
-     not by tag (§ 4.10): mono is for numbers, addresses, hashes and code,
-     never for words. Setting it here put "Points", "Portfolio", "Vaults" and
-     "Leaderboard" in JetBrains Mono while the identically-sized <p> beside
-     them ("No vaults yet", "Connect a wallet…") stayed Inter — two fonts for
-     one role in one viewport. Headings now inherit the body sans face.
-
-     A heading that really is a number opts in per element with `font-mono`
-     (glass-wallet-card.tsx:92 already does). Size/weight belong to the shell:
-     SECTION_TITLE for a page heading, PANEL_TITLE for a panel strip. */
+  /* Typography defaults */
   h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-mono);
     font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   code, pre, kbd, samp {
     font-family: var(--font-mono);
-  }
-
-  /* Default keyboard focus ring (D6). `:where()` keeps specificity at zero so
-     any utility (`outline-none`, `outline-hidden`) still wins, and elements
-     that draw their own Tailwind ring are excluded so the ring never doubles. */
-  :where(a, button, [role="button"], input, select, textarea, summary):where(:not([class*="focus-visible:ring"])):focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
   }
 
   /* Tabular numbers for data */
@@ -502,31 +389,6 @@
     will-change: transform;
     transform: translateZ(0);
     backface-visibility: hidden;
-  }
-}
-
-/* Words are Inter; mono is opt-in per element. <body> in app/layout.tsx still
-   carries a legacy `font-mono` utility, which would otherwise set every page
-   outside .cash-trade-theme (/explainer, the dashboard header row) in
-   JetBrains Mono. Unlayered so it outranks the utility. Delete this rule when
-   that class is removed from the body. */
-body.font-mono {
-  font-family: var(--font-sans);
-}
-
-/* Reduced motion is global, not opt-in (D8). Every CSS animation and
-   transition collapses to ~0ms; in-flight spinners are the one essential
-   loop and keep turning. Unlayered + !important so it beats utilities and
-   inline `animation:` declarations alike. */
-@media (prefers-reduced-motion: reduce) {
-  *:not(.animate-spin),
-  *:not(.animate-spin)::before,
-  *:not(.animate-spin)::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    scroll-behavior: auto !important;
   }
 }
 
@@ -620,9 +482,6 @@ body.font-mono {
   --muted-foreground: #999999;
   --success: #39ff14;
   --danger: #f21a1a;
-  --danger-foreground: #ffffff;
-  --destructive: var(--danger);
-  --destructive-foreground: var(--danger-foreground);
   --warning: #f5a623;
   --border: rgba(255, 255, 255, 0.08);
   --ring: #39ff14;
@@ -667,13 +526,6 @@ body.font-mono {
   --color-emerald-300: #39ff14;
   --color-emerald-400: #39ff14;
   --color-emerald-500: #39ff14;
-  /* Same for loss: text-red-400 (93), red-500 (15), red-300 (16) and
-     hover:bg-red-600 all become the one --danger red instead of four Tailwind
-     reds next to #f21a1a. Mirrors the :root block — keep the two in step. */
-  --color-red-300: var(--danger);
-  --color-red-400: var(--danger);
-  --color-red-500: var(--danger);
-  --color-red-600: var(--danger);
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
@@ -990,9 +842,7 @@ body.font-mono {
    ============================================================================= */
 
 :root[data-theme="light"] {
-  /* Matches .cash-trade-theme's light --background (--lt-surface-1) — see the
-     dark declaration for why these two must not diverge. */
-  --page-background: #fafafa;
+  --page-background: #ffffff;
   --page-color-scheme: light;
   --toast-background: #ffffff;
   --toast-foreground: #18181b;
@@ -1010,10 +860,10 @@ body.font-mono {
   --lt-hairline:        rgba(9, 9, 11, 0.11);
   --lt-hairline-strong: rgba(9, 9, 11, 0.22);
   --lt-neon:       #39ff14;  /* brand green — kept for BACKGROUNDS only */
-  --lt-green-ink:  #176f08;  /* brand green as TEXT: 5.47:1 on #eeeef0 */
+  --lt-green-ink:  #1e860a;  /* brand green as TEXT: 4.50:1 on #fafafa */
   --lt-green-line: #22a30c;  /* brand green as BORDER/RING: 2.6:1, still neon */
   --lt-danger:     #d01414;  /* #f21a1a is 4.07:1 on white — darkened to 5.4:1 */
-  --lt-warning:    #7a500d;  /* warning text: 6.08:1 on the darkest light surface */
+  --lt-warning:    #9c6916;  /* #f5a623 is 1.94:1 on white — darkened to 4.5:1 */
 
   /* --- :root token set (pages that do NOT use the .cash-trade-theme wrapper
          and all shadcn primitives) --------------------------------------- */
@@ -1031,13 +881,11 @@ body.font-mono {
   --muted-foreground: var(--lt-ink-3);
   --accent: var(--lt-surface-3);  /* at :root --accent is a surface, not brand */
   --accent-foreground: var(--lt-ink);
-  --danger: var(--lt-danger);
-  --danger-foreground: #ffffff;
-  --destructive: var(--danger);
-  --destructive-foreground: var(--danger-foreground);
+  --destructive: var(--lt-danger);
+  --destructive-foreground: #ffffff;
   --border: #e4e4e7;
   --input: var(--lt-surface-2);
-  --ring: var(--lt-green-ink);
+  --ring: var(--lt-green-line);
   --success: #148f2e;
   --success-foreground: #ffffff;
   --warning: var(--lt-warning);
@@ -1172,7 +1020,7 @@ body.font-mono {
   --danger: var(--lt-danger);
   --warning: var(--lt-warning);
   --border: var(--lt-hairline);
-  --ring: var(--lt-green-ink);
+  --ring: var(--lt-green-line);
   --border-accent: rgba(30, 134, 10, 0.35);
   --border-strong: var(--lt-hairline-strong);
 
@@ -1357,11 +1205,7 @@ body.font-mono {
 
 /* Non-grayscale text: hue preserved, darkened only where the original fails on
    a light background (measured ratio vs #fafafa in the comment). */
-/* The #e8774f salmon this list used to rescue is gone: /points renders
-   signTone() now, so the loss colour is --danger and needs no allow-list
-   entry. That is the point of the list — every hex on it is a colour the
-   light theme can only save by name, and the fix is always to delete the hex,
-   not to add a line here. */
+:root[data-theme="light"] .text-\[\#e8774f\] { color: #b15b3c; } /* was 2.80 -> 4.54 */
 :root[data-theme="light"] .text-\[\#ff744d\] { color: #ba5538; } /* was 2.56 -> 4.53 */
 :root[data-theme="light"] .text-\[\#c49ae8\] { color: #84689d; } /* was 2.20 -> 4.52 */
 :root[data-theme="light"] .text-\[\#a5cf7c\] { color: #627b4a; } /* was 1.70 -> 4.52 */

@@ -170,7 +170,7 @@ export function MarketPermissionsModal({
                     </Badge>
                   ) : null}
                 </div>
-                <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
                   {market.label}{market.leverage > 0 ? ` · up to ${market.leverage}x` : ""}
                 </p>
               </div>
@@ -203,7 +203,7 @@ export function MarketPermissionsModal({
         })}
 
         {!loading && visibleMarkets.length === 0 ? (
-          <Card size="3" variant="outline" className="!py-10 text-center text-xs text-muted-foreground">
+          <Card size="3" variant="outline" className="!py-10 text-center text-[12px] text-muted-foreground">
             No launch-ready markets in this category.
           </Card>
         ) : null}

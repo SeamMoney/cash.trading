@@ -549,7 +549,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
   if (!addr) {
     return (
       <div className={cn(SURFACE_CARD_SOLID, "p-6 text-center")}>
-        <p className="text-sm text-zinc-400">Connect a wallet to manage your bots.</p>
+        <p className="text-[14px] text-zinc-400">Connect a wallet to manage your bots.</p>
       </div>
     );
   }
@@ -558,7 +558,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
     return (
       <div className={cn(SURFACE_CARD_SOLID, "flex items-center justify-center gap-2 p-6")}>
         <Loader2 className="h-4 w-4 animate-spin text-zinc-500" aria-hidden />
-        <span className="text-sm text-zinc-400">Loading your bots…</span>
+        <span className="text-[14px] text-zinc-400">Loading your bots…</span>
       </div>
     );
   }
@@ -566,7 +566,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
   if (byVault.length === 0) {
     return (
       <div className={cn(SURFACE_CARD_SOLID, "p-6 text-center")}>
-        <p className="text-lg font-semibold text-foreground">No bots yet</p>
+        <p className="text-[15px] font-semibold text-white">No bots yet</p>
         <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-zinc-400">
           Launch one and it appears here. After that, swapping its strategy costs only gas — the
           launch fee is charged once per vault, not once per strategy.
@@ -631,8 +631,8 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
           <section key={decibelVaultAddr} className={cn(SURFACE_CARD_SOLID, "overflow-hidden")}>
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3.5">
               <div className="min-w-0">
-                <h3 className="font-display text-lg font-semibold text-foreground">{current.name}</h3>
-                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
+                <h3 className="font-display text-[15px] font-semibold text-white">{current.name}</h3>
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-zinc-400">
                   <span>{current.marketName ?? "BTC/USD"}</span>
                   <span className="text-zinc-700">·</span>
                   <span>{current.pctBps / 100}% per order</span>
@@ -653,10 +653,10 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                     setActiveVault(activeVault === decibelVaultAddr ? null : decibelVaultAddr)
                   }
                   className={cn(
-                    "shrink-0 rounded-[var(--radius-sm)] border px-3 py-2 font-display text-[13px] font-semibold transition-colors",
+                    "shrink-0 rounded-[10px] border px-3 py-2 font-display text-[13px] font-semibold transition-colors",
                     activeVault === decibelVaultAddr
                       ? "border-accent/18 bg-accent/10 text-accent"
-                      : "border-card-border bg-background-tertiary text-foreground hover:border-accent/16",
+                      : "border-white/[0.06] bg-[#1a1a1a] text-white hover:border-accent/16",
                   )}
                 >
                   {activeVault === decibelVaultAddr ? "Cancel" : "Swap strategy"}
@@ -683,15 +683,15 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                         aria-expanded={menuOpen}
                         disabled={busy}
                         className={cn(
-                          "flex w-full items-center justify-between rounded-[var(--radius-sm)] border px-3.5 py-3 text-left transition-colors",
-                          "border-card-border bg-background-secondary hover:border-accent/16 disabled:opacity-50",
+                          "flex w-full items-center justify-between rounded-[10px] border px-3.5 py-3 text-left transition-colors",
+                          "border-white/[0.06] bg-[#0d0d0d] hover:border-accent/16 disabled:opacity-50",
                         )}
                       >
                         <span className="min-w-0">
-                          <span className="block font-display text-sm font-semibold text-white">
+                          <span className="block font-display text-[14px] font-semibold text-white">
                             {selected.label}
                           </span>
-                          <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
+                          <span className="mt-0.5 block text-[12px] leading-snug text-zinc-400">
                             {selected.category} · {selected.direction} · {selected.blurb}
                           </span>
                         </span>
@@ -718,7 +718,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                                   setMenuOpen(false);
                                 }}
                                 className={cn(
-                                  "flex w-full items-start gap-2.5 rounded-[var(--radius-sm)] px-3 py-2.5 text-left transition-colors",
+                                  "flex w-full items-start gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition-colors",
                                   s.id === pickId ? "bg-accent/10" : "hover:bg-white/[0.04]",
                                 )}
                               >
@@ -730,7 +730,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                                   <span className="block font-display text-[13px] font-semibold text-white">
                                     {s.label}
                                   </span>
-                                  <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
+                                  <span className="mt-0.5 block text-[12px] leading-snug text-zinc-400">
                                     {s.category} · {s.direction} · {s.blurb}
                                   </span>
                                 </span>
@@ -745,7 +745,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
 
                     <div className={cn(SURFACE_CONTROL, "flex items-start gap-2.5 p-3")}>
                       <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />
-                      <p className="text-xs leading-relaxed text-zinc-300">
+                      <p className="text-[12px] leading-relaxed text-zinc-300">
                         If anyone other than you holds shares in this vault, the new strategy
                         cannot trade for <span className="font-semibold text-white">24 hours</span>{" "}
                         after you announce it — depositors get that window to withdraw. Your
@@ -774,7 +774,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
               <div className="space-y-3 px-4 py-4">
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
                   <span className="text-zinc-400">Replacing</span>
-                  <code className="rounded-[var(--radius-xs)] bg-white/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-zinc-300">
+                  <code className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-zinc-300">
                     {p.fromStrategy.slice(0, 10)}…
                   </code>
                   <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
@@ -785,10 +785,10 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                   <div className={cn(SURFACE_CONTROL, "flex items-center gap-2.5 p-3")}>
                     <Clock className="h-4 w-4 shrink-0 text-accent" aria-hidden />
                     <div>
-                      <p className="font-display text-sm font-semibold text-white">
+                      <p className="font-display text-[14px] font-semibold text-white">
                         Trading opens in {countdown(secsLeft)}
                       </p>
-                      <p className="mt-0.5 text-xs text-zinc-400">
+                      <p className="mt-0.5 text-[12px] text-zinc-400">
                         Depositors can withdraw until then. Your current strategy is still
                         running.
                       </p>
@@ -830,7 +830,7 @@ export function SealedSwap({ creatorAddr }: { creatorAddr?: string }) {
                 <button
                   type="button"
                   onClick={() => void clearSwap(decibelVaultAddr)}
-                  className="w-full text-center text-xs text-zinc-500 underline underline-offset-2 transition-colors hover:text-zinc-300"
+                  className="w-full text-center text-[12px] text-zinc-500 underline underline-offset-2 transition-colors hover:text-zinc-300"
                 >
                   Abandon this swap — keep the current strategy
                 </button>

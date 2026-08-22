@@ -16,19 +16,10 @@ import { cn } from "@/lib/utils";
 
 import { LaunchpadIndicatorPane, type LaunchpadIndicatorLine } from "./LaunchpadIndicatorPane";
 
-/** Fallback palette for plots the script never coloured. Distinct, in order.
- *  Tokens, not literals: SVG presentation attributes accept `var()`, so the
- *  series follow the theme instead of staying dark-mode pastels on a white page. */
-const FALLBACK_COLORS = [
-  "var(--success)",
-  "var(--color-sky-400)",
-  "var(--warning)",
-  "var(--danger)",
-  "var(--color-violet-400)",
-  "var(--chart-foreground-muted)",
-];
-const NEUTRAL_LINE = "var(--chart-foreground-muted)";
-const OVERLAY_LINE = "var(--color-sky-400)";
+const CHART_BG = "#0d0d14";
+
+/** Fallback palette for plots the script never coloured. Distinct, in order. */
+const FALLBACK_COLORS = ["#39ff14", "#4da3ff", "#ffb020", "#ff6b6b", "#b98cff", "#7c8496"];
 
 function detectAsset(script: string): string {
   if (/\bETH\b/i.test(script)) return "ETH/USD";
@@ -176,7 +167,7 @@ function buildLayers(
       || segment.y1 <= 0 || segment.y2 <= 0) continue;
     lines.push({
       id: `segment-${index}`,
-      color: colorString(segment.color) ?? NEUTRAL_LINE,
+      color: colorString(segment.color) ?? "#7c8496",
       dash: segment.style === "solid" ? undefined : segment.style === "dotted" ? "2 3" : "4 4",
       width: Math.max(1, Math.min(2, segment.width || 1)),
       data: [
@@ -201,7 +192,7 @@ function buildLayers(
     if (pairs.length < 2) return [];
     return [{
       id: `fill-${index}`,
-      color: colorString(fill.options?.color)?.slice(0, 7) ?? OVERLAY_LINE,
+      color: colorString(fill.options?.color)?.slice(0, 7) ?? "#4da3ff",
       opacity: 0.2,
       gradient: true,
       upperData: pairs.map((p) => ({ time: p.time, value: Math.max(p.first, p.second) })),
@@ -225,7 +216,7 @@ function buildLayers(
       endTime,
       low,
       high,
-      color: colorString(box.borderColor) ?? colorString(box.backgroundColor) ?? OVERLAY_LINE,
+      color: colorString(box.borderColor) ?? colorString(box.backgroundColor) ?? "#4da3ff",
       label: box.text || undefined,
       opacity: 0.09,
     }];
@@ -272,7 +263,7 @@ function buildLayers(
       // RSI axis is a floor nobody asked for.
       guides: (result?.guides ?? [])
         .filter((g) => g.value >= lo - (hi - lo) * 0.5 && g.value <= hi + (hi - lo) * 0.5)
-        .map((g) => ({ id: `g-${bucket}-${g.value}`, value: g.value, color: colorString(g.color) ?? NEUTRAL_LINE })),
+        .map((g) => ({ id: `g-${bucket}-${g.value}`, value: g.value, color: colorString(g.color) ?? "#7c8496" })),
     });
   }
 
@@ -280,7 +271,7 @@ function buildLayers(
   for (const g of result?.guides ?? []) {
     if (panes.some((p) => p.guides.some((pg) => pg.value === g.value))) continue;
     if (!Number.isFinite(priceMedian) || g.value < priceMedian * 0.25 || g.value > priceMedian * 4) continue;
-    levels.push({ id: `level-${g.value}`, price: g.value, color: colorString(g.color) ?? NEUTRAL_LINE });
+    levels.push({ id: `level-${g.value}`, price: g.value, color: colorString(g.color) ?? "#7c8496" });
   }
 
   // ── Markers ─────────────────────────────────────────────────────────────────
@@ -298,7 +289,7 @@ function buildLayers(
         time: label.time,
         price,
         side: buy ? ("buy" as const) : ("sell" as const),
-        color: buy ? "var(--success)" : "var(--danger)",
+        color: buy ? "#39ff14" : "#ff6b6b",
         label: label.text,
       }];
     });
@@ -314,7 +305,7 @@ function buildLayers(
       time: t.timestamp,
       price: t.price,
       side: t.isBuy ? "buy" : "sell",
-      color: t.isBuy ? "var(--color-cyan-400)" : "var(--color-orange-400)",
+      color: t.isBuy ? "#00e5ff" : "#ff9f1c",
       label: `${t.reduceOnly ? "CLOSE" : t.isBuy ? "LONG" : "SHORT"} @ ${t.price.toLocaleString()}`,
     });
   }
@@ -492,10 +483,10 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       !embedded && "rounded-[var(--radius)] border border-card-border bg-background-secondary",
     )}>
       <div className="flex items-center justify-between gap-2 border-b border-card-border bg-card-solid px-3 py-1.5">
-        <span className="truncate text-[11px] font-mono uppercase tracking-widest text-zinc-500">
+        <span className="truncate text-[9px] font-mono uppercase tracking-widest text-zinc-500">
           {pineTSResult?.indicatorTitle ?? "Indicator Preview"}
         </span>
-        <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-zinc-600">
+        <div className="flex shrink-0 items-center gap-2 font-mono text-[9px] text-zinc-600">
           <span>{asset}</span>
           <span>7d · 1h</span>
           {layers.adapted && <span className="text-sky-300">visual adapter</span>}
@@ -507,14 +498,14 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       {layers.legend.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-card-border bg-background-secondary px-3 py-1.5">
           {layers.legend.map((item) => (
-            <span key={`${item.pane}-${item.title}`} className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
+            <span key={`${item.pane}-${item.title}`} className="flex items-center gap-1.5 font-mono text-[9px] text-zinc-400">
               <span className="h-[2px] w-3 rounded-full" style={{ backgroundColor: item.color }} />
               {item.title}
             </span>
           ))}
           {(trades?.length ?? 0) > 0 && (
-            <span className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
-              <span className="h-2 w-2 rotate-45 bg-cyan-400" />
+            <span className="flex items-center gap-1.5 font-mono text-[9px] text-zinc-400">
+              <span className="h-2 w-2 rotate-45 bg-[#00e5ff]" />
               {trades!.length} vault fill{trades!.length === 1 ? "" : "s"}
             </span>
           )}
@@ -525,7 +516,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
           `max-h-[280px] overflow-hidden` wrapper on phones, which cut the bottom off the
           chart — including the time axis — so the mobile preview was a chart with its
           scale missing rather than a smaller chart. */}
-      <div className="relative h-[300px] w-full bg-chart-background sm:h-[480px]">
+      <div className="relative h-[300px] w-full sm:h-[480px]" style={{ backgroundColor: CHART_BG }}>
         {candles.length > 0 && (
           <BklitCandlePlot
             candles={candles.map((candle) => ({
@@ -548,12 +539,12 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
         )}
         {layers.dashboard.length > 0 && (
           <div className="pointer-events-none absolute right-3 top-3 hidden min-w-[190px] overflow-hidden rounded-[var(--radius-sm)] border border-card-border bg-background-elevated/90 shadow-xl backdrop-blur md:block">
-            <div className="border-b border-card-border px-3 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+            <div className="border-b border-card-border px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-300">
               {title ?? pineTSResult?.indicatorTitle ?? "Indicator state"}
             </div>
             <dl className="divide-y divide-card-border px-3 py-1.5">
               {layers.dashboard.map((item) => (
-                <div className="flex items-center justify-between gap-4 py-1.5 font-mono text-[11px]" key={item.label}>
+                <div className="flex items-center justify-between gap-4 py-1.5 font-mono text-[9px]" key={item.label}>
                   <dt className="text-zinc-500">{item.label}</dt>
                   <dd className={item.tone === "positive" ? "text-accent" : item.tone === "negative" ? "text-red-400" : "text-zinc-200"}>{item.value}</dd>
                 </div>
@@ -575,7 +566,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
 
       {(pineTSResult?.logs.length ?? 0) > 0 && (
         <details className="group border-t border-card-border bg-background-secondary">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-mono text-[11px] text-zinc-400 hover:text-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-mono text-[10px] text-zinc-400 hover:text-white">
             <span>Pine logs</span>
             <span className="text-zinc-600">{pineTSResult!.logs.length}</span>
           </summary>
@@ -583,7 +574,7 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
             {pineTSResult!.logs.slice(-200).map((entry, index) => (
               <div
                 key={`${entry.time}-${entry.barIndex}-${index}`}
-                className="grid grid-cols-[72px_54px_minmax(0,1fr)] gap-2 py-0.5 font-mono text-[11px] leading-relaxed"
+                className="grid grid-cols-[72px_54px_minmax(0,1fr)] gap-2 py-0.5 font-mono text-[10px] leading-relaxed"
               >
                 <span className="text-zinc-600">bar {entry.barIndex}</span>
                 <span className={
@@ -603,13 +594,13 @@ export function PineVisualPreview({ pineScript, trades, asset: assetOverride, ti
       )}
 
       {runtimeIssue && (
-        <div className="border-t border-amber-500/12 bg-amber-500/[0.06] px-3 py-2 font-mono text-[11px] leading-relaxed text-amber-300/80">
+        <div className="border-t border-amber-500/12 bg-amber-500/[0.06] px-3 py-2 font-mono text-[9px] leading-relaxed text-amber-300/80">
           Preview runtime: {runtimeIssue}
         </div>
       )}
 
       {error && (
-        <div className="border-t border-red-500/12 bg-red-500/10 px-3 py-1.5 font-mono text-[11px] text-red-400">
+        <div className="border-t border-red-500/12 bg-red-500/10 px-3 py-1.5 font-mono text-[9px] text-red-400">
           {error}
         </div>
       )}

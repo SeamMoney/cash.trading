@@ -6,7 +6,7 @@ import { Header, PageConnectCta } from "@/components/layout/Header";
 import { SECTION_TITLE } from "@/components/portfolio/portfolio-surface";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { useDecibelWalletIdentity } from "@/hooks/useDecibelWalletIdentity";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { PAGE_SHELL, PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 import { Leaderboard } from "./leaderboard";
 import { PointsProfileCard } from "./points-profile-card";
@@ -123,7 +123,7 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
       {/* One readable column, the same measure /launchpad settled on. At 1536px
           the leaderboard row stretched to 1368px around ~570px of content, so a
           rank sat 470px from its AMPs and the row stopped reading as a row. */}
-      <main className="mx-auto max-w-[900px] px-4 py-8 sm:px-8">{content}</main>
+      <main className={PAGE_SHELL}>{content}</main>
     </div>
     </PageConnectCta>
   );

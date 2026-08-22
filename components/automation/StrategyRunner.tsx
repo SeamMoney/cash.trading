@@ -54,7 +54,7 @@ import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSub
 import { useDelegation } from "@/hooks/use-delegation";
 import { ensureBuilderApproval } from "@/lib/decibel-builder-approval";
 import { FLIP_RATE, SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
-import { FOCUS_RING, PRESSABLE_CONTROL } from "@/lib/surface";
+import { FOCUS_RING, PAGE_SHELL, PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 /* ── Surfaces ────────────────────────────────────────────────────────────── */
@@ -763,7 +763,7 @@ export function StrategyRunner() {
     <PageConnectCta present={!connected}>
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-8">
+      <main className={PAGE_SHELL}>
         <div className="mb-6">
           <h1 className={SECTION_TITLE}>Strategy runner</h1>
           <p className="mt-1 text-pretty text-xs text-muted-foreground">

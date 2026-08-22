@@ -27,9 +27,12 @@ const DESKTOP_MARKET_QUERY = "(min-width: 1024px)";
  *
  * The split starts at `lg`. Holding it back to `2xl` meant a 576px card alone
  * in the middle of a 1440px laptop with the book pushed below the fold and two
- * thirds of the screen left black. At `lg` the 1120px frame carries two ~552px
- * columns — the card at close to its natural width, the book beside it — and
- * below `lg` both stack in one `max-w-xl` column, swap first.
+ * thirds of the screen left black. From `lg` the row takes the page shell's
+ * full measure (`lg:max-w-none` releases the `max-w-xl` that caps the stacked
+ * form) — it used to impose a private 1120px frame inside a wider `<main>`,
+ * which put ~136px of black down each side of the swap and made the content's
+ * left edge jump when you moved between /swap and /trade. Below `lg` both
+ * stack in that one `max-w-xl` column, swap first.
  *
  * The swap card is the only thing that sets the row height: it is never
  * padded, stretched or scrolled. In the two-column form the book is taken out
@@ -52,7 +55,7 @@ export function SwapMarketLayout({
   }, []);
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-[1120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch lg:gap-4">
+    <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-none lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch lg:gap-4">
       <div className="min-w-0 lg:order-2">
         {children}
       </div>

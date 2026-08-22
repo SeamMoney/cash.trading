@@ -167,7 +167,6 @@ const bklitInteractionSource = readFileSync("components/charts/bklit/use-chart-i
 const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
-const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const pinePreviewSource = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
 const equityCurveSource = readFileSync("components/launchpad/EquityCurveChart.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
@@ -238,11 +237,6 @@ assert.ok(
 assert.ok(
   !proChartSource.includes("formatLegend") && !proChartSource.includes("legendCandle"),
   "the chart must not render an OHLC number row below the timeframe selector",
-);
-assert.ok(!launchpadChartSource.includes("lightweight-charts"), "the launchpad candle chart must not use TradingView");
-assert.ok(
-  launchpadChartSource.includes("@/components/trade/BklitCandlePlot"),
-  "the launchpad candle chart must share the local bklit renderer",
 );
 assert.ok(!pinePreviewSource.includes("lightweight-charts"), "the Pine preview must not use TradingView");
 assert.ok(

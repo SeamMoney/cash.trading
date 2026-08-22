@@ -17,7 +17,7 @@ import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { PERP_MARKET_DATA } from "@/components/trade/perpMarketConfig";
 import { cn } from "@/lib/utils";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { PAGE_SHELL_WIDE, PRESSABLE_CONTROL } from "@/lib/surface";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import { AreaChart, Area } from "@/components/charts/area-chart";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
@@ -1140,7 +1140,11 @@ export function TradePageClient({
     <div className="min-h-screen pb-12 md:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
-        <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
+        {/* PAGE_SHELL_WIDE, not a private 1800px measure — /trade, /swap and
+            /portfolio now start their content at the same x, and at the same x
+            as the header wordmark. Only the vertical rhythm is overridden:
+            py-3/4/5 keeps the chart above the fold. */}
+        <main className={cn(PAGE_SHELL_WIDE, "relative z-10 py-3 sm:py-4 lg:py-5")}>
         {/* ── Desktop: side-by-side. Mobile: stacked ──
             Between xl and 2xl the two side columns took their maximum width and
             left the chart barely a third of the row — very visible at 125%
@@ -1151,7 +1155,7 @@ export function TradePageClient({
           className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_320px_336px] xl:items-stretch xl:gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)_minmax(340px,380px)] 2xl:gap-4"
         >
           {/* BTC Chart */}
-          <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">
+          <div className="min-w-0 xl:h-[672px]">
             <BTCChart
               initialHistory={initialBtcCandles}
               onMarketChange={handleMarketChange}
@@ -1160,7 +1164,7 @@ export function TradePageClient({
             />
           </div>
 
-          <div className="hidden min-w-0 animate-enter animate-enter-delay-2 xl:block xl:h-[672px]">
+          <div className="hidden min-w-0 xl:block xl:h-[672px]">
             <OrderBook
               key={decibelMarketAddress ?? decibelMarketName}
               marketName={decibelMarketName}
@@ -1174,7 +1178,7 @@ export function TradePageClient({
           {/* Trade Panel — right sidebar on desktop. It sizes to its content
               and self-aligns to the top: pinning it to the chart's 672px left
               ~200px of empty column under the primary CTA. */}
-          <div className="min-w-0 max-w-xl animate-enter animate-enter-delay-2 xl:max-w-none xl:self-start">
+          <div className="min-w-0 max-w-xl xl:max-w-none xl:self-start">
             <TradePanel
               market={market.pair}
               marketId={market.id}
@@ -1201,13 +1205,13 @@ export function TradePageClient({
                 stacked column, so the reading order is unchanged. It stays
                 hidden below md because the mobile sheet (useIsMobile = 767px)
                 already renders the same table there. */}
-            <div id="positions" className="mt-3 hidden scroll-mt-20 animate-enter md:block">
+            <div id="positions" className="mt-3 hidden scroll-mt-20 md:block">
               <DecibelPositions showOverview={false} />
             </div>
           </div>
         </div>
 
-        <div ref={vaultsSectionRef} id="vaults" className="mt-6 scroll-mt-20 animate-enter">
+        <div ref={vaultsSectionRef} id="vaults" className="mt-6 scroll-mt-20">
           <VaultsPanel
             enabled={vaultsActive}
             holdingsRefreshNonce={vaultHoldingsRefreshNonce}
@@ -1216,7 +1220,7 @@ export function TradePageClient({
           />
         </div>
 
-        <div ref={signalsSectionRef} id="signals" className="mt-6 scroll-mt-20 animate-enter">
+        <div ref={signalsSectionRef} id="signals" className="mt-6 scroll-mt-20">
           <SignalProductsPanel
             enabled={signalsActive}
             onVaultAction={(mode, ind, strategyVault, vaultAddress) =>

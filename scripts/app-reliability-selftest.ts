@@ -202,7 +202,6 @@ const decibelDepositRoute = readFileSync("app/api/decibel/deposit/route.ts", "ut
 const decibelWithdrawRoute = readFileSync("app/api/decibel/withdraw/route.ts", "utf8");
 const decibelTransferUsdcRoute = readFileSync("app/api/decibel/transfer-usdc/route.ts", "utf8");
 const constantsSource = readFileSync("lib/constants.ts", "utf8");
-const launchpadOnChainChart = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const orderBook = readFileSync("components/trade/OrderBook.tsx", "utf8");
 const tradePageClient = readFileSync("components/trade/TradePageClient.tsx", "utf8");
 const swapMarketLayout = readFileSync("components/trade/swap/SwapMarketLayout.tsx", "utf8");
@@ -902,11 +901,6 @@ assert.match(launchpadTradesRoute, /sanitizeOnChainTrades/);
 assert.match(launchpadTradesRoute, /completedTrades/);
 assert.match(launchpadTradesRoute, /status: 502/);
 assert.match(launchpadTradesRoute, /trade_history_not_supported/);
-assert.match(launchpadOnChainChart, /candleAbortRef/);
-assert.match(launchpadOnChainChart, /packageAddress\?: string/);
-assert.match(launchpadOnChainChart, /pkg=\$\{encodeURIComponent\(packageAddress\)\}/);
-assert.match(launchpadOnChainChart, /high < Math\.max\(open, close\)/);
-assert.match(launchpadOnChainChart, /manualKeeperEnabled = process\.env\.NODE_ENV !== "production"/);
 assert.ok(
   !launchpadPage.includes("OnChainChart") && !launchpadPage.includes("ind.pkg"),
   "the Vaults page must not render the legacy indicator detail pane",
@@ -1245,7 +1239,6 @@ assert.match(decibelVaultExtractRoute, /transaction_sender_does_not_own_strategy
 assert.match(vaultActionModal, /allocationPct,\s*network: indicator\.network/);
 assert.match(constantsSource, /process\.env\.NEXT_PUBLIC_DECIBEL_NETWORK/);
 assert.match(constantsSource, /network: AptosNetworkName = APTOS_NETWORK/);
-assert.match(launchpadOnChainChart, /explorerAccountUrl\(indicatorAddr, "testnet"\)/);
 const validVaultCreate = buildCreateDecibelVaultPayload({
   subaccount: "0x1",
   vaultName: "Reliability Vault",

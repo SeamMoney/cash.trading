@@ -1110,23 +1110,32 @@ export function PortfolioPageClient() {
     // PageConnectCta: disconnected, this page renders the filled "Connect
     // wallet" primary below, so the header must not render its outline copy.
     <PageConnectCta present={!connected}>
-    <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
+    {/* No min-h-screen. Disconnected this page is a title, one line and a
+        button; reserving a viewport under them held ~600px of black open to
+        say nothing. <body> paints --page-background, so the page ending early
+        ends the content, not the background. */}
+    <div className="cash-trade-theme bg-background text-zinc-200">
       <Header />
       {/* The shell is shared, not restated: /portfolio is the dense tier the
           trade and swap pages now also render, so the content's left edge no
           longer moves as you change tabs. */}
       <main className={PAGE_SHELL_WIDE}>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
+        <div className={cn("flex flex-wrap items-center justify-between gap-4", connected && "mb-6")}>
+          <div className="min-w-0">
             <h1 className={SECTION_TITLE}>Portfolio</h1>
-            {/* The subtitle names the account you are looking at. Disconnected
-                it said "Connect wallet to load Decibel account state" — the
-                same request as the button beside it, so it is not rendered. */}
-            {connected ? (
-              <p className="mt-1 text-pretty text-xs text-muted-foreground">
-                {selectedLabel} · {decibelNetwork}
-              </p>
-            ) : null}
+            {/* One line under the title in both states, because it is the same
+                slot: connected it names the account you are looking at,
+                disconnected it says what will land here. Disconnected it used
+                to say "Connect wallet to load Decibel account state" — the same
+                request as the button beside it — and then the sentence that
+                replaced it was drawn inside a dashed 1370x110 box further down
+                the page. /launchpad already argues the case in its own comment:
+                a bordered box around one line is a frame around nothing. */}
+            <p className="mt-1 max-w-md text-pretty text-xs leading-relaxed text-muted-foreground">
+              {connected
+                ? `${selectedLabel} · ${decibelNetwork}`
+                : "Live equity, PnL, positions and orders load here once you connect."}
+            </p>
           </div>
           <div className="flex flex-wrap items-start gap-2">
             {connected ? (
@@ -1175,7 +1184,9 @@ export function PortfolioPageClient() {
         {/* Disconnected, everything below this line — four em-dash tiles, an
             em-dash hero, a rewards promise and a twelve-column table of
             nothing — asked the same question the button above already asks.
-            One prompt is rendered instead, and it says what lands here. */}
+            Nothing is rendered instead: the one sentence that survived is the
+            line under the title, so the page below the header is empty and
+            therefore short. */}
         {connected ? (
         <>
 
@@ -1810,15 +1821,7 @@ export function PortfolioPageClient() {
         )}
 
         </>
-        ) : (
-          /* The one thing a disconnected visitor sees below the header: what
-             this page is for. The action is the "Connect wallet" primary
-             above — repeating the ask here is what turned one question into
-             five. */
-          <p className="rounded-[var(--radius)] border border-dashed border-card-border px-6 py-10 text-center text-[13px] text-muted-foreground">
-            Live equity, PnL, positions and orders load here once you connect.
-          </p>
-        )}
+        ) : null}
       </main>
 
       <WalletAccountModal open={depositOpen} onClose={() => setDepositOpen(false)} />

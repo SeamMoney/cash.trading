@@ -2253,7 +2253,9 @@ export function CashSpotSwap({
   const minimumReceived = buyQuote?.minCashAmount ?? sellQuote?.minUsdcAmount ?? 0;
   const quoteSummary = effectivePrice > 0
     ? `1 CASH = ${formatPrice(effectivePrice)} USDC`
-    : "Enter an amount to see price details";
+    // Short enough to survive a 390px viewport intact: the longer
+    // "Enter an amount to see price details" truncated to "…price de…" there.
+    : "Enter an amount for pricing";
   const outputDisplay = outputAmount > 0
     ? formatAmount(outputAmount, toSymbol === "CASH" ? 0 : 6)
     : "0";
@@ -2810,14 +2812,10 @@ export function CashSpotSwap({
         aria-expanded={detailsOpen}
         aria-controls={detailsPanelId}
       >
-        {/* The first book has not landed, so there is no price to invite an
-            amount for yet. A bar the width of that line, not a prompt the page
-            cannot honour. */}
-        {effectiveLoading && effectivePrice <= 0 ? (
-          <Skeleton role="status" aria-label="Loading price details" className="h-3.5 w-52 max-w-full bg-card-hover" />
-        ) : (
-          <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
-        )}
+        {/* No skeleton here. The prompt is honest before the first book lands
+            and after it does, and a grey bar sitting beside a fully populated
+            order book reads as broken rather than loading. */}
+        <span className="min-w-0 font-mono tabular-nums">{quoteSummary}</span>
         <span className="flex shrink-0 items-center gap-1.5">
           {quoteAgeSeconds !== null && bookReady && quoteStale && (
             <span className="text-[11px] text-warning">Stale</span>

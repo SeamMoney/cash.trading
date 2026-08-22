@@ -17,6 +17,8 @@ import {
   type DecibelSpotSide,
   type ValidatedDecibelSpotMarket,
 } from "@/lib/decibel-spot";
+import { PAGE_SHELL_WIDE } from "@/lib/surface";
+import { cn } from "@/lib/utils";
 
 type SwapMarketName = "CASH/USDC" | "APT/USDC" | "BTC/USDC";
 type SwapAssetId = "CASH" | "APT" | "BTC" | "USDC";
@@ -349,7 +351,8 @@ export function SwapPageClient() {
     <PageConnectCta present={!connected}>
     <div className="cash-trade-theme min-h-screen bg-background pb-10">
       <Header />
-      <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
+      {/* PAGE_SHELL_WIDE, not a private 1800px measure — see TradePageClient. */}
+      <main className={cn(PAGE_SHELL_WIDE, "relative z-10 py-3 sm:py-4 lg:py-5")}>
         <h1 className="sr-only">Swap spot assets</h1>
       {!selectedDecibelMarket ? (
         <CashSpotSwap key={`cash-${formKey}`} {...sharedProps} />

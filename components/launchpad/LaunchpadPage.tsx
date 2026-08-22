@@ -16,7 +16,8 @@ import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 
 import { cn } from "@/lib/utils";
-import { Header } from "@/components/layout/Header";
+import { Header, PageConnectCta } from "@/components/layout/Header";
+import { useAge } from "@/components/points/format";
 import { SealedLaunch } from "@/components/sealed/SealedLaunch";
 import { SealedSwap } from "@/components/sealed/SealedSwap";
 import {
@@ -35,7 +36,7 @@ import { PAGE_SHELL } from "@/lib/surface";
 
 export function LaunchpadPage() {
   const { connected, account } = useWallet();
-  const { vaults, loading, error, reload, network } = useSealedVaults();
+  const { vaults, loading, error, reload, network, fetchedAt } = useSealedVaults();
   const [launching, setLaunching] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
 
@@ -51,18 +52,41 @@ export function LaunchpadPage() {
   // resolve to null, which left the page saying nothing about where it had looked — a
   // list that is empty on mainnet and a list that is empty because it read testnet are
   // different facts, and the reader could not tell them apart.
-  const subline = loading
-    ? `Loading vaults… · ${network}`
-    : error
-      ? `Vault list unavailable · ${network}`
-      : vaults.length === 0
-        ? `No sealed vaults · ${network}`
-        : `${vaults.length} vault${vaults.length === 1 ? "" : "s"} · ${liveCount} running · ${network}`;
+  //
+  // …and a quantity plus a network is still only half a fact: "No sealed vaults ·
+  // mainnet" says where it looked but not when. The age comes from the same helper
+  // the /points leaderboard and profile card print, so freshness reads identically
+  // wherever the app claims a number. Suppressed while loading (there is nothing on
+  // screen to be old) and on error (the count shown is not from a read that landed).
+  const age = useAge(fetchedAt);
+  const subline = [
+    loading
+      ? "Loading vaults…"
+      : error
+        ? "Vault list unavailable"
+        : vaults.length === 0
+          ? "No sealed vaults"
+          : `${vaults.length} vault${vaults.length === 1 ? "" : "s"} · ${liveCount} running`,
+    network,
+    !loading && !error && age ? `updated ${age}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
-    <div className="cash-trade-theme min-h-screen bg-background text-foreground">
+    //
+    // PageConnectCta: disconnected, this page already renders an accent primary
+    // of its own ("Launch a vault", or SealedLaunch's own "Connect wallet" once
+    // the flow is open), so the header must not render its outline copy — the
+    // page was showing two accent controls at once, which is two primaries.
+    //
+    // No min-h-screen. The page is as tall as its content: with no vaults that is
+    // a title, a line and a button, and holding a viewport open under them was
+    // reserving a screen for absence. <body> paints the background either way.
+    <PageConnectCta present={!connected}>
+    <div className="cash-trade-theme bg-background text-foreground">
       <Header />
       {/* PAGE_SHELL, not a private measure. The app shipped five different <main>
           widths, so the content's left edge moved as you changed tabs; this page's
@@ -156,5 +180,6 @@ export function LaunchpadPage() {
         )}
       </main>
     </div>
+    </PageConnectCta>
   );
 }

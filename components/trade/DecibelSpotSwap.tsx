@@ -2116,14 +2116,14 @@ export function DecibelSpotSwap({
                   </span>
                 ) : null}
               </span>
-            ) : snapshotStatus === "loading" ? (
-              // The first book has not landed, so there is no price to invite
-              // an amount for yet. A bar the width of that line, not a prompt
-              // the page cannot honour.
-              <Skeleton role="status" aria-label="Loading price details" className="h-3.5 w-52 max-w-full bg-card-hover" />
             ) : (
+              // No skeleton here. The prompt is honest before the first book
+              // lands and after it does, and a grey bar sitting beside a fully
+              // populated order book reads as broken rather than loading.
+              // The copy is short enough to survive a 390px viewport intact:
+              // "Enter an amount to see price details" truncated to "price de…".
               <span className="min-w-0 truncate font-mono tabular-nums">
-                Enter an amount to see price details
+                Enter an amount for pricing
               </span>
             )}
             <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-150 motion-reduce:transition-none", detailsOpen && "rotate-180")} />

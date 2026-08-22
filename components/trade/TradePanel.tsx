@@ -788,13 +788,21 @@ export function TradePanel({
         </div>
       </div>
 
-      {/* Order details — present at rest, not only after an amount is typed.
-          Est. liquidation depends on price, side and leverage alone, so a
-          leveraged-perp UI can and must show it before the user commits; its
-          label carries the leverage it assumes so it is never mistaken for a
-          price attached to an order that does not exist yet. Amount-dependent
-          rows read "—" until there is an amount. Leverage (already in the
-          drawer above) and margin fold away on phones.
+      {/* Order details. Every row here is derived from the amount the user
+          typed, so with no amount there is no order and all of them read "—".
+          Est. liquidation used to be the exception: it printed a concrete
+          price at rest, beside two rows that correctly said "—", for a
+          position that did not exist. A leveraged-perp panel must not state a
+          liquidation price the user's inputs did not produce, so it now takes
+          the same guard as Order value and Margin required.
+
+          Leverage (already in the drawer above), Est. liquidation and Margin
+          required fold away below sm. At 390x844 the ticket's primary CTA has
+          to clear the collapsed portfolio sheet's 44px peek (MobilePortfolioSheet
+          PEEK_FROM_BOTTOM), and those rows plus the roomier py-3 are what put
+          it under. Order value already carries the USD notional that Margin
+          required restates, and at rest the folded rows would only repeat the
+          "—" the visible row shows.
 
           There is no slippage or fee row: the perp order route returns neither
           a quoted impact nor a fee rate, and the two literals that used to sit
@@ -807,13 +815,20 @@ export function TradePanel({
         const orderValue = hasAmount ? amt * leverage : null;
         const orderBase = orderValue != null && hasPrice ? orderValue / currentPrice : null;
         const marginRequired = orderValue;
-        const estLiqPrice = hasPrice
+        // Same guard Order value and Margin required already use: no order
+        // value, no liquidation price to quote.
+        const estLiqPrice = hasPrice && orderValue != null
           ? getEstimatedLiquidationPrice(currentPrice, side, leverage)
           : null;
         const usd = (value: number) =>
           `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         return (
-          <dl className="space-y-2 border-t border-card-border px-4 py-3 font-mono text-[11px] tabular-nums">
+          /* flex + gap, not space-y: Tailwind v4's space-y-2 hangs a
+             margin-block-end on every :not(:last-child), and the last child
+             here is display:none below sm — so the phone column ended in 8px
+             of margin under its only visible row. Flex gaps exist only
+             between boxes that actually render. */
+          <dl className="flex flex-col gap-2 border-t border-card-border px-4 py-2 font-mono text-[11px] tabular-nums sm:py-3">
             <div className="hidden justify-between sm:flex">
               <dt className="text-zinc-500">Leverage</dt>
               <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
@@ -826,7 +841,7 @@ export function TradePanel({
                   : `${orderBase.toFixed(4)} ${market.split("/")[0]} / ${orderValue.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}`}
               </dd>
             </div>
-            <div className="flex justify-between gap-3">
+            <div className="hidden justify-between gap-3 sm:flex">
               <dt className="text-zinc-500">Est. liquidation at {leverage.toFixed(1)}x</dt>
               <dd className="text-foreground">
                 {estLiqPrice == null ? "—" : usd(estLiqPrice)}

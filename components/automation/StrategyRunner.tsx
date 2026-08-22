@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { Header, PageConnectCta } from "@/components/layout/Header";
+import { useAge } from "@/components/points/format";
 import {
   BUTTON_NEUTRAL,
   BUTTON_PRIMARY,
@@ -355,6 +356,7 @@ export function StrategyRunner() {
   const [capitalInput, setCapitalInput] = useState<string>("");
 
   const [markets, setMarkets] = useState<Market[] | null>(null);
+  const [marketsFetchedAt, setMarketsFetchedAt] = useState<number | null>(null);
   const [marketsError, setMarketsError] = useState<string>("");
   const [bot, setBot] = useState<BotStatus | null>(null);
   const [botError, setBotError] = useState<string>("");
@@ -395,6 +397,7 @@ export function StrategyRunner() {
         if (cancelled) return;
         if (list.length === 0) {
           setMarkets([]);
+          setMarketsFetchedAt(null);
           setMarketsError("Market list is unavailable right now.");
           return;
         }
@@ -406,6 +409,7 @@ export function StrategyRunner() {
           return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name);
         });
         setMarkets(list);
+        setMarketsFetchedAt(Date.now());
         setMarketsError("");
         setMarketName((current) =>
           list.some((m) => m.name === current) ? current : list[0].name,
@@ -413,6 +417,7 @@ export function StrategyRunner() {
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
         setMarkets([]);
+        setMarketsFetchedAt(null);
         setMarketsError("Market list is unavailable right now.");
       }
     })();
@@ -426,6 +431,13 @@ export function StrategyRunner() {
     () => markets?.find((m) => m.name === marketName) ?? null,
     [markets, marketName],
   );
+
+  /* The mark price is read once when the page mounts and never polled, so the
+     figure under the market select silently drifts from the market the longer
+     the tab stays open — two loads seconds apart showed marks $14 apart with
+     nothing on screen saying either was a snapshot. Same "updated Ns ago"
+     helper the points leaderboard uses, so both surfaces age identically. */
+  const marketsAge = useAge(marketsFetchedAt);
 
   /** 3x is the route's own ceiling; a market may cap lower than that. */
   const leverageChoices = useMemo(() => {
@@ -890,7 +902,7 @@ export function StrategyRunner() {
                     {marketsError
                       ? marketsError
                       : market?.markPrice != null
-                        ? `Mark ${usd(market.markPrice)}`
+                        ? `Mark ${usd(market.markPrice)}${marketsAge ? ` · updated ${marketsAge}` : ""}`
                         : "Loading markets…"}
                   </p>
                 </div>

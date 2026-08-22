@@ -91,6 +91,10 @@ export function useSealedVaults() {
   const [vaults, setVaults] = useState<SealedVault[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // When the list on screen was last read from the registry. The page prints its
+  // age beside the count, so "0 vaults" is a fact with a timestamp rather than a
+  // claim of unknown vintage.
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const network = process.env.NEXT_PUBLIC_DECIBEL_NETWORK === "mainnet" ? "mainnet" : "testnet";
 
   const reload = useCallback(async () => {
@@ -105,6 +109,7 @@ export function useSealedVaults() {
         return;
       }
       setVaults(Array.isArray(json.vaults) ? json.vaults : []);
+      setFetchedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -116,7 +121,7 @@ export function useSealedVaults() {
     void reload();
   }, [reload]);
 
-  return { vaults, loading, error, reload, network };
+  return { vaults, loading, error, reload, network, fetchedAt };
 }
 
 export function SealedVaultFeed({
@@ -283,7 +288,12 @@ function VaultDetail({ vault: active }: { vault: SealedVault }) {
   const doDeposit = useCallback(async () => {
     setDepositMsg(null);
     if (!connected || !account) {
-      setDepositMsg("Connect a wallet to deposit.");
+      // The button already reads "Connect wallet" in this state, so it has to
+      // connect one. It used to answer the click with "Connect a wallet to
+      // deposit." — a control restating its own label instead of acting. The
+      // page no longer carries a second connect entry point in the header
+      // (PageConnectCta), which makes this the one that has to work.
+      window.dispatchEvent(new Event("cash:open-wallet-selector"));
       return;
     }
     const usdc = Number(amount);

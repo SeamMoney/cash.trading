@@ -427,7 +427,11 @@ assert.ok(!portfolioPage.includes("overview?.equity ?? 0"), "an unavailable port
 assert.ok(!portfolioPage.includes("position.estimatedPnl ?? 0"), "an unavailable position mark must not render as zero PnL");
 assert.match(sharedHeader, /balanceRequestIdRef/);
 assert.match(sharedHeader, /balanceContextRef\.current === requestContext/);
-assert.equal((sharedHeader.match(/>\s*Sign In\s*</g) ?? []).length, 1, "the header must expose one sign-in action");
+// One name for entering the app. The header used to say "Sign In" while every
+// page said "Connect wallet" and Portfolio said "Deposit USDC" — three names
+// for one act. "Connect wallet" is the one that survived.
+assert.equal((sharedHeader.match(/>\s*Connect wallet\s*</g) ?? []).length, 1, "the header must expose one connect action");
+assert.ok(!sharedHeader.includes("Sign In"), "the header must not reintroduce a second name for connecting");
 assert.ok(!btcChart.includes("autoFocus"), "opening the mobile market sheet must not summon the keyboard");
 assert.ok(!btcChart.includes('type="search"'), "the asset selector must not render a search control");
 assert.match(btcChart, /ResponsiveModalSheet/);

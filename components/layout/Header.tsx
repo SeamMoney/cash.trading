@@ -328,7 +328,7 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                   "h-10 rounded-[var(--radius-sm)] border border-accent/30 px-5 text-sm font-semibold text-accent hover:bg-accent/10",
                 )}
               >
-                Sign In
+                Connect wallet
               </button>
             )}
           </div>

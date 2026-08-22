@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,17 +16,14 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  MobileModalSheet,
-  type MobileModalSheetHandle,
-} from "@/components/ui/mobile-modal-sheet";
+import { MobileModalSheet } from "@/components/ui/mobile-modal-sheet";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 
 type ViewportMode = "mobile" | "desktop" | null;
 
 interface ResponsiveModalSheetProps {
   badge?: ReactNode;
-  children: ReactNode | ((requestClose: () => void) => ReactNode);
+  children: ReactNode;
   description?: string;
   desktopClassName?: string;
   desktopContentClassName?: string;
@@ -63,36 +58,21 @@ export function ResponsiveModalSheet({
   titleId,
 }: ResponsiveModalSheetProps) {
   const [viewport, setViewport] = useState<ViewportMode>(null);
-  const mobileSheetRef = useRef<MobileModalSheetHandle>(null);
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
+    const media = window.matchMedia("(max-width: 639px)");
     const update = () => setViewport(media.matches ? "mobile" : "desktop");
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
 
-  const requestClose = useCallback(() => {
-    if (viewport === "mobile") {
-      const sheet = mobileSheetRef.current;
-      if (sheet) {
-        sheet.close();
-        return;
-      }
-    }
-    onClose();
-  }, [onClose, viewport]);
-
   if (!open || viewport === null) return null;
-
-  const content = typeof children === "function" ? children(requestClose) : children;
 
   if (viewport === "mobile") {
     return createPortal(
       <div className="cash-trade-theme">
         <MobileModalSheet
-          ref={mobileSheetRef}
           contentClassName={mobileContentClassName}
           initialSnap={initialSnap}
           onClose={onClose}
@@ -101,7 +81,7 @@ export function ResponsiveModalSheet({
           description={description}
           titleId={`${titleId}-mobile`}
         >
-          {content}
+          {children}
         </MobileModalSheet>
       </div>,
       document.body,
@@ -127,7 +107,7 @@ export function ResponsiveModalSheet({
         <header className="flex shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#171717] px-5 py-3 font-mono text-[13px] font-semibold text-[#888]">
           <div className="flex min-w-0 items-center gap-2">
             <span className="size-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-            <DialogTitle className="truncate font-mono text-[13px] font-semibold uppercase leading-none text-[#888]">
+            <DialogTitle id={titleId} className="truncate font-mono text-[13px] font-semibold uppercase leading-none text-[#888]">
               {title}
             </DialogTitle>
             {badge ? (
@@ -136,7 +116,7 @@ export function ResponsiveModalSheet({
               </span>
             ) : null}
             {description ? (
-              <DialogDescription className="sr-only">
+              <DialogDescription id={`${titleId}-description`} className="sr-only">
                 {description}
               </DialogDescription>
             ) : null}
@@ -146,8 +126,8 @@ export function ResponsiveModalSheet({
               type="button"
               aria-label={`Close ${title}`}
               className={cn(
+                "rounded-[var(--radius-sm)] p-2 text-[#666] hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
                 PRESSABLE_CONTROL,
-                "rounded-[var(--radius-sm)] p-2 text-[#666] outline-none transition-[transform,opacity] hover:bg-white/[0.05] hover:text-white focus-visible:ring-2 focus-visible:ring-ring",
               )}
             >
               <X className="size-3.5" aria-hidden="true" />
@@ -160,7 +140,7 @@ export function ResponsiveModalSheet({
             desktopContentClassName,
           )}
         >
-          {content}
+          {children}
         </div>
       </DialogContent>
     </Dialog>

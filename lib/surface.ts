@@ -59,19 +59,3 @@ export const BORDER = {
   hover: "hover:border-border-strong",
   active: "border-accent/50",
 } as const;
-
-
-/** Focus ring used by the pages added in this cycle (points, automation). */
-export const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-/** Page <main> measure for the pages added in this cycle. */
-export const PAGE_SHELL = "mx-auto w-full max-w-[900px] px-4 py-8 sm:px-8";
-export const PAGE_SHELL_WIDE = "mx-auto w-full max-w-[1536px] px-4 py-8 sm:px-8";
-
-
-/** Aliases the pages added in this cycle import. Same values as the existing
-    SURFACE_* constants — no new look, just the names those files use. */
-export const PANEL = SURFACE_PANEL;
-export const BUTTON_PRIMARY =
-  "inline-flex items-center justify-center rounded-[10px] bg-accent px-4 py-2 text-sm font-semibold text-black transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60";

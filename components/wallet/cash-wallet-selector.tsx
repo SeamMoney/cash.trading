@@ -27,7 +27,6 @@ type WalletChain = "Aptos" | "Solana" | "EVM";
 interface WalletSelectorProps {
   open: boolean;
   onClose: () => void;
-  preferredChain?: WalletChain;
 }
 
 const CHAIN_TABS: WalletChain[] = ["Aptos", "Solana", "EVM"];
@@ -61,7 +60,7 @@ function dedupeWallets(wallets: AnyWallet[]) {
   return [...byName.values()];
 }
 
-export function WalletSelector({ open, onClose, preferredChain }: WalletSelectorProps) {
+export function WalletSelector({ open, onClose }: WalletSelectorProps) {
   const { connect, wallets, notDetectedWallets } = useWallet();
   const [mounted, setMounted] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -117,14 +116,14 @@ export function WalletSelector({ open, onClose, preferredChain }: WalletSelector
     setShowMore(false);
     const hasDetectedEvm = availableByChain.EVM.some((wallet) => !isInstallRequired(wallet));
     const hasDetectedSolana = availableByChain.Solana.some((wallet) => !isInstallRequired(wallet));
-    setActiveChain(preferredChain ?? (hasDetectedEvm ? "EVM" : hasDetectedSolana ? "Solana" : "Aptos"));
+    setActiveChain(hasDetectedEvm ? "EVM" : hasDetectedSolana ? "Solana" : "Aptos");
     try {
       const saved = window.localStorage.getItem(EVM_SOURCE_CHAIN_STORAGE_KEY) as EvmCctpSourceChain | null;
       if (saved && EVM_SOURCE_CHAINS.includes(saved)) setEvmSourceChain(saved);
     } catch {
       // Storage is optional; the visible selector remains authoritative.
     }
-  }, [availableByChain, open, preferredChain]);
+  }, [availableByChain, open]);
 
   const handleConnect = useCallback(async (walletName: string) => {
     setConnecting(walletName);

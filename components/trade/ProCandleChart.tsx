@@ -74,11 +74,9 @@ const DEFAULT_VISIBLE_BARS: Record<ProChartInterval, number> = {
   "1d": 80,
 };
 
-// The candle size each button selects. They read LIVE / HISTORY before, which
-// named a connection state rather than the interval — both stream the same way.
 const INTERVAL_LABELS: Record<ProChartInterval, string> = {
-  "1m": "1m",
-  "1d": "1d",
+  "1m": "LIVE",
+  "1d": "HISTORY",
 };
 
 const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m";
@@ -300,12 +298,11 @@ function ProCandleChartComponent({
 
   const intervalButtons = useMemo(() => CHART_INTERVALS.map((option) => (
     <button
-      aria-label={option === "1m" ? "One-minute candles" : "Daily candles"}
-      aria-pressed={option === interval}
+      aria-label={option === "1m" ? "Live one-minute candles" : "Long daily candle history"}
       key={option}
       type="button"
       onClick={() => handleIntervalChange(option)}
-      className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold transition-colors ${
+      className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
         option === interval
           ? "bg-white/[0.12] text-white"
           : "text-zinc-500 hover:text-zinc-300"
@@ -342,7 +339,7 @@ function ProCandleChartComponent({
       />
 
       <div className="pointer-events-none absolute left-2 top-2 z-10">
-        <div className="pointer-events-auto flex items-center gap-0.5 self-start rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary/85 p-0.5 backdrop-blur-sm">
+        <div className="pointer-events-auto flex items-center gap-0.5 self-start rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm">
           {intervalButtons}
         </div>
       </div>
@@ -351,7 +348,7 @@ function ProCandleChartComponent({
         <button
           type="button"
           onClick={snapToLive}
-          className="absolute bottom-10 right-20 z-10 flex items-center gap-1 rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary/90 px-2 py-1 font-mono text-[11px] font-semibold text-zinc-300 backdrop-blur-sm transition-colors hover:text-white"
+          className="absolute bottom-10 right-20 z-10 flex items-center gap-1 rounded-[7px] border border-white/[0.08] bg-[#141414]/90 px-2 py-1 font-mono text-[10px] font-semibold text-zinc-300 backdrop-blur-sm transition-colors hover:text-white"
         >
           LIVE
           <span aria-hidden="true">→</span>

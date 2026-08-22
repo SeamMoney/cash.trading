@@ -167,6 +167,7 @@ const bklitInteractionSource = readFileSync("components/charts/bklit/use-chart-i
 const backgroundSource = readFileSync("components/charts/bklit/background.tsx", "utf8");
 const chartShellSource = readFileSync("components/trade/BTCChart.tsx", "utf8");
 const lineChartSource = readFileSync("components/trade/BtcPerpsChart.tsx", "utf8");
+const launchpadChartSource = readFileSync("components/launchpad/OnChainChart.tsx", "utf8");
 const pinePreviewSource = readFileSync("components/launchpad/PineVisualPreview.tsx", "utf8");
 const equityCurveSource = readFileSync("components/launchpad/EquityCurveChart.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
@@ -238,6 +239,11 @@ assert.ok(
   !proChartSource.includes("formatLegend") && !proChartSource.includes("legendCandle"),
   "the chart must not render an OHLC number row below the timeframe selector",
 );
+assert.ok(!launchpadChartSource.includes("lightweight-charts"), "the launchpad candle chart must not use TradingView");
+assert.ok(
+  launchpadChartSource.includes("@/components/trade/BklitCandlePlot"),
+  "the launchpad candle chart must share the local bklit renderer",
+);
 assert.ok(!pinePreviewSource.includes("lightweight-charts"), "the Pine preview must not use TradingView");
 assert.ok(
   pinePreviewSource.includes("@/components/trade/BklitCandlePlot"),
@@ -275,11 +281,8 @@ assert.ok(
   "timeframe switches must adopt the real historical Y-range immediately instead of clamping it to the old scale",
 );
 assert.ok(
-  // The two windows are named by what they show ("1m" / "12h"), not by a
-  // "LIVE" badge that read as a connection state while it actually meant a
-  // one-minute timeframe.
-  lineChartSource.includes('{ label: "1m", secs: 60 }')
-    && lineChartSource.includes('{ label: "12h", secs: 12 * 60 * 60 }')
+  lineChartSource.includes('{ label: "LIVE", secs: 60 }')
+    && lineChartSource.includes('{ label: "HISTORY", secs: 12 * 60 * 60 }')
     && lineChartSource.includes("grid={false}")
     && lineChartSource.includes("badgeInside")
     && lineChartSource.includes("badgeOffsetY={-14}")
@@ -329,11 +332,9 @@ assert.ok(
   "trade charts must open in candle mode",
 );
 assert.ok(
-  // Labels name the timeframe they select, not a connection state: a badge
-  // reading "LIVE" on a 1-minute candle chart told the user nothing true.
   proChartSource.includes('const DEFAULT_CHART_INTERVAL: ProChartInterval = "1m"')
-    && proChartSource.includes('"1m": "1m"')
-    && proChartSource.includes('"1d": "1d"')
+    && proChartSource.includes('"1m": "LIVE"')
+    && proChartSource.includes('"1d": "HISTORY"')
     && !proChartSource.includes('"5m",')
     && !proChartSource.includes("INTERVAL_STORAGE_KEY"),
   "candle charts must open at live 1m and expose only live/history choices",

@@ -32,13 +32,6 @@ const nextConfig = {
         destination: '/',
         permanent: false,
       },
-      // The explainer page was retired (off-brand, stale claims); keep old
-      // links alive.
-      {
-        source: '/explainer',
-        destination: '/',
-        permanent: true,
-      },
     ]
   },
   async headers() {

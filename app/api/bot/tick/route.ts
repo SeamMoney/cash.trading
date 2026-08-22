@@ -90,21 +90,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The Personal Strategy Runner is cron-driven: its cadence is one closed
-    // bar, claimed with a compare-and-set on lastBarTs. This endpoint would
-    // hand it to VolumeBotEngine, which has no 'pine' branch and would fall
-    // through to the default (TWAP) path — a trade the strategy never asked
-    // for. Refuse instead of silently trading something else.
-    if (bot.strategy === 'pine') {
-      return NextResponse.json(
-        {
-          error: 'Personal strategy runners tick on the cron',
-          message: 'This bot evaluates one closed bar per cron invocation and cannot be ticked by hand.',
-        },
-        { status: 409 }
-      )
-    }
-
     // Check rate limiting based on strategy
     // TX Spammer: 3 seconds (rapid fire transactions)
     // High risk: 3 seconds (very fast monitoring for TP/SL)
@@ -210,10 +195,6 @@ export async function POST(request: NextRequest) {
       strategy: bot.strategy as 'twap' | 'market_maker' | 'delta_neutral' | 'high_risk' | 'tx_spammer' | 'dlp_grid',
       market: resolvedMarket,
       marketName: bot.marketName,
-      // Without this a manual tick sized every position at the engine default
-      // (5x) instead of the leverage the user chose at start — the cron path
-      // has always passed it, so the same bot traded differently by route.
-      leverageX: bot.leverageX ?? undefined,
     }
 
     const botEngine = new VolumeBotEngine(config)

@@ -597,7 +597,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
                     : builderApproved
                       ? "Revoke Builder fee"
                       : builderCanEnable
-                        ? `Approve ${builderStatus?.feeBps ?? 10} bp Builder fee`
+                        ? `Approve ${builderStatus?.feeBps ?? 1} bp Builder fee`
                         : "Builder fee unavailable"}
                 </button>
               </div>

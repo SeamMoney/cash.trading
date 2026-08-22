@@ -18,7 +18,6 @@ import {
 } from "@/lib/decibel-public";
 import type { MarketHistoryCandle } from "@/lib/btc-history";
 import type { Candle } from "@/hooks/useBtcCandles";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 function fmtPrice(v: number): string {
@@ -60,9 +59,6 @@ const WINDOWS = [
   { label: "5m", secs: 300 },
 ];
 const CHART_PADDING = { top: 8, right: 80, bottom: 24, left: 8 } as const;
-/* Portfolio stat-grid type pair, scaled to the compact market header. */
-const STAT_LABEL = "text-[11px] font-medium leading-4 text-zinc-400";
-const STAT_VALUE = "mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 tabular-nums";
 const CANDLE_SECS = 2;
 const CANDLE_WINDOW_BUFFER = 0.05;
 const MARKET_REFRESH_MS = 60_000;
@@ -164,10 +160,6 @@ export interface Market {
   marketName?: string;
   mode?: string;
   fundingRateBps?: number | null;
-  /** Optional quote used by shared selectors that are not backed by perpData. */
-  displayPrice?: number | null;
-  /** Short venue label for the shared spot-market selector. */
-  venueLabel?: string;
 }
 
 const CATEGORIES = [
@@ -192,7 +184,6 @@ const TOKEN_LOGOS: Record<string, string> = {
   AVAX: "/tokens/avax.svg",
   BNB: "/tokens/bnb.png",
   BTC: "/tokens/btc.png",
-  CASH: "/tokens/cash.png",
   CBRS: "/tokens/cbrs.svg",
   CHIP: "/tokens/chip.svg",
   DOGE: "/tokens/doge.png",
@@ -224,7 +215,6 @@ const TOKEN_LOGOS: Record<string, string> = {
   XRP: "/tokens/xrp.png",
   ZEC: "/tokens/zec.png",
   ZRO: "/tokens/zro.svg",
-  USDC: "/tokens/usdc.png",
   "BTC/USD": "/tokens/btc.png",
   "BTC-PERP/USD": "/tokens/btc.png",
   "ETH/USD": "/tokens/eth.png",
@@ -248,7 +238,6 @@ const MARKET_LABELS: Record<string, string> = {
   AAVE: "Aave",
   APT: "Aptos",
   BTC: "Bitcoin",
-  CASH: "CASH",
   BNB: "BNB",
   CBRS: "Chainbase",
   CHIP: "Chip",
@@ -279,6 +268,33 @@ const MARKET_LABELS: Record<string, string> = {
   XRP: "XRP",
   ZEC: "Zcash",
   ZRO: "LayerZero",
+};
+
+const MARKET_COLORS: Record<string, string> = {
+  APT: "#39ff14",
+  BTC: "#f7931a",
+  BNB: "#f3ba2f",
+  DOGE: "#c2a633",
+  ETH: "#627eea",
+  GOLD: "#d4a017",
+  HYPE: "#50e3c2",
+  KPEPE: "#8bc34a",
+  LINK: "#2a5ada",
+  MEGA: "#d9d9d9",
+  NEAR: "#d9d9d9",
+  SILVER: "#c0c0c0",
+  SOL: "#9945ff",
+  SPY: "#39ff14",
+  QQQ: "#39ff14",
+  EWY: "#39ff14",
+  SUI: "#6dd6ff",
+  TAO: "#d9d9d9",
+  TRUMP: "#d9d9d9",
+  WTIOIL: "#1f7a1f",
+  XPL: "#d9d9d9",
+  XRP: "#d9d9d9",
+  ZEC: "#f4b728",
+  ZRO: "#d9d9d9",
 };
 
 const STOCK_SYMBOLS = new Set([
@@ -368,18 +384,11 @@ export interface DecibelApiMarket {
   mode: string;
   szDecimals: number | null;
   pxDecimals: number | null;
-  /** Execution product from Decibel's authoritative registry. */
-  assetType?: string | null;
   /** Decibel's own listing category: "crypto" | "equity" | "commodity" | "". */
   category?: string | null;
   /** Already a percentage (e.g. 1.42 = +1.42%). */
   change24hPct?: number | null;
   volume24hUsd?: number | null;
-}
-
-/** Perp-only consumers must cross this product boundary before adapting rows. */
-export function isPerpApiMarket(market: DecibelApiMarket) {
-  return market.assetType === "perp";
 }
 
 type MarketChangePayload = {
@@ -399,17 +408,8 @@ function getMarketLabel(marketName: string) {
   return MARKET_LABELS[base] ?? base;
 }
 
-/**
- * Seed colour for a market's price line. It is not a per-asset palette: every
- * market is `chartKind: "perps"`, and BtcPerpsChart repaints the line from the
- * resolved `--chart-line-primary` token before first paint, so the 24 brand
- * hexes this used to carry never reached a pixel. The colours that do exist
- * live with the rest of the market record in perpMarketConfig.
- */
-const CHART_LINE_TOKEN = "var(--chart-line-primary)";
-
 function getMarketColor(marketName: string) {
-  return PERP_MARKET_DATA[marketName]?.color ?? CHART_LINE_TOKEN;
+  return MARKET_COLORS[getBaseSymbol(marketName)] ?? "#39ff14";
 }
 
 function classifyMarketCategory(
@@ -534,35 +534,16 @@ function mergeMarketsWithFallback(apiMarkets: Market[], network: DecibelPublicNe
 
 export function MarketLogo({ market, size = 20 }: { market: string; size?: number }) {
   const logo = TOKEN_LOGOS[market] ?? TOKEN_LOGOS[getBaseSymbol(market)];
-  const needsDarkBacking = getBaseSymbol(market) === "APT";
   if (logo) {
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={logo}
-        alt=""
-        width={size}
-        height={size}
-        loading="eager"
-        decoding="async"
-        className={cn(
-          "shrink-0 rounded-full object-contain",
-          needsDarkBacking && "p-0.5",
-        )}
-        style={{
-          width: size,
-          height: size,
-          minWidth: size,
-          minHeight: size,
-          backgroundColor: needsDarkBacking ? "var(--background-secondary)" : undefined,
-        }}
-      />
+      <img src={logo} alt="" width={size} height={size} loading="eager" decoding="async" className="shrink-0 rounded-full object-contain" style={{ width: size, height: size, minWidth: size, minHeight: size }} />
     );
   }
   const initials = getBaseSymbol(market).slice(0, 3) || "?";
   return (
     <span
-      className="shrink-0 inline-flex items-center justify-center rounded-full bg-background-elevated text-[11px] font-black text-zinc-200"
+      className="shrink-0 inline-flex items-center justify-center rounded-full bg-[#242424] text-[9px] font-black text-zinc-200"
       style={{ width: size, height: size, minWidth: size, minHeight: size }}
     >
       {initials}
@@ -590,8 +571,6 @@ export function MarketModal({
   allDescription = "Crypto, stocks, and commodities",
   loading = false,
   network,
-  selectorVariant = "default",
-  disabledLabel = "Preview only",
 }: {
   open: boolean;
   selected: string;
@@ -610,8 +589,6 @@ export function MarketModal({
   allDescription?: string;
   loading?: boolean;
   network: DecibelPublicNetwork;
-  selectorVariant?: "default" | "spot";
-  disabledLabel?: string;
 }) {
   const [activeCategory, setActiveCategory] = useState<MarketCategory>("crypto");
 
@@ -638,77 +615,61 @@ export function MarketModal({
 
   if (!open) return null;
 
-  const renderMarketContent = (requestClose: () => void) => (
-    <div className="bg-background-secondary py-3 font-mono text-sm font-medium sm:py-0">
+  const marketContent = (
+    <div className="bg-[#101010] py-3 font-mono text-sm font-medium sm:py-0">
       {multiple && (
         <button
           type="button"
           role="checkbox"
           aria-checked={allSelected}
           onClick={onSelectAll}
-          className={cn(
-            PRESSABLE_CONTROL,
-            "mb-3 flex w-full items-center justify-between rounded-[var(--radius-sm)] border border-card-border bg-white/[0.025] px-3 py-3 text-left outline-none transition-[transform,opacity] hover:border-border-strong hover:bg-white/[0.045] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-          )}
+          className="mb-3 flex w-full items-center justify-between rounded-[10px] border border-white/[0.08] bg-white/[0.025] px-3 py-3 text-left transition-colors hover:border-white/[0.16] hover:bg-white/[0.045]"
         >
           <span>
             <span className="block font-display text-[13px] font-semibold text-zinc-100">{allLabel}</span>
-            <span className="mt-0.5 block text-[11px] text-zinc-400">{allDescription}</span>
+            <span className="mt-0.5 block text-[10px] text-zinc-500">{allDescription}</span>
           </span>
-          <span className={`flex h-5 w-5 items-center justify-center rounded-[var(--radius-xs)] border ${
+          <span className={`flex h-5 w-5 items-center justify-center rounded-[5px] border ${
             allSelected ? "border-accent bg-accent text-black" : "border-white/[0.18] bg-black text-transparent"
           }`}>
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         </button>
       )}
-      <div className="flex items-center gap-5 overflow-x-auto border-b border-card-border">
+      <div className="flex items-center gap-5 overflow-x-auto border-b border-white/[0.06]">
         {categoriesList.map((tab) => (
           <button
             key={tab.key}
             type="button"
             aria-pressed={activeCategory === tab.key}
             onClick={() => setActiveCategory(tab.key)}
-            className={cn(
-              PRESSABLE_CONTROL,
-              "flex min-h-11 shrink-0 items-center border-b-2 pt-0.5 text-[13px] outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            className={`shrink-0 pb-2 text-[13px] transition-colors ${
               activeCategory === tab.key
-                ? "border-zinc-200 text-zinc-100"
-                : "border-transparent text-zinc-400 hover:text-zinc-300",
-            )}
+                ? "border-b-2 border-zinc-200 text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-zinc-400 sm:gap-x-4 sm:px-3",
-        selectorVariant === "spot"
-          ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
-          : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
-      )}>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 px-2 pb-2 pt-5 text-[#999] sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3">
         <span className="text-xs font-bold">Symbol</span>
         <span className="hidden text-right text-xs font-bold sm:block">Price</span>
-        {selectorVariant === "default" && (
-          <>
-            <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
-            <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
-          </>
-        )}
-        <span className="text-right text-xs font-bold">
-          {selectorVariant === "spot" ? "Venue" : "Lev."}
-        </span>
+        <span className="hidden text-right text-xs font-bold sm:block">Funding</span>
+        <span className="hidden text-right text-xs font-bold sm:block">Open Interest</span>
+        <span className="text-right text-xs font-bold">Lev.</span>
       </div>
 
-      <div className="pr-1 md:max-h-[min(62dvh,600px)] md:overflow-y-auto md:overscroll-contain md:scrollbar-thin">
+      <div className="pr-1 sm:max-h-[min(62dvh,600px)] sm:overflow-y-auto sm:overscroll-contain sm:scrollbar-thin">
         <div>
-          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-background-secondary/95 px-2 pb-1 pt-3 sm:px-3">
-            <span className="text-[11px] font-semibold text-zinc-400">
+          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#101010]/95 px-2 pb-1 pt-3 sm:px-3">
+            <span className="text-[10px] font-bold uppercase text-[#555]">
               {activeCategoryLabel}
             </span>
             {loading && (
-              <span className="text-[11px] font-semibold text-accent">
+              <span className="text-[10px] font-bold uppercase text-green-500/60">
                 Syncing
               </span>
             )}
@@ -717,7 +678,7 @@ export function MarketModal({
             {filteredMarkets.map((market) => {
               const isActive = activeIds.includes(market.id);
               const isDisabled = disabledIds.includes(market.id);
-              const mark = market.displayPrice ?? market.perpData?.seedPrice ?? 0;
+              const mark = market.perpData?.seedPrice ?? 0;
               const fundingText =
                 market.fundingRateBps == null
                   ? "—"
@@ -733,21 +694,16 @@ export function MarketModal({
                       onToggle?.(market.id);
                     } else {
                       onSelect(market.id);
-                      requestClose();
+                      onClose();
                     }
                   }}
-                  className={cn(
-                    PRESSABLE_CONTROL,
-                    "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-[var(--radius-sm)] px-2 py-2.5 outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:transform-none sm:gap-x-4 sm:px-3",
-                    selectorVariant === "spot"
-                      ? "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_auto]"
-                      : "sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto]",
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2.5 transition-colors sm:grid-cols-[minmax(210px,1.4fr)_0.8fr_0.9fr_0.9fr_auto] sm:gap-x-4 sm:px-3 ${
                     isDisabled
-                      ? "cursor-not-allowed bg-white/[0.015] text-zinc-400"
+                      ? "cursor-not-allowed text-[#444] opacity-55"
                       : isActive
-                      ? "bg-white/[0.05] text-foreground"
-                      : "text-zinc-400 hover:bg-white/[0.03] hover:text-foreground",
-                  )}
+                      ? "bg-white/[0.05] text-white"
+                      : "text-[#888] hover:bg-white/[0.03] hover:text-white/80"
+                  }`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="flex size-5 shrink-0 items-center justify-center">
@@ -756,17 +712,17 @@ export function MarketModal({
                     <span className="truncate text-[13px] font-semibold">
                       {market.label}
                     </span>
-                    <span className="truncate text-[11px] text-zinc-400 sm:shrink-0">
+                    <span className="truncate text-[11px] text-[#555] sm:shrink-0">
                       {market.pair.replace(/ PERPS$/, "")}
                     </span>
                     {isActive && (
-                      <Check className="size-3 shrink-0 text-accent" aria-hidden="true" />
+                      <Check className="size-3 shrink-0 text-green-400" aria-hidden="true" />
                     )}
                     {isDisabled && (
-                      <span className="shrink-0 rounded-[var(--radius-xs)] border border-card-border bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-zinc-400">{disabledLabel}</span>
+                      <span className="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-600">Preview only</span>
                     )}
                   </span>
-                  <span className="hidden text-right text-xs tabular-nums text-zinc-400 sm:block">
+                  <span className="hidden text-right text-[12px] tabular-nums text-zinc-500 sm:block">
                     {mark > 0
                       ? mark.toLocaleString("en-US", {
                           minimumFractionDigits: getDisplayDecimals(mark),
@@ -774,24 +730,18 @@ export function MarketModal({
                         })
                       : "—"}
                   </span>
-                  {selectorVariant === "default" && (
-                    <>
-                      <span className="hidden text-right text-xs tabular-nums text-accent/80 sm:block">
-                        {fundingText}
-                      </span>
-                      <span className="hidden text-right text-xs tabular-nums text-zinc-400 sm:block">
-                        {market.perpData?.openInterestLabel ?? "—"}
-                      </span>
-                    </>
-                  )}
+                  <span className="hidden text-right text-[12px] tabular-nums text-green-400/80 sm:block">
+                    {fundingText}
+                  </span>
+                  <span className="hidden text-right text-[12px] tabular-nums text-[#555] sm:block">
+                    {market.perpData?.openInterestLabel ?? "—"}
+                  </span>
                   <span
                     className={`text-right text-xs font-bold tabular-nums ${
-                      isActive ? "text-accent" : "text-zinc-400"
+                      isActive ? "text-green-400" : "text-[#666]"
                     }`}
                   >
-                    {selectorVariant === "spot"
-                      ? market.venueLabel ?? "Spot"
-                      : market.leverage > 0 ? `${market.leverage}x` : "Spot"}
+                    {market.leverage > 0 ? `${market.leverage}x` : "Spot"}
                   </span>
                 </button>
               );
@@ -799,21 +749,18 @@ export function MarketModal({
           </div>
         </div>
         {filteredMarkets.length === 0 && (
-          <div className="flex h-36 items-center justify-center text-xs text-zinc-400">
+          <div className="flex h-36 items-center justify-center text-[12px] text-zinc-600">
             No {activeCategoryLabel.toLowerCase()} markets are available.
           </div>
         )}
         <div className="h-3" />
       </div>
       {multiple && (
-        <div className="sticky bottom-0 border-t border-card-border bg-background-secondary pt-3">
+        <div className="sticky bottom-0 border-t border-white/[0.07] bg-[#101010] pt-3">
           <button
             type="button"
-            onClick={requestClose}
-            className={cn(
-              PRESSABLE_CONTROL,
-              "h-10 w-full rounded-[var(--radius-sm)] bg-accent px-4 font-display text-sm font-semibold text-black outline-none transition-[transform,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
-            )}
+            onClick={onClose}
+            className="w-full rounded-[10px] bg-accent px-4 py-2.5 font-display text-[13px] font-semibold text-black"
           >
             Done · {activeIds.length} selected
           </button>
@@ -832,7 +779,7 @@ export function MarketModal({
       description={description ?? `${network} markets`}
       titleId="market-selector-title"
     >
-      {renderMarketContent}
+      {marketContent}
     </ResponsiveModalSheet>
   );
 }
@@ -935,9 +882,6 @@ export function BTCChart({
           throw new Error(json.error || "Could not load Decibel markets");
         }
         const apiMarkets = (Array.isArray(json.markets) ? json.markets : [])
-          // TradePanel and /api/decibel/order are perp-only. Spot markets have
-          // a different contract ABI and belong exclusively on /swap.
-          .filter(isPerpApiMarket)
           .map(apiMarketToMarket);
         const next = mergeMarketsWithFallback(apiMarkets, network);
         if (!cancelled && next.length > 0 && !modalOpenRef.current) {
@@ -1109,28 +1053,22 @@ export function BTCChart({
   }, []);
 
   return (
-    <div ref={chartRef} className={cn("overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary lg:flex lg:flex-col", className)}>
+    <div ref={chartRef} className={cn("surface-1 overflow-hidden rounded-[16px] lg:flex lg:flex-col", className)}>
       {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-card-border">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
           {/* Market selector trigger */}
           <button
             ref={marketTriggerRef}
-            type="button"
             onClick={() => setModalOpen(true)}
             aria-label="Open market selector"
-            aria-haspopup="dialog"
-            aria-expanded={modalOpen}
-            className={cn(
-              PRESSABLE_CONTROL,
-              "-mx-2 -my-1.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 outline-none transition-[transform,opacity] hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring",
-            )}
+            className="flex items-center gap-2 hover:bg-white/5 rounded-lg px-2 py-1.5 -mx-2 -my-1.5 transition-colors"
           >
             <MarketLogo market={market} />
             <span className="text-[13px] font-display font-semibold whitespace-nowrap">
               {marketConfig.pair.replace(" PERPS", "")}
             </span>
-            <span className="rounded-[var(--radius-xs)] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
+            <span className="text-[10px] font-mono font-bold text-zinc-500 bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               {marketConfig.leverage > 0 ? `${marketConfig.leverage}x` : "Spot"}
             </span>
             <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
@@ -1148,82 +1086,66 @@ export function BTCChart({
               minimumFractionDigits: displayPriceDecimals,
               maximumFractionDigits: displayPriceDecimals,
             }}
-            className="font-mono text-base font-semibold tabular-nums text-foreground"
+            className="font-mono text-[15px] font-bold text-zinc-100"
           />
         </div>
       </div>
 
-      {/* Market stats bar — same label/value type pair as the Portfolio stat
-          grid: a plain sentence-case label above a mono tabular value. */}
-      <div className="border-b border-card-border">
-        <dl className="grid grid-cols-5 gap-x-2 px-4 py-2.5 sm:gap-x-5">
+      {/* Market stats bar */}
+      <div className="border-b border-white/5">
+        <div className="grid grid-cols-5 gap-x-2 px-4 py-2.5 font-mono text-[10px] tabular-nums sm:gap-x-5 sm:text-[11px]">
           <div className="flex min-w-0 flex-col">
-            <dt className={STAT_LABEL}>Oracle</dt>
-            <dd className={cn(STAT_VALUE, "text-foreground")}>
-              <NumberTicker
-                value={displayOracle > 0 ? displayOracle : null}
-                fallback="—"
-                format={{
-                  minimumFractionDigits: displayStatDecimals,
-                  maximumFractionDigits: displayStatDecimals,
-                }}
-                className="truncate"
-              />
-            </dd>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Oracle</span>
+            <NumberTicker
+              value={displayOracle > 0 ? displayOracle : null}
+              fallback="—"
+              format={{
+                minimumFractionDigits: displayStatDecimals,
+                maximumFractionDigits: displayStatDecimals,
+              }}
+              className="mt-0.5 truncate font-semibold leading-4 text-white"
+            />
           </div>
           <div className="flex min-w-0 flex-col">
-            <dt className={STAT_LABEL}>24h</dt>
-            <dd className={cn(STAT_VALUE, displayChange === "—" ? "text-zinc-400" : displayChange.startsWith("-") ? "text-danger" : "text-accent")}>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">24h</span>
+            <span className={`${displayChange === "—" ? "text-zinc-500" : displayChange.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayChange}
-            </dd>
+            </span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <dt className={STAT_LABEL}>Volume</dt>
-            <dd className={cn(STAT_VALUE, "text-foreground")}>{displayVolume}</dd>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Volume</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayVolume}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <dt className={STAT_LABEL}>OI</dt>
-            <dd className={cn(STAT_VALUE, "text-foreground")}>{displayOpenInterest}</dd>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">OI</span>
+            <span className="mt-0.5 truncate font-semibold leading-4 text-white">{displayOpenInterest}</span>
           </div>
           <div className="flex min-w-0 flex-col">
-            <dt className={STAT_LABEL}>Funding</dt>
-            <dd className={cn(STAT_VALUE, displayFunding === "—" ? "text-zinc-400" : displayFunding.startsWith("-") ? "text-danger" : "text-accent")}>
+            <span className="text-[8px] leading-3 text-zinc-600 sm:text-[9px]">Funding</span>
+            <span className={`${displayFunding === "—" ? "text-zinc-500" : displayFunding.startsWith("-") ? "text-red-400" : "text-accent"} mt-0.5 truncate font-semibold leading-4`}>
               {displayFunding}
-            </dd>
+            </span>
           </div>
-        </dl>
+        </div>
       </div>
 
-      {/* Chart + subtle overlay controls.
-          The plot surface is plain. Both chart paths paint their legacy
-          dotted lattice from --chart-grid; scoping that token to transparent
-          here retires the decibrrr-terminal pattern without reaching into
-          the shared chart components. The card keeps its border-token frame,
-          so no extra rules are drawn behind the price. */}
-      <div
-        // 212px below sm: restoring the leverage slider on phones cost ~90px,
-        // and the order form's primary must clear a 390x844 fold with margin —
-        // primary CTA past the fold on its own. Only the phone height moves —
-        // the chart still owns more of the viewport than anything else.
-        className="relative h-[212px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1"
-        style={{ "--chart-grid": "transparent" } as React.CSSProperties}
-      >
+      {/* Chart + subtle overlay controls */}
+      <div className="relative h-[340px] sm:h-[460px] lg:h-[580px] xl:h-auto xl:min-h-0 xl:flex-1">
+        {/* Floating Line/Candles switcher — bottom-right on all screen sizes */}
         {isPerpsMarket && (
-          <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-background-secondary" />
+          <div className="absolute bottom-[30px] left-0 right-[80px] z-[15] h-[7px] pointer-events-none bg-[#141414]" />
         )}
-        {/* Chart-type switch. It used to float bottom-right, where it sat on
-            top of the x-axis and clipped the last time label — the gradient
-            that hid the clipping is gone with it. It now joins the interval
-            strip (1m / 1d) in the plot's top-left control cluster. */}
-        <div className="absolute left-2 top-12 z-20 flex items-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary/90 p-0.5">
+        {/* Right-side fade to prevent x-axis labels from touching the button */}
+        <div className="absolute bottom-0 right-0 z-[15] w-[120px] h-[32px] pointer-events-none bg-gradient-to-l from-[#141414] via-[#141414]/80 to-transparent" />
+        <div className="absolute bottom-2 right-2 z-20 flex items-center rounded-[8px] border border-white/[0.08] bg-[#141414]/90 backdrop-blur-sm p-0.5">
           <button
             type="button"
             aria-pressed={(isPerpsMarket ? perpsMode : mode) === "line"}
             onClick={() => isPerpsMarket ? setPerpsMode("line") : setMode("line")}
-            className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "line"
-                ? "bg-white/[0.1] text-foreground"
-                : "text-zinc-400"
+                ? "bg-white/[0.1] text-white"
+                : "text-zinc-500"
             }`}
           >
             Line
@@ -1232,10 +1154,10 @@ export function BTCChart({
             type="button"
             aria-pressed={(isPerpsMarket ? perpsMode : mode) === "candle"}
             onClick={() => isPerpsMarket ? setPerpsMode("candle") : setMode("candle")}
-            className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
               (isPerpsMarket ? perpsMode : mode) === "candle"
-                ? "bg-white/[0.1] text-foreground"
-                : "text-zinc-400"
+                ? "bg-white/[0.1] text-white"
+                : "text-zinc-500"
             }`}
           >
             Candles
@@ -1255,14 +1177,14 @@ export function BTCChart({
                 type="button"
                 aria-label={`Moving-average overlay: ${overlayMode}`}
                 onClick={() => setOverlayMode(next)}
-                className={`rounded-[var(--radius-xs)] px-2 py-0.5 text-[11px] font-mono font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  overlayMode === "strategy" ? "bg-success/15 text-success"
-                  : overlayMode !== "off" ? "bg-purple-500/15 text-purple-500"
-                  : "text-zinc-400"
+                className={`rounded-[6px] px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
+                  overlayMode === "strategy" ? "bg-emerald-500/20 text-emerald-300"
+                  : overlayMode !== "off" ? "bg-purple-500/20 text-purple-300"
+                  : "text-zinc-500"
                 }`}
                 title={hasStrategy ? "Overlay moving averages (off → SMA → EMA → Vault 3/5)" : "Overlay moving averages (off → SMA → EMA)"}
               >
-                {overlayMode === "ema" ? "EMA" : overlayMode === "strategy" ? "Vault 3/5" : "SMA"}
+                {overlayMode === "ema" ? "EMA" : overlayMode === "strategy" ? "VAULT 3/5" : "SMA"}
               </button>
             );
           })()}
@@ -1311,10 +1233,7 @@ export function BTCChart({
               .map((line) => {
                 const { ratio, isCompressed } = getLiquidationLinePosition(line.price, visibleRange);
                 const top = `calc(${CHART_PADDING.top}px + ${ratio} * (100% - ${CHART_PADDING.top + CHART_PADDING.bottom}px))`;
-                // Same pair the candle chart already draws its liquidation
-                // levels with (ProCandleChart), so the two paths agree and the
-                // light theme's remap reaches both.
-                const accent = line.side === "long" ? "var(--warning)" : "var(--danger)";
+                const accent = line.side === "long" ? "#f97316" : "#f43f5e";
 
                 return (
                   <div
@@ -1335,10 +1254,12 @@ export function BTCChart({
                       }}
                     />
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 rounded-[var(--radius-xs)] border bg-background/90 px-2 py-1 text-[11px] font-mono font-semibold text-foreground"
+                      className="absolute top-1/2 -translate-y-1/2 rounded-md border px-2 py-1 text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-white"
                       style={{
                         right: 12,
-                        borderColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
+                        background: "rgba(9, 9, 11, 0.86)",
+                        borderColor: `${accent}33`,
+                        boxShadow: `0 0 0 1px ${accent}14 inset`,
                         opacity: isCompressed ? 0.86 : 1,
                       }}
                     >
@@ -1359,17 +1280,15 @@ export function BTCChart({
 
         {/* Minimal overlay controls — fade in on hover */}
         {!isPerpsMarket && (
-          <div className="absolute top-2 left-3 flex items-center gap-0.5 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+          <div className="absolute top-2 left-3 flex items-center gap-0.5 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
             {WINDOWS.map((w) => (
               <button
                 key={w.secs}
-                type="button"
-                aria-pressed={windowSecs === w.secs}
                 onClick={() => setWindowSecs(w.secs)}
-                className={`pointer-events-auto rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md transition-colors ${
                   windowSecs === w.secs
-                    ? "bg-white/10 text-foreground"
-                    : "text-zinc-400 hover:text-zinc-200"
+                    ? "text-white/70 bg-white/10"
+                    : "text-zinc-600 hover:text-zinc-400"
                 }`}
               >
                 {w.label}
@@ -1377,9 +1296,8 @@ export function BTCChart({
             ))}
             <span className="w-px h-3 bg-white/10 mx-1" />
             <button
-              type="button"
               onClick={() => setMode((m) => (m === "candle" ? "line" : "candle"))}
-              className="pointer-events-auto rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] text-zinc-400 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="pointer-events-auto text-[10px] font-mono px-1.5 py-0.5 rounded-md text-zinc-600 hover:text-zinc-400 transition-colors"
             >
               {mode === "candle" ? "Line" : "OHLC"}
             </button>

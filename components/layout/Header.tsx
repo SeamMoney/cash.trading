@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, type ReactNode } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,7 +14,6 @@ import { Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Trade" },
-  { href: "/swap", label: "Swap" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/launchpad", label: "Launchpad" },
   // Link visibility only — this is a client component, so it cannot read the
@@ -346,14 +344,4 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
       />
     </>
   );
-}
-
-
-/* A page that renders its own connect button wraps itself in this so the header
-   does not render a second one. Added for the pages introduced in this cycle;
-   pages that do not use it are unaffected. */
-const PageConnectCtaContext = createContext(false);
-
-export function PageConnectCta({ present, children }: { present: boolean; children: ReactNode }) {
-  return <PageConnectCtaContext.Provider value={present}>{children}</PageConnectCtaContext.Provider>;
 }

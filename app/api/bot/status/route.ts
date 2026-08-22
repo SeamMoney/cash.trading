@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { denyUnlessBotOwner } from '@/lib/bot-owner-guard'
-import { checkRateLimitForKey } from '@/lib/api-rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -19,23 +18,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // When a subaccount is named, prove it belongs to this wallet too — this
-    // route returns that subaccount's position sizing, PnL and strategy config.
-    const denied = await denyUnlessBotOwner({
-      walletAddress: userWalletAddress,
-      subaccount: userSubaccount,
-    })
+    const denied = await denyUnlessBotOwner({ walletAddress: userWalletAddress })
     if (denied) return denied
-
-    // Keyed by wallet, not IP: the authorized identity is the thing worth
-    // bounding. Polled by the dashboard, so the ceiling is generous.
-    const rate = checkRateLimitForKey('bot-status', userWalletAddress.toLowerCase(), 120, 60000)
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: 'Too many requests', retryAfterS: rate.retryAfterS },
-        { status: 429 },
-      )
-    }
 
     // Get bot from database - if subaccount provided, look for exact match
     // Otherwise, find any bot for this wallet (backwards compatibility)
@@ -108,12 +92,6 @@ export async function GET(request: NextRequest) {
         lastOrderTime: botInstance.lastOrderTime,
         error: botInstance.error,
         orderHistory: sessionOrders,  // Only orders from current session
-        // Personal Strategy Runner: what the last evaluated bar decided.
-        // lastBarTs is a BigInt column (epoch ms) — JSON cannot serialize
-        // BigInt, and ms timestamps are well inside Number's exact range.
-        lastSignal: botInstance.lastSignal,
-        lastSignalAt: botInstance.lastSignalAt,
-        lastBarTs: botInstance.lastBarTs === null ? null : Number(botInstance.lastBarTs),
       },
       config: {
         userWalletAddress: botInstance.userWalletAddress,
@@ -124,12 +102,6 @@ export async function GET(request: NextRequest) {
         strategy: botInstance.strategy,
         market: botInstance.market,
         marketName: botInstance.marketName,
-        leverageX: botInstance.leverageX,
-        strategyId: botInstance.strategyId,
-        scriptHash: botInstance.scriptHash,
-        barInterval: botInstance.barInterval,
-        stopLossPct: botInstance.stopLossPct,
-        takeProfitPct: botInstance.takeProfitPct,
       },
     })
   } catch (error) {

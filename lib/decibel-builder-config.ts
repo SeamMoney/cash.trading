@@ -6,7 +6,7 @@
  * subaccount. A delegated vault strategy cannot currently approve a fee for
  * the vault's trading subaccount through Decibel's public API.
  */
-export const DEFAULT_DECIBEL_BUILDER_FEE_BPS = 10;
+export const DEFAULT_DECIBEL_BUILDER_FEE_BPS = 1;
 export const MAX_DECIBEL_BUILDER_FEE_BPS = 10;
 export const DEFAULT_DECIBEL_BUILDER_FEE_RATE =
   DEFAULT_DECIBEL_BUILDER_FEE_BPS / 10_000;

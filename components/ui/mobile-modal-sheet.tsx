@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  forwardRef,
   useCallback,
   useEffect,
-  useImperativeHandle,
   useRef,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -17,7 +15,6 @@ import {
   MOBILE_SHEET_VELOCITY_THRESHOLD,
   mobileSheetRubberBand,
 } from "@/lib/mobile-sheet-motion";
-import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 interface MobileModalSheetProps {
@@ -31,16 +28,12 @@ interface MobileModalSheetProps {
   titleId: string;
 }
 
-export interface MobileModalSheetHandle {
-  close: () => void;
-}
-
 /**
  * Modal variant of the trade page's persistent Portfolio sheet. It deliberately
  * shares the same spring, fling threshold, rubber band, radii, backdrop, and
  * native-scroll handoff so mobile overlays feel like one component family.
  */
-export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSheetProps>(function MobileModalSheet({
+export function MobileModalSheet({
   children,
   contentClassName,
   description,
@@ -49,9 +42,10 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
   open,
   title,
   titleId,
-}, ref) {
+}: MobileModalSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const stableVh = useRef(0);
@@ -90,16 +84,22 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
     sheet.style.transform = `translate3d(0, ${top}px, 0)`;
 
     const vh = stableVh.current || window.innerHeight;
+    const midTop = vh * (1 - initialVisibleRatio);
     const fullTop = safeInsetTop.current;
     const progress = Math.max(0, Math.min(1, (vh - top) / (vh - fullTop)));
     if (overlayRef.current) {
       overlayRef.current.style.opacity = `${progress * 0.6}`;
       overlayRef.current.style.pointerEvents = progress > 0.03 ? "auto" : "none";
     }
+    if (innerRef.current) {
+      const radiusProgress = Math.max(0, Math.min(1, top / midTop));
+      innerRef.current.style.borderRadius = `${radiusProgress * 20}px ${radiusProgress * 20}px 0 0`;
+      innerRef.current.style.borderColor = `rgba(255,255,255,${radiusProgress * 0.08})`;
+    }
     if (contentRef.current) {
       contentRef.current.style.opacity = `${Math.max(0, Math.min(1, progress / 0.2))}`;
     }
-  }, []);
+  }, [initialVisibleRatio]);
 
   const snapTo = useCallback((index: number, velocityPxMs = 0, closeWhenDone = false) => {
     const snaps = getSnaps();
@@ -133,21 +133,8 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
     snapTo(0, 0, true);
   }, [snapTo]);
 
-  useImperativeHandle(ref, () => ({ close: closeSheet }), [closeSheet]);
-
   useEffect(() => {
     if (!open) return;
-    const previousFocus = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-    const portalRoot = sheetRef.current?.parentElement ?? null;
-    const background = Array.from(document.body.children)
-      .filter((element): element is HTMLElement => (
-        element instanceof HTMLElement && element !== portalRoot
-      ))
-      .map((element) => ({ element, wasInert: element.inert }));
-    background.forEach(({ element }) => { element.inert = true; });
-
     reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     stableVh.current = window.visualViewport
       ? window.visualViewport.height + window.visualViewport.offsetTop
@@ -175,8 +162,6 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
       cancelAnimationFrame(frame);
       drag.current.cancelSpring?.();
       document.body.style.overflow = previousOverflow;
-      background.forEach(({ element, wasInert }) => { element.inert = wasInert; });
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, [applyPosition, open, snapTo]);
 
@@ -193,28 +178,6 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
       if (event.key === "Escape") {
         event.preventDefault();
         closeSheet();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const sheet = sheetRef.current;
-      if (!sheet) return;
-      const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )).filter((element) => element.getClientRects().length > 0);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        sheet.focus({ preventScroll: true });
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || active === sheet || !sheet.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !sheet.contains(active))) {
-        event.preventDefault();
-        first.focus();
       }
     };
     document.addEventListener("focusin", onFocusIn);
@@ -414,6 +377,12 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
     }
   }, []);
 
+  const handleHeaderClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (drag.current.didMove) return;
+    if ((event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
+    snapTo(drag.current.snapIndex === 2 ? 1 : 2);
+  }, [snapTo]);
+
   useEffect(() => {
     if (!open) return;
     const viewport = window.visualViewport;
@@ -438,20 +407,19 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
       <div
         ref={overlayRef}
         aria-hidden="true"
-        className="fixed inset-0 z-[9998] bg-black md:hidden"
+        className="fixed inset-0 z-[9998] bg-black sm:hidden"
         style={{ opacity: 0, pointerEvents: "none" }}
         onClick={closeSheet}
       />
       <div
         ref={sheetRef}
         aria-labelledby={titleId}
-        aria-describedby={description ? `${titleId}-description` : undefined}
         aria-modal="true"
         role="dialog"
         tabIndex={-1}
         data-mobile-sheet-drag-surface="true"
         onClickCapture={handleSheetClickCapture}
-        className="fixed inset-x-0 bottom-0 z-[9999] outline-none md:hidden"
+        className="fixed inset-x-0 bottom-0 z-[9999] outline-none sm:hidden"
         style={{
           height: "100dvh",
           transform: "translate3d(0, 100dvh, 0)",
@@ -464,10 +432,18 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
           cursor: "grab",
         }}
       >
-        <div className="flex h-full flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-white/[0.08] bg-[#101010]">
+        <div
+          ref={innerRef}
+          className="flex h-full flex-col overflow-hidden rounded-t-[20px] border border-b-0 border-white/[0.08] bg-[#101010]"
+          style={{
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
           <div
             className="shrink-0"
             data-mobile-sheet-drag-handle="true"
+            onClick={handleHeaderClick}
             style={{ touchAction: "none" }}
           >
             <div className="flex justify-center pb-1.5 pt-2.5">
@@ -482,7 +458,7 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
                   {title}
                 </h2>
                 {description && (
-                  <p id={`${titleId}-description`} className="mt-0.5 line-clamp-2 text-pretty text-[11px] leading-4 text-zinc-400">
+                  <p className="mt-0.5 truncate text-[11px] text-zinc-500">
                     {description}
                   </p>
                 )}
@@ -491,10 +467,7 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
                 type="button"
                 onClick={closeSheet}
                 aria-label={`Close ${title}`}
-                className={cn(
-                  PRESSABLE_CONTROL,
-                  "flex size-11 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-zinc-400 outline-none transition-[transform,opacity] hover:bg-white/[0.1] hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-ring",
-                )}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-zinc-400 active:scale-95"
               >
                 <X className="size-4" aria-hidden="true" />
               </button>
@@ -521,4 +494,4 @@ export const MobileModalSheet = forwardRef<MobileModalSheetHandle, MobileModalSh
       </div>
     </>
   );
-});
+}

@@ -1,0 +1,931 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { toast } from "sonner"
+import { useWallet } from "@aptos-labs/wallet-adapter-react"
+import { useWalletBalance } from "@/hooks/use-wallet-balance"
+import { useCloudStatus } from "@/hooks/use-cloud-status"
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { TrendingUp, TrendingDown, Minus, Play, Square, Settings2, Zap, ChevronDown, Gauge, Timer, Flame, BarChart3, Bolt, Shield, AlertTriangle, Info } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { BotStatusMonitor } from "./bot-status-monitor"
+
+type Bias = "long" | "short" | "neutral"
+type Strategy = "twap" | "market_maker" | "delta_neutral" | "high_risk" | "tx_spammer" | "dlp_grid"
+
+export function ServerBotConfig() {
+  const { account, connected, signAndSubmitTransaction } = useWallet()
+  const { balance, subaccount } = useWalletBalance()
+  const { status: cloudStatus, loading: cloudStatusLoading } = useCloudStatus()
+  const automationEnabled = cloudStatus?.automationEnabled === true
+
+  const [capital, setCapital] = useState<string>("")
+  const [volumeTarget, setVolumeTarget] = useState<number>(10000)
+  const [bias, setBias] = useState<Bias>("neutral")
+  const [strategy, setStrategy] = useState<Strategy>("high_risk")
+  const [market, setMarket] = useState<string>("BTC/USD")
+  const [aggressiveness, setAggressiveness] = useState<number>(5)
+  // Positions used to be opened at the market maximum (40x on BTC) with no way
+  // to choose. 5x is the engine default; this lets it be set deliberately.
+  const [leverageX, setLeverageX] = useState<number>(5)
+  const [isRunning, setIsRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [delegating, setDelegating] = useState(false)
+  const [hasDelegation, setHasDelegation] = useState(false)
+  const [checkingDelegation, setCheckingDelegation] = useState(false)
+  const [marketDropdownOpen, setMarketDropdownOpen] = useState(false)
+  const [strategyDropdownOpen, setStrategyDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const strategyDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Check delegation status when subaccount is available
+  // Uses localStorage cache to avoid showing delegation prompt on every reload
+  useEffect(() => {
+    const DELEGATION_CACHE_KEY = 'cash_trading_delegation_status'
+
+    const checkDelegation = async () => {
+      if (!automationEnabled) {
+        setHasDelegation(false)
+        setCheckingDelegation(false)
+        return
+      }
+      if (!subaccount) return
+
+      // First, check localStorage cache
+      const cacheKey = `${DELEGATION_CACHE_KEY}_${subaccount}`
+      const cachedStatus = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null
+
+      // The cache is a hint for the spinner, never an authorization. Trusting
+      // it outright rendered a REVOKED delegation as active until the async
+      // check landed, so Start looked available when it was not.
+      if (cachedStatus === 'delegated') {
+        setCheckingDelegation(true)
+        console.log('📦 Cached delegation found — verifying before enabling Start')
+        try {
+          const res = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}&userWalletAddress=${encodeURIComponent(account?.address?.toString() ?? '')}`)
+          const data = await res.json()
+          setHasDelegation(Boolean(data.hasDelegation))
+          if (!data.hasDelegation) {
+            console.log('⚠️ Cache was stale, delegation no longer valid')
+            localStorage.removeItem(cacheKey)
+          }
+        } catch {
+          // A failed check is not proof of delegation. Fall back to "not
+          // delegated" so the user re-delegates rather than pressing Start
+          // against a permission that may no longer exist.
+          setHasDelegation(false)
+        } finally {
+          setCheckingDelegation(false)
+        }
+        return
+      }
+
+      // No cache, check blockchain
+      setCheckingDelegation(true)
+      try {
+        const response = await fetch(`/api/bot/check-delegation?userSubaccount=${encodeURIComponent(subaccount)}&userWalletAddress=${encodeURIComponent(account?.address?.toString() ?? '')}`)
+        const data = await response.json()
+
+        if (data.hasDelegation) {
+          setHasDelegation(true)
+          // Cache the successful delegation
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(cacheKey, 'delegated')
+          }
+          console.log('✅ Bot operator already has delegation permissions')
+        } else {
+          setHasDelegation(false)
+          console.log('⚠️ Bot operator needs delegation:', data.reason || 'Not delegated')
+        }
+      } catch (err) {
+        console.error('Failed to check delegation:', err)
+        setHasDelegation(false)
+      } finally {
+        setCheckingDelegation(false)
+      }
+    }
+
+    checkDelegation()
+  }, [automationEnabled, subaccount])
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setMarketDropdownOpen(false)
+      }
+      if (strategyDropdownRef.current && !strategyDropdownRef.current.contains(event.target as Node)) {
+        setStrategyDropdownOpen(false)
+      }
+    }
+
+    if (marketDropdownOpen || strategyDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [marketDropdownOpen, strategyDropdownOpen])
+
+  // All Decibel TESTNET markets (from perp_engine::Global on-chain - updated Feb 5, 2026)
+  const MARKETS: Record<string, { address: string; logo: string; leverage: number }> = {
+    "BTC/USD": {
+      address: "0x274b5e1aa56156f087d2a39fc6bded92f27e2bf6bbfff97ea4b4669b8a6d6557",
+      logo: "/tokens/btc.svg",
+      leverage: 40,
+    },
+    "ETH/USD": {
+      address: "0x3f20be2579c669064acc135e15cda176a6418a6e26f074bfb9ba81d8a681d0bd",
+      logo: "/tokens/eth.svg",
+      leverage: 20,
+    },
+    "SOL/USD": {
+      address: "0x563b315ea3453cf79727de5160b32dfb960e3abbe21d9022d49b428d3c3e9981",
+      logo: "/tokens/sol.png",
+      leverage: 10,
+    },
+    "APT/USD": {
+      address: "0x4fd3b7994c48c5c7a48ebd284ce11ecaa9ea9c2cf032f8aebff45735e59e79ac",
+      logo: "/tokens/apt.png",
+      leverage: 10,
+    },
+    "XRP/USD": {
+      address: "0xf67a0879b80b2ece2d6d498f3cebc6c206b8de434473a79fbb840d4de3ad7eec",
+      logo: "/tokens/xrp.svg",
+      leverage: 10,
+    },
+    "AAVE/USD": {
+      address: "0x4d2d4b80b943d1fd139bf2cc4a2e46f5b4b69cde8efd1af420d7000a1b351695",
+      logo: "/tokens/aave.svg",
+      leverage: 5,
+    },
+    "HYPE/USD": {
+      address: "0x33414fbda4a7247a49b26f05d6c297692de079b904fbe0a50c99985df22942db",
+      logo: "/tokens/hype.png",
+      leverage: 3,
+    },
+    "WLFI/USD": {
+      address: "0x1c7b5de5ed55e89244797f1888dde0f99d086afd0c739a2897589f98f262a714",
+      logo: "/tokens/wlfi.png",
+      leverage: 3,
+    },
+    "SUI/USD": {
+      address: "0x2c0a985573e3ef66b99735858a2bb798e80580d639db3500ff0836786c8fb70b",
+      logo: "/tokens/sui.svg",
+      leverage: 3,
+    },
+    "DOGE/USD": {
+      address: "0x8deecfcaccfea7f4f1a2f203372aeee16d41068bb4ce955dcc4f15c3934c1ae7",
+      logo: "/tokens/doge.svg",
+      leverage: 5,
+    },
+  }
+
+  const STRATEGIES: Record<Strategy, { name: string; shortDesc: string; fullDesc: string; icon: string; color: string }> = {
+    twap: {
+      name: "TWAP",
+      shortDesc: "Passive volume",
+      fullDesc: "Passive limit orders for volume generation. Low PNL impact.",
+      icon: "chart",
+      color: "blue",
+    },
+    market_maker: {
+      name: "Market Maker",
+      shortDesc: "Active PNL",
+      fullDesc: "Market orders with tight spreads. Active PNL movement.",
+      icon: "bolt",
+      color: "purple",
+    },
+    delta_neutral: {
+      name: "Delta Neutral",
+      shortDesc: "Hedged positions",
+      fullDesc: "Opens positions and immediately hedges them. Minimal risk.",
+      icon: "shield",
+      color: "cyan",
+    },
+    high_risk: {
+      name: "High Risk",
+      shortDesc: "Max PNL swings",
+      fullDesc: "Max leverage, fast TWAPs. Targets +0.15% / -0.1% for quick trades. Real PNL.",
+      icon: "flame",
+      color: "orange",
+    },
+    tx_spammer: {
+      name: "TX Spammer",
+      shortDesc: "Rapid-fire tiny TWAPs",
+      fullDesc: "Spam tiny TWAP orders as fast as possible. Maximum transaction count. Each order is ~$10-50.",
+      icon: "zap",
+      color: "pink",
+    },
+    dlp_grid: {
+      name: "DLP Grid (Clone)",
+      shortDesc: "Mirror vault MM",
+      fullDesc: "Mirrors the Decibel DLP vault's passive grid market making quotes using bulk orders (post-only). Useful for benchmarking MM PnL vs the vault. Configure markets and sizing via server env vars (DLP_GRID_*).",
+      icon: "gauge",
+      color: "emerald",
+    },
+  }
+
+  const selectedStrategy = STRATEGIES[strategy]
+
+  const selectedMarket = MARKETS[market]
+
+  useEffect(() => {
+    const checkActiveTWAPs = async () => {
+      if (!account || !subaccount) return
+      try {
+        const response = await fetch(`/api/bot/status?userWalletAddress=${account.address.toString()}&userSubaccount=${encodeURIComponent(subaccount)}`)
+        const data = await response.json()
+        // Show bot as running if it exists and is running for this subaccount
+        if (data.isRunning) {
+          setIsRunning(true)
+          setError(null)
+        } else {
+          setIsRunning(false)
+          setError(null)
+        }
+      } catch (err) {
+        console.error('Failed to check bot status:', err)
+      }
+    }
+    checkActiveTWAPs()
+  }, [account, subaccount])
+
+  const handleSetMax = () => {
+    if (balance !== null) {
+      setCapital(balance.toString())
+    }
+  }
+
+  const handleDelegate = async () => {
+    if (!automationEnabled) {
+      setError("Automated bot execution is temporarily unavailable. Manual trading is unaffected.")
+      return
+    }
+
+    if (!account || !subaccount) {
+      setError("Please connect wallet first")
+      return
+    }
+
+    setDelegating(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/bot/delegate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userSubaccount: subaccount, userWalletAddress: account?.address?.toString() }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get delegation payload")
+      }
+
+      if (!signAndSubmitTransaction) {
+        throw new Error("Wallet does not support signing transactions")
+      }
+
+      console.log("📤 Submitting delegation transaction with payload:", data.payload)
+
+      const txResponse = await signAndSubmitTransaction({
+        data: data.payload
+      })
+
+      console.log("✅ Delegation transaction:", txResponse.hash)
+      setHasDelegation(true)
+
+      // Cache delegation status in localStorage
+      if (typeof window !== 'undefined' && subaccount) {
+        const cacheKey = `cash_trading_delegation_status_${subaccount}`
+        localStorage.setItem(cacheKey, 'delegated')
+        console.log('💾 Cached delegation status for subaccount')
+      }
+    } catch (err: any) {
+      // Extract more detailed error message
+      const errorMessage = err.message || err.toString() || "Failed to delegate permissions"
+      // Check for common error patterns
+      if (errorMessage.includes("rejected") || errorMessage.includes("User rejected")) {
+        setError("Transaction rejected by user")
+      } else if (errorMessage.includes("EOBJECT_DOES_NOT_EXIST")) {
+        setError("Subaccount not found. Please make a deposit on Decibel first.")
+      } else {
+        setError(errorMessage)
+      }
+      console.error("❌ Delegation error:", err)
+    } finally {
+      setDelegating(false)
+    }
+  }
+
+  const handleStart = async () => {
+    if (!automationEnabled) {
+      setError("Automated bot execution is temporarily unavailable. Manual trading is unaffected.")
+      return
+    }
+
+    if (!account || !subaccount || !capital) {
+      setError("Please connect wallet and enter capital amount")
+      return
+    }
+
+    const capitalNum = parseFloat(capital)
+    if (isNaN(capitalNum) || capitalNum <= 0) {
+      setError("Please enter a valid capital amount")
+      return
+    }
+
+    if (capitalNum > (balance || 0)) {
+      setError(`Insufficient balance. You have $${balance?.toFixed(2)} USDC`)
+      return
+    }
+
+    setError(null)
+    setLoading(true)
+
+    try {
+      const response = await fetch("/api/bot/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userWalletAddress: account.address.toString(),
+          userSubaccount: subaccount,
+          capitalUSDC: capitalNum,
+          volumeTargetUSDC: volumeTarget,
+          bias,
+          strategy,
+          market: MARKETS[market].address,
+          marketName: market,
+          aggressiveness,
+          leverageX,
+        }),
+      })
+
+      const data = await response.json()
+      console.log('Bot start response:', response.status, data)
+
+      if (!response.ok) {
+        console.error('Bot start failed:', response.status, data)
+        throw new Error(data.error || "Failed to start bot")
+      }
+
+      console.log('Bot started successfully:', data)
+      setIsRunning(true)
+      toast.success('Bot Started', {
+        description: `Trading ${market} with $${capitalNum.toFixed(0)} toward $${volumeTarget} volume`,
+      })
+    } catch (err: any) {
+      setError(err.message || "Failed to start bot")
+      toast.error('Failed to start bot', {
+        description: err.message,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleStop = async () => {
+    if (!account) return
+
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/bot/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userWalletAddress: account.address.toString(),
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to stop bot")
+      }
+
+      setIsRunning(false)
+      toast.info('Bot Stopped', {
+        description: 'Trading has been paused',
+      })
+    } catch (err: any) {
+      setError(err.message || "Failed to stop bot")
+      toast.error('Failed to stop bot', {
+        description: err.message,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in zoom-in duration-500">
+      {/* Bot Status Monitor */}
+      {automationEnabled && connected && account && subaccount && (
+        <BotStatusMonitor
+          userWalletAddress={account.address.toString()}
+          userSubaccount={subaccount}
+          isRunning={isRunning}
+          onStatusChange={setIsRunning}
+        />
+      )}
+
+      {/* Main Configuration Panel */}
+      <div className="border border-white/10 relative" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+        <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/18" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/18" />
+
+        {/* Header */}
+        <div className="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings2 className="w-4 h-4 text-primary" />
+            <h3 className="text-primary font-mono text-sm uppercase tracking-widest font-bold">Volume Bot Config</h3>
+          </div>
+          <div className="flex gap-1">
+            <div className={cn("w-2 h-2", isRunning ? "bg-green-500 animate-pulse" : "bg-zinc-600")} />
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6 font-mono">
+          {!cloudStatusLoading && !automationEnabled && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/14 relative flex items-start gap-2">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-yellow-500" />
+              <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow-300">
+                Automated bot execution is unavailable for this wallet. It is restricted to the configured operator account. Manual trading is unaffected.
+              </p>
+            </div>
+          )}
+          {/* Capital Input */}
+          <div className="space-y-2">
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Capital Amount</h3>
+            <div className="bg-black/40 backdrop-blur-sm border border-primary/14 p-3 md:p-4 relative group hover:border-primary/12 transition-colors shadow-[0_0_15px_-5px_rgba(255,246,0,0.3)] overflow-hidden">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary opacity-70" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary opacity-70" />
+              <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 h-8 w-[3px] bg-primary/50 group-hover:bg-primary transition-colors" />
+              <div className="flex items-center gap-2 md:gap-4">
+                <input
+                  type="number"
+                  value={capital}
+                  onChange={(e) => setCapital(e.target.value)}
+                  disabled={!connected || isRunning || loading}
+                  className="flex-1 min-w-0 bg-transparent border-none text-2xl md:text-4xl font-mono text-white placeholder-zinc-600 focus:outline-none disabled:opacity-50"
+                  placeholder="0.00"
+                />
+                <Button
+                  onClick={handleSetMax}
+                  disabled={!connected || isRunning || loading}
+                  variant="outline"
+                  size="sm"
+                  className="border-primary/18 text-primary hover:bg-primary/10 rounded-none font-mono text-xs tracking-widest flex-shrink-0 px-2 md:px-3"
+                >
+                  MAX
+                </Button>
+              </div>
+              {connected && balance !== null && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  Available: <span className="text-primary">${balance.toFixed(2)} USDC</span>
+                </p>
+              )}
+              {!connected && (
+                <p className="text-xs text-zinc-500 mt-2">
+                  Connect wallet to see balance
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Volume Target */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Volume Target</h3>
+              <span className="text-2xl font-bold text-primary font-mono">
+                ${volumeTarget >= 1000000 ? `${(volumeTarget / 1000000).toFixed(1)}M` :
+                  volumeTarget >= 1000 ? `${(volumeTarget / 1000).toFixed(0)}K` :
+                  volumeTarget.toFixed(0)}
+              </span>
+            </div>
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-zinc-800 via-primary/30 to-primary" />
+              <Slider
+                value={[volumeTarget]}
+                onValueChange={([value]) => setVolumeTarget(value)}
+                min={1000}
+                max={1000000}
+                step={1000}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
+              <span>$1K</span>
+              <span>$1M</span>
+            </div>
+          </div>
+
+          {/* Leverage — explicit, because the engine used to size every
+              position at the market maximum with no way to ask for less. */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Leverage</h3>
+              <span className="text-2xl font-bold text-primary font-mono">{leverageX}x</span>
+            </div>
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-zinc-800 via-primary/30 to-primary" />
+              <Slider
+                value={[leverageX]}
+                onValueChange={([value]) => setLeverageX(value)}
+                min={1}
+                max={20}
+                step={1}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
+              <span>1x</span>
+              <span>Clamped to each market&apos;s max</span>
+              <span>20x</span>
+            </div>
+          </div>
+
+          {/* Market Selector Dropdown */}
+          <div className="space-y-3 relative" ref={dropdownRef}>
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Pair</h3>
+            <button
+              onClick={() => !isRunning && !loading && setMarketDropdownOpen(!marketDropdownOpen)}
+              disabled={isRunning || loading}
+              className={cn(
+                "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
+                marketDropdownOpen && "border-primary/18"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <img
+                  src={selectedMarket?.logo}
+                  alt={market}
+                  className="w-6 h-6 object-contain flex-shrink-0"
+                />
+                <div className="flex flex-col items-start">
+                  <span className="text-white font-bold tracking-wider">{market}</span>
+                  <span className="text-[10px] text-zinc-500">Max {selectedMarket?.leverage}x leverage</span>
+                </div>
+              </div>
+              <ChevronDown className={cn(
+                "w-4 h-4 text-zinc-400 transition-transform",
+                marketDropdownOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {marketDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-black/95 border border-white/10 backdrop-blur-sm max-h-[300px] overflow-y-auto scrollbar-thin">
+                {Object.entries(MARKETS).map(([marketName, marketData]) => (
+                  <button
+                    key={marketName}
+                    onClick={() => {
+                      setMarket(marketName)
+                      setMarketDropdownOpen(false)
+                    }}
+                    className={cn(
+                      "w-full p-3 flex items-center gap-3 transition-all hover:bg-white/5 border-b border-white/5 last:border-b-0",
+                      market === marketName && "bg-primary/10"
+                    )}
+                  >
+                    <img
+                      src={marketData.logo}
+                      alt={marketName}
+                      className="w-6 h-6 object-contain flex-shrink-0"
+                    />
+                    <div className="flex flex-col items-start flex-1">
+                      <span className={cn(
+                        "font-bold tracking-wider",
+                        market === marketName ? "text-primary" : "text-white"
+                      )}>
+                        {marketName}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Max {marketData.leverage}x leverage
+                      </span>
+                    </div>
+                    {market === marketName && (
+                      <div className="w-2 h-2 bg-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Aggressiveness */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Bot Speed</h3>
+              <span className="text-lg font-bold text-primary font-mono">{aggressiveness}/10</span>
+            </div>
+            <div className="relative h-8 flex items-center px-2 border border-white/10 bg-black/20">
+              <div className="absolute inset-x-2 h-1 bg-gradient-to-r from-green-500/30 via-yellow-500/30 to-red-500/30" />
+              <Slider
+                value={[aggressiveness]}
+                onValueChange={([value]) => setAggressiveness(value)}
+                min={1}
+                max={10}
+                step={1}
+                disabled={isRunning || loading}
+                className="cursor-pointer relative z-10"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-zinc-500 uppercase tracking-wider">
+              <span>Slow (2 min)</span>
+              <span>Ultra Fast (10 sec)</span>
+            </div>
+            <div className={cn(
+              "p-2 border relative flex items-center gap-2",
+              aggressiveness <= 3 && "bg-green-500/5 border-green-500/14",
+              aggressiveness > 3 && aggressiveness <= 7 && "bg-yellow-500/5 border-yellow-500/14",
+              aggressiveness > 7 && "bg-red-500/5 border-red-500/14"
+            )}>
+              {aggressiveness <= 3 && <Gauge className="w-4 h-4 text-green-400 flex-shrink-0" />}
+              {aggressiveness > 3 && aggressiveness <= 7 && <Bolt className="w-4 h-4 text-yellow-400 flex-shrink-0" />}
+              {aggressiveness > 7 && <Flame className="w-4 h-4 text-red-400 flex-shrink-0" />}
+              <p className={cn(
+                "text-xs",
+                aggressiveness <= 3 && "text-green-400",
+                aggressiveness > 3 && aggressiveness <= 7 && "text-yellow-400",
+                aggressiveness > 7 && "text-red-400"
+              )}>
+                {aggressiveness <= 3 && "Conservative - Orders every 1-2 minutes"}
+                {aggressiveness > 3 && aggressiveness <= 7 && "Moderate - Orders every 30-60 seconds"}
+                {aggressiveness > 7 && "Aggressive HFT - Orders every 10-20 seconds"}
+              </p>
+            </div>
+          </div>
+
+          {/* Bias Selector */}
+          <div className="space-y-3">
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Directional Bias</h3>
+            <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/10 p-1 shadow-[0_0_15px_-5px_rgba(0,0,0,0.5)]">
+              <button
+                onClick={() => setBias("long")}
+                disabled={isRunning || loading}
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
+                  bias === "long"
+                    ? "bg-green-500/10 text-green-500 border border-green-500/18"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
+              >
+                {bias === "long" && <div className="absolute inset-0 bg-green-500/5 animate-pulse" />}
+                <TrendingUp className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Long</span>
+              </button>
+              <button
+                onClick={() => setBias("neutral")}
+                disabled={isRunning || loading}
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
+                  bias === "neutral"
+                    ? "bg-primary/10 text-primary border border-primary/18"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
+              >
+                <Minus className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Neutral</span>
+              </button>
+              <button
+                onClick={() => setBias("short")}
+                disabled={isRunning || loading}
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 transition-all relative overflow-hidden group disabled:opacity-50",
+                  bias === "short"
+                    ? "bg-red-500/10 text-red-500 border border-red-500/18"
+                    : "text-zinc-500 hover:bg-white/5 border border-transparent"
+                )}
+              >
+                {bias === "short" && <div className="absolute inset-0 bg-red-500/5 animate-pulse" />}
+                <TrendingDown className="w-4 h-4 mb-1 relative z-10" />
+                <span className="font-bold text-sm tracking-wider relative z-10">Short</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              {bias === "long" && "Bot will only place long orders"}
+              {bias === "short" && "Bot will only place short orders"}
+              {bias === "neutral" && "Bot will alternate between long and short"}
+            </p>
+          </div>
+
+          {/* Strategy Selector Dropdown */}
+          <div className="space-y-3 relative" ref={strategyDropdownRef}>
+            <h3 className="text-muted-foreground font-mono text-xs uppercase tracking-widest">Trading Strategy</h3>
+            <button
+              onClick={() => !isRunning && !loading && setStrategyDropdownOpen(!strategyDropdownOpen)}
+              disabled={isRunning || loading}
+              className={cn(
+                "w-full bg-black/40 border border-white/10 p-3 flex items-center justify-between transition-all disabled:opacity-50",
+                strategyDropdownOpen && "border-primary/18"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                {strategy === "twap" && <BarChart3 className="w-5 h-5 text-blue-400" />}
+                {strategy === "market_maker" && <Bolt className="w-5 h-5 text-purple-400" />}
+                {strategy === "delta_neutral" && <Shield className="w-5 h-5 text-cyan-400" />}
+                {strategy === "high_risk" && <Flame className="w-5 h-5 text-orange-400" />}
+                {strategy === "tx_spammer" && <Zap className="w-5 h-5 text-pink-400" />}
+                {strategy === "dlp_grid" && <Gauge className="w-5 h-5 text-emerald-400" />}
+                <div className="flex flex-col items-start">
+                  <span className="text-white font-bold tracking-wider">{selectedStrategy.name}</span>
+                  <span className="text-[10px] text-zinc-500">{selectedStrategy.shortDesc}</span>
+                </div>
+              </div>
+              <ChevronDown className={cn(
+                "w-4 h-4 text-zinc-400 transition-transform",
+                strategyDropdownOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {strategyDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-black/95 border border-white/10 backdrop-blur-sm max-h-[300px] overflow-y-auto scrollbar-thin">
+                {(Object.entries(STRATEGIES) as [Strategy, typeof STRATEGIES[Strategy]][]).map(([strategyKey, strategyData]) => (
+                  <button
+                    key={strategyKey}
+                    onClick={() => {
+                      setStrategy(strategyKey)
+                      setStrategyDropdownOpen(false)
+                    }}
+                    className={cn(
+                      "w-full p-3 flex items-center gap-3 transition-all hover:bg-white/5 border-b border-white/5 last:border-b-0",
+                      strategyKey === "twap" && strategy === strategyKey && "bg-blue-500/10",
+                      strategyKey === "market_maker" && strategy === strategyKey && "bg-purple-500/10",
+                      strategyKey === "delta_neutral" && strategy === strategyKey && "bg-cyan-500/10",
+                      strategyKey === "high_risk" && strategy === strategyKey && "bg-orange-500/10",
+                      strategyKey === "tx_spammer" && strategy === strategyKey && "bg-pink-500/10",
+                      strategyKey === "dlp_grid" && strategy === strategyKey && "bg-emerald-500/10"
+                    )}
+                  >
+                    {strategyKey === "twap" && <BarChart3 className={cn("w-5 h-5", strategy === strategyKey ? "text-blue-400" : "text-zinc-500")} />}
+                    {strategyKey === "market_maker" && <Bolt className={cn("w-5 h-5", strategy === strategyKey ? "text-purple-400" : "text-zinc-500")} />}
+                    {strategyKey === "delta_neutral" && <Shield className={cn("w-5 h-5", strategy === strategyKey ? "text-cyan-400" : "text-zinc-500")} />}
+                    {strategyKey === "high_risk" && <Flame className={cn("w-5 h-5", strategy === strategyKey ? "text-orange-400" : "text-zinc-500")} />}
+                    {strategyKey === "tx_spammer" && <Zap className={cn("w-5 h-5", strategy === strategyKey ? "text-pink-400" : "text-zinc-500")} />}
+                    {strategyKey === "dlp_grid" && <Gauge className={cn("w-5 h-5", strategy === strategyKey ? "text-emerald-400" : "text-zinc-500")} />}
+                    <div className="flex flex-col items-start flex-1">
+                      <span className={cn(
+                        "font-bold tracking-wider",
+                        strategyKey === "twap" && strategy === strategyKey && "text-blue-400",
+                        strategyKey === "market_maker" && strategy === strategyKey && "text-purple-400",
+                        strategyKey === "delta_neutral" && strategy === strategyKey && "text-cyan-400",
+                        strategyKey === "high_risk" && strategy === strategyKey && "text-orange-400",
+                        strategyKey === "tx_spammer" && strategy === strategyKey && "text-pink-400",
+                        strategyKey === "dlp_grid" && strategy === strategyKey && "text-emerald-400",
+                        strategy !== strategyKey && "text-white"
+                      )}>
+                        {strategyData.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        {strategyData.shortDesc}
+                      </span>
+                    </div>
+                    {strategy === strategyKey && (
+                      <div className={cn(
+                        "w-2 h-2",
+                        strategyKey === "twap" && "bg-blue-400",
+                        strategyKey === "market_maker" && "bg-purple-400",
+                        strategyKey === "delta_neutral" && "bg-cyan-400",
+                        strategyKey === "high_risk" && "bg-orange-400",
+                        strategyKey === "tx_spammer" && "bg-pink-400"
+                      )} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Strategy Description */}
+            <div className={cn(
+              "p-2 border relative flex items-center gap-2",
+              strategy === "twap" && "bg-blue-500/5 border-blue-500/14",
+              strategy === "market_maker" && "bg-purple-500/5 border-purple-500/14",
+              strategy === "delta_neutral" && "bg-cyan-500/5 border-cyan-500/30",
+              strategy === "high_risk" && "bg-orange-500/5 border-orange-500/14",
+              strategy === "tx_spammer" && "bg-pink-500/5 border-pink-500/30"
+            )}>
+              {strategy === "twap" && <BarChart3 className="w-4 h-4 text-blue-400 flex-shrink-0" />}
+              {strategy === "market_maker" && <Bolt className="w-4 h-4 text-purple-400 flex-shrink-0" />}
+              {strategy === "delta_neutral" && <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
+              {strategy === "high_risk" && <Flame className="w-4 h-4 text-orange-400 flex-shrink-0" />}
+              {strategy === "tx_spammer" && <Zap className="w-4 h-4 text-pink-400 flex-shrink-0" />}
+              <p className={cn(
+                "text-xs",
+                strategy === "twap" && "text-blue-400",
+                strategy === "market_maker" && "text-purple-400",
+                strategy === "delta_neutral" && "text-cyan-400",
+                strategy === "high_risk" && "text-orange-400",
+                strategy === "tx_spammer" && "text-pink-400"
+              )}>
+                {selectedStrategy.fullDesc}
+              </p>
+            </div>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/14 relative">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-red-500" />
+              <p className="text-sm text-red-400 font-mono">{error}</p>
+            </div>
+          )}
+
+          {/* Delegation Section - only show when connected */}
+          {automationEnabled && connected && !isRunning && !hasDelegation && !checkingDelegation && (
+            <div className="space-y-3">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/14 relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-blue-500" />
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-blue-400 mb-2 font-mono">
+                      First-time users must delegate trading permissions to the bot operator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                onClick={handleDelegate}
+                disabled={delegating}
+                variant="outline"
+                className="w-full border-primary/18 text-primary hover:bg-primary/10 rounded-none font-mono uppercase tracking-widest"
+              >
+                {delegating ? "Delegating..." : "Delegate Permissions"}
+              </Button>
+            </div>
+          )}
+
+          {automationEnabled && connected && checkingDelegation && (
+            <div className="p-3 bg-zinc-500/10 border border-zinc-500/30 relative flex items-center gap-2">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-zinc-500" />
+              <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs text-zinc-400 font-mono">
+                Checking delegation status...
+              </p>
+            </div>
+          )}
+
+          {automationEnabled && connected && !isRunning && hasDelegation && (
+            <div className="p-3 bg-green-500/10 border border-green-500/14 relative flex items-center gap-2">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-green-500" />
+              <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <p className="text-xs text-green-400 font-mono">
+                Permissions delegated. You can now start the bot.
+              </p>
+            </div>
+          )}
+
+          {/* Start Button - only show when not running (Stop button is in BotStatusMonitor) */}
+          {automationEnabled && !isRunning && connected && (
+            <div className="space-y-2">
+              <Button
+                onClick={handleStart}
+                disabled={loading || !hasDelegation || checkingDelegation}
+                className="w-full h-14 text-lg font-bold font-mono tracking-[0.2em] rounded-none border relative overflow-hidden group transition-all duration-300 disabled:opacity-50 bg-primary/90 hover:bg-primary text-black border-primary shadow-[0_0_30px_-5px_rgba(255,246,0,0.6)] hover:shadow-[0_0_50px_-10px_rgba(255,246,0,0.8)] disabled:shadow-none disabled:hover:bg-primary/90"
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  {loading ? (
+                    "PROCESSING..."
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5" />
+                      START BOT
+                    </>
+                  )}
+                </span>
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-white/50" />
+              </Button>
+              {!hasDelegation && !checkingDelegation && (
+                <p className="text-xs text-zinc-500 font-mono text-center">
+                  ↑ Delegate permissions above to enable
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Connect Wallet prompt when not connected */}
+          {automationEnabled && !connected && (
+            <div className="p-4 bg-primary/10 border border-primary/14 relative text-center">
+              <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-primary" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-primary" />
+              <p className="text-primary font-mono font-bold">Connect wallet to start</p>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  )
+}

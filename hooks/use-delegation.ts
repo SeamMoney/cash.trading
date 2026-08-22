@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
 import { BOT_OPERATOR, getAptosNodeUrl, getActivePackage } from "@/lib/decibel-client"
+import { useWalletBalance } from "./use-wallet-balance"
 
 export interface DelegationState {
   isDelegated: boolean
@@ -14,50 +15,9 @@ export interface DelegationState {
   revokeDelegation: () => Promise<boolean>
 }
 
-/**
- * How long the operator may trade this subaccount before the user has to say
- * yes again. Kept in step with DELEGATION_TTL_SECONDS in
- * app/api/bot/delegate/route.ts — a permission nobody ever has to renew is one
- * nobody ever revisits, and this one signs orders.
- */
-const DELEGATION_TTL_SECONDS = 30 * 24 * 60 * 60
-
-/**
- * Delegations now expire, so being present in the permissions map is no longer
- * the same as being able to trade. DelegatedPermissions is an on-chain enum
- * whose JSON shape the module ABI does not pin, so read the expiry defensively
- * and only treat it as expired on an unambiguous timestamp that has passed.
- * Missing or zero means unlimited — what the older delegations look like.
- * Mirrors findExpirySeconds in app/api/bot/check-delegation/route.ts.
- */
-const EXPIRY_KEYS = ["expiration", "expiration_secs", "expiration_time", "expires_at", "expiry"]
-
-function findExpirySeconds(value: unknown, depth = 0): number | null {
-  if (depth > 6 || value === null || typeof value !== "object") return null
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (EXPIRY_KEYS.includes(key)) {
-      const inner =
-        typeof raw === "object" && raw !== null ? (raw as { vec?: unknown[] }).vec?.[0] : raw
-      const n = Number(inner)
-      if (Number.isFinite(n) && n > 0) return n
-    }
-  }
-  for (const raw of Object.values(value as Record<string, unknown>)) {
-    const found = findExpirySeconds(raw, depth + 1)
-    if (found !== null) return found
-  }
-  return null
-}
-
-/**
- * @param subaccount The subaccount to delegate. Passed in explicitly rather
- * than discovered inside the hook: callers now own more than one subaccount
- * (a personal strategy runner trades a different one from the dashboard bot),
- * and a hook that silently picks one for you delegates the wrong account
- * without ever saying so.
- */
-export function useDelegation(subaccount: string | null | undefined): DelegationState {
+export function useDelegation(): DelegationState {
   const { account, connected, signAndSubmitTransaction } = useWallet()
+  const { subaccount } = useWalletBalance()
   const [isDelegated, setIsDelegated] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,14 +53,12 @@ export function useDelegation(subaccount: string | null | undefined): Delegation
       }
 
       const data = await response.json()
-      const entries: Array<{ key?: string; value?: unknown }> = data?.[0]?.entries ?? []
+      const entries: Array<{ key?: string }> = data?.[0]?.entries ?? []
       const operator = BOT_OPERATOR.toLowerCase()
-      const entry = entries.find(
-        (e) => typeof e.key === "string" && e.key.toLowerCase() === operator
+      const delegated = entries.some(
+        (entry) => typeof entry.key === "string" && entry.key.toLowerCase() === operator
       )
-      const expiresAtSeconds = entry ? findExpirySeconds(entry.value) : null
-      const expired = expiresAtSeconds !== null && expiresAtSeconds <= Math.floor(Date.now() / 1000)
-      setIsDelegated(Boolean(entry) && !expired)
+      setIsDelegated(delegated)
     } catch (err) {
       console.error("Failed to check delegation:", err)
       setError(err instanceof Error ? err.message : "Failed to check delegation")
@@ -120,19 +78,19 @@ export function useDelegation(subaccount: string | null | undefined): Delegation
     setError(null)
 
     try {
-      // The fourth argument is Option<u64>. It used to be `[]` — no expiry at
-      // all — so an authorization granted once stayed live forever. Thirty days
-      // and the user is asked again.
-      const expiresAtSeconds = Math.floor(Date.now() / 1000) + DELEGATION_TTL_SECONDS
+      const payload = {
+        type: "entry_function_payload",
+        function: `${getActivePackage()}::dex_accounts_entry::delegate_trading_to_for_subaccount`,
+        type_arguments: [],
+        arguments: [
+          subaccount,
+          BOT_OPERATOR,
+          [], // expiration (none = unlimited)
+        ],
+      }
 
       const response = await signAndSubmitTransaction({
-        data: {
-          // Only the module path needs the cast: it is built at runtime from
-          // the active package, so TS cannot see it as `a::b::c`.
-          function: `${getActivePackage()}::dex_accounts_entry::delegate_trading_to_for_subaccount` as `${string}::${string}::${string}`,
-          typeArguments: [],
-          functionArguments: [subaccount, BOT_OPERATOR, String(expiresAtSeconds)],
-        },
+        data: payload as any,
       })
 
       // Wait for transaction confirmation
@@ -183,12 +141,15 @@ export function useDelegation(subaccount: string | null | undefined): Delegation
     setError(null)
 
     try {
+      const payload = {
+        type: "entry_function_payload",
+        function: `${getActivePackage()}::dex_accounts_entry::revoke_delegation`,
+        type_arguments: [],
+        arguments: [subaccount, BOT_OPERATOR],
+      }
+
       const response = await signAndSubmitTransaction({
-        data: {
-          function: `${getActivePackage()}::dex_accounts_entry::revoke_delegation` as `${string}::${string}::${string}`,
-          typeArguments: [],
-          functionArguments: [subaccount, BOT_OPERATOR],
-        },
+        data: payload as any,
       })
 
       // Wait for confirmation (same as above)

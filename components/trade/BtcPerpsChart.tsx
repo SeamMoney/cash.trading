@@ -87,12 +87,10 @@ const INTERVAL_SECONDS: Record<ChartInterval, number> = {
   "1m": 60,
 };
 
-// Two window presets, labelled with the span they actually show. They used to
-// read LIVE / HISTORY, which claimed a connection state the buttons do not
-// carry — both windows stream identically; only the visible span differs.
+// Two intent-based views: every observed live move, or the full loaded history.
 const LINE_WINDOW_OPTIONS: WindowOption[] = [
-  { label: "1m", secs: 60 },
-  { label: "12h", secs: 12 * 60 * 60 },
+  { label: "LIVE", secs: 60 },
+  { label: "HISTORY", secs: 12 * 60 * 60 },
 ];
 
 function ChartDotBackground({
@@ -112,7 +110,7 @@ function ChartDotBackground({
         opacity: 0.85,
         right: padding.right,
         // The data path keeps its vertical padding, but the visual field
-        // continues behind the window controls instead of leaving a
+        // continues behind the LIVE / HISTORY controls instead of leaving a
         // blank strip above the plot.
         top: 0,
       }}
@@ -544,9 +542,6 @@ function BtcPerpsChartComponent({
     intent: "pending" | "horizontal";
   } | null>(null);
   const lineInteractionRef = useRef<HTMLDivElement | null>(null);
-  // First-frame seed only: the effect below replaces it with the resolved
-  // --chart-line-primary token, which this literal mirrors in the dark theme.
-  // Liveline paints to a canvas, so this one cannot be a var().
   const [lineColor, setLineColor] = useState("#39ff14");
   // Which market the window/pan state was last reset for — bootstrap re-runs
   // (feed fallback flips) must not clobber the user's chosen window.
@@ -1680,7 +1675,7 @@ function BtcPerpsChartComponent({
             prop flips Liveline to self-managed window state seeded from
             windows[0], which ignores the `window` prop and breaks wheel zoom. */}
         <div
-          className="absolute left-2 top-2 z-10 flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-card-border bg-background-tertiary/85 p-0.5 backdrop-blur-sm"
+          className="absolute left-2 top-2 z-10 flex items-center gap-0.5 rounded-[7px] border border-white/[0.07] bg-[#141414]/85 p-0.5 backdrop-blur-sm"
           onPointerDown={(event) => event.stopPropagation()}
         >
           {LINE_WINDOW_OPTIONS.map((option) => (
@@ -1692,7 +1687,7 @@ function BtcPerpsChartComponent({
                   clamp(option.secs, MIN_LINE_WINDOW_SECS, MAX_LINE_WINDOW_SECS)
                 )
               }
-              className={`rounded-[var(--radius-xs)] px-2 py-1 font-mono text-[11px] font-semibold transition-colors ${
+              className={`rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase transition-colors ${
                 Math.abs(lineWindowSecs - option.secs) < option.secs * 0.25
                   ? "bg-white/[0.12] text-white"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1710,14 +1705,14 @@ function BtcPerpsChartComponent({
         />
         {/* Overlay crossover signals — most recent first */}
         {overlayCrossings.length > 0 && (
-          <div className="pointer-events-none absolute left-3 top-[80px] z-10 flex flex-col gap-1">
+          <div className="pointer-events-none absolute left-3 top-9 z-10 flex flex-col gap-1">
             {[...overlayCrossings].reverse().map((c) => (
               <span
                 key={`${c.side}-${c.time}`}
-                className={`flex items-center gap-1.5 self-start rounded-[var(--radius-xs)] px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase ${
+                className={`flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
                   c.side === "buy"
-                    ? "bg-success/15 text-success"
-                    : "bg-danger/15 text-danger"
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "bg-red-500/15 text-red-400"
                 }`}
               >
                 {c.side === "buy" ? "▲ Buy" : "▼ Sell"}

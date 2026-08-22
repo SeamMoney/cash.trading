@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, ExternalLink, Loader2, Send } from "lucide-react";
 
-import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import { Button } from "@/components/ui/button";
 import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import { useIsMobile } from "@/components/ui/use-mobile";
@@ -352,7 +351,7 @@ export function VaultActionModal({
               ) : null
             ) : (
               <>
-            <div className="rounded-[var(--radius-sm)] border border-card-border bg-zinc-900/60 p-3">
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex items-center gap-2">
                 <Activity className="size-4 text-primary" aria-hidden="true" />
                 <div className="min-w-0">
@@ -368,18 +367,18 @@ export function VaultActionModal({
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="min-w-0 rounded-[var(--radius-sm)] border border-card-border p-3">
+              <div className="min-w-0 rounded-md border border-zinc-800 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-zinc-500">Vault</div>
                   {indicator.network === "testnet" ? (
-                    <span className="rounded-[var(--radius-xs)] bg-warning/15 px-1.5 py-0.5 text-[11px] font-bold uppercase text-warning">
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-400">
                       Testnet
                     </span>
                   ) : null}
                 </div>
                 <div className="mt-1 truncate font-mono tabular-nums text-zinc-200">{shortAddress(vaultAddress)}</div>
               </div>
-              <div className="min-w-0 rounded-[var(--radius-sm)] border border-card-border p-3">
+              <div className="min-w-0 rounded-md border border-zinc-800 p-3">
                 <div className="text-zinc-500">Subaccount</div>
                 <div className="mt-1 truncate font-mono tabular-nums text-zinc-200">{shortAddress(subaccount)}</div>
               </div>
@@ -388,8 +387,8 @@ export function VaultActionModal({
             )}
 
             {requiresAmount ? (
-              <div className="overflow-hidden rounded-[14px] border border-white/[0.06] bg-background">
-                <div className="flex items-center justify-between px-4 pt-3 font-mono text-[11px] tabular-nums text-zinc-500">
+              <div className="overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0e0e0e]">
+                <div className="flex items-center justify-between px-4 pt-3 font-mono text-[10px] tabular-nums text-zinc-500">
                   <label htmlFor="vault-action-amount">
                     {mode === "withdraw" ? "Vault shares" : "USDC amount"}
                   </label>
@@ -401,13 +400,13 @@ export function VaultActionModal({
                       type="button"
                       onClick={() => setAmount(formatInputAmount(availableAmount ?? 0))}
                       disabled={availableAmount == null || availableAmount <= 0}
-                      className="rounded-[var(--radius-xs)] px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
+                      className="rounded px-2 py-1 text-[10px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-zinc-700"
                     >
                       MAX
                     </button>
                   </span>
                 </div>
-                <div className="flex items-center justify-between rounded-[14px] bg-background-tertiary px-4 py-3">
+                <div className="flex items-center justify-between rounded-[14px] bg-[#141414] px-4 py-3">
                   <input
                     id="vault-action-amount"
                     type="text"
@@ -421,12 +420,12 @@ export function VaultActionModal({
                       if (value.split(".").length <= 2) setAmount(value);
                     }}
                     placeholder="0.00"
-                    className="min-w-0 flex-1 bg-transparent font-mono text-2xl font-bold tabular-nums text-white outline-none placeholder:text-zinc-600"
+                    className="min-w-0 flex-1 bg-transparent font-mono text-[28px] font-bold tabular-nums text-white outline-none placeholder:text-zinc-600"
                     style={{ WebkitUserSelect: "text", userSelect: "text" }}
                     aria-invalid={Boolean(error && requiresAmount)}
                     aria-busy={balanceLoading}
                   />
-                  <div className="ml-4 flex shrink-0 items-center gap-2 rounded-[var(--radius-sm)] bg-white/[0.05] px-3 py-2">
+                  <div className="ml-4 flex shrink-0 items-center gap-2 rounded-md bg-white/[0.05] px-3 py-2">
                     {mode === "deposit" ? <TokenLogo token="USDC" size={22} /> : null}
                     <span className="text-sm font-semibold text-white">
                       {mode === "withdraw" ? "Shares" : "USDC"}
@@ -436,18 +435,18 @@ export function VaultActionModal({
               </div>
             ) : null}
 
-            {disabledReason ? <p className="text-pretty text-xs text-warning">{disabledReason}</p> : null}
-            {error ? <p className="text-pretty text-xs text-danger">{error}</p> : null}
+            {disabledReason ? <p className="text-pretty text-xs text-amber-400">{disabledReason}</p> : null}
+            {error ? <p className="text-pretty text-xs text-red-400">{error}</p> : null}
             {txHash ? (
-              <p className="truncate font-mono text-xs tabular-nums text-success">Submitted {shortAddress(txHash)}</p>
+              <p className="truncate font-mono text-xs tabular-nums text-green-400">Submitted {shortAddress(txHash)}</p>
             ) : null}
             {extractedVaultAddress ? (
-              <p className="truncate font-mono text-xs tabular-nums text-success">
+              <p className="truncate font-mono text-xs tabular-nums text-green-400">
                 Vault {shortAddress(extractedVaultAddress)}
               </p>
             ) : null}
             {statusResponse ? (
-              <pre className="max-h-32 overflow-auto rounded-[var(--radius-sm)] border border-card-border bg-background p-3 text-xs text-zinc-300">
+              <pre className="max-h-32 overflow-auto rounded-md border border-zinc-800 bg-black p-3 text-xs text-zinc-300">
                 {JSON.stringify(statusResponse, null, 2)}
               </pre>
             ) : null}
@@ -458,7 +457,7 @@ export function VaultActionModal({
     <button
       type="submit"
       disabled={!canSubmit}
-      className={cn(BUTTON_PRIMARY, "w-full gap-2")}
+      className="flex w-full items-center justify-center gap-2 rounded-[8px] bg-accent px-3 py-2 text-[12px] font-bold text-black transition-[transform,filter] duration-150 hover:brightness-95 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:brightness-100 disabled:active:scale-100"
     >
       {state === "building" || state === "signing" || state === "extracting" ? (
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -515,7 +514,7 @@ export function VaultActionModal({
       <form onSubmit={submit} className="pt-3 sm:pt-0">
         <div className="space-y-4 px-2 pb-4 sm:px-5 sm:py-4">{formFields}</div>
         <div className={cn(
-          "sticky bottom-0 flex items-center gap-3 border-t border-card-border bg-background-secondary px-2 py-4 sm:px-5",
+          "sticky bottom-0 flex items-center gap-3 border-t border-zinc-800 bg-[#101010] px-2 py-4 sm:px-5",
           !isMobile && !isContributionMode && "justify-between",
         )}>
           {formActions}

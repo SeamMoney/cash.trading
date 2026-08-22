@@ -2432,7 +2432,9 @@ export function CashSpotSwap({
               <button
                 type="button"
                 className={cn(
-                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[10px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
+                  // Sized to match the app's other pills (the trade page's leverage badge):
+                  // 10px text, px-1.5 py-0.5, ~19px tall. Not a 44px tap target.
+                  "shrink-0 rounded-full border border-card-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-[13px] text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
@@ -2597,7 +2599,7 @@ export function CashSpotSwap({
             expanded={assetSelectorSide === "pay"}
           />
         </div>
-        <div className="flex min-h-11 items-center justify-between gap-2 text-[11px] leading-4">
+        <div className="flex min-h-4 items-center justify-between gap-2 text-[11px] leading-4">
           <span className={cn(
             "min-w-0 truncate text-muted-foreground",
             effectiveConnected && fromBalance !== null && fromBalance > 0 && "hidden",
@@ -2619,7 +2621,7 @@ export function CashSpotSwap({
                   onClick={() => setBalanceFraction(percent / 100)}
                   disabled={interactionLocked || balanceLoading}
                   className={cn(
-                    "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                    "rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                     PRESSABLE_CONTROL,
                   )}
                   aria-label={`Use ${percent}% of ${fromSymbol} balance`}
@@ -2632,7 +2634,7 @@ export function CashSpotSwap({
                 onClick={setMaximum}
                 disabled={interactionLocked || balanceLoading}
                 className={cn(
-                  "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                  "rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`Use maximum ${fromSymbol} balance`}
@@ -2703,7 +2705,7 @@ export function CashSpotSwap({
             expanded={assetSelectorSide === "receive"}
           />
         </div>
-        <div className="flex min-h-11 items-center justify-between gap-3 text-[12px] leading-4 text-muted-foreground">
+        <div className="flex min-h-4 items-center justify-between gap-3 text-[12px] leading-4 text-muted-foreground">
           <span className="truncate">
             {toUsdEquivalent > 0 ? `≈ $${formatAmount(toUsdEquivalent, 2)}` : ""}
           </span>

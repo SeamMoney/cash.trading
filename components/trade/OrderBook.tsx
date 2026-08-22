@@ -762,7 +762,14 @@ export function OrderBook({
         <span>{statusText}</span>
       </div>
 
-      {activeTab === "book" ? (
+      {activeTab === "book" && controlled && !(displayPrice > 0) ? (
+        // A controlled venue with no book and no price has nothing to centre a
+        // ladder on. `displayPrice || 1` would otherwise draw a full ladder of
+        // $1.0000 rows, which reads as real depth. Say it plainly instead.
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-600">
+          {status === "loading" ? "Loading the book…" : "No book for this market yet"}
+        </div>
+      ) : activeTab === "book" ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
           <div
             className="grid min-h-full py-1"

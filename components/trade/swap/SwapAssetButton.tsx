@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -27,8 +27,25 @@ export const SwapAssetButton = forwardRef<HTMLButtonElement, SwapAssetButtonProp
   expanded,
   className,
 }, ref) {
+  const [iconFailed, setIconFailed] = useState(false);
+
+  // Not every listed asset has an icon in /public/tokens (CASH has none), and a
+  // missing file renders as a broken-image glyph. Fall back to the same letter
+  // circle the market selector uses.
+  const iconSize = "size-6 shrink-0 rounded-full min-[360px]:size-7";
   const content = (
     <>
+      {iconFailed ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            iconSize,
+            "inline-flex items-center justify-center bg-[#242424] text-[9px] font-black text-zinc-200",
+          )}
+        >
+          {symbol.slice(0, 3)}
+        </span>
+      ) : (
       <Image
         src={iconSrc}
         alt=""
@@ -39,8 +56,15 @@ export const SwapAssetButton = forwardRef<HTMLButtonElement, SwapAssetButtonProp
           symbol === "APT" && "p-[3px] object-contain",
         )}
         style={symbol === "APT" ? { backgroundColor: "#101010" } : undefined}
+        onError={() => setIconFailed(true)}
+        unoptimized
       />
-      <span>{symbol}</span>
+      )}
+      {/* A uniform slot for the ticker so every asset button is the same width:
+          "USDC" measures 45.5px against "APT" at 32.5px, which otherwise made
+          the pay and receive buttons 128px and 115px. Sized in em so it holds
+          at both font-size breakpoints. */}
+      <span className="min-w-[2.9em] text-center">{symbol}</span>
       {onSelect && (
         <ChevronDown
           aria-hidden="true"

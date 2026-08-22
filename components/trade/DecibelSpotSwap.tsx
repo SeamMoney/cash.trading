@@ -1783,7 +1783,9 @@ export function DecibelSpotSwap({
               <button
                 type="button"
                 className={cn(
-                  "min-h-11 shrink-0 rounded-full border border-card-border bg-card px-2.5 text-[10px] font-medium text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
+                  // Sized to match the app's other pills (the trade page's leverage badge):
+                  // 10px text, px-1.5 py-0.5, ~19px tall. Not a 44px tap target.
+                  "shrink-0 rounded-full border border-card-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-[13px] text-foreground-secondary outline-none hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                   PRESSABLE_CONTROL,
                 )}
                 aria-label={`${SLIPPAGE_LABEL} maximum price movement. Open details.`}
@@ -1932,7 +1934,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "pay"}
               />
             </div>
-            <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-[11px] leading-4">
+            <div className="flex min-h-4 flex-wrap items-center justify-between gap-2 text-[11px] leading-4">
               <span className="min-w-0 truncate text-muted-foreground">
                 {direction === "sell" && base === "APT" && fromBalance ? "Max reserves 0.01 APT for gas" : ""}
               </span>
@@ -1946,7 +1948,7 @@ export function DecibelSpotSwap({
                       aria-label={`Use ${value.toString()}% of ${fromSymbol} balance`}
                       disabled={interactionLocked || balanceStatus !== "ready"}
                       className={cn(
-                        "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                        "rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-semibold text-foreground-secondary outline-none hover:bg-card-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                         PRESSABLE_CONTROL,
                       )}
                     >
@@ -1959,7 +1961,7 @@ export function DecibelSpotSwap({
                     aria-label={`Use maximum ${fromSymbol} balance`}
                     disabled={interactionLocked || balanceStatus !== "ready"}
                     className={cn(
-                      "min-h-11 rounded-[var(--radius-xs)] px-2 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
+                      "rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-semibold text-accent outline-none hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
                       PRESSABLE_CONTROL,
                     )}
                   >
@@ -2022,7 +2024,7 @@ export function DecibelSpotSwap({
                 expanded={assetSelectorSide === "receive"}
               />
             </div>
-            <div className="flex min-h-11 items-center text-[11px] leading-4 text-muted-foreground">
+            <div className="flex min-h-4 items-center text-[11px] leading-4 text-muted-foreground">
               <span className="truncate">
                 {quote ? `Est. fee ${(Number(quote.maxSpotTakerFeeRateRaw) / 10_000).toFixed(3)}% · Unfilled amount returns` : ""}
               </span>

@@ -41,7 +41,11 @@ export function SwapMarketLayout({
 
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-xl grid-cols-[minmax(0,1fr)] gap-3 lg:max-w-[1120px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start 2xl:gap-4">
-      <div className="min-w-0 lg:order-2 lg:h-[672px] lg:[&>*]:h-full lg:[&>*]:min-h-0 lg:[&>*]:overflow-y-auto lg:[&>*]:overscroll-contain lg:[&>*]:scrollbar-thin">
+      {/* A max, not a fixed height: pinning the form to the book's 672px made
+          the card stretch and left a few hundred px of empty card under the
+          content. It still caps at the book's height and scrolls internally
+          once the review or price details grow past it. */}
+      <div className="min-w-0 lg:order-2 lg:max-h-[672px] lg:[&>*]:max-h-full lg:[&>*]:min-h-0 lg:[&>*]:overflow-y-auto lg:[&>*]:overscroll-contain lg:[&>*]:scrollbar-thin">
         {children}
       </div>
 

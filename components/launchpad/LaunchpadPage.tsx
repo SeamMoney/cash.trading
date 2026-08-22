@@ -58,18 +58,10 @@ export function LaunchpadPage() {
     <div className="cash-trade-theme min-h-screen bg-background text-foreground">
       <Header />
       {/* One readable column. At 1536px the flow's rows ran 1330px wide with their
-          content in the left 40%, and the empty panel left 460px of dead page.
-          With no vaults the column also claims the full frame (72px header + its
-          hairline) so the empty state can sit in the middle of it rather than
-          stacking against the top with 480px of nothing underneath. */}
-      <main
-        className={cn(
-          "mx-auto flex w-full max-w-[900px] flex-col px-4 py-8 sm:px-8",
-          // Held from first paint, not claimed once the fetch lands, so the
-          // skeleton → empty swap does not resize the page under the reader.
-          (loading || isEmpty) && !launching && "min-h-[calc(100dvh-73px)]",
-        )}
-      >
+          content in the left 40%. The column claims no height of its own: the page
+          ends where its content ends, so an empty list is a short page instead of
+          one sentence floating in a reserved viewport. */}
+      <main className="mx-auto flex w-full max-w-[900px] flex-col px-4 py-8 sm:px-8">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <h1 className={SECTION_TITLE}>Vaults</h1>
@@ -102,18 +94,16 @@ export function LaunchpadPage() {
             onLaunched={() => void reload()}
           />
         ) : isEmpty ? (
-          // No panel. A bordered box drawn around three centred lines is a frame
-          // around nothing — it made the page read as a 225px card with 480px of
-          // dead space under it. The lines centre in the frame instead.
-          <div className="flex flex-1 items-center justify-center pb-12">
-            <SealedVaultFeed
-              vaults={vaults}
-              loading={loading}
-              error={error}
-              onRetry={() => void reload()}
-              onLaunch={() => setLaunching(true)}
-            />
-          </div>
+          // No panel, no wrapper. A bordered box drawn around two lines is a frame
+          // around nothing, and centring them in the viewport reserved 480px of
+          // black to do it. They sit under the title on the page's own rhythm.
+          <SealedVaultFeed
+            vaults={vaults}
+            loading={loading}
+            error={error}
+            onRetry={() => void reload()}
+            onLaunch={() => setLaunching(true)}
+          />
         ) : (
           <section className={PANEL}>
             {connected && mine.length > 0 && (

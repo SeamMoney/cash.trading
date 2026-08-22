@@ -44,7 +44,7 @@ import { BUTTON_PRIMARY } from "@/components/portfolio/portfolio-surface";
 import { FOCUS_RING } from "@/lib/surface";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { requestedLeverageX100, requestedPctBps } from "@/lib/pine-declarations";
-import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
+import { FLIP_RATE, SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { PineVisualPreview } from "@/components/launchpad/PineVisualPreview";
 import { StrategySourceEditor } from "@/components/launchpad/StrategySourceEditor";
 import {
@@ -1028,7 +1028,7 @@ export function SealedLaunch({
                               {strategy.label}
                             </span>
                             <Tag>{strategy.category}</Tag>
-                            <Tag>{strategy.turnover} turnover</Tag>
+                            <Tag>{FLIP_RATE[strategy.turnover]}</Tag>
                           </span>
                           <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
                             {strategy.blurb}

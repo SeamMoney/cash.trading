@@ -50,6 +50,33 @@ export const SURFACE_INSET = "border-card-border bg-card";
 export const FOCUS_RING =
   "outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+/**
+ * A panel that clips its own content — the shape every page-level container on
+ * /portfolio, /points, /launchpad and /automation renders.
+ *
+ * It is the same surface as SURFACE_PANEL plus the clip, so it is composed from
+ * it rather than restating the recipe: the app used to ship two live copies of
+ * this string (here and in components/portfolio/portfolio-surface.ts), which is
+ * how a border token can change in one half of the product and not the other.
+ * portfolio-surface.ts re-exports this name, so both import paths resolve to
+ * this one definition.
+ */
+export const PANEL = `overflow-hidden ${SURFACE_PANEL}`;
+
+/**
+ * The one primary action per screen. The accent fill is what makes it primary.
+ *
+ * Sized so no page has to shrink to adopt it: 44px on a phone (D5 wants a 44px
+ * hit area) and the canonical 40px control height from `sm` up (§ 4.5) — the
+ * same `min-h-11 … sm:` idiom the OrderBook rows use. Lived in
+ * portfolio-surface.ts until the trade-side swap flows started importing it
+ * across the folder boundary; it belongs with the other shared surfaces.
+ *
+ * Still to adopt it: TradePanel.tsx's submit button, and any 4px-radius
+ * primary left on /points — the radius is the control token, never `rounded`.
+ */
+export const BUTTON_PRIMARY = `inline-flex min-h-11 items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:opacity-40 sm:h-10 sm:min-h-0 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
+
 /** Radii alone, when the border/fill differ (e.g. tonal banners). */
 export const RADIUS = {
   panel: "rounded-[var(--radius)]",

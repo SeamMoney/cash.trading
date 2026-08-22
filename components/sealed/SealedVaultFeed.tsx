@@ -161,16 +161,16 @@ export function SealedVaultFeed({
   }
 
   if (vaults.length === 0) {
-    // Unframed: the page centres this block in the viewport rather than wrapping
-    // a panel around it, so the 48px of vertical padding that once held the box
-    // open is dead weight.
+    // Unframed and aligned to the page, not to the viewport: no panel around it,
+    // no gutter of its own inside the column's gutter, and no padding held open
+    // to keep a box from collapsing. It reads as the line under the title.
     return (
-      <div className="flex flex-col items-center gap-3 px-6 text-center">
+      <div className="flex flex-col items-start gap-3">
         <p className="text-[13px] font-semibold text-foreground">No vaults yet</p>
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
           A sealed vault trades on Decibel under rules the chain enforces.
         </p>
-        <button type="button" onClick={onLaunch} className={cn(BUTTON_PRIMARY, "mt-1")}>
+        <button type="button" onClick={onLaunch} className={BUTTON_PRIMARY}>
           Launch a vault
         </button>
       </div>

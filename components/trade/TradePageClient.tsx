@@ -91,6 +91,11 @@ interface PnlPoint { date: Date; pnl: number }
 function useDecibelVaults(enabled = true) {
   const [vaults, setVaults] = useState<DecibelVault[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed fetch used to fall through to "No vault meets the verified
+  // performance criteria yet" — an empty state that made a claim about the
+  // chain when the page had simply never heard back. Same three words the
+  // OrderBook and the swap registry use for this: unavailable.
+  const [unavailable, setUnavailable] = useState(false);
   const chartDataRef = useRef<Record<string, PnlPoint[]>>({});
   // Chart provenance per address: "real" = series from /api/decibel/vault-history,
   // "unavailable" = history confirmed missing; undefined means still loading.
@@ -101,9 +106,13 @@ function useDecibelVaults(enabled = true) {
   const fetchVaults = useCallback(async () => {
     try {
       const res = await fetch("/api/decibel/vaults");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setUnavailable(true);
+        return;
+      }
       const data = await res.json();
       const fetched: DecibelVault[] = data.vaults ?? [];
+      setUnavailable(false);
       // Never replace loaded vaults with an empty refresh — the upstream
       // flaps, and a transient empty payload was wiping the whole section
       // ([6] → [0]) on the 30s poll.
@@ -147,7 +156,7 @@ function useDecibelVaults(enabled = true) {
         }
       }
     } catch {
-      // silently fail
+      setUnavailable(true);
     } finally {
       setLoading(false);
     }
@@ -163,6 +172,7 @@ function useDecibelVaults(enabled = true) {
   return {
     vaults,
     loading,
+    unavailable,
     chartData: chartDataRef.current,
     chartKind,
     refreshVaults: fetchVaults,
@@ -180,7 +190,7 @@ function VaultsPanel({
   onAction: (mode: "deposit" | "withdraw", vault: DecibelVault, maxAmount?: number) => void;
   ownerAddress?: string | null;
 }) {
-  const { vaults, loading, chartData, chartKind, refreshVaults } = useDecibelVaults(enabled);
+  const { vaults, loading, unavailable, chartData, chartKind, refreshVaults } = useDecibelVaults(enabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [tradesVaultAddress, setTradesVaultAddress] = useState<string | null>(null);
@@ -303,7 +313,11 @@ function VaultsPanel({
             </ul>
           ) : displayVaults.length === 0 ? (
             <div className={cn(PANEL_EMPTY, "flex flex-col items-center gap-3")}>
-              <span>No vault meets the verified performance criteria yet.</span>
+              <span>
+                {unavailable
+                  ? "Vaults are unavailable — the vault feed did not answer. Try again."
+                  : "No vault meets the verified performance criteria yet."}
+              </span>
               <button
                 type="button"
                 onClick={() => void refreshVaults()}
@@ -1115,7 +1129,9 @@ export function TradePageClient({
   );
 
   return (
-    <div className="min-h-screen pb-24 md:pb-0">
+    /* pb-12 clears the collapsed sheet's 44px peek — it used to reserve 96px
+       for a 72px peek, so the page ended in dead space. */
+    <div className="min-h-screen pb-12 md:pb-0">
       <Header />
       <div className="relative" style={{ overflow: "clip" }}>
         <main className="relative z-10 mx-auto w-full max-w-[1800px] px-4 py-3 sm:px-6 sm:py-4 lg:px-6 lg:py-5 2xl:px-8">
@@ -1126,7 +1142,7 @@ export function TradePageClient({
             genuinely room to grow, so the spare width goes to the chart. */}
         <div
           id="trade"
-          className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px_336px] xl:items-stretch 2xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)_minmax(340px,380px)] 2xl:gap-4"
+          className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_320px_336px] xl:items-stretch xl:gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(340px,390px)_minmax(340px,380px)] 2xl:gap-4"
         >
           {/* BTC Chart */}
           <div className="min-w-0 animate-enter animate-enter-delay-1 xl:h-[672px]">
@@ -1171,15 +1187,17 @@ export function TradePageClient({
                 className="h-[452px] sm:h-[572px]"
               />
             </div>
-          </div>
-        </div>
 
-        {/* ── Open Positions ─────────────────────────────
-            The mobile sheet only mounts below md (useIsMobile = 767px), so
-            this wrapper must appear from md up or 768–1023px has no positions. */}
-        <div id="positions" className="scroll-mt-20">
-          <div className="mt-6 hidden animate-enter md:block">
-            <DecibelPositions showOverview={false} />
+            {/* ── Open Positions ─────────────────────────────
+                In the rail, under the CTA: pinned below the grid it left ~175px
+                of empty column beside a 672px chart and put the user's own
+                positions below the fold at 1440x900. Below xl the rail is the
+                stacked column, so the reading order is unchanged. It stays
+                hidden below md because the mobile sheet (useIsMobile = 767px)
+                already renders the same table there. */}
+            <div id="positions" className="mt-3 hidden scroll-mt-20 animate-enter md:block">
+              <DecibelPositions showOverview={false} />
+            </div>
           </div>
         </div>
 

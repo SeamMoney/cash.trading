@@ -9,6 +9,7 @@ import { getEstimatedLiquidationPrice } from "@/lib/trade-utils";
 import { waitForTransactionConfirmation } from "@/lib/tx-utils";
 import { cn } from "@/lib/utils";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
+import { PANEL } from "@/components/portfolio/portfolio-surface";
 import { emitDecibelPositionsRefresh } from "@/lib/decibel-selection";
 import { emitDecibelTradeConfirmed } from "@/lib/decibel-trade-events";
 import { extractConfirmedDecibelFill } from "@/lib/decibel-trade-fill";
@@ -526,11 +527,17 @@ export function TradePanel({
         ? `Long ${market}`
         : `Short ${market}`;
   return (
-    <div className={cn("flex flex-col", className)}>
-      {/* Side switch. The fee chip that used to sit opposite printed a fixed
-          "0.034%" that no route ever computed, so it is gone rather than
-          restated: the panel shows only numbers it can derive. */}
-      <div className="mb-3 flex items-center gap-3">
+    /* One panel, not three. The rail used to be a bare side switch plus two
+       floating bordered cards next to two single-panel neighbours — three
+       surface grammars in one row, and a bordered card inside a bordered
+       column. It is now the shared PANEL with its sections separated by
+       hairlines, which is the house rule (docs/UX-GRADING.md § 4.4). */
+    <div className={cn(PANEL, "flex flex-col", className)}>
+      {/* Side switch — the panel's header strip. The fee chip that used to sit
+          opposite printed a fixed "0.034%" that no route ever computed, so it
+          is gone rather than restated: the panel shows only numbers it can
+          derive. */}
+      <div className="flex items-center gap-3 border-b border-card-border px-4">
         <button
           type="button"
           aria-pressed={isLong}
@@ -564,10 +571,10 @@ export function TradePanel({
         </button>
       </div>
 
-      {/* Amount input card. Padding is tight on phones so the primary CTA
-          below stays within thumb reach; sm+ keeps the roomier rhythm. */}
-      <div className="overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary">
-        <div className="flex items-center justify-between px-4 pt-2 font-mono text-[11px] tabular-nums text-zinc-500 sm:px-5 sm:pt-3">
+      {/* Amount section. Padding is tight on phones so the primary CTA below
+          stays within thumb reach; sm+ keeps the roomier rhythm. */}
+      <div>
+        <div className="flex items-center justify-between px-4 pt-2 font-mono text-[11px] tabular-nums text-zinc-500">
           <span>
             Available {availableUsdc == null
               ? "—"
@@ -594,7 +601,7 @@ export function TradePanel({
           </button>
         </div>
         {/* Input row */}
-        <div className="relative z-[1] flex items-center justify-between rounded-[var(--radius)] bg-background-tertiary px-4 py-2.5 sm:px-5 sm:py-4">
+        <div className="relative z-[1] flex items-center justify-between bg-background-tertiary px-4 py-1.5 sm:py-4">
           <input
             ref={inputRef}
             type="text"
@@ -617,8 +624,10 @@ export function TradePanel({
                 handleSubmit();
               }
             }}
-            style={{ fontSize: "28px" }}
-            className="w-full min-w-0 rounded-[var(--radius-xs)] bg-transparent font-mono font-bold tracking-tight text-foreground placeholder-zinc-600 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            /* text-2xl is the house hero-number size; the old inline 28px was
+               off-scale and its taller line box was the single biggest row in
+               the ticket on a phone. */
+            className="w-full min-w-0 rounded-[var(--radius-xs)] bg-transparent font-mono text-2xl font-bold tracking-tight text-foreground placeholder-zinc-600 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <div ref={collateralDropdownRef} className="relative shrink-0 ml-4">
             <button
@@ -696,7 +705,7 @@ export function TradePanel({
             style={{ height: leverageOpen ? SLIDER_CONTENT_HEIGHT : 0 }}
           >
             <div
-              className="px-5 pt-4 transition-transform duration-150 ease-out motion-reduce:transition-none"
+              className="px-4 pt-4 transition-transform duration-150 ease-out motion-reduce:transition-none"
               style={{ transform: leverageOpen ? "translateY(0)" : "translateY(-12px)" }}
             >
               <div
@@ -757,19 +766,16 @@ export function TradePanel({
             aria-expanded={leverageOpen}
             onClick={() => { if (!dragRef.current) setLeverageOpen((o) => !o); }}
             className={cn(
-              "flex min-h-11 w-full flex-col items-center justify-center gap-1 rounded-[var(--radius-xs)] px-5 pb-3 pt-2",
+              "flex min-h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-xs)] px-4 pb-3 pt-2",
               FOCUS_RING,
             )}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-display font-semibold text-zinc-500">
-                Leverage
-              </span>
-              <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
-                {leverage.toFixed(1)}x
-              </span>
-            </div>
-            <div className="h-[3px] w-8 rounded-full bg-zinc-600" />
+            <span className="text-[11px] font-display font-semibold text-zinc-500">
+              Leverage
+            </span>
+            <span className={`text-[13px] font-mono font-bold tabular-nums ${isLong ? "text-success" : "text-danger"}`}>
+              {leverage.toFixed(1)}x
+            </span>
           </button>
         </div>
       </div>
@@ -799,7 +805,7 @@ export function TradePanel({
         const usd = (value: number) =>
           `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         return (
-          <dl className="mt-2 space-y-2 rounded-[var(--radius-sm)] border border-card-border bg-background-secondary p-3 font-mono text-[11px] tabular-nums sm:mt-3 sm:p-4">
+          <dl className="space-y-2 border-t border-card-border px-4 py-3 font-mono text-[11px] tabular-nums">
             <div className="hidden justify-between sm:flex">
               <dt className="text-zinc-500">Leverage</dt>
               <dd className="font-semibold text-foreground">{leverage.toFixed(1)}x</dd>
@@ -830,7 +836,9 @@ export function TradePanel({
 
       {/* Submit button — when no wallet is connected this is the page's
           primary CTA, so it must be clickable and open the selector rather
-          than sit disabled. */}
+          than sit disabled. It is the panel's last row and fills it edge to
+          edge: the margin and the radius it used to carry pushed the button
+          past the fold on a 390x844 phone. */}
       <button
         type="button"
         onClick={
@@ -844,7 +852,7 @@ export function TradePanel({
           // white on the filled button measured 1.36:1. The near-black
           // foreground reads 15:1 on green and 4.8:1 on --danger, in both
           // themes (light flips --color-white but not this token).
-          "mt-2 min-h-11 w-full rounded-[var(--radius-sm)] py-3.5 text-sm font-display font-semibold disabled:cursor-not-allowed sm:mt-4",
+          "min-h-11 w-full py-3 text-sm font-display font-semibold disabled:cursor-not-allowed",
           PRESSABLE_CONTROL,
           FOCUS_RING,
           isOrderSuccess
@@ -878,7 +886,7 @@ export function TradePanel({
           id="trade-status-message"
           aria-live={tradeStatus === "error" ? "assertive" : "polite"}
           role={tradeStatus === "error" ? "alert" : "status"}
-          className={`mt-3 rounded-[var(--radius-xs)] px-3 py-2 text-[11px] ${
+          className={`border-t border-card-border px-4 py-2 text-[11px] ${
             tradeStatus === "error"
               ? "bg-danger/10 text-danger"
               : "bg-white/[0.03] text-zinc-400"

@@ -46,13 +46,14 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
   const inspected = usePointsProfile(inspectOwner && inspectOwner !== owner ? inspectOwner : null, nonce);
 
   const stats = global.data
-    ? `${formatAmps(global.data.traders)} traders · ${formatAmps(global.data.totalAmps)} AMPs`
+    ? `${formatAmps(global.data.traders)} traders`
     : global.loading
       ? null
       : "global stats unavailable";
-  // Season and scale only. AMPs and streak grace are defined inside the profile
-  // card, beside the numbers they explain, instead of in a paragraph read
-  // before either number is on screen.
+  // Season and scale only. The season-wide AMPs total used to lead here, which
+  // put the page's headline unit in front of a visitor with nothing to define
+  // it against; the word is now introduced by the leaderboard column that
+  // lists the numbers, which renders connected or not.
   const subline = ["Season 1", stats].filter(Boolean).join(" · ");
 
   const content = (

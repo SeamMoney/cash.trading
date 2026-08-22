@@ -7,7 +7,7 @@ import { Area, AreaChart } from "@/components/charts/area-chart";
 import { Grid } from "@/components/charts/grid";
 import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { XAxis } from "@/components/charts/x-axis";
-import { Header } from "@/components/layout/Header";
+import { Header, PageConnectCta } from "@/components/layout/Header";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1090,15 +1090,23 @@ export function PortfolioPageClient() {
   return (
     // cash-trade-theme scopes the neon accent vars; without it the Header's
     // logo/Sign-In fall back to the near-black :root --accent and look dead.
+    // PageConnectCta: disconnected, this page renders the filled "Connect
+    // wallet" primary below, so the header must not render its outline copy.
+    <PageConnectCta present={!connected}>
     <div className="cash-trade-theme min-h-screen bg-background text-zinc-200">
       <Header />
       <main className="mx-auto max-w-[1536px] px-4 py-8 sm:px-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className={SECTION_TITLE}>Portfolio</h1>
-            <p className="mt-1 text-pretty text-xs text-muted-foreground">
-              {connected ? `${selectedLabel} · ${decibelNetwork}` : "Connect wallet to load Decibel account state"}
-            </p>
+            {/* The subtitle names the account you are looking at. Disconnected
+                it said "Connect wallet to load Decibel account state" — the
+                same request as the button beside it, so it is not rendered. */}
+            {connected ? (
+              <p className="mt-1 text-pretty text-xs text-muted-foreground">
+                {selectedLabel} · {decibelNetwork}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-start gap-2">
             {connected ? (
@@ -1236,8 +1244,11 @@ export function PortfolioPageClient() {
           <section className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
+                {/* "PnL" everywhere: this heading said "Profit/loss" while the
+                    stat tile, the metric switch and the tooltip under it all
+                    said PnL — three names for one number. */}
                 <h2 className={SECTION_TITLE}>
-                  {chartMetric === "pnl" ? "Profit/loss" : "Portfolio value"}
+                  {chartMetric === "pnl" ? "PnL" : "Portfolio value"}
                 </h2>
                 <NumberTicker
                   value={chartMetric === "pnl" ? totalPnl : overview?.equity}
@@ -1286,7 +1297,11 @@ export function PortfolioPageClient() {
               </div>
               ) : null}
             </div>
-            <div className="mt-6 h-[360px] min-h-[260px]">
+            {/* The 360px well is reserved only while a series can still arrive,
+                so the chart drops in without shifting the page. Disconnected
+                nothing is coming, and reserving a viewport for one sentence is
+                what made this page read as half empty. */}
+            <div className={cn("mt-6", connected && "h-[360px] min-h-[260px]")}>
               {chartSeriesRendered ? (
                 <AreaChart
                   data={chartData}
@@ -1330,22 +1345,26 @@ export function PortfolioPageClient() {
               ) : (
                 <div
                   role="status"
-                  className="flex h-full flex-col items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed border-card-border px-6 text-center"
+                  className="flex h-full flex-col items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed border-card-border px-6 py-8 text-center"
                 >
+                  {/* Disconnected this said "Connect a wallet to see your
+                      Decibel portfolio" over a second line saying the same
+                      thing — the fourth ask on a page whose button already
+                      asks. One line, and it says what lands here instead. */}
                   <span className="text-[13px] text-foreground">
                     {!connected
-                      ? "Connect a wallet to see your Decibel portfolio"
+                      ? "Live equity, PnL, positions and orders load here once you connect."
                       : !selectedSubaccount
                         ? "Select a Decibel account to load portfolio history"
                         : historyLoading
                           ? `Loading ${chartRange} portfolio history…`
                           : historyError || `No ${chartRange} portfolio history was returned`}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {connected
-                      ? "Current equity and PnL above are live; cash.trading does not fabricate missing history."
-                      : "Live equity, PnL, positions, and orders will load after connection."}
-                  </span>
+                  {connected ? (
+                    <span className="text-[11px] text-muted-foreground">
+                      Current equity and PnL above are live; cash.trading does not fabricate missing history.
+                    </span>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1654,11 +1673,13 @@ export function PortfolioPageClient() {
           </div>
         </section>
 
-        {(loading || error || actionStatus || !connected || (connected && !hasDecibelAccount && !isLoadingSubaccounts)) && (
+        {/* The disconnected line here ("Connect wallet to load your Decibel
+            portfolio.") was a fifth request to connect, at the bottom of the
+            page, where nothing can act on it. */}
+        {(loading || error || actionStatus || (connected && !hasDecibelAccount && !isLoadingSubaccounts)) && (
           <div className={cn(SECTION_GAP, "text-xs")} role="status" aria-live="polite">
             {loading && <span className="text-muted-foreground">Updating…</span>}
             {error && <span className="text-danger">{error}</span>}
-            {!connected && <span className="text-muted-foreground">Connect wallet to load your Decibel portfolio.</span>}
             {connected && !hasDecibelAccount && !isLoadingSubaccounts && (
               <span className="text-muted-foreground">
                 {lookupError || lookupIncomplete
@@ -1741,5 +1762,6 @@ export function PortfolioPageClient() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </PageConnectCta>
   );
 }

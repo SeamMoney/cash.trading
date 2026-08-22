@@ -23,9 +23,12 @@
  * on the page is a recipe imported from components/portfolio/portfolio-surface.ts,
  * so this page has no private palette to drift.
  *
- * Layout: the strategy list is one column, the form and its status the other, so
- * the one accent-filled control on the page ("Run on my account") sits inside the
- * first screen instead of below seven boxes.
+ * Layout: on a wide screen the strategy list is one column, the form and its
+ * status the other, so the one accent-filled control on the page ("Run on my
+ * account") sits inside the first screen instead of below seven boxes. Below
+ * `lg` there is only one column, so the list collapses to the chosen strategy
+ * and the other six move behind the app's own sheet — same rows, ~600px less
+ * scroll above the button.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,11 +48,12 @@ import {
   SEGMENTED_ITEM,
   SEGMENTED_ITEM_ACTIVE,
 } from "@/components/portfolio/portfolio-surface";
+import { ResponsiveModalSheet } from "@/components/ui/responsive-modal-sheet";
 import { useDecibelSubaccounts } from "@/hooks/useDecibelSubaccounts";
 import { useDecibelTransactionSubmitter } from "@/hooks/useDecibelTransactionSubmitter";
 import { useDelegation } from "@/hooks/use-delegation";
 import { ensureBuilderApproval } from "@/lib/decibel-builder-approval";
-import { SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
+import { FLIP_RATE, SEALED_CATALOG, type CatalogStrategy } from "@/lib/sealed-catalog";
 import { FOCUS_RING, PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +76,10 @@ const TOUCH = "min-h-11 sm:min-h-10";
 const ACTION = `${TOUCH} w-full sm:w-auto`;
 /** Segmented options share their row and dim while the runner is live. */
 const SEGMENT = "flex-1 justify-center disabled:pointer-events-none disabled:opacity-40";
+
+/** One catalog row. The inline list and the picker sheet render the same one. */
+const STRATEGY_ROW =
+  "flex w-full items-start gap-3 border-t border-card-border px-4 py-3 text-left first:border-t-0 disabled:pointer-events-none disabled:opacity-40";
 
 const ROW = "flex items-baseline justify-between gap-3 py-2";
 const ROW_LABEL = "shrink-0 text-[13px] text-muted-foreground";
@@ -106,15 +114,82 @@ const ORDERED_CATALOG: CatalogStrategy[] = [...SEALED_CATALOG].sort((a, b) => {
 const DEFAULT_STRATEGY_ID = ORDERED_CATALOG[0]?.id ?? "breakout-channel";
 
 /**
- * The catalog's `turnover` grade in words. "High turnover" is desk jargon for
- * "it flips sides a lot", which is the part that costs the user fees — so say
- * that instead. No number is claimed: the catalog only grades it.
+ * One catalog row: the dot, the name, the plain-English grades, the blurb.
+ *
+ * `picker` turns the same row into the phone's summary — it stops being a radio
+ * and becomes the control that opens the sheet holding the full list, so there
+ * is one row shape on this page rather than a list row and a summary row that
+ * can drift apart.
  */
-const FLIP_RATE: Record<CatalogStrategy["turnover"], string> = {
-  Low: "changes side rarely",
-  Medium: "changes side sometimes",
-  High: "changes side often",
-};
+function StrategyRow({
+  strategy,
+  active,
+  disabled,
+  onSelect,
+  picker = false,
+  className,
+}: {
+  strategy: CatalogStrategy;
+  active: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  picker?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role={picker ? undefined : "radio"}
+      aria-checked={picker ? undefined : active}
+      aria-haspopup={picker ? "dialog" : undefined}
+      aria-label={picker ? `Strategy: ${strategy.label}. Change strategy` : undefined}
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        STRATEGY_ROW,
+        PRESSABLE_CONTROL,
+        FOCUS_RING,
+        active ? "bg-accent/[0.06]" : "hover:bg-card",
+        className,
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-1.5 size-2 shrink-0 rounded-full",
+          active ? "bg-accent" : "border border-border-strong",
+        )}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span
+            className={cn(
+              "text-[13px] font-semibold",
+              active ? "text-foreground" : "text-foreground-secondary",
+            )}
+          >
+            {strategy.label}
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            {strategy.category} · {FLIP_RATE[strategy.turnover]}
+            {strategy.selfSizing ? " · capped by your limits" : ""}
+          </span>
+        </span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+          {strategy.blurb}
+        </span>
+      </span>
+      {picker ? (
+        <span
+          aria-hidden
+          className="shrink-0 self-center text-[11px] text-muted-foreground underline underline-offset-4"
+        >
+          Change
+        </span>
+      ) : null}
+    </button>
+  );
+}
 
 /* ── Settings ────────────────────────────────────────────────────────────── */
 
@@ -269,6 +344,7 @@ export function StrategyRunner() {
   const { delegateTrading, revokeDelegation } = useDelegation(selectedSubaccount || null);
 
   const [strategyId, setStrategyId] = useState<string>(DEFAULT_STRATEGY_ID);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [marketName, setMarketName] = useState<string>(DEFAULT_MARKET);
   const [barInterval, setBarInterval] = useState<BarInterval>("5m");
   const [leverageX, setLeverageX] = useState<number>(2);
@@ -697,53 +773,28 @@ export function StrategyRunner() {
               <h2 className={PANEL_TITLE}>Strategy</h2>
               <p className={HELP}>Acts when a period ends, never mid-move</p>
             </div>
-            <div role="radiogroup" aria-label="Strategy">
-              {ORDERED_CATALOG.map((s) => {
-                const active = s.id === strategyId;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    disabled={locked}
-                    onClick={() => setStrategyId(s.id)}
-                    className={cn(
-                      "flex w-full items-start gap-3 border-t border-card-border px-4 py-3 text-left first:border-t-0 disabled:pointer-events-none disabled:opacity-40",
-                      PRESSABLE_CONTROL,
-                      FOCUS_RING,
-                      active ? "bg-accent/[0.06]" : "hover:bg-card",
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "mt-1.5 size-2 shrink-0 rounded-full",
-                        active ? "bg-accent" : "border border-border-strong",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-baseline justify-between gap-x-3">
-                        <span
-                          className={cn(
-                            "text-[13px] font-semibold",
-                            active ? "text-foreground" : "text-foreground-secondary",
-                          )}
-                        >
-                          {s.label}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {s.category} · {FLIP_RATE[s.turnover]}
-                          {s.selfSizing ? " · capped by your limits" : ""}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                        {s.blurb}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
+            {/* One column below lg: seven rows would push the page's one
+                accent button ~1400px down, so the phone gets the chosen row
+                and the other six move into the sheet below — same rows, same
+                radiogroup, no extra chrome. */}
+            <StrategyRow
+              strategy={strategy}
+              active
+              disabled={locked}
+              picker
+              onSelect={() => setPickerOpen(true)}
+              className="border-t-0 hover:bg-accent/[0.1] lg:hidden"
+            />
+            <div role="radiogroup" aria-label="Strategy" className="hidden lg:block">
+              {ORDERED_CATALOG.map((s) => (
+                <StrategyRow
+                  key={s.id}
+                  strategy={s}
+                  active={s.id === strategyId}
+                  disabled={locked}
+                  onSelect={() => setStrategyId(s.id)}
+                />
+              ))}
             </div>
           </section>
 
@@ -871,7 +922,7 @@ export function StrategyRunner() {
                   </div>
                   <p className={cn(HELP, "mt-1.5")}>
                     {equity == null
-                      ? "Percent of equity — type an amount until your account loads."
+                      ? "Percent of equity. Type an amount until your balance loads."
                       : `Percent of your ${usd(equity)} equity.`}
                   </p>
                 </div>
@@ -1119,6 +1170,37 @@ export function StrategyRunner() {
             </aside>
           </div>
         </div>
+
+        {/* The other six, in the same sheet the wallet and market pickers use. */}
+        {pickerOpen ? (
+          <ResponsiveModalSheet
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            title="Strategy"
+            description="Acts when a period ends, never mid-move"
+            desktopContentClassName="px-0 pb-0"
+            desktopMaxWidthClassName="sm:!max-w-lg"
+            mobileContentClassName="px-0"
+            titleId="runner-strategy-picker-title"
+          >
+            {(requestClose) => (
+              <div role="radiogroup" aria-label="Strategy">
+                {ORDERED_CATALOG.map((s) => (
+                  <StrategyRow
+                    key={s.id}
+                    strategy={s}
+                    active={s.id === strategyId}
+                    disabled={locked}
+                    onSelect={() => {
+                      setStrategyId(s.id);
+                      requestClose();
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </ResponsiveModalSheet>
+        ) : null}
       </main>
     </div>
   );

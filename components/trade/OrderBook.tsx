@@ -922,9 +922,12 @@ export function OrderBook({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-card-border px-3 py-2 font-mono text-[11px] tabular-nums text-zinc-400">
+      {/* Freshness only. The price that used to sit opposite was unlabelled and
+          disagreed with the boxed mid two rows above it (0.64870 vs 0.64835 on
+          /swap) because it falls back to the last live price when the ladder
+          has none — two numbers for one thing is worse than one. */}
+      <div className="flex items-center border-t border-card-border px-3 py-2 font-mono text-[11px] tabular-nums text-zinc-400">
         <span>{formatTime(activeTab === "book" ? renderedBook.timestamp : renderedTrades[0]?.timestamp ?? null)}</span>
-        <span>{formatPrice(displayPrice || 0)}</span>
       </div>
     </section>
   );

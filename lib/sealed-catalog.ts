@@ -56,6 +56,21 @@ export interface CatalogStrategy {
   script: string;
 }
 
+/**
+ * The `turnover` grade in words, and the only place it is put into words.
+ *
+ * "High turnover" is desk jargon for "it flips sides a lot", which is the part
+ * that costs a depositor fees — so say that instead. Both surfaces that show the
+ * grade (the launch flow's strategy list and /automation's runner) read this map,
+ * so one datum cannot speak two dialects. No number is claimed: the catalog only
+ * grades it.
+ */
+export const FLIP_RATE: Record<string, string> = {
+  Low: "changes side rarely",
+  Medium: "changes side sometimes",
+  High: "changes side often",
+};
+
 const head = (name: string) => `//@version=5\nstrategy("${name}", overlay=true)\n`;
 
 /** Chart palette, kept in one place so no two strategies fight over the same hue. */

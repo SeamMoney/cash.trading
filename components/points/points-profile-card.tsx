@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import {
   BUTTON_PRIMARY,
@@ -17,7 +16,7 @@ import { shortAddress } from "@/hooks/useDecibelSubaccounts";
 import { explorerAccountUrl } from "@/lib/constants";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
-import { formatAge, formatAmps, formatPnl, formatRank, formatSignedAmps, pnlTone, tierLabel } from "./format";
+import { formatAmps, formatPnl, formatRank, formatSignedAmps, pnlTone, tierLabel, useAge } from "./format";
 import type { PointsProfile } from "./use-points-data";
 
 type Props = {
@@ -30,25 +29,6 @@ type Props = {
   onConnect?: () => void;
   onClose?: () => void;
 };
-
-/**
- * "updated Ns ago" for the footer strip. Re-reads the clock rather than the
- * network: the profile itself only changes when the page refetches.
- */
-function useAge(fetchedAt: number | null | undefined) {
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    if (fetchedAt == null) {
-      setNow(null);
-      return;
-    }
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
-    return () => window.clearInterval(timer);
-  }, [fetchedAt]);
-  if (fetchedAt == null || now == null) return null;
-  return formatAge(fetchedAt, now);
-}
 
 export function PointsProfileCard({ owner, variant, profile, loading, error, totalTraders, onConnect, onClose }: Props) {
   const age = useAge(profile?.fetchedAt);
@@ -111,11 +91,10 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
                   <NumberTicker value={profile?.totalAmps} format={{ maximumFractionDigits: 0 }} fallback="—" />
                 )}
               </p>
-              {/* What an AMP is belongs next to the number, not in a page
-                  sub-line a disconnected visitor reads before seeing one. */}
-              <p className={STAT_NOTE}>
-                Activity points · last 7d {gone("last7d") ? "—" : formatSignedAmps(profile?.last7d)}
-              </p>
+              {/* The gloss on "AMPs" moved to the leaderboard's column header,
+                  which renders whether or not a wallet is connected — this tile
+                  only exists once one is. */}
+              <p className={STAT_NOTE}>last 7d {gone("last7d") ? "—" : formatSignedAmps(profile?.last7d)}</p>
             </>,
           )}
         </div>
@@ -190,7 +169,7 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
               <span> · Vault {gone("points") ? "—" : formatAmps(profile?.bySource?.vault)}</span>
               {(profile?.bySource?.bonus ?? 0) > 0 && <span> · Bonus {formatAmps(profile?.bySource?.bonus)}</span>}
               <span>
-                {" "}· Realized PnL{" "}
+                {" "}· PnL{" "}
                 <span className={gone("points") ? undefined : pnlTone(profile?.realizedPnl)}>
                   {gone("points") ? "—" : formatPnl(profile?.realizedPnl)}
                 </span>

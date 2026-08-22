@@ -409,7 +409,14 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
 
   return (
     <section className={cn(SECTION_GAP, PANEL)}>
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-card-border px-4 py-3.5">
+      {/* The rule under the header separates it from the body; with no body it
+          doubled up against the panel's own bottom edge. */}
+      <div
+        className={cn(
+          "flex flex-wrap items-start justify-between gap-4 px-4 py-3.5",
+          connected && subaccount && "border-b border-card-border",
+        )}
+      >
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex size-9 items-center justify-center rounded-[var(--radius-sm)] bg-success/10 text-success">
             <Coins className="size-4" aria-hidden="true" />
@@ -428,11 +435,12 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
         )}
       </div>
 
-      {!connected || !subaccount ? (
-        <div className="px-4 py-6 text-[13px] text-muted-foreground">
-          Connect a wallet with a Decibel trading account to preview verified CASH earnings.
-        </div>
-      ) : (
+      {/* Disconnected this rendered "Connect a wallet with a Decibel trading
+          account to preview verified CASH earnings." — a third copy of the ask
+          the page header's button already makes. The panel keeps its one
+          sentence above, which says what CASH rewards are; the body appears
+          when there is an account to report on. */}
+      {connected && subaccount ? (
         <>
           {snapshot && snapshot.contract.status !== "live" && (
             <div role="status" className="border-b border-warning/20 bg-warning/10 px-4 py-3 text-pretty text-[11px] leading-5 text-warning">
@@ -628,7 +636,7 @@ export function CashRewardsPanel({ connected, network, owner, subaccount }: Prop
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {(error || visibleStatus) && (
         <div

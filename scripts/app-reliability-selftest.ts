@@ -50,7 +50,6 @@ const cronRoute = readFileSync("app/api/cron/bot-tick/route.ts", "utf8");
 const keeperRoute = readFileSync("app/api/launchpad/keeper/route.ts", "utf8");
 const launchpadExecuteRoute = readFileSync("app/api/launchpad/execute/route.ts", "utf8");
 const launchpadCrankRoute = readFileSync("app/api/launchpad/crank/route.ts", "utf8");
-const launchpadDeployForm = readFileSync("components/launchpad/DeployForm.tsx", "utf8");
 const sealedLaunch = readFileSync("components/sealed/SealedLaunch.tsx", "utf8");
 const strategySourceEditor = readFileSync("components/launchpad/StrategySourceEditor.tsx", "utf8");
 const testTradeRoute = readFileSync("app/api/bot/test-trade/route.ts", "utf8");
@@ -85,9 +84,6 @@ const mobileModalSheet = readFileSync("components/ui/mobile-modal-sheet.tsx", "u
 const responsiveModalSheet = readFileSync("components/ui/responsive-modal-sheet.tsx", "utf8");
 const mobilePortfolioSheet = readFileSync("components/trade/MobilePortfolioSheet.tsx", "utf8");
 const walletAccountModal = readFileSync("components/wallet/wallet-account-modal.tsx", "utf8");
-const dashboardHistory = readFileSync("components/dashboard/history-table.tsx", "utf8");
-const botStatusMonitor = readFileSync("components/bot/bot-status-monitor.tsx", "utf8");
-const botOrderHistory = readFileSync("components/bot/order-history-table.tsx", "utf8");
 const decibelPoints = readFileSync("lib/decibel-points.ts", "utf8");
 const pointsProfileCard = readFileSync("components/points/points-profile-card.tsx", "utf8");
 const userStatsRoute = readFileSync("app/api/decibel/user-stats/route.ts", "utf8");
@@ -117,7 +113,6 @@ const cashRewardsConfig = JSON.parse(readFileSync("config/cash-rewards.json", "u
 };
 const legacyBacktestRoute = readFileSync("app/api/backtest/route.ts", "utf8");
 const launchpadBacktestRoute = readFileSync("app/api/launchpad/backtest/route.ts", "utf8");
-const launchpadBacktestViewer = readFileSync("components/launchpad/BacktestViewer.tsx", "utf8");
 const launchpadKeeper = readFileSync("lib/launchpad/keeper.ts", "utf8");
 const launchpadCandlesRoute = readFileSync("app/api/launchpad/candles/route.ts", "utf8");
 const launchpadPyth = readFileSync("lib/launchpad/pyth.ts", "utf8");
@@ -125,7 +120,6 @@ const launchpadPriceTickRoute = readFileSync("app/api/launchpad/price-tick/route
 const launchpadOnChainRoute = readFileSync("app/api/launchpad/on-chain/route.ts", "utf8");
 const launchpadMoveCodegen = readFileSync("lib/launchpad/move-codegen.ts", "utf8");
 const launchpadTradesRoute = readFileSync("app/api/launchpad/trades/route.ts", "utf8");
-const launchpadTradeHistory = readFileSync("components/launchpad/TradeHistory.tsx", "utf8");
 const launchpadSignalStreamRoute = readFileSync("app/api/launchpad/signals/stream/route.ts", "utf8");
 const launchpadSignalStore = readFileSync("lib/launchpad/signals-store.ts", "utf8");
 const launchpadPrismaSchema = readFileSync("prisma/schema.prisma", "utf8");
@@ -140,12 +134,10 @@ const launchpadCurveRoute = readFileSync("app/api/launchpad/curve/route.ts", "ut
 const launchpadIndicatorsRoute = readFileSync("app/api/launchpad/indicators/route.ts", "utf8");
 const launchpadCreateRoute = readFileSync("app/api/launchpad/create/route.ts", "utf8");
 const launchpadVerifyRoute = readFileSync("app/api/launchpad/verify/route.ts", "utf8");
-const creatorDashboard = readFileSync("components/launchpad/CreatorDashboard.tsx", "utf8");
 const launchpadWithdrawRoute = readFileSync("app/api/launchpad/withdraw/route.ts", "utf8");
 const launchpadScheduledRoute = readFileSync("app/api/launchpad/scheduled/route.ts", "utf8");
 const launchpadGraduateRoute = readFileSync("app/api/launchpad/graduate/route.ts", "utf8");
 const launchpadPage = readFileSync("components/launchpad/LaunchpadPage.tsx", "utf8");
-const botDashboard = readFileSync("components/launchpad/BotDashboard.tsx", "utf8");
 const sharedHeader = readFileSync("components/layout/Header.tsx", "utf8");
 const automationPage = readFileSync("app/automation/page.tsx", "utf8");
 const decibelDepthRoute = readFileSync("app/api/decibel/depth/route.ts", "utf8");
@@ -176,7 +168,6 @@ const legacyBotRoutes = [
 const legacyBotGuard = readFileSync("lib/legacy-bot-guard.ts", "utf8");
 const botOwnerGuard = readFileSync("lib/bot-owner-guard.ts", "utf8");
 const cloudStatusRoute = readFileSync("app/api/cloud-status/route.ts", "utf8");
-const serverBotConfig = readFileSync("components/bot/server-bot-config.tsx", "utf8");
 const tvImportRoute = readFileSync("app/api/launchpad/tv-import/route.ts", "utf8");
 const decibelPublicRoute = readFileSync("app/api/decibel/public/route.ts", "utf8");
 const sdkTestRoute = readFileSync("app/api/sdk-test/route.ts", "utf8");
@@ -670,11 +661,6 @@ assert.match(keeperRoute, /if \(!cronSecret\)/);
 assert.match(keeperRoute, /LAUNCHPAD_KEEPER_API_SECRET/);
 assert.match(launchpadExecuteRoute, /function authorizeKeeperExecution/);
 assert.match(launchpadCrankRoute, /Server crank is not configured/);
-assert.ok(
-  !launchpadDeployForm.includes('fetch("/api/launchpad/crank"'),
-  "the launchpad crank must use the connected wallet instead of spending server gas",
-);
-assert.match(launchpadDeployForm, /::indicator::tick_oracle/);
 assert.match(
   sealedLaunch,
   /<StrategySourceEditor/,
@@ -753,8 +739,14 @@ assert.ok(!pointsProfileCard.includes("|| 0"), "unavailable profile pieces must 
 assert.match(pointsProfileCard, /Connect to see/);
 assert.match(pointsProfileCard, /Trading/);
 assert.match(pointsProfileCard, /Referral/);
-assert.match(pointsProfileCard, /Realized PnL/);
-assert.match(pointsLeaderboard, /Realized PnL/);
+// "PnL" everywhere. The app used to call one concept three names — a "PNL"
+// stat tile, a "Profit/loss" heading and a "REALIZED PNL" column.
+assert.match(pointsProfileCard, /PnL/);
+assert.match(pointsLeaderboard, /PnL/);
+assert.ok(
+  !pointsProfileCard.includes("PNL") && !pointsLeaderboard.includes("PNL"),
+  "PnL must not be shouted in a second casing",
+);
 assert.match(pointsLeaderboard, /Show more/);
 assert.match(pointsProfileRoute, /Promise\.allSettled/);
 assert.match(pointsProfileRoute, /s-maxage=120/);
@@ -834,14 +826,17 @@ assert.equal(cashRewardsConfig.formulaVersion, 2);
 assert.equal(cashRewardsConfig.formulaEffectiveEpoch, 2950);
 assert.equal(cashRewardsConfig.capitalHourRewardCash, 2);
 assert.equal(cashRewardsConfig.activeDayRewardCash, 1_000);
-assert.ok(!botStatusMonitor.includes("CASH Sent"));
-assert.ok(!botStatusMonitor.includes("CASH Pending"));
-assert.match(botStatusMonitor, /CASH Claimed/);
-assert.match(botStatusMonitor, /Verified Accrued/);
+// Every surface that links a transaction out to the explorer must build the URL
+// through explorerTxUrl() so it follows the configured Decibel network, instead
+// of pinning ?network=testnet. (This used to be asserted on the dashboard/bot
+// history tables, which have been deleted; these are the surfaces that render
+// explorer links today.)
 for (const [name, source] of [
-  ["dashboard history", dashboardHistory],
-  ["bot status history", botStatusMonitor],
-  ["bot order history", botOrderHistory],
+  ["trade panel", tradePanel],
+  ["positions", positionsComponent],
+  ["account manager", accountManager],
+  ["portfolio page", portfolioPage],
+  ["cash rewards panel", cashRewardsPanel],
 ] as const) {
   assert.match(source, /explorerTxUrl/);
   assert.ok(
@@ -855,7 +850,6 @@ assert.match(launchpadBacktestRoute, /numSims must be an integer from 1 to 10,00
 assert.match(launchpadBacktestRoute, /indicatorType is required and must be an integer/);
 assert.match(launchpadBacktestRoute, /pine_backtester_required/);
 assert.ok(!launchpadBacktestRoute.includes("body.indicatorType ?? 0"));
-assert.match(launchpadBacktestViewer, /JSON\.stringify\(\{ indicatorAddr, indicatorType, numSims, asset, params \}\)/);
 // /launchpad is now the Vaults page: it renders the sealed-vault feed and the
 // launch flow only. The indicatorType contract is guarded on BacktestViewer
 // above; the page itself must not resurrect the mock-scored indicator list.
@@ -908,8 +902,6 @@ assert.match(launchpadTradesRoute, /sanitizeOnChainTrades/);
 assert.match(launchpadTradesRoute, /completedTrades/);
 assert.match(launchpadTradesRoute, /status: 502/);
 assert.match(launchpadTradesRoute, /trade_history_not_supported/);
-assert.match(launchpadTradeHistory, /packageAddress\?: string/);
-assert.match(botDashboard, /packageAddress=\{botPackage\}/);
 assert.match(launchpadOnChainChart, /candleAbortRef/);
 assert.match(launchpadOnChainChart, /packageAddress\?: string/);
 assert.match(launchpadOnChainChart, /pkg=\$\{encodeURIComponent\(packageAddress\)\}/);
@@ -920,8 +912,6 @@ assert.ok(
   "the Vaults page must not render the legacy indicator detail pane",
 );
 assert.ok(!launchpadPage.includes("d.lastPrice > 1000"), "launchpad prices are already normalized by the API");
-assert.ok(!botDashboard.includes("d.lastPrice > 1000"), "bot prices are already normalized by the API");
-assert.ok(!botDashboard.includes("d.entryPrice > 1000"), "bot entry prices are already normalized by the API");
 assert.match(sharedHeader, /\{ href: "\/", label: "Trade" \}/);
 assert.match(tradePanel, /aria-label="Order collateral amount"/);
 assert.match(tradePanel, /role="slider"/);
@@ -1011,15 +1001,6 @@ assert.ok(
   !launchpadCreateRoute.includes("{ error: message }"),
   "transpiler internals must not leak to clients",
 );
-assert.match(launchpadDeployForm, /IndicatorCreated/);
-assert.match(launchpadDeployForm, /LAUNCHPAD_CONTRACT,\s*\]\s*,/);
-assert.match(launchpadDeployForm, /::indicator::set_proprietary/);
-assert.match(launchpadDeployForm, /sha3_256/);
-assert.ok(!launchpadDeployForm.includes("Compute SHA-256 hash"), "the displayed commitment must match Move's SHA3-256 contract");
-assert.ok(!creatorDashboard.includes("MOCK_INDICATOR"), "creator balances must be read from Aptos");
-assert.ok(!creatorDashboard.includes("DAILY_DATA_90"), "creator earnings charts must not be synthetic");
-assert.ok(!creatorDashboard.includes("RECENT_PAYOUTS"), "creator payouts must not be synthetic");
-assert.match(creatorDashboard, /indicators\?creator=/);
 assert.match(launchpadWithdrawRoute, /creator_payout_not_enabled/);
 assert.match(launchpadScheduledRoute, /launchpad_automation_not_enabled/);
 assert.match(launchpadGraduateRoute, /launchpad_graduation_not_deployed/);
@@ -1206,11 +1187,6 @@ for (const path of [
   );
 }
 assert.match(cloudStatusRoute, /legacyBotAutomationEnabled\(\)/);
-// The banner must state the real reason automation is unavailable to this
-// wallet — restriction to the operator account — not the old "being hardened"
-// copy, which described work that is now done.
-assert.match(serverBotConfig, /restricted to the configured operator account/);
-assert.match(serverBotConfig, /automationEnabled && connected/);
 assert.match(tvImportRoute, /parseTradingViewScriptUrl/);
 assert.match(tvImportRoute, /parsed\.protocol !== "https:"/);
 assert.match(tvImportRoute, /redirect: "error"/);

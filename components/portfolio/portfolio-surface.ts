@@ -14,7 +14,16 @@
  * thing this file exists to stop.
  */
 
-import { FOCUS_RING, PRESSABLE_CONTROL } from "@/lib/surface";
+import { FOCUS_RING, PRESSABLE_CONTROL, SURFACE_CONTROL } from "@/lib/surface";
+
+/**
+ * PANEL and BUTTON_PRIMARY are defined in lib/surface.ts — the two files used
+ * to carry their own copy of the same recipe, which is how the app ended up
+ * with two live surface libraries for one role. Re-exported, not redefined, so
+ * every call site that already imports them from here keeps working while
+ * there is only one string to change.
+ */
+export { BUTTON_PRIMARY, PANEL } from "@/lib/surface";
 
 /* ── Sections ───────────────────────────────────────────────────────────── */
 
@@ -30,10 +39,6 @@ export const SECTION_GAP = "mt-6";
  * together — do not re-inline `text-[18px] font-semibold text-zinc-200`.
  */
 export const SECTION_TITLE = "text-balance text-lg font-semibold text-zinc-200";
-
-/** Outer panel: the biggest containers on the page. */
-export const PANEL =
-  "overflow-hidden rounded-[var(--radius)] border border-card-border bg-background-secondary";
 
 /** Panel header strip. */
 export const PANEL_TITLE = "text-[13px] font-semibold text-foreground";
@@ -55,27 +60,9 @@ export const STAT_NOTE = "mt-2 text-[11px] text-muted-foreground";
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
-/**
- * One per screen. The accent fill is what makes it the primary action.
- *
- * This is the single answer for the role, and it is sized so that no page has
- * to shrink to adopt it: 44px on a phone (D5 wants a 44px hit area) and the
- * canonical 40px control height from `sm` up (§ 4.5), the same
- * `min-h-11 … sm:` idiom ROW_ACTION and the OrderBook rows already use. That
- * covers both live shapes — the 40px call sites keep their desktop height and
- * gain a legal touch target, the 44px ones (TradePanel.tsx:846,
- * StrategyRunner.tsx:57, which hand-rolls this exact recipe) keep 44 where it
- * matters. No size variant is needed: the 56px/18px swap CTA the audit cited
- * is gone — DecibelSpotSwap.tsx now imports this and only adds layout.
- *
- * Still to adopt it: StrategyRunner.tsx:57 (delete the private copy and
- * import this), TradePanel.tsx:846, and any 4px-radius primary left on
- * /points or /launchpad — the radius is the control token, never `rounded`.
- */
-export const BUTTON_PRIMARY = `inline-flex min-h-11 items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-semibold text-accent-foreground hover:brightness-95 disabled:pointer-events-none disabled:opacity-40 sm:h-10 sm:min-h-0 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
-
-/** Everything that sits next to the primary action. */
-export const BUTTON_NEUTRAL = `inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] border border-card-border bg-background-secondary px-4 text-sm font-medium text-foreground hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
+/** Everything that sits next to the primary action. Same shell as any other
+ *  control, so it is composed from SURFACE_CONTROL rather than restating it. */
+export const BUTTON_NEUTRAL = `inline-flex h-10 items-center justify-center ${SURFACE_CONTROL} px-4 text-sm font-medium text-foreground hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-40 ${PRESSABLE_CONTROL} ${FOCUS_RING}`;
 
 /** A real action that must not compete with the page's one accent fill. */
 export const BUTTON_ACCENT_OUTLINE = `inline-flex h-10 w-full items-center justify-center rounded-[var(--radius-sm)] border border-accent/30 px-4 text-[13px] font-semibold text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:border-card-border disabled:text-muted-foreground disabled:hover:bg-transparent ${PRESSABLE_CONTROL} ${FOCUS_RING}`;

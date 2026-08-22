@@ -48,10 +48,11 @@ jobs:
         run: pnpm test:builder-revenue
       - name: Strategy artifacts selftest
         run: pnpm exec tsx scripts/strategy-artifacts-selftest.ts
-      - name: App reliability + personal strategy runner selftests
+      - name: App reliability, strategy runner and chart selftests
         run: |
           pnpm test:reliability
           pnpm test:personal-runner
+          pnpm test:charts
       - name: Production build
         run: pnpm build
 

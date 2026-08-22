@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletSelector } from "@/components/wallet/cash-wallet-selector";
 import { WalletAccountModal } from "@/components/wallet/wallet-account-modal";
@@ -34,6 +34,31 @@ export const NAV_ITEMS: { href: string; label: string }[] = [
 const FOCUS_RING =
   "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
+/**
+ * Set by a page that renders its own "Connect wallet" control, so the header
+ * drops its duplicate: one act, one button. (Disconnected /portfolio showed an
+ * outline "Connect wallet" in the header and a filled one 70px below it.)
+ *
+ * Context, not the `cash:open-wallet-selector` window event: this decides what
+ * the header renders, so it has to be right on the first paint. A signal read
+ * after mount would paint the button and then remove it — a shift in the one
+ * row that is on every page. Nothing global is added; a page opts in by
+ * wrapping itself, and every page that does not keeps today's header exactly.
+ */
+const PageConnectCtaContext = createContext(false);
+
+export function PageConnectCta({
+  present,
+  children,
+}: {
+  present: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <PageConnectCtaContext.Provider value={present}>{children}</PageConnectCtaContext.Provider>
+  );
+}
+
 function CashWordmark() {
   return (
     <span className="font-display text-[20px] font-bold tracking-normal text-white">
@@ -44,6 +69,7 @@ function CashWordmark() {
 
 export function Header({ constrained = false }: { constrained?: boolean } = {}) {
   const { connected, wallet } = useWallet();
+  const pageHasConnectCta = useContext(PageConnectCtaContext);
   const pathname = usePathname();
   const {
     adapterAddress,
@@ -315,10 +341,13 @@ export function Header({ constrained = false }: { constrained?: boolean } = {}) 
                   </span>
                 )}
               </button>
-            ) : (
+            ) : pageHasConnectCta ? null : (
               // Outlined, not filled. As a solid accent pill it competed with
               // the page's own primary action (e.g. "+ Deploy Strategy" sits
               // ~74px below it in the same corner) — two primaries means none.
+              // When the page carries the connect CTA itself, this one is not
+              // rendered at all: an outline copy of the same act is still a
+              // second entry point competing for the same click.
               <button
                 type="button"
                 onClick={handleWalletClick}

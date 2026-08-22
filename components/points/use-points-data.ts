@@ -7,7 +7,6 @@ import type { DecibelTierFilter, DecibelTierName } from "@/lib/decibel-points";
 export type { PointsProfile };
 
 export interface PointsGlobal {
-  totalAmps: number;
   traders: number;
 }
 
@@ -34,7 +33,11 @@ async function fetchJson(url: string, signal?: AbortSignal) {
   if (!response.ok || !json || json.unavailable) {
     throw new Error(`Points API unavailable (${response.status})`);
   }
-  return json;
+  // These routes sit behind an s-maxage CDN cache, so "now" is not when the
+  // numbers were read. Age is how long the response has already been sitting
+  // in that cache, which makes the freshness we print the data's, not the tab's.
+  const age = Number(response.headers.get("age"));
+  return { json, fetchedAt: Date.now() - (Number.isFinite(age) ? age : 0) * 1000 };
 }
 
 type Async<T> = { data: T | null; loading: boolean; error: string | null };
@@ -58,7 +61,7 @@ function useJson<T>(url: string | null, nonce: number, parse: (json: unknown) =>
     const controller = new AbortController();
     setState((prev) => ({ ...prev, loading: true, error: null }));
     fetchJson(url, controller.signal)
-      .then((json) => {
+      .then(({ json }) => {
         if (requestIdRef.current !== requestId) return;
         setState({ data: parseRef.current(json), loading: false, error: null });
       })
@@ -77,11 +80,10 @@ function useJson<T>(url: string | null, nonce: number, parse: (json: unknown) =>
 
 export function usePointsGlobal(nonce: number) {
   return useJson<PointsGlobal>("/api/predeposit/total", nonce, (json) => {
-    const data = json as { total_points?: unknown; depositor_count?: unknown };
-    const totalAmps = Number(data.total_points);
+    const data = json as { depositor_count?: unknown };
     const traders = Number(data.depositor_count);
-    if (!Number.isFinite(totalAmps) || !Number.isFinite(traders)) throw new Error("invalid global points");
-    return { totalAmps, traders };
+    if (!Number.isFinite(traders)) throw new Error("invalid global points");
+    return { traders };
   });
 }
 
@@ -126,6 +128,10 @@ export const LEADERBOARD_PAGE = 100;
 export function useLeaderboard(tier: DecibelTierFilter | null, nonce: number) {
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [total, setTotal] = useState(0);
+  // When the rows on screen were read. Only the first page sets it: "Show
+  // more" appends without refreshing rows 1-100, so the strip keeps counting
+  // from the fetch that produced the list the user is looking at.
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,10 +146,12 @@ export function useLeaderboard(tier: DecibelTierFilter | null, nonce: number) {
       else setLoadingMore(true);
       setError(null);
       try {
-        const page = parseRows(await fetchJson(`/api/predeposit/leaderboard?${params}`));
+        const response = await fetchJson(`/api/predeposit/leaderboard?${params}`);
+        const page = parseRows(response.json);
         if (requestIdRef.current !== requestId) return;
         setRows((prev) => (offset === 0 ? page.rows : [...prev, ...page.rows]));
         setTotal(page.total);
+        if (offset === 0) setFetchedAt(response.fetchedAt);
       } catch (err: unknown) {
         if (requestIdRef.current !== requestId) return;
         setError(err instanceof Error ? err.message : "unavailable");
@@ -160,6 +168,7 @@ export function useLeaderboard(tier: DecibelTierFilter | null, nonce: number) {
   useEffect(() => {
     setRows([]);
     setTotal(0);
+    setFetchedAt(null);
     void load(0);
     return () => {
       requestIdRef.current += 1;
@@ -171,12 +180,21 @@ export function useLeaderboard(tier: DecibelTierFilter | null, nonce: number) {
     void load(rows.length);
   }, [load, loading, loadingMore, rows.length]);
 
-  return { rows, total, loading, loadingMore, error, showMore, hasMore: rows.length > 0 && rows.length < total };
+  return {
+    rows,
+    total,
+    fetchedAt,
+    loading,
+    loadingMore,
+    error,
+    showMore,
+    hasMore: rows.length > 0 && rows.length < total,
+  };
 }
 
 /** Exact-owner lookup with true rank (upstream `search_term`). */
 export async function lookupLeaderboardOwner(owner: string, signal?: AbortSignal): Promise<LeaderboardRow | null> {
   const params = new URLSearchParams({ limit: "1", offset: "0", search_term: owner });
-  const page = parseRows(await fetchJson(`/api/predeposit/leaderboard?${params}`, signal));
-  return page.rows[0] ?? null;
+  const { json } = await fetchJson(`/api/predeposit/leaderboard?${params}`, signal);
+  return parseRows(json).rows[0] ?? null;
 }

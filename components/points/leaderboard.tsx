@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CARD_ROW,
+  CARD_ROW_GRID,
+  CARD_ROW_LABEL,
+  CARD_ROW_VALUE,
   PANEL,
   SECTION_GAP,
   SECTION_TITLE,
@@ -20,7 +23,7 @@ import { isValidAptosAddress, normalizeAptosAddress } from "@/lib/decibel";
 import { tierForAmps, type DecibelTierFilter } from "@/lib/decibel-points";
 import { PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
-import { formatAmps, formatPnl, formatRank, pnlTone, tierLabel } from "./format";
+import { formatAmps, formatPnl, formatRank, pnlTone, tierLabel, useAge } from "./format";
 import {
   lookupLeaderboardOwner,
   useLeaderboard,
@@ -29,9 +32,11 @@ import {
   type PointsProfile,
 } from "./use-points-data";
 
+// Tiers only. "Top 20" was a row-count filter wearing a tier's clothes, and it
+// was the chip that pushed the strip onto a second line on a phone; the list
+// already opens at 100 rows and grows through "Show more".
 const TIER_FILTERS: { label: string; value: DecibelTierFilter | null }[] = [
   { label: "All", value: null },
-  { label: "Top 20", value: "top20" },
   { label: "Diamond", value: "diamond" },
   { label: "Double Platinum", value: "doublePlatinum" },
   { label: "Gold", value: "gold" },
@@ -97,6 +102,16 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
   }, [board.rows, exact, query]);
 
   const tierOf = (amps: number) => (thresholds.data ? tierLabel(tierForAmps(amps, thresholds.data)) : "—");
+  // The leaderboard is CDN-cached, so a number here can be a minute old. The
+  // footer strip already existed and rendered an empty span whenever the count
+  // was hidden; it now carries the freshness the numbers were missing.
+  const age = useAge(exact ? null : board.fetchedAt);
+  const footer = [
+    board.total > 0 && !exact ? `${formatAmps(rows.length)} of ${formatAmps(board.total)}` : null,
+    age ? `updated ${age}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const ownRowLoaded = owner != null && rows.some((row) => row.owner === owner);
   const showYouRow = owner != null && you != null && you.rank != null && you.rank > 0 && !ownRowLoaded && !exact && !query;
   const loading = board.loading || (exact?.loading ?? false);
@@ -141,9 +156,11 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
             <tr className={TABLE_HEAD}>
               <th className="w-20">#</th>
               <th>Address</th>
-              <th className="text-right">AMPs</th>
+              {/* The one place the page's headline unit is spelled out, and it
+                  renders in every state — loading, empty, wallet or no wallet. */}
+              <th className="text-right">AMPs (activity points)</th>
               <th>Tier</th>
-              <th className="text-right">Realized PnL</th>
+              <th className="text-right">PnL</th>
             </tr>
           </thead>
           <tbody>
@@ -186,7 +203,12 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
             ? Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className={CARD_ROW}>
                   <Skeleton className="h-4 w-44" />
-                  <Skeleton className="mt-2 h-3 w-28" />
+                  {/* Same two-column block as the loaded row, so the list does
+                      not grow under the thumb when the numbers land. */}
+                  <div className={CARD_ROW_GRID}>
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="ml-auto h-8 w-20" />
+                  </div>
                 </div>
               ))
             : rows.map((row) => (
@@ -206,13 +228,20 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
                       <span className="tabular-nums text-muted-foreground">{row.rank}</span>
                       <span className="truncate">{shortAddress(row.owner)}</span>
                     </span>
-                    <span className="font-mono tabular-nums">{formatAmps(row.amps)}</span>
+                    {/* Tier names itself; the two numbers below do not, which is
+                        why they take the same labelled cells /portfolio's
+                        mobile rows use. */}
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{tierOf(row.amps)}</span>
                   </div>
-                  <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                    <span>{tierOf(row.amps)}</span>
-                    <span className={cn("font-mono tabular-nums", pnlTone(row.realizedPnl))}>
-                      {formatPnl(row.realizedPnl)}
-                    </span>
+                  <div className={CARD_ROW_GRID}>
+                    <div>
+                      <div className={CARD_ROW_LABEL}>AMPs</div>
+                      <div className={CARD_ROW_VALUE}>{formatAmps(row.amps)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className={CARD_ROW_LABEL}>PnL</div>
+                      <div className={cn(CARD_ROW_VALUE, pnlTone(row.realizedPnl))}>{formatPnl(row.realizedPnl)}</div>
+                    </div>
                   </div>
                 </button>
               ))}
@@ -244,7 +273,7 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
       </div>
 
       <div className="flex items-center justify-between gap-4 border-t border-card-border px-4 py-3 text-[11px] text-muted-foreground">
-        <span>{board.total > 0 && !exact ? `${formatAmps(rows.length)} of ${formatAmps(board.total)}` : ""}</span>
+        <span>{footer}</span>
         {board.hasMore && !exact && !query && (
           <button
             type="button"

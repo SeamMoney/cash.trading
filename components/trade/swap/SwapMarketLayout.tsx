@@ -34,11 +34,16 @@ const DESKTOP_MARKET_QUERY = "(min-width: 1024px)";
  * left edge jump when you moved between /swap and /trade. Below `lg` both
  * stack in that one `max-w-xl` column, swap first.
  *
- * The swap card is the only thing that sets the row height: it is never
- * padded, stretched or scrolled. In the two-column form the book is taken out
- * of flow (`absolute inset-0`) so it matches that height exactly without ever
- * adding to it — its ladder stretches to fill and its trades list scrolls
- * inside. Stacked, both keep their natural heights.
+ * The book declares its own height at every width: the 452/572px it already
+ * used stacked, and from `xl` the 672px /trade gives this same component. It
+ * used to be pinned to the swap card instead (`absolute inset-0`), which made
+ * a 424px ticket the whole page — the ladder was left 347px for 15 rows that
+ * cannot go under 24px each (368px), so it overflowed and the last row was cut
+ * mid-glyph, and the page ended 37% of the way up a 900px viewport. A declared
+ * height ends both: 490px of ladder at `sm`, 598px at `xl`, against a hard
+ * ceiling of 17 rows x 24px = 408px, so `minmax(24px, 1fr)` always has room to
+ * stretch to an exact fit and never has to overflow. The trades list still
+ * scrolls inside that height.
  */
 export function SwapMarketLayout({
   children,
@@ -60,13 +65,11 @@ export function SwapMarketLayout({
         {children}
       </div>
 
-      <div className="relative min-w-0 lg:order-1">
-        <OrderBook
-          {...orderBookProps}
-          rowCount={desktopMarketLayout ? 17 : 11}
-          className="h-[452px] sm:h-[572px] lg:absolute lg:inset-0 lg:h-auto"
-        />
-      </div>
+      <OrderBook
+        {...orderBookProps}
+        rowCount={desktopMarketLayout ? 17 : 11}
+        className="min-w-0 h-[452px] sm:h-[572px] lg:order-1 xl:h-[672px]"
+      />
     </div>
   );
 }

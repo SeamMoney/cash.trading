@@ -464,19 +464,20 @@ assert.match(tradePageClient, /rowCount=\{11\}[\s\S]*className="h-\[452px\] sm:h
 assert.match(swapMarketLayout, /lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
 // 17 rows fill the swap card's ~504px without an at-rest scroll; 21 needed ~572px.
 assert.match(swapMarketLayout, /rowCount=\{desktopMarketLayout \? 17 : 11\}/);
-// On desktop the book is taken out of flow inside a stretched grid item so it
-// matches the swap card's height exactly without ever adding to it; below lg it
-// keeps the Trade page's mobile heights.
-assert.match(swapMarketLayout, /className="h-\[452px\] sm:h-\[572px\] lg:absolute lg:inset-0 lg:h-auto"/);
+// The book carries its own height and IS the grid item — it used to be pulled
+// out of flow inside a relative wrapper to match the card, which left the
+// ladder box shorter than a whole number of 24px rows and sliced the last row
+// through the middle of its glyphs. 672px is the Trade page's column height,
+// reused verbatim so the same component clips on neither page.
+assert.match(swapMarketLayout, /className="min-w-0 h-\[452px\] sm:h-\[572px\] lg:order-1 xl:h-\[672px\]"/);
 assert.match(swapMarketLayout, /lg:items-stretch/);
-assert.match(
-  swapMarketLayout,
-  /<div className="relative min-w-0 lg:order-1">\s*<OrderBook/,
-  "the absolutely positioned book needs a relative wrapper or it escapes the grid item",
+assert.ok(
+  !swapMarketLayout.includes("lg:absolute") && !swapMarketLayout.includes("lg:inset-0"),
+  "the book must stay in flow — out-of-flow sizing is what produced the clipped ladder row",
 );
 assert.ok(
-  !swapMarketLayout.includes("lg:h-[672px]") && !swapMarketLayout.includes("overflow-y-auto"),
-  "the swap column must size to its content — no fixed desktop height and no nested scroll",
+  !swapMarketLayout.includes("overflow-y-auto"),
+  "the swap column must not nest a scroll inside the page scroll",
 );
 assert.equal(
   (swapMarketLayout.match(/<OrderBook/g) ?? []).length,

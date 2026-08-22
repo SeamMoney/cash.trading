@@ -162,9 +162,10 @@ export function Leaderboard({ owner, you, nonce, onSelect }: Props) {
             <tr className={TABLE_HEAD}>
               <th className="w-20">#</th>
               <th>Address</th>
-              {/* The one place the page's headline unit is spelled out, and it
-                  renders in every state — loading, empty, wallet or no wallet. */}
-              <th className="text-right">AMPs (activity points)</th>
+              {/* One word, the same one the mobile row and the profile tile
+                  use. The parenthetical gloss this header used to carry only
+                  re-read the "Points" h1 sitting above it, on every render. */}
+              <th className="text-right">AMPs</th>
               <th>Tier</th>
               <th className="text-right">PnL</th>
             </tr>

@@ -349,7 +349,11 @@ export function SwapPageClient() {
     // Disconnected, the swap card renders the filled "Connect wallet" primary,
     // so the header must not render its outline copy 500px above it.
     <PageConnectCta present={!connected}>
-    <div className="cash-trade-theme min-h-screen bg-background pb-10">
+    {/* pb-10 is the stacked column's bottom breathing room. From md the page
+        already ends on <main>'s own padding, and the extra 40px only pushed
+        black under the last card — the same trim /trade makes with pb-12
+        md:pb-0. */}
+    <div className="cash-trade-theme min-h-screen bg-background pb-10 md:pb-0">
       <Header />
       {/* PAGE_SHELL_WIDE, not a private 1800px measure — see TradePageClient. */}
       <main className={cn(PAGE_SHELL_WIDE, "relative z-10 py-3 sm:py-4 lg:py-5")}>

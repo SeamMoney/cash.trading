@@ -1186,7 +1186,29 @@ export function PortfolioPageClient() {
             nothing — asked the same question the button above already asks.
             Nothing is rendered instead: the one sentence that survived is the
             line under the title, so the page below the header is empty and
-            therefore short. */}
+            therefore short.
+
+            Deliberately not a structural preview, and the three candidates
+            were each tried on paper first:
+              · Skeletons. Skeleton is imported and used 20 times below, but
+                every one of those is gated on `accountPending`, which is
+                `connected && !overview && (loading || isLoadingSubaccounts)`.
+                Disconnected there is no request in flight and never will be
+                until the button above is pressed, so a skeleton here would be
+                a loading animation for a fetch nobody started.
+              · Em-dash tiles. That is what was deleted; see above.
+              · Global numbers borrowed from /trade. True, but true about the
+                protocol, not about you. Under an <h1>Portfolio</h1> it answers
+                a question the reader did not ask and still does not show the
+                shape of this page.
+            Every panel below is a pure function of the connected address —
+            equity, unrealized PnL, 30-day volume, fees paid, portfolio
+            history, positions, open orders, collateral. None of them has an
+            address-free form, so there is no honest preview to render. The
+            sentence under the title does the work a preview would: it names
+            the panels in the order they arrive (equity and PnL tiles, then the
+            chart, then the positions/orders tabs) in one line rather than
+            700px of scaffolding. */}
         {connected ? (
         <>
 
@@ -1441,40 +1463,46 @@ export function PortfolioPageClient() {
             aria-labelledby={`${tabPanelId}-${activeTab.replace(/\s+/g, "-").toLowerCase()}`}
           >
           {activeTab === "Balances" ? (
-            <div className="overflow-x-auto">
-              <table className={cn(TABLE, "min-w-[680px]")}>
-                <caption className="sr-only">Decibel collateral balances</caption>
-                <thead>
-                  <tr className={TABLE_HEAD}>
-                    <th scope="col">Coin</th>
-                    <th scope="col">Total balance</th>
-                    <th scope="col">Available balance</th>
-                    <th scope="col">USD value</th>
-                    <th scope="col">PnL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className={TABLE_ROW}>
-                    <td>USDC</td>
-                    {accountPending ? (
-                      <>
-                        <td><Skeleton className="h-[19px] w-20" /></td>
-                        <td><Skeleton className="h-[19px] w-20" /></td>
-                        <td><Skeleton className="h-[19px] w-20" /></td>
-                        <td><Skeleton className="h-[19px] w-16" /></td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{formatUsd(overview?.collateral)}</td>
-                        <td>{formatUsd(overview?.crossWithdrawable)}</td>
-                        <td>{formatUsd(overview?.equity)}</td>
-                        <td className={signTone(totalPnl)}>{formatUsd(totalPnl, true)}</td>
-                      </>
-                    )}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            /* Positions and Open orders each ship a md:hidden card stack; this
+               tab was the one that did not, so a single row of collateral cost
+               a 680px scroll floor inside a 358px phone — 322px of sideways
+               drag to read four numbers.
+               Two of those four were also not properties of a USDC balance.
+               "USD value" rendered overview.equity, and equity is
+               collateral + unrealizedPnl (see decibelWsOverviewToOverview), so
+               $1,000 of USDC with +$200 open PnL claimed a USD value of
+               $1,200 — a stablecoin repriced by a perp. "PnL" rendered the
+               account-wide unrealized PnL on a collateral row. Both are
+               already correct one screen up, in the Portfolio value and PnL
+               tiles. Deleting them leaves Coin / Total balance / Available
+               balance: an actual balances table, and three columns that fit a
+               phone, so TABLE's w-full is the only width this needs. */
+            <table className={TABLE}>
+              <caption className="sr-only">Decibel collateral balances</caption>
+              <thead>
+                <tr className={TABLE_HEAD}>
+                  <th scope="col">Coin</th>
+                  <th scope="col">Total balance</th>
+                  <th scope="col">Available balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className={TABLE_ROW}>
+                  <td>USDC</td>
+                  {accountPending ? (
+                    <>
+                      <td><Skeleton className="h-[19px] w-20" /></td>
+                      <td><Skeleton className="h-[19px] w-20" /></td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{formatUsd(overview?.collateral)}</td>
+                      <td>{formatUsd(overview?.crossWithdrawable)}</td>
+                    </>
+                  )}
+                </tr>
+              </tbody>
+            </table>
           ) : activeTab === "Open orders" ? (
             <>
             <div className="md:hidden">

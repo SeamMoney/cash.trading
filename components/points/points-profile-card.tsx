@@ -91,9 +91,9 @@ export function PointsProfileCard({ owner, variant, profile, loading, error, tot
                   <NumberTicker value={profile?.totalAmps} format={{ maximumFractionDigits: 0 }} fallback="—" />
                 )}
               </p>
-              {/* The gloss on "AMPs" moved to the leaderboard's column header,
-                  which renders whether or not a wallet is connected — this tile
-                  only exists once one is. */}
+              {/* "AMPs" carries no gloss anywhere on the page: the h1 above it
+                  is "Points", and this label, the leaderboard column and the
+                  mobile row all print the unit as the same single word. */}
               <p className={STAT_NOTE}>last 7d {gone("last7d") ? "—" : formatSignedAmps(profile?.last7d)}</p>
             </>,
           )}

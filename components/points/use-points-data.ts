@@ -40,14 +40,17 @@ async function fetchJson(url: string, signal?: AbortSignal) {
   return { json, fetchedAt: Date.now() - (Number.isFinite(age) ? age : 0) * 1000 };
 }
 
-type Async<T> = { data: T | null; loading: boolean; error: string | null };
+// fetchedAt travels with the data: `fetchJson` already computes it and every
+// number this hook returns is CDN-cached, so the caller can stamp its age with
+// the same `useAge` the leaderboard and profile card use.
+type Async<T> = { data: T | null; fetchedAt: number | null; loading: boolean; error: string | null };
 
 /**
  * One fetch per (url, nonce); a newer request or an unmount drops the older
  * response so a wallet switch can never paint the previous owner's numbers.
  */
 function useJson<T>(url: string | null, nonce: number, parse: (json: unknown) => T): Async<T> {
-  const [state, setState] = useState<Async<T>>({ data: null, loading: Boolean(url), error: null });
+  const [state, setState] = useState<Async<T>>({ data: null, fetchedAt: null, loading: Boolean(url), error: null });
   const requestIdRef = useRef(0);
   const parseRef = useRef(parse);
   parseRef.current = parse;
@@ -55,19 +58,24 @@ function useJson<T>(url: string | null, nonce: number, parse: (json: unknown) =>
   useEffect(() => {
     const requestId = ++requestIdRef.current;
     if (!url) {
-      setState({ data: null, loading: false, error: null });
+      setState({ data: null, fetchedAt: null, loading: false, error: null });
       return;
     }
     const controller = new AbortController();
     setState((prev) => ({ ...prev, loading: true, error: null }));
     fetchJson(url, controller.signal)
-      .then(({ json }) => {
+      .then(({ json, fetchedAt }) => {
         if (requestIdRef.current !== requestId) return;
-        setState({ data: parseRef.current(json), loading: false, error: null });
+        setState({ data: parseRef.current(json), fetchedAt, loading: false, error: null });
       })
       .catch((error: unknown) => {
         if (requestIdRef.current !== requestId || controller.signal.aborted) return;
-        setState({ data: null, loading: false, error: error instanceof Error ? error.message : "unavailable" });
+        setState({
+          data: null,
+          fetchedAt: null,
+          loading: false,
+          error: error instanceof Error ? error.message : "unavailable",
+        });
       });
     return () => {
       requestIdRef.current += 1;

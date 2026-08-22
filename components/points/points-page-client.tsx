@@ -10,7 +10,7 @@ import { PAGE_SHELL, PRESSABLE_CONTROL } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 import { Leaderboard } from "./leaderboard";
 import { PointsProfileCard } from "./points-profile-card";
-import { formatAmps } from "./format";
+import { formatAmps, useAge } from "./format";
 import { usePointsGlobal, usePointsProfile } from "./use-points-data";
 
 const VISIBILITY_REFRESH_MS = 2 * 60_000;
@@ -50,11 +50,13 @@ export function PointsPageClient({ embedded = false }: { embedded?: boolean }) {
     : global.loading
       ? null
       : "global stats unavailable";
-  // Season and scale only. The season-wide AMPs total used to lead here, which
-  // put the page's headline unit in front of a visitor with nothing to define
-  // it against; the word is now introduced by the leaderboard column that
-  // lists the numbers, which renders connected or not.
-  const subline = ["Season 1", stats].filter(Boolean).join(" · ");
+  // The trader count sits behind a 30s CDN cache with a 300s stale window, so
+  // it can be minutes old. It was the last live number in the app printed with
+  // no age on it; the same `useAge` the leaderboard footer and profile card use
+  // stamps it here, on the line that already existed. No stamp when the count
+  // failed to load — there is then no number to age.
+  const age = useAge(global.fetchedAt);
+  const subline = ["Season 1", stats, age && `updated ${age}`].filter(Boolean).join(" · ");
 
   const content = (
     <>

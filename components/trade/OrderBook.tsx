@@ -399,6 +399,16 @@ function formatTime(timestamp: number | null) {
   return timestamp ? new Date(timestamp).toLocaleTimeString() : "--:--:--";
 }
 
+/**
+ * One template for both sides: bid size, price, ask size, in that order, every
+ * row. The size labels used to be absolutely positioned at the tip of their own
+ * depth bar (`right: min(calc(pct% + 4px), …)`), so the number moved with the
+ * depth — on /trade the bid figures landed anywhere from x=699 to x=781 inside
+ * a single list, and the ask figures from x=909 to x=992. That is the column
+ * with no identity. Pinning both to the price-facing edge of their cell deletes
+ * the per-row geometry and leaves three fixed columns; the bars still anchor at
+ * the price and grow outward, so the side is still legible at a glance.
+ */
 function LadderRowView({
   row,
   maxSize,
@@ -421,22 +431,18 @@ function LadderRowView({
         "group relative grid h-full min-h-6 w-full grid-cols-3 items-center overflow-hidden font-mono text-xs tabular-nums transition-colors hover:bg-white/[0.03] sm:text-[13px]",
       )}
     >
-      <div role="cell" aria-label={bidLabel} className="relative h-full min-w-0">
+      <div role="cell" aria-label={bidLabel} className="relative flex h-full min-w-0 items-center justify-end pr-1">
         {row.bidSize > 0 && (
           <>
             <div
               aria-hidden="true"
-              className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2 rounded-none"
+              className="absolute right-0 top-1/2 h-[18px] -translate-y-1/2"
               style={{
-                width: `max(1px, calc(${bidPct}% - 4px))`,
+                width: `max(1px, ${bidPct}%)`,
                 backgroundColor: POSITIVE_ALPHA,
               }}
             />
-            <span
-              aria-hidden="true"
-              className="absolute top-1/2 w-16 -translate-y-1/2 text-right font-bold leading-none text-success sm:w-20"
-              style={{ right: `min(calc(${bidPct}% + 4px), calc(100% - 4rem))` }}
-            >
+            <span aria-hidden="true" className="relative truncate font-bold leading-none text-success">
               {formatSize(row.bidSize)}
             </span>
           </>
@@ -468,22 +474,18 @@ function LadderRowView({
         )}
       </span>
 
-      <div role="cell" aria-label={askLabel} className="relative h-full min-w-0">
+      <div role="cell" aria-label={askLabel} className="relative flex h-full min-w-0 items-center justify-start pl-1">
         {row.askSize > 0 && (
           <>
             <div
               aria-hidden="true"
-              className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2 rounded-none"
+              className="absolute left-0 top-1/2 h-[18px] -translate-y-1/2"
               style={{
-                width: `max(1px, calc(${askPct}% - 4px))`,
+                width: `max(1px, ${askPct}%)`,
                 backgroundColor: NEGATIVE_ALPHA,
               }}
             />
-            <span
-              aria-hidden="true"
-              className="absolute top-1/2 w-16 -translate-y-1/2 text-left font-bold leading-none text-danger sm:w-20"
-              style={{ left: `min(calc(${askPct}% + 4px), calc(100% - 4rem))` }}
-            >
+            <span aria-hidden="true" className="relative truncate font-bold leading-none text-danger">
               {formatSize(row.askSize)}
             </span>
           </>

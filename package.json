@@ -23,6 +23,7 @@
     "test:decibel-spot-confirmation": "tsx scripts/decibel-spot-confirmation-selftest.ts",
     "test:decibel-spot-ambiguity": "tsx scripts/decibel-spot-ambiguity-selftest.ts",
     "test:decibel-spot-deployment": "tsx scripts/decibel-spot-deployment-selftest.ts",
+    "test:market-coverage": "tsx scripts/market-coverage-selftest.ts",
     "cash-orderbook:fingerprint": "tsx scripts/cash-orderbook-module-fingerprint.ts",
     "cash-orderbook:preflight": "tsx scripts/cash-orderbook-launch-preflight.ts",
     "test:cash-rewards:mainnet-readiness": "tsx scripts/cash-rewards-mainnet-readiness.ts",

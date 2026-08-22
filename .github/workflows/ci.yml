@@ -36,6 +36,8 @@ jobs:
         run: pnpm test:decibel-spot && pnpm test:decibel-spot-deployment && pnpm test:decibel-spot-confirmation && pnpm test:decibel-spot-ambiguity
       - name: CASH orderbook selftests
         run: pnpm test:cash-orderbook && pnpm test:cash-orderbook-ambiguity && pnpm test:cash-orderbook-launch
+      - name: Market coverage (skips without a mainnet key)
+        run: pnpm test:market-coverage
       - name: Strategy artifacts selftest
         run: pnpm exec tsx scripts/strategy-artifacts-selftest.ts
       - name: App reliability selftest

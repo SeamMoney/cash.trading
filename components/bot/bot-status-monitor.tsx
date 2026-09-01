@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Activity, TrendingUp, TrendingDown, Target, Clock, Zap, ExternalLink, Timer, Square, X, Loader2, Coins } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { explorerTxUrl } from "@/lib/constants"
+import { usePageVisible } from "@/hooks/usePageVisible"
 
 // Size decimals for each market (for proper display) - all markets now use 8 decimals
 const SIZE_DECIMALS: Record<string, number> = {
@@ -88,6 +89,12 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     }
   } | null>(null)
   const lastTickTimeRef = useRef<number>(0)
+
+  const pageVisible = usePageVisible()
+  // Trades that landed while the tab was hidden, collapsed into one toast on return.
+  const awayTradesRef = useRef({ count: 0, volume: 0 })
+  // Set while the tab is hidden and trades are accumulating; null once restored.
+  const baseTitleRef = useRef<string | null>(null)
 
   // Live positions state (for when bot is not running)
   const [livePositions, setLivePositions] = useState<Array<{
@@ -359,11 +366,13 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
         // Rate limit - add backoff and don't show alarming error
         const backoffTime = data.retryAfter || 10
         setRateLimitBackoff(backoffTime)
-        toast.info(`Slowing down...`, {
-          id: TOAST_ID.rateLimit,
-          description: `API rate limit hit, backing off ${backoffTime}s`,
-          duration: 3000,
-        })
+        if (!document.hidden) {
+          toast.info(`Slowing down...`, {
+            id: TOAST_ID.rateLimit,
+            description: `API rate limit hit, backing off ${backoffTime}s`,
+            duration: 3000,
+          })
+        }
         console.log(`Rate limited, backing off ${backoffTime}s`)
       } else if (data.status === 'completed' || data.isRunning === false) {
         toast.success('Volume Target Reached!', {
@@ -424,11 +433,21 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
         const progress = data.progress || '0'
         const market = data.market || 'BTC/USD'
         const txShort = data.txHash ? `${data.txHash.slice(0, 8)}...` : ''
-        toast.success(`${dir} · ${market}`, {
-          id: TOAST_ID.trade,
-          description: `+$${vol} volume (${progress}% of target) · Total: $${cumVol}${txShort ? ` · tx: ${txShort}` : ''}`,
-          duration: 3000,
-        })
+        if (document.hidden) {
+          // A toast per trade is wrong for a tab nobody is looking at: sonner freezes
+          // every timer while hidden, so these would pile up and replay on return as
+          // trades that already happened. Count them and summarise instead.
+          awayTradesRef.current.count += 1
+          awayTradesRef.current.volume += data.volumeGenerated || 0
+          if (baseTitleRef.current === null) baseTitleRef.current = document.title
+          document.title = `(${awayTradesRef.current.count}) ${baseTitleRef.current}`
+        } else {
+          toast.success(`${dir} · ${market}`, {
+            id: TOAST_ID.trade,
+            description: `+$${vol} volume (${progress}% of target) · Total: $${cumVol}${txShort ? ` · tx: ${txShort}` : ''}`,
+            duration: 3000,
+          })
+        }
       } else if (data.error) {
         toast.error('Trade Failed', {
           id: TOAST_ID.tradeError,
@@ -510,6 +529,36 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     const interval = setInterval(fetchCashRewards, 10000)
     return () => clearInterval(interval)
   }, [fetchCashRewards])
+
+  // Back on the tab: restore the title and report what was missed once, rather than
+  // replaying a toast per trade. Live positions are in the panel below, so the summary
+  // only needs to account for the gap.
+  useEffect(() => {
+    if (!pageVisible) return
+
+    if (baseTitleRef.current !== null) {
+      document.title = baseTitleRef.current
+      baseTitleRef.current = null
+    }
+
+    const { count, volume } = awayTradesRef.current
+    if (count === 0) return
+    awayTradesRef.current = { count: 0, volume: 0 }
+
+    toast.success(`${count} trade${count === 1 ? '' : 's'} while you were away`, {
+      id: TOAST_ID.trade,
+      description: `+$${volume.toFixed(0)} volume · current positions are shown below`,
+      duration: 6000,
+    })
+  }, [pageVisible])
+
+  // Never leave a badged title behind if the monitor unmounts while hidden.
+  useEffect(() => () => {
+    if (baseTitleRef.current !== null) {
+      document.title = baseTitleRef.current
+      baseTitleRef.current = null
+    }
+  }, [])
 
   // Poll for live positions (especially important when bot is NOT running)
   useEffect(() => {

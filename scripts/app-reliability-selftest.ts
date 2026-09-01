@@ -1967,6 +1967,23 @@ assert.ok(
   "config.ready must mean the default managed bot can actually decrypt, sign and crank — " +
     "package + public key alone can create a paid vault that never trades",
 );
+// The last silent-failure mode in the launch path. `ready:true` proves the crank KEY is set;
+// it cannot prove the crank WALLET holds gas. An unfunded cranker fails exactly like the
+// CRON_SECRET trap did: creators pay, vaults get created on-chain, and not one order is ever
+// placed, with the submit errors visible only in Vercel's cron logs.
+assert.ok(
+  sealedConfigRoute.includes("readCrankFunding") &&
+    sealedConfigRoute.includes("0x1::coin::balance") &&
+    sealedConfigRoute.includes("derivedAddress()"),
+  "config must report the crank wallet's live APT balance, derived from the key the server " +
+    "already holds — a dry crank is silent, and the runbook check for it is manual",
+);
+assert.ok(
+  /balanceApt:\s*0,\s*funded:\s*false/.test(sealedConfigRoute),
+  "a never-funded account has no CoinStore and the balance view ERRORS rather than returning " +
+    "zero; that must report funded:false, not an unknown, or the one wallet state worth " +
+    "catching is the one state the check misses",
+);
 assert.ok(
   sealedPayloadRoute.includes("readPlatformTerms(network)") &&
     sealedPayloadRoute.includes("before any funds are spent"),

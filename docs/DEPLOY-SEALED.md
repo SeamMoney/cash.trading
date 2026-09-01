@@ -571,6 +571,61 @@ every persisted run. Query them for normal health, and alert on `degraded` or
 
 ---
 
+## 6.5 The first mainnet vault — pre-funding checklist
+
+Everything below is read-only and was verified on 2026-08-19. Re-run it the morning of the
+launch; each line is a thing that, if wrong, costs real money or produces a vault that cannot
+trade.
+
+**Verified green:**
+
+| Check | Command | Expected |
+|---|---|---|
+| App reports ready | `curl -s https://cash.trading/api/sealed/config` | `ready:true`, `launchMissing:[]`, `managedMissing:[]` |
+| Package published + initialized | `platform_terms` view on `0x3590…5105` | `["50000000", treasury, builder, "0"]` |
+| Attestor key pair matches | config `attestorPubkey` vs the sealed vault's stored key | identical; a mismatch is **unrecoverable** (§4.2) |
+| Mainnet bytecode matches source | `pnpm sealed:e2e verify-package --network mainnet --package 0x3590…5105` | all five modules MATCH |
+| Market params match config | `pnpm sealed:e2e verify-markets --network mainnet` | `lot=1000 min=2000 szDecimals=8 — MATCHES config` |
+| First paid payload builds | `POST /api/sealed/payload {"kind":"decibel-vault",…}` | returns a `create_and_fund_vault` payload, no error |
+| Both trade directions proven | §0.3 | forced buy and forced sell both filled on the live engine |
+
+**Must be true before you sign anything — these are the two that are not automatic:**
+
+1. **The crank wallet holds APT.** `/api/sealed/config` now reports `crank.address`,
+   `crank.balanceApt` and `crank.funded`. **`funded` must be `true`.** A dry crank is the
+   quietest failure in this system: the vault is created, the creator has paid, and no order is
+   ever placed — the submit errors appear only in Vercel's cron logs. §5 sizes it; ~8 APT is a
+   month of runway for one vault.
+2. **The treasury address is one you control.** `platform_terms[1]` receives the 50 USDC launch
+   fee. Confirm it against §1.4's key table before paying yourself.
+
+**What the first launch costs, and where each part goes:**
+
+| | USDC | To |
+|---:|---:|---|
+| Decibel protocol fee | 100 | Decibel |
+| Vault seed | 100 (minimum) | **stays yours** — it is the vault's trading capital |
+| cash.trading launch fee | 50 | your own treasury, so it returns to you |
+| **Out of pocket** | **~150** | the 100 seed is capital, not cost |
+
+The launch fee is **once per Decibel vault**, not per strategy: swapping the algo later costs
+gas alone.
+
+**Set expectations on volume.** A 100 USDC vault at the default 10%-of-NAV order size and 2x
+leverage places ~20 USDC of notional per trade. That is a working bot, not a volume engine.
+Volume scales with capital × leverage × trade frequency, so seed larger or launch the portfolio
+variant (up to 4 simultaneous markets) if volume is the goal.
+
+**And know what it does NOT earn.** Automated vault orders carry a **0 bp** builder fee — the
+package locks it there because Decibel validates builder approval against the vault's own
+trading subaccount, which a delegated strategy cannot approve through the current public API
+(§8.5b). Vault volume is real volume, but it earns no builder revenue today. The builder fee
+applies only to **direct user orders** through the site — a separate path, opt-in per
+subaccount, defaulting to 1 bp (`DEFAULT_DECIBEL_BUILDER_FEE_BPS`) and env-configurable up to
+the 10 bp cap in `lib/decibel-builder-config.ts`.
+
+---
+
 ## 7. Smoke test before announcing anything
 
 Do this on the target network with real money before telling anyone the product exists.

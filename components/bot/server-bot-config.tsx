@@ -383,6 +383,7 @@ export function ServerBotConfig() {
       setError(err.message || "Failed to start bot")
       toast.error('Failed to start bot', {
         description: err.message,
+        duration: 8000,
       })
     } finally {
       setLoading(false)
@@ -417,6 +418,7 @@ export function ServerBotConfig() {
       setError(err.message || "Failed to stop bot")
       toast.error('Failed to stop bot', {
         description: err.message,
+        duration: 8000,
       })
     } finally {
       setLoading(false)

@@ -105,7 +105,7 @@ export default function RootLayout({
         </ClientProviders>
         <Toaster
           position="bottom-center"
-          duration={2000}
+          duration={4000}
           toastOptions={{
             style: {
               background: 'var(--toast-background)',

@@ -27,6 +27,18 @@ const getMarketSymbol = (market: string): string => {
   return market?.split('/')[0] || 'BTC'
 }
 
+// The bot ticks on a timer (every 5s on tx_spammer), so these toasts recur for as long as
+// it runs. Sonner replaces a toast that reuses an id instead of stacking a new one, which
+// keeps each stream to a single, always-current toast. That matters most while the tab is
+// hidden: sonner pauses every toast's auto-close timer then, so without a stable id a few
+// minutes away would queue up dozens of stale trade toasts to replay on return.
+const TOAST_ID = {
+  trade: 'bot-trade',
+  tradeError: 'bot-trade-error',
+  botError: 'bot-error',
+  rateLimit: 'bot-rate-limit',
+} as const
+
 interface BotStatusMonitorProps {
   userWalletAddress: string
   userSubaccount: string
@@ -128,6 +140,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     } catch (err: any) {
       toast.error('Failed to stop bot', {
         description: err.message,
+        duration: 8000,
       })
     } finally {
       setIsStopping(false)
@@ -288,6 +301,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
           })
           toast.info('Close in progress', {
             description: 'Position may still be closing. Refresh to check status.',
+            duration: 6000,
           })
         }
       }, 5000)
@@ -295,6 +309,7 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
     } catch (err: any) {
       toast.error('Failed to close position', {
         description: err.message,
+        duration: 8000,
       })
       setClosingPositions(prev => {
         const next = new Set(prev)
@@ -328,8 +343,9 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
       if (!response.ok && response.status !== 429) {
         console.error('Bot tick failed:', response.status, data)
         toast.error('Bot Error', {
+          id: TOAST_ID.botError,
           description: data.error || `HTTP ${response.status}`,
-          duration: 5000,
+          duration: 8000,
         })
         // If bot not found, stop showing as running
         if (response.status === 404 && onStatusChange) {
@@ -343,13 +359,11 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
         // Rate limit - add backoff and don't show alarming error
         const backoffTime = data.retryAfter || 10
         setRateLimitBackoff(backoffTime)
-        // Only show toast occasionally to avoid spam
-        if (Math.random() < 0.3) {
-          toast.info(`Slowing down...`, {
-            description: `API rate limit hit, backing off ${backoffTime}s`,
-            duration: 2000,
-          })
-        }
+        toast.info(`Slowing down...`, {
+          id: TOAST_ID.rateLimit,
+          description: `API rate limit hit, backing off ${backoffTime}s`,
+          duration: 3000,
+        })
         console.log(`Rate limited, backing off ${backoffTime}s`)
       } else if (data.status === 'completed' || data.isRunning === false) {
         toast.success('Volume Target Reached!', {
@@ -411,13 +425,15 @@ export function BotStatusMonitor({ userWalletAddress, userSubaccount, isRunning,
         const market = data.market || 'BTC/USD'
         const txShort = data.txHash ? `${data.txHash.slice(0, 8)}...` : ''
         toast.success(`${dir} · ${market}`, {
+          id: TOAST_ID.trade,
           description: `+$${vol} volume (${progress}% of target) · Total: $${cumVol}${txShort ? ` · tx: ${txShort}` : ''}`,
           duration: 3000,
         })
       } else if (data.error) {
         toast.error('Trade Failed', {
+          id: TOAST_ID.tradeError,
           description: data.error,
-          duration: 4000,
+          duration: 8000,
         })
       }
 

@@ -130,7 +130,7 @@
     "liveline": "^0.0.6",
     "lucide-react": "^0.454.0",
     "motion": "^12.34.3",
-    "next": "16.2.11",
+    "next": "16.3.8",
     "next-themes": "latest",
     "pg": "^8.22.0",
     "pinets": "^0.9.16",

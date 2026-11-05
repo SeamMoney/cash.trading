@@ -77,6 +77,10 @@ pnpm test:pine-solana
 
 The pure compilation API is `POST /api/launchpad/compile-solana`. See the [compiler guide](docs/PINE_SOLANA.md), [compatibility matrix](docs/PINE_SOLANA_COMPATIBILITY.md), and [verification report](docs/PINE_SOLANA_VERIFICATION.md) for supported constructs, generated artifacts, SBF build instructions, and tested limits. This feature is separate from the Aptos launchpad compiler and is not a claim of universal Pine or TradingView equivalence.
 
+### Pine Studio
+
+Open `/pine` for the mobile-first compiler workspace: paste or import a script, preview its actual indicator series and order intents on synthetic candles, edit inputs, save scripts in the browser, and download the generated Rust/Anchor project. The Chart, Scripts, and Build views share the same checked source and configuration. See the [Pine Studio guide](docs/PINE_STUDIO.md) for the UI flow and verification scope.
+
 ## Quick Start
 
 ### Prerequisites

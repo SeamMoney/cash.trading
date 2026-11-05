@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "types": ["node"]
   },
   "include": ["lib/pine-solana/**/*.ts", "scripts/pine-solana*.ts", "tests/pine-solana*.test.ts"]

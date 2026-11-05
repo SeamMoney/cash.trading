@@ -26,6 +26,12 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec prisma generate
       - run: pnpm exec tsc --noEmit -p tsconfig.json
+      - name: Pine-to-Solana frontend, semantics, API and artifact tests
+        run: pnpm typecheck:pine-solana && pnpm test:pine-solana && pnpm pine:solana:sync-runtime --check
+      - name: Native Rust and generated strategy differential tests
+        run: |
+          pnpm pine:solana:parity
+          cargo test --manifest-path build/pine-solana-parity/Cargo.toml --locked
       - name: Transpiler honesty selftest
         run: pnpm test:transpiler
       - name: Sealed attestor selftest (BCS layout, digest chain, tamper)

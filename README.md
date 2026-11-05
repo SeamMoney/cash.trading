@@ -65,6 +65,18 @@ GET /api/cash/rewards?owner=0x...&subaccount=0x...&network=mainnet
 Contract controls, launch sequence, and funding safeguards are documented in
 [`docs/cash-rewards.md`](docs/cash-rewards.md).
 
+## Pine Script to Solana compiler
+
+An experimental compiler in [`lib/pine-solana`](lib/pine-solana) turns a bounded subset of Pine v4–v6 into a Rust runtime and an Anchor program. The program consumes signed, sequential confirmed bars and emits order intents. It has no broker emulator, custody, or DEX execution; unsupported syntax and semantics fail with source diagnostics.
+
+```bash
+pnpm pine:solana compile examples/pine-solana/ema-cross.pine --out build/ema-cross
+pnpm pine:solana simulate examples/pine-solana/ema-cross.pine --bars examples/pine-solana/candles.json --out build/ema-cross/trace.json
+pnpm test:pine-solana
+```
+
+The pure compilation API is `POST /api/launchpad/compile-solana`. See the [compiler guide](docs/PINE_SOLANA.md), [compatibility matrix](docs/PINE_SOLANA_COMPATIBILITY.md), and [verification report](docs/PINE_SOLANA_VERIFICATION.md) for supported constructs, generated artifacts, SBF build instructions, and tested limits. This feature is separate from the Aptos launchpad compiler and is not a claim of universal Pine or TradingView equivalence.
+
 ## Quick Start
 
 ### Prerequisites

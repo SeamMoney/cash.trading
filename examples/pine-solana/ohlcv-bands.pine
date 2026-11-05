@@ -1,0 +1,12 @@
+//@version=6
+strategy("OHLCV bands — Solana")
+[basis, upper, lower] = ta.bb(hlc3, 20, 2.0)
+atr = ta.atr(14)
+longSignal = ta.crossover(close, lower)
+shortSignal = ta.crossunder(close, upper)
+if longSignal and volume > 0
+    strategy.entry("Long", strategy.long)
+if shortSignal and volume > 0
+    strategy.entry("Short", strategy.short)
+plot(basis, "Basis")
+plot(atr, "ATR")

@@ -1,0 +1,11 @@
+//@version=6
+strategy("RSI signals — Solana", default_qty_value=1)
+length = input.int(14, "RSI length", minval=1, maxval=128)
+rsiValue = ta.rsi(close, length)
+longSignal = ta.crossover(rsiValue, 30)
+shortSignal = ta.crossunder(rsiValue, 70)
+if longSignal
+    strategy.entry("Long", strategy.long)
+if shortSignal
+    strategy.entry("Short", strategy.short)
+plot(rsiValue, "RSI")

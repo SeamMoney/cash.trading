@@ -1,0 +1,8 @@
+//@version=6
+indicator("Explicit indicator mapping")
+fast = ta.sma(close, 5)
+slow = ta.sma(close, 10)
+buy = ta.crossover(fast, slow)
+sell = ta.crossunder(fast, slow)
+plot(fast)
+plot(slow)

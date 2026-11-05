@@ -103,3 +103,7 @@ dev.db
 .sealed-e2e-*/
 
 .portfolio-cleanroom-testnet/
+
+# Local Pine-to-Solana compilation products
+**/target/
+!tests/solana-vm/package-lock.json

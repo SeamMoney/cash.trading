@@ -1,0 +1,5 @@
+//@version=6
+strategy("Requires external timeframe adapter")
+higherClose = request.security(syminfo.tickerid, "60", close[1], lookahead=barmerge.lookahead_on)
+if close > higherClose
+    strategy.entry("Long", strategy.long)

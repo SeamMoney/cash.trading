@@ -1,0 +1,10 @@
+//@version=6
+strategy("MACD signals — Solana")
+[macdLine, signalLine, histogram] = ta.macd(close, 12, 26, 9)
+goLong = ta.crossover(macdLine, signalLine)
+goShort = ta.crossunder(macdLine, signalLine)
+if goLong
+    strategy.entry("Long", strategy.long)
+if goShort
+    strategy.entry("Short", strategy.short)
+plot(histogram, "Histogram")

@@ -59,7 +59,12 @@
     "test:sealed-deploy": "tsx scripts/sealed-mainnet-deploy-guard-selftest.ts",
     "sealed:publish": "tsx scripts/sealed-e2e-deploy.ts publish",
     "sealed:preflight-mainnet": "tsx scripts/sealed-e2e-deploy.ts preflight-mainnet --network mainnet",
-    "demo:automation": "tsx scripts/bot-automation-demo.ts"
+    "demo:automation": "tsx scripts/bot-automation-demo.ts",
+    "pine:solana": "tsx scripts/pine-solana.ts",
+    "test:pine-solana": "tsx --test tests/pine-solana*.test.ts",
+    "typecheck:pine-solana": "tsc -p tsconfig.pine-solana.json",
+    "pine:solana:parity": "tsx scripts/pine-solana-parity.ts",
+    "pine:solana:sync-runtime": "tsx scripts/pine-solana-sync-runtime.ts"
   },
   "dependencies": {
     "@aptos-labs/derived-wallet-ethereum": "^0.9.2",

@@ -1,0 +1,91 @@
+{
+  "date": "2026-11-05",
+  "status": "experimental-confirmed-bar-order-intent-compiler",
+  "typescript": {
+    "tests": 152,
+    "passed": 152,
+    "typecheck": "passed",
+    "bundledRuntimeSync": "passed"
+  },
+  "nativeRust": {
+    "tests": 38,
+    "passed": 38,
+    "runtimeTests": 9,
+    "generatedGraphAndDifferentialTests": 29,
+    "differential": {
+      "fixtures": 14,
+      "bars": 1627,
+      "graphValues": 57316,
+      "scope": "TypeScript-versus-generated-native-Rust; not-independent-TradingView-conformance",
+      "fixturesByName": [
+        "ema-cross",
+        "rsi",
+        "macd",
+        "ohlcv-bands",
+        "history_and_persistence",
+        "missing_windows",
+        "functions",
+        "legacy_bool",
+        "math",
+        "bounded_loop",
+        "large_state",
+        "large_comparisons",
+        "rma_overflow_atomic",
+        "indicator_mapping"
+      ]
+    }
+  },
+  "solanaVM": {
+    "ema-cross": {
+      "scope": "local-LiteSVM-SBF-v3",
+      "sourceHash": "a93880ee815110b6121ac177ece45218ffdadacf0ef417a19b3d5c15317d3bdd",
+      "configHash": "aa0b838a38da1bdeb37a70f4f4e9042dbd530929bc305b4688699d7f14d2634d",
+      "binarySha256": "02fc2ba65447b6202e0a5431396d7460d840aaf324dc089541a781b2a249014c",
+      "binaryBytes": 226536,
+      "graphNodes": 34,
+      "numericStateBytes": 16,
+      "accountBytes": 214,
+      "bars": 240,
+      "orderIntentEvents": 12,
+      "initComputeUnits": 9341,
+      "maxBarComputeUnits": 15668,
+      "meanBarComputeUnits": 14917.029166666667,
+      "heapFrame": "default-32-KiB",
+      "transactionComputeLimit": 1400000,
+      "deployedToNetwork": false
+    },
+    "resource-boundary": {
+      "scope": "local-LiteSVM-SBF-v3",
+      "sourceHash": "06fde374a846fa9ae8b71a008ed4b90411c84d48af2d0a18e7b0ef7d721d976c",
+      "configHash": "34594152c64d050aa44dd013ea1bb73cc8aa1ab8dd6c172a3b77c255c9374898",
+      "binarySha256": "ac7516c4db503b386772a88b0156a92215cc65932745f3263b44a7f2c0ee10d7",
+      "binaryBytes": 245976,
+      "graphNodes": 256,
+      "numericStateBytes": 7200,
+      "accountBytes": 7398,
+      "bars": 240,
+      "orderIntentEvents": 3840,
+      "initComputeUnits": 77452,
+      "maxBarComputeUnits": 220535,
+      "meanBarComputeUnits": 182335.075,
+      "heapFrame": "default-32-KiB",
+      "transactionComputeLimit": 1400000,
+      "deployedToNetwork": false
+    }
+  },
+  "toolchain": {
+    "node": "24.22.1",
+    "typescript": "5.9.3",
+    "tsx": "4.20.6",
+    "rustNative": "1.99.1",
+    "cargoBuildSbf": "4.5.0",
+    "platformTools": "v1.57",
+    "rustSbf": "1.95.0",
+    "architecture": "SBF v3",
+    "anchorLang": "0.31.1",
+    "liteSvm": "1.6.2"
+  },
+  "networkDeployment": false,
+  "tradingViewCertification": false,
+  "entireApplicationBuildRun": false
+}

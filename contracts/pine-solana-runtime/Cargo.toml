@@ -1,0 +1,11 @@
+[package]
+name = "pine-solana-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Bounded, deterministic bar evaluation for compiled Pine strategies"
+
+[dependencies]
+libm = "=0.2.15"
+
+[workspace]

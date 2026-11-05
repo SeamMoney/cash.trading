@@ -1,0 +1,14 @@
+//@version=6
+strategy("EMA crossover — Solana", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+fastLength = input.int(9, "Fast", minval=1, maxval=128)
+slowLength = input.int(21, "Slow", minval=1, maxval=128)
+fast = ta.ema(close, fastLength)
+slow = ta.ema(close, slowLength)
+longSignal = ta.crossover(fast, slow)
+shortSignal = ta.crossunder(fast, slow)
+if longSignal
+    strategy.entry("Long", strategy.long)
+if shortSignal
+    strategy.entry("Short", strategy.short)
+plot(fast, "Fast EMA", color=color.aqua)
+plot(slow, "Slow EMA", color=color.orange)

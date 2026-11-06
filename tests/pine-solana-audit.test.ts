@@ -76,7 +76,7 @@ test("unused input metadata cannot hide unsupported execution expressions", () =
 });
 
 test("ta.tr handle_na must not silently turn a dynamic value into false", () => {
-  reject("range = ta.tr(close > open)");
+  reject("trueRange = ta.tr(close > open)");
 });
 
 test("function-local declared types are validated", () => {
@@ -208,14 +208,14 @@ test("input declaration count is bounded even when string inputs need no graph n
 });
 
 test("resolved input string aliases share an aggregate UTF-8 metadata budget", () => {
-  const acceptedBody = `text = "${"a".repeat(1024)}"\n` + Array.from({ length: 60 }, (_, i) => `setting${i} = input.string(text)`).join("\n");
+  const acceptedBody = `textValue = "${"a".repeat(1024)}"\n` + Array.from({ length: 60 }, (_, i) => `setting${i} = input.string(textValue)`).join("\n");
   assert.equal(Object.keys(accept(acceptedBody).inputs).length, 60);
-  const rejected = reject(`text = "${"é".repeat(20_000)}"\na = input.string(text)\nb = input.string(text)`);
+  const rejected = reject(`textValue = "${"é".repeat(20_000)}"\na = input.string(textValue)\nb = input.string(textValue)`);
   assert.ok(rejected.diagnostics.some(issue => issue.code === "INPUT_METADATA_LIMIT"), details(rejected));
 });
 
 test("repeated presentation aliases and resolved overrides consume the same metadata budget", () => {
-  const presentation = reject(`text = "${"😀".repeat(5000)}"\na = input.string("", title=text, tooltip=text, group=text, inline=text)`);
+  const presentation = reject(`textValue = "${"😀".repeat(5000)}"\na = input.string("", title=textValue, tooltip=textValue, group=textValue, inline=textValue)`);
   assert.ok(presentation.diagnostics.some(issue => issue.code === "INPUT_METADATA_LIMIT"), details(presentation));
   const body = Array.from({ length: 17 }, (_, i) => `setting${i} = input.string("")`).join("\n");
   const overrides = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`setting${i}`, "a".repeat(4096)]));
@@ -224,7 +224,7 @@ test("repeated presentation aliases and resolved overrides consume the same meta
 });
 
 test("compile API rejects input-alias amplification with 422 and a bounded artifact-free response", async () => {
-  const body = `text = "${"a".repeat(6000)}"\n` + Array.from({ length: 200 }, (_, i) => `setting${i} = input.string(text)`).join("\n");
+  const body = `textValue = "${"a".repeat(6000)}"\n` + Array.from({ length: 200 }, (_, i) => `setting${i} = input.string(textValue)`).join("\n");
   const pineScript = strategy(body);
   assert.ok(Buffer.byteLength(pineScript, "utf8") < 16_000, "Regression source should remain much smaller than the request limit");
   const response = await POST(new Request("http://localhost/api/launchpad/compile-solana", { method: "POST", body: JSON.stringify({ pineScript }) }));
@@ -246,7 +246,7 @@ test("constant folding visits shared graph nodes once and rejects overflow withi
   const code = `
     const { compilePineToSolana } = require(${JSON.stringify(compilerPath)});
     function source(operator) {
-      return ['//@version=6', 'strategy("DAG")', 'v0 = 2',
+      return ['//@version=6', 'strategy("DAG")', 'v0 = 2.0',
         ...Array.from({length: 200}, (_, i) => 'v' + (i + 1) + ' = v' + i + ' ' + operator + ' v' + i),
         'strategy.entry("L", strategy.long, qty=v200)'].join('\\n');
     }

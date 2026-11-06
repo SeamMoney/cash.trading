@@ -189,7 +189,11 @@ const PRECEDENCE: Readonly<Record<string, number>> = Object.freeze({
 });
 const ASSIGNMENTS = new Set([":=", "+=", "-=", "*=", "/=", "%="]);
 const UNSUPPORTED_STATEMENTS = new Set(["type", "method", "import", "export", "enum", "switch", "break", "continue"]);
-const RESERVED = new Set(["if", "else", "for", "to", "by", "in", "while", "var", "varip", "true", "false", "na", "and", "or", "not", ...UNSUPPORTED_STATEMENTS]);
+const RESERVED = new Set(["if", "else", "for", "to", "by", "while", "var", "varip", "true", "false", "na", "and", "or", "not", ...UNSUPPORTED_STATEMENTS]);
+// Pine v5 added these restrictions on user-defined variable/function names.
+// They do not forbid built-in argument names (e.g. plotshape(text = "buy"))
+// or the text.* namespace, and they must not invalidate v4 identifiers.
+const V5_RESERVED_NAMES = new Set(["catch", "class", "do", "ellipse", "in", "is", "polygon", "range", "return", "struct", "text", "throw", "try"]);
 
 class Parser {
   private readonly tokens: Token[];
@@ -198,7 +202,7 @@ class Parser {
   private nodes = 0;
   private expressionIndent = 0;
   readonly diagnostics: PineDiagnostic[] = [];
-  constructor(tokens: Token[]) { this.tokens = tokens; }
+  constructor(tokens: Token[], private readonly version: number) { this.tokens = tokens; }
 
   private current(n = 0): Token { return this.tokens[Math.min(this.position + n, this.tokens.length - 1)]; }
   private previous(): Token { return this.tokens[Math.max(0, this.position - 1)]; }
@@ -217,9 +221,15 @@ class Parser {
   private describe(token: Token): string {
     return token.kind === "eof" ? "end of source" : token.kind === "newline" ? "end of line" : `'${token.text}'`;
   }
-  private identifier(): Token {
+  private bindingName(token: Token): void {
+    if (this.version >= 5 && V5_RESERVED_NAMES.has(token.text)) {
+      this.failure("PINE_RESERVED_IDENTIFIER", `'${token.text}' is reserved in Pine v5 and v6 and cannot name a variable, parameter, or function.`, token);
+    }
+  }
+  private identifier(binding = false): Token {
     const token = this.current();
     if (token.kind !== "identifier" || RESERVED.has(token.text)) this.failure("PINE_SYNTAX", `Expected an identifier, found ${this.describe(token)}.`);
+    if (binding) this.bindingName(token);
     return this.consume();
   }
   private skipNewlines(): void { while (this.current().kind === "newline") this.consume(); }
@@ -247,6 +257,9 @@ class Parser {
     if (this.tokens[next].kind === "eof" || this.tokens[next].span.column - 1 <= this.expressionIndent) {
       this.failure("PINE_SYNTAX", "An expression continuation must be indented after this operator.");
     }
+    if ((this.tokens[next].span.column - 1) % 4 === 0) {
+      this.failure("PINE_INDENTATION", "A wrapped expression outside parentheses or brackets cannot begin at a four-space block boundary.", this.tokens[next]);
+    }
     this.position = next;
   }
   private optionalContinuation(): void {
@@ -254,13 +267,15 @@ class Parser {
     const next = this.nextLineTokenIndex();
     const token = this.tokens[next];
     if (token.span.column - 1 <= this.expressionIndent) return;
-    // At an ordinary four-space block boundary, +x/-x can be a new
-    // expression statement (notably a function return). Only non-block
-    // indentation can establish a leading-sign continuation without an
-    // already-open delimiter or a trailing operator.
-    if ((token.text === "+" || token.text === "-") && (token.span.column - 1) % 4 === 0) return;
     if ((token.kind === "operator" || token.kind === "identifier") &&
         (Object.prototype.hasOwnProperty.call(PRECEDENCE, token.text) || token.text === "?" || token.text === ":")) {
+      if ((token.span.column - 1) % 4 === 0) {
+        // +x/-x may instead start a block's expression (notably a return).
+        // Every other leading binary/ternary operator here is an invalid
+        // line wrap. Newlines inside delimiters are suppressed by lex().
+        if (token.text === "+" || token.text === "-") return;
+        this.failure("PINE_INDENTATION", "A wrapped expression outside parentheses or brackets cannot begin at a four-space block boundary.", token);
+      }
       this.position = next;
     }
   }
@@ -351,7 +366,7 @@ class Parser {
 
   private forStatement(indent: number): PineStmt {
     const start = this.expect("for").span;
-    const variable = this.identifier().text;
+    const variable = this.identifier(true).text;
     if (this.is("in")) this.failure("PINE_UNSUPPORTED_SYNTAX", "Collection for-in loops require the collection runtime, which is not implemented yet.");
     this.expect("=");
     const from = this.expression();
@@ -377,12 +392,12 @@ class Parser {
   }
 
   private functionStatement(indent: number): PineStmt {
-    const start = this.identifier();
+    const start = this.identifier(true);
     this.expect("(");
     const params: string[] = [];
     while (!this.is(")")) {
       if (this.current().kind === "eof") this.failure("PINE_SYNTAX", "Unterminated function parameter list.");
-      const name = this.identifier();
+      const name = this.identifier(true);
       if (this.current().kind === "identifier") {
         this.failure("PINE_UNSUPPORTED_SYNTAX", "Typed or qualified function parameters are not implemented; parameter type information must not be silently discarded.", name);
       }
@@ -410,7 +425,7 @@ class Parser {
       typeName = this.identifier().text;
     }
     if (this.current().kind === "identifier" && this.current(1).text === "=") {
-      const name = this.identifier().text;
+      const name = this.identifier(true).text;
       this.expect("=");
       this.requiredContinuation();
       const value = this.expression();
@@ -420,11 +435,11 @@ class Parser {
     if (this.is("[")) {
       const saved = this.position;
       this.consume();
-      const names: string[] = [];
+      const targets: Token[] = [];
       let isDeclaration = true;
       while (!this.is("]") && this.current().kind !== "eof") {
         if (this.current().kind !== "identifier" || RESERVED.has(this.current().text)) { isDeclaration = false; break; }
-        names.push(this.consume().text);
+        targets.push(this.consume());
         if (this.is("]")) break;
         if (!this.is(",")) { isDeclaration = false; break; }
         this.consume();
@@ -433,6 +448,8 @@ class Parser {
       if (this.is("]")) this.consume();
       else isDeclaration = false;
       if (isDeclaration && this.is("=")) {
+        targets.forEach(target => this.bindingName(target));
+        const names = targets.map(target => target.text);
         if (!names.length) this.failure("PINE_SYNTAX", "A tuple declaration cannot be empty.");
         const unique = names.filter(name => name !== "_");
         if (new Set(unique).size !== unique.length) this.failure("PINE_DUPLICATE_TARGET", "Tuple declaration names must be distinct; '_' may be repeated.");
@@ -446,7 +463,7 @@ class Parser {
     }
     if (mode !== "normal" || typeName) this.failure("PINE_SYNTAX", "A variable declaration requires a name and '=' initializer.");
     if (this.current().kind === "identifier" && ASSIGNMENTS.has(this.current(1).text)) {
-      const name = this.identifier().text;
+      const name = this.identifier(true).text;
       const operator = this.consume().text as Extract<PineStmt, { kind: "assign" }>["operator"];
       this.requiredContinuation();
       const value = this.expression();
@@ -535,6 +552,9 @@ class Parser {
         const close = this.expect(")");
         expression = this.node({ kind: "call", name: expression.name, args, kwargs, span: through(expression.span, close.span) });
       } else if (this.is("[")) {
+        if (expression.kind === "history") {
+          this.failure("PINE_HISTORY_CHAIN", "The history operator cannot be applied twice to the same value. Declare an intermediate series before referencing its history.");
+        }
         this.consume();
         const offset = this.expression();
         const close = this.expect("]");
@@ -580,6 +600,7 @@ class Parser {
     if (token.kind === "identifier") {
       if (UNSUPPORTED_STATEMENTS.has(token.text)) this.failure("PINE_UNSUPPORTED_SYNTAX", `'${token.text}' expressions are not implemented yet.`);
       if (RESERVED.has(token.text) && token.text !== "na") this.failure("PINE_SYNTAX", `Expected an expression, found '${token.text}'.`);
+      if (!(token.text === "text" && this.current(1).text === ".")) this.bindingName(token);
       this.consume();
       return this.node({ kind: "identifier", name: token.text, span: token.span });
     }
@@ -611,7 +632,7 @@ export function parseStrictPine(source: string): PineProgram {
     const scanned = lex(normalized);
     result.diagnostics.push(...scanned.diagnostics);
     if (scanned.diagnostics.length) return result;
-    const parser = new Parser(scanned.tokens);
+    const parser = new Parser(scanned.tokens, result.version);
     result.statements = parser.parse();
     result.diagnostics.push(...parser.diagnostics);
   } catch (error) {

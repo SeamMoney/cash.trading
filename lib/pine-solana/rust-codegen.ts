@@ -1,4 +1,5 @@
 import type { ProgramIR, Op } from "./ir";
+import { validateProgramIR } from "./validate-ir";
 import { RUST_RUNTIME_SOURCE, RUST_RUNTIME_CARGO, RUST_WORKSPACE_LOCKFILE } from "../../contracts/pine-solana-runtime/source";
 
 const DEFAULT_PROGRAM_ID = "Fg6PaFpoGXkYsidMpWxTWqkZqVhjZnSQ9bV2EjtnrJvJ";
@@ -41,14 +42,14 @@ function hashBytes(hash: string): string {
   return `[${hash.match(/../g)!.map(x => "0x" + x).join(", ")}]`;
 }
 function index(value: number): number {
-  if (!Number.isSafeInteger(value)) throw new Error("IR node indexes must be integers");
-  return Math.max(0, value);
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("IR node indexes must be nonnegative integers");
+  return value;
 }
 
 /** Emit source artifacts only. This function never builds, signs, funds, or deploys a program. */
 export function generateRustFiles(ir: ProgramIR, programId = DEFAULT_PROGRAM_ID): Record<string, string> {
+  validateProgramIR(ir);
   if (!validPublicKey(programId)) throw new Error("programId must be a base58-encoded 32-byte Solana public key");
-  if (ir.version !== 1 || ir.nodes.length === 0 || ir.nodes.length > 256 || ir.layouts.length !== ir.nodes.length || ir.orders.length > 16 || !Number.isSafeInteger(ir.stateCells) || ir.stateCells < 0 || ir.stateCells > 900) throw new Error("IR exceeds the bounded Solana runtime limits");
   const sourceHash = hashBytes(ir.sourceHash), configHash = hashBytes(ir.configHash);
   const nodes = ir.nodes.map(n => `    Node { op: Op::${opName(n.op)}, boolean: ${n.type === "bool"}, a: ${index(n.a)}, b: ${index(n.b)}, c: ${index(n.c)}, value: ${rustNumber(n.value)}, period: ${index(n.period)} },`).join("\n");
   const layouts = ir.layouts.map(l => `    Layout { history_offset: ${index(l.historyOffset)}, history_length: ${index(l.historyLength)}, aux_offset: ${index(l.auxOffset)}, aux_length: ${index(l.auxLength)} },`).join("\n");

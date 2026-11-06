@@ -144,8 +144,8 @@ fast = ta.sma(
     close, // actual OHLC source
     5)
 go = close >
-    fast and
-    volume > 0
+   fast and
+   volume > 0
 label = go
    ? "go"
    : "wait"
@@ -164,7 +164,7 @@ inputLength = input.int(
 });
 
 test("strings, booleans, zero, na and numeric exponents are never coerced", () => {
-  const program = parsed(`text = input.string("first\\nsecond")
+  const program = parsed(`textValue = input.string("first\\nsecond")
 enabled = input.bool(false)
 zero = 0
 missing = na
@@ -200,7 +200,7 @@ test("hex color literals remain distinct from string literals with identical tex
 });
 
 test("string escapes use Pine's documented meanings rather than JavaScript control escapes", () => {
-  const program = parsed(String.raw`text = "\r\b\f\T\n\t\\\""`);
+  const program = parsed(String.raw`textValue = "\r\b\f\T\n\t\\\""`);
   const text = expression(statement(program, 0, "declare").value, "literal");
   assert.equal(text.value, 'rbfT\n\t\\"');
 });

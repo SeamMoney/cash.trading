@@ -334,7 +334,7 @@ test("input overrides change the actual recurrence and hash, not just the manife
 });
 
 test("input overrides and display metadata cannot hide unsupported source or bypass options", () => {
-  rejected(strategy('text=input.string("a", options=["a", "b"])'), "INPUT_OPTIONS", { inputs: { text: "c" } });
+  rejected(strategy('textValue=input.string("a", options=["a", "b"])'), "INPUT_OPTIONS", { inputs: { textValue: "c" } });
   rejected(strategy('n=input.int(2, title=unknownIdentifier)'));
   rejected(strategy('n=input.int(ta.hma(close, 3))'), "UNSUPPORTED_TA", { inputs: { n: 2 } });
   rejected(strategy('n=input.int(close)'), "INPUT_DEFAULT", { inputs: { n: 2 } });

@@ -6,6 +6,8 @@ The compiler does **not** claim universal Pine compatibility. Supported source p
 
 See [the compatibility specification](PINE_SOLANA_COMPATIBILITY.md) for the implemented feature set and the boundary of the claim.
 
+Compiler **0.2.0** hardens language semantics, integer ranges, serialized graphs, and saved state. Its configuration commitment is incompatible with 0.1.0. Recompile the original Pine source and replay the intended history when migrating; old graphs and snapshots are rejected rather than silently interpreted under new rules. [The core change record](PINE_SOLANA_CORE_CHANGES.md) explains the fixes and their regression coverage.
+
 ## What was found in cash.trading
 
 The starting repository commit was `350802de52894b7c14b7c84ad9694f8fe9993227`.
@@ -119,7 +121,9 @@ Source/configuration hashes commit to the source and graph configuration, not th
 
 ## Numeric profile and history
 
-The experimental native profile uses f64 arithmetic, explicit missing values, bounded per-series rings, and per-call rolling state. Floating-point calculations are not represented by arbitrary unsigned token amounts. Rust storage serializes numeric bits as integers so missing values can be persisted without relying on a serializer accepting NaN floats.
+The experimental native profile uses f64 arithmetic, explicit missing values, bounded per-series rings, and per-call rolling state. Computed Pine integers are restricted to the exact range from `-9007199254740991` through `9007199254740991`: known violations reject compilation and executed dynamic violations reject the entire bar. Floating-point calculations are not represented by arbitrary unsigned token amounts. Rust storage serializes numeric bits as integers so missing values can be persisted without relying on a serializer accepting NaN floats.
+
+Loading exported IR verifies the current compiler version, operation types and dependency order, history/auxiliary storage, nonoverlapping state ranges, order structure, bounded metadata, and a recomputed SHA-256 configuration commitment. The simulator copies the validated graph so later caller mutation cannot change execution. Snapshot validation also checks ring counts/heads, sample occupancy, boolean history, and recursive-average seed state. These checks establish structural integrity; they do not authenticate a snapshot's claimed candle history or prove that an arbitrary graph was derived from its claimed source.
 
 The compiler permits at most 256 graph nodes, 128 input declarations, 16 order sites, 64 UTF-8 bytes per order identifier, 7,200 bytes of numeric state, and 32 iterations per statically unrolled loop. Resolved input names, string/source values and presentation text share a 65,536-byte UTF-8 budget, including repeated use of aliases. Its default history/period bound is 128; the maximum configurable bound is 1,024, still subject to the state limit. Pine v6 loops that change a dependency of their end bound are rejected. These are compiler bounds, not measured Solana compute-unit estimates. The Pine declaration's `max_bars_back` presentation/configuration argument does not override the compiler's `maxHistory` option.
 
@@ -140,7 +144,7 @@ cargo check --locked --manifest-path build/ema-cross/Cargo.toml -p pine-strategy
 
 The corpus command visits `.pine` files under the supplied directory, skipping hidden entries and `node_modules`, `target` and `build` directories. It bounds the scan to 10,000 files and 20 directory levels. The report records acceptance status and diagnostic codes for the scanned corpus; it does not claim that the examples represent TradingView's entire public library. The same options apply to every file in a corpus run, so an indicator without its explicit signal mapping is expected to be rejected.
 
-The recorded native differential run passed **14 fixtures covering 1,627 successful bar evaluations and 57,316 graph values**, including histories, persistent state, missing samples, mathematical operations, distinct function calls, version differences, large state and invalid-state rejection. The current native suite contains **38 Rust tests**: 9 runtime tests and 29 generated graph/differential tests. These checks describe TypeScript/Rust consistency for this fixture set. They are not results from an independent Pine oracle. [The verification record](PINE_SOLANA_VERIFICATION.md) is authoritative for the final run's pass status and counts, and for binary-specific SBF/VM measurements.
+Native differential tests compare graph values, every persisted state cell and its missing-value mask, and ordered intent kinds/identifiers/sides/quantities. Selected numerical boundary fixtures require exact f64 agreement. These checks describe TypeScript/Rust consistency for the supplied fixture set; they are not results from an independent Pine oracle. [The verification record](PINE_SOLANA_VERIFICATION.md) contains the current pass counts, coverage, binary hashes and SBF/VM measurements.
 
 The native run used Rust 1.99.1. The generated EMA example also completed an **SBF v3 build** using `cargo-build-sbf` 4.5.0 with platform tools v1.57, whose compiler reports Rust 1.95. Reproduce the SBF build and then run the local VM harness separately:
 
@@ -151,10 +155,11 @@ cargo build-sbf \
   --tools-version v1.57
 
 npm ci --prefix tests/solana-vm
+pnpm pine:solana:sbf-reference build/ema-cross
 node --test tests/solana-vm/runtime.test.mjs
 ```
 
-The VM harness loads `build/ema-cross/target/deploy/pine_strategy.so` into local LiteSVM. Its isolated dependencies pin LiteSVM 1.6.2, `@solana/web3.js` 1.98.4 and `@solana/kit` 8.6.0. A successful replay writes the binary hash, fixture-specific compute measurements and account size to `build/ema-cross/svm-report.json`. These local commands do not deploy to a network. An SBF v3 artifact requires a compatible target runtime; successful compilation alone establishes neither transaction success nor compatibility with every cluster configuration.
+The VM harness loads `build/ema-cross/target/deploy/pine_strategy.so` into local LiteSVM. It compares persisted state and the complete ordered event stream against source/configuration/dataset-bound expectations generated by `pine:solana:sbf-reference`. This remains backend parity, not independent Pine conformance. Its isolated dependencies pin LiteSVM 1.6.2, `@solana/web3.js` 1.98.4 and `@solana/kit` 8.6.0. A successful replay writes the binary hash, fixture-specific compute measurements and account size to `build/ema-cross/svm-report.json`. These local commands do not deploy to a network. An SBF v3 artifact requires a compatible target runtime; successful compilation alone establishes neither transaction success nor compatibility with every cluster configuration.
 
 There are different levels of evidence:
 
@@ -193,7 +198,47 @@ The new runtime is **not** used as an independent Pine oracle. An identical mist
 }
 ```
 
-Replace the example with actual independently obtained data; it is a schema illustration, not a captured TradingView export. The verifier validates the provenance fields but does not independently authenticate their claimed origin. Preserve enough earlier history to reproduce initialization. Default numeric comparison tolerances are 1e-8 absolute plus 1e-8 relative; booleans and missing-value masks must match exactly. The report identifies the origin, values checked, dataset size and up to 100 mismatch examples. This command compares named outputs, not broker fills or every emitted intent. A passing result applies only to the named series and supplied dataset, not all Pine programs.
+Replace the example with actual independently obtained data; it is a schema illustration, not a captured TradingView export. The verifier validates the provenance fields but does not independently authenticate their claimed origin. Preserve enough earlier history to reproduce initialization. Default numeric comparison tolerances are 1e-8 absolute plus 1e-8 relative; booleans and missing-value masks must match exactly. The comparison avoids overflow at extreme finite values. Reports include source/configuration identities, the full mismatch count, up to 100 examples, and per-series checked/missing/mismatch counts. This command compares named outputs, not broker fills or every emitted intent. A passing result applies only to the named series and supplied dataset, not all Pine programs.
+
+### Import a TradingView CSV reference
+
+TradingView's chart export includes time, OHLC and plotted series. Plot titles become column headers, and `plotshape()` can export boolean conditions as 0/1. Use an explicit mapping so duplicate titles, guessed timestamp units, or absent volume cannot silently change the dataset. [TradingView export documentation](https://www.tradingview.com/pine-script-docs/faq/indicators/#is-it-possible-to-export-indicator-data-to-a-file)
+
+Create a mapping like this, replacing the hash placeholders with the manifest identities for the exact source and inputs used when capturing the export. The timestamp below is illustrative; record the real capture time.
+
+```json
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "origin": "tradingview-export",
+    "sourceHash": "COPY_SOURCE_HASH_FROM_CAPTURE_CONFIGURATION",
+    "configHash": "COPY_CONFIG_HASH_FROM_CAPTURE_CONFIGURATION",
+    "symbol": "EXCHANGE:SOLUSD",
+    "timeframe": "1",
+    "capturedAt": "2026-11-06T00:00:00Z"
+  },
+  "timeFormat": "unix-seconds",
+  "columns": {
+    "time": "time", "open": "open", "high": "high",
+    "low": "low", "close": "close", "volume": "Volume"
+  },
+  "outputs": { "fast": "Fast EMA", "slow": "Slow EMA" }
+}
+```
+
+```bash
+pnpm pine:solana import-reference examples/pine-solana/ema-cross.pine \
+  --csv chart.csv --mapping mapping.json --out build/reference.json
+
+pnpm pine:solana verify examples/pine-solana/ema-cross.pine \
+  --reference build/reference.json --out build/reference-report.json
+```
+
+Supply the same `--options` file to both commands when using input overrides. `outputs` maps compiled variable names to exact CSV column headers; it does not infer names from plots. Map an exported volume series explicitly. If the CSV lacks volume, capture it from the same dataset; the importer does not fill it with zero. Supported time formats are `unix-seconds`, `unix-milliseconds` and `iso8601`. ISO values require a timezone; numeric timestamps must convert to exact integer milliseconds. The importer follows the declared units and does not guess based on magnitude.
+
+Blank, `na`, and `NaN` **output** cells become missing values. Missing candle fields, invalid OHLCV, duplicate timestamps, malformed quoting, duplicate headers, and changing row widths reject the import. No row is dropped or replaced. Input is bounded to 16 MiB, 512 columns, 100,000 data rows and two million cells/mapped values; imported and directly supplied references also have a conservative 128 MiB serialization budget that includes repeated output names. Expected outputs come only from the supplied file; import does not run the strategy to manufacture them.
+
+Retain the dataset start and initialization history. A visible-window export whose indicators were seeded on earlier, omitted bars can legitimately mismatch. The verifier does not hide that mismatch by discarding warmup, shifting timestamps, or retuning inputs. Synthetic CSV tests in this repository are labeled hand-calculated; they are not TradingView captures.
 
 CLI exit codes are `0` for success, `1` for malformed invocation/input or another thrown error, `2` for compilation rejection, and `3` for a completed reference comparison with mismatches. A corpus report may contain rejected scripts while the report command itself succeeds.
 

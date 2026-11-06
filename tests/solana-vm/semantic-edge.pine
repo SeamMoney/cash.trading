@@ -1,0 +1,21 @@
+//@version=6
+strategy("Core semantic boundaries")
+tiny = close / 1000000000000.0
+hasValue = bool(tiny)
+truncated = int(-tiny)
+rounded = math.round(4503599627370497.0)
+roundedPrior = rounded[1]
+length = 1.0000000001 == 1.0 ? 1 : 2
+average = ta.sma(close, length)
+var float total = 0.0
+total += 1.0
+previousTotal = total[1]
+integerClose = int(close)
+integerDelta = ta.change(integerClose)
+previousIntegerDelta = integerDelta[1]
+if hasValue
+    strategy.entry("tiny", strategy.long, qty=rounded - 4503599627370496.0)
+if bar_index % 2 == 0
+    strategy.close("tiny")
+if bar_index % 3 == 0
+    strategy.close_all()

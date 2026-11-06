@@ -1,0 +1,71 @@
+name: Pine to Solana core
+
+on:
+  push:
+    branches: [main, work/pine-solana-core]
+    paths:
+      - "lib/pine-solana/**"
+      - "contracts/pine-solana-runtime/**"
+      - "app/api/launchpad/compile-solana/**"
+      - "scripts/pine-solana*.ts"
+      - "tests/pine-solana*.test.ts"
+      - "tests/solana-vm/**"
+      - "examples/pine-solana/**"
+      - "tsconfig.pine-solana.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/pine-solana-core.yml"
+  pull_request:
+    paths:
+      - "lib/pine-solana/**"
+      - "contracts/pine-solana-runtime/**"
+      - "app/api/launchpad/compile-solana/**"
+      - "scripts/pine-solana*.ts"
+      - "tests/pine-solana*.test.ts"
+      - "tests/solana-vm/**"
+      - "examples/pine-solana/**"
+      - "tsconfig.pine-solana.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/pine-solana-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pine-solana-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler:
+    name: Compiler semantics and native parity
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check compiler, reference import, and generated source
+        run: |
+          pnpm typecheck:pine-solana
+          pnpm test:pine-solana
+          pnpm pine:solana:sync-runtime --check
+      - name: Install native Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Compare generated Rust values, state and ordered intents
+        run: |
+          pnpm pine:solana:parity
+          cargo +1.99.1 test --manifest-path build/pine-solana-parity/Cargo.toml --locked
+      - name: Preserve parity measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: pine-solana-native-parity
+          path: build/pine-solana-parity/differential-manifest.json
+          if-no-files-found: error

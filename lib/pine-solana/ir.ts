@@ -1,11 +1,11 @@
 /** Versioned, bounded graph shared by the TypeScript evaluator and Rust backend. */
-export const SOLANA_COMPILER_VERSION = "0.1.0";
+export const SOLANA_COMPILER_VERSION = "0.2.0";
 export const IR_VERSION = 1;
 export type ValueType = "number" | "bool";
 export type Op =
   | "const" | "open" | "high" | "low" | "close" | "volume" | "time" | "bar_index"
   | "add" | "sub" | "mul" | "div" | "mod" | "neg" | "abs" | "min" | "max"
-  | "floor" | "ceil" | "round" | "sqrt" | "sign" | "is_na" | "nz"
+  | "floor" | "ceil" | "round" | "sqrt" | "sign" | "checked_int" | "is_na" | "nz"
   | "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "and" | "or" | "not" | "select"
   | "history" | "persistent" | "sma" | "ema" | "rma" | "highest" | "lowest" | "stdev" | "variance" | "sum" | "wma";
 export interface Node {

@@ -4,6 +4,7 @@ import { resolve, dirname, join, relative, sep } from "node:path";
 import { compilePineToSolana } from "../lib/pine-solana/compiler";
 import { replayPine } from "../lib/pine-solana/runtime";
 import { validateCompileOptions, verifyReferenceTrace } from "../lib/pine-solana/validation";
+import { importReferenceCsv } from "../lib/pine-solana/reference-csv";
 import type { Bar } from "../lib/pine-solana/ir";
 
 const help = `Pine -> Solana compiler (experimental confirmed-bar order intents)
@@ -12,6 +13,7 @@ const help = `Pine -> Solana compiler (experimental confirmed-bar order intents)
   pnpm pine:solana compile strategy.pine --out build/strategy [--options options.json]
   pnpm pine:solana simulate strategy.pine --bars candles.json [--out trace.json]
   pnpm pine:solana verify strategy.pine --reference reference.json [--out report.json]
+  pnpm pine:solana import-reference strategy.pine --csv chart.csv --mapping mapping.json --out reference.json
   pnpm pine:solana corpus path/to/scripts [--out coverage.json]
 
 Options JSON accepts inputs, explicit indicator signals, maxHistory, maxStateBytes,
@@ -19,6 +21,7 @@ and programId. compile creates Rust/Anchor source, source/config commitments and
 It does not deploy, create a wallet, send transactions, or execute trades.
 Every candle JSON row has time (milliseconds), open, high, low, close and volume.
 verify consumes a source/config-bound ReferenceTrace; see docs/PINE_SOLANA.md.
+import-reference maps exported CSV columns explicitly; it never generates expected values.
 `;
 async function output(value: unknown, path?: string) {
   const content = JSON.stringify(value, null, 2) + "\n";
@@ -33,7 +36,7 @@ async function main() {
   const flags = new Map<string, string | true>();
   while (args.length) {
     const flag = args.shift()!;
-    if (!["--out", "--bars", "--reference", "--options", "--json"].includes(flag)) throw new Error(`Unknown option ${flag}`);
+    if (!["--out", "--bars", "--reference", "--options", "--json", "--csv", "--mapping"].includes(flag)) throw new Error(`Unknown option ${flag}`);
     if (flags.has(flag)) throw new Error(`Duplicate option ${flag}`);
     if (flag === "--json") flags.set(flag, true);
     else {
@@ -65,7 +68,7 @@ async function main() {
     await output({ scope: "only-the-supplied-corpus", total: rows.length, accepted, rejected: rows.length - accepted, tradingViewEquivalence: "not-certified", scripts: rows }, pathFlag("--out"));
     return;
   }
-  if (!["analyze", "compile", "simulate", "verify"].includes(command)) throw new Error(`Unknown command ${command}`);
+  if (!["analyze", "compile", "simulate", "verify", "import-reference"].includes(command)) throw new Error(`Unknown command ${command}`);
   const result = compilePineToSolana(await readFile(resolve(sourcePath), "utf8"), options);
   if (!result.ok || command === "analyze") {
     await output({ ok: result.ok, target: result.target, manifest: result.manifest, diagnostics: result.diagnostics }, pathFlag("--out"));
@@ -90,6 +93,11 @@ async function main() {
     if (!Array.isArray(bars) || !bars.length || bars.length > 100000) throw new Error("Candle JSON must contain 1–100000 rows");
     const trace = replayPine(result.ir!, bars);
     await output({ sourceHash: result.ir!.sourceHash, configHash: result.ir!.configHash, bars: bars.length, totalIntents: trace.reduce((n, r) => n + r.intents.length, 0), trace }, pathFlag("--out"));
+  } else if (command === "import-reference") {
+    const csvPath = pathFlag("--csv"), mappingPath = pathFlag("--mapping"), out = pathFlag("--out");
+    if (!csvPath || !mappingPath || !out) throw new Error("import-reference requires --csv, --mapping, and --out");
+    const imported = importReferenceCsv(result.ir!, await readFile(resolve(csvPath), "utf8"), JSON.parse(await readFile(resolve(mappingPath), "utf8")));
+    await output(imported, out);
   } else {
     const path = pathFlag("--reference"); if (!path) throw new Error("verify requires --reference");
     const report = verifyReferenceTrace(result.ir!, JSON.parse(await readFile(resolve(path), "utf8")));
